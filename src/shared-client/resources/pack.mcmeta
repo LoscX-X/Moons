@@ -1,0 +1,10 @@
+{
+  "pack": {
+    "pack_format": 64,
+    "supported_formats": {
+      "min_inclusive": 15,
+      "max_inclusive": 199
+    },
+    "description": "Moons Hoplite trims"
+  }
+}

@@ -1,0 +1,56 @@
+# Moons native startup agent
+
+This directory contains the optional thin JVMTI transport for JVMs whose launch
+command is under the user's control. It is loaded only through the standard
+`-agentpath` JVM option. It does not implement process injection or an Attach
+bypass.
+
+The native side owns only four responsibilities:
+
+1. receive `Agent_OnLoad` and obtain `jvmtiEnv`;
+2. register `VMInit` and `ClassFileLoadHook`;
+3. copy selected class bytes into a Java `byte[]` through JNI;
+4. return a Java ASM result in JVMTI-allocated memory.
+
+Minecraft mappings and transformations remain in
+`NativeTransformerBridge` and the existing Java `MoonsTransformer`.
+
+## Build and verification
+
+On Windows with the Visual Studio C++ tools and a JDK installed:
+
+```powershell
+gradle build --console=plain
+```
+
+The build discovers CMake from PATH or the Visual Studio installation and
+places these native-startup artifacts in `build/dist`:
+
+- `moons-native.dll`
+- `moons-api.jar`
+- `moons.jar`
+
+`verifyNativeAgent` proves the generic JVMTI/JNI/ASM byte round trip.
+`verifyNativeMoonsTransformer` additionally proves that the production Moons
+tick transformer reaches `AgentBridge`.
+
+## Standard startup form
+
+PowerShell requires the complete `-agentpath` argument to be quoted because its
+options are separated by semicolons:
+
+```powershell
+java '-agentpath:C:\path\moons-native.dll=jar=C:\path\moons.jar;bootstrap=C:\path\moons-api.jar;include=net/minecraft/,com/mojang/,net/caffeinemc/' -cp app.jar example.Main
+```
+
+Options:
+
+- `jar` (required): JAR containing the Java transformer bridge and ASM.
+- `bootstrap` (optional): bootstrap-visible API JAR used by injected hooks.
+- `bridge` (optional): Java bridge class; defaults to the production bridge.
+- `include` (optional): comma-separated internal-name prefixes filtered before
+  crossing JNI.
+
+The current native path demonstrates startup transformation and the production
+hook bridge. Runtime/module bootstrap is still owned by the Java Agent path and
+is not duplicated in C++.

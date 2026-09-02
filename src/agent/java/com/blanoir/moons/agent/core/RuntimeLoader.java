@@ -7,6 +7,8 @@ import com.blanoir.moons.api.bridge.RuntimeBridge;
 import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Method;
 import java.net.URLClassLoader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 
 final class RuntimeLoader implements AutoCloseable {
@@ -73,8 +75,11 @@ final class RuntimeLoader implements AutoCloseable {
         );
         ClassLoader bridgeParent = new BridgeParentClassLoader(
                 gameLoader, RuntimeLoader.class.getClassLoader());
-        URLClassLoader loader = new URLClassLoader(
-                new java.net.URL[]{runtimeJar.toUri().toURL()}, bridgeParent);
+        Path uiRuntime = resolveUiRuntime(home);
+        java.net.URL[] runtimeUrls = uiRuntime == null
+                ? new java.net.URL[]{runtimeJar.toUri().toURL()}
+                : new java.net.URL[]{runtimeJar.toUri().toURL(), uiRuntime.toUri().toURL()};
+        URLClassLoader loader = new URLClassLoader(runtimeUrls, bridgeParent);
         Thread thread = Thread.currentThread();
         ClassLoader previousContext = thread.getContextClassLoader();
         try {
@@ -95,6 +100,23 @@ final class RuntimeLoader implements AutoCloseable {
         } finally {
             thread.setContextClassLoader(previousContext);
         }
+    }
+
+    private static Path resolveUiRuntime(Path home) throws Exception {
+        Path libraryRoot = home.resolve("libraries").toAbsolutePath().normalize();
+        Path pointer = libraryRoot.resolve("moons-ui-runtime.current");
+        if (!Files.isRegularFile(pointer)) return null;
+
+        String relative = Files.readString(pointer, StandardCharsets.UTF_8).trim();
+        if (relative.isEmpty()) return null;
+        Path library = libraryRoot.resolve(relative).normalize();
+        if (!library.startsWith(libraryRoot)) {
+            throw new IllegalStateException("Invalid Moons UI runtime pointer: " + pointer);
+        }
+        if (!Files.isRegularFile(library)) {
+            throw new IllegalStateException("Moons UI runtime is missing: " + library);
+        }
+        return library;
     }
 
     RuntimeBridge bridge() {

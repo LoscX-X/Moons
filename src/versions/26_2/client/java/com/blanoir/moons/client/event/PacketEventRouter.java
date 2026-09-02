@@ -1,7 +1,8 @@
-package com.blanoir.moons.client.event.network;
+package com.blanoir.moons.client.event;
 
 import com.blanoir.moons.client.access.GameAccess;
-import com.blanoir.moons.client.event.EventBus;
+import com.blanoir.moons.client.event.network.PacketReceiveEvent;
+import com.blanoir.moons.client.event.network.PacketSendEvent;
 import com.blanoir.moons.client.module.impl.combat.Velocity;
 import com.blanoir.moons.client.module.impl.combat.Reach;
 import com.blanoir.moons.client.module.impl.movement.JumpReset;

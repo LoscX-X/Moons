@@ -213,16 +213,22 @@ def runtimeJar = tasks.register("runtimeJar", Jar) {
 sourceSets.client.compileClasspath += sourceSets.api.output
 sourceSets.features.compileClasspath += sourceSets.client.output + sourceSets.client.compileClasspath
 
-def featuresJar = tasks.register("featuresJar", com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar) {
-    archiveFileName = "moons-core-features.jar"
-    destinationDirectory = layout.buildDirectory.dir(versionedPayloadDirectory)
-    dependsOn tasks.named("clientClasses")
+def uiDependenciesJar = tasks.register("uiDependenciesJar", com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar) {
+    archiveFileName = "moons-ui-runtime.jar"
+    destinationDirectory = layout.buildDirectory.dir("dist/dependencies")
     configurations = [project.configurations.composeEmbedded]
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     mergeServiceFiles()
     exclude "META-INF/INDEX.LIST"
     exclude "META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA"
     exclude "META-INF/versions/*/module-info.class", "module-info.class"
+}
+
+def featuresJar = tasks.register("featuresJar", Jar) {
+    archiveFileName = "moons-core-features.jar"
+    destinationDirectory = layout.buildDirectory.dir(versionedPayloadDirectory)
+    dependsOn tasks.named("clientClasses")
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     from sourceSets.features.output
     from sourceSets.client.output
 }
@@ -726,15 +732,18 @@ def moonsHwidExe = tasks.register("moonsHwidExe", Exec) {
 
 def moonsExe = tasks.register("moonsExe", Exec) {
     group = "build"
-    description = "Builds one Windows injector containing a 26.1 base and 26.2 overlay."
-    dependsOn universalPayloadPatch, apiJar, bridgeDll, moonsHwidExe
+    description = "Builds one Windows injector with a separately downloaded UI runtime."
+    dependsOn universalPayloadPatch, apiJar, bridgeDll, moonsHwidExe, uiDependenciesJar
 
     def source = layout.projectDirectory.file("src/launcher/csharp/MoonsExeLauncher.cs")
     def hardwareIdGenerator = layout.projectDirectory.file("src/shared-csharp/HardwareIdGenerator.cs")
     def payload26_1 = layout.buildDirectory.file("universal/26.1/moons.jar")
     def payload26_2Patch = layout.buildDirectory.file("universal/moons-26.2.patch.zip")
-    def bootstrapApi = layout.buildDirectory.file("moons-payload/26.1/moons-api.jar")
-    def bridge = layout.buildDirectory.file("dist/26.1/moons-bridge.dll")
+    def bootstrapApi = layout.buildDirectory.file("moons-payload/26_1/moons-api.jar")
+    def bridge = layout.buildDirectory.file("dist/26_1/moons-bridge.dll")
+    def uiRuntime = uiDependenciesJar.flatMap { it.archiveFile }
+    def uiMetadata = layout.buildDirectory.file("generated/launcher/ui-runtime.properties")
+    def uiDownloadUrl = providers.gradleProperty("moons_ui_download_url").getOrElse("").trim()
     def output = layout.buildDirectory.file("dist/moons.exe")
     inputs.file(source)
     inputs.file(hardwareIdGenerator)
@@ -742,6 +751,8 @@ def moonsExe = tasks.register("moonsExe", Exec) {
     inputs.file(payload26_2Patch)
     inputs.file(bootstrapApi)
     inputs.file(bridge)
+    inputs.file(uiRuntime)
+    inputs.property("moonsUiDownloadUrl", uiDownloadUrl)
     outputs.file(output)
 
     doFirst {
@@ -757,6 +768,24 @@ def moonsExe = tasks.register("moonsExe", Exec) {
         }
 
         output.get().asFile.parentFile.mkdirs()
+        def uiRuntimeFile = uiRuntime.get().asFile
+        def sha = java.security.MessageDigest.getInstance("SHA-256")
+                .digest(java.nio.file.Files.readAllBytes(uiRuntimeFile.toPath()))
+                .collect { String.format("%02x", it & 0xff) }
+                .join()
+        if (uiDownloadUrl.contains("\r") || uiDownloadUrl.contains("\n")) {
+            throw new GradleException("moons_ui_download_url must be a single URL")
+        }
+        def metadataFile = uiMetadata.get().asFile
+        metadataFile.parentFile.mkdirs()
+        metadataFile.setText(
+                "format=1\n"
+                        + "url=${uiDownloadUrl}\n"
+                        + "sha256=${sha}\n"
+                        + "size=${uiRuntimeFile.length()}\n",
+                "UTF-8"
+        )
+        file("${uiRuntimeFile.absolutePath}.sha256").setText(sha + "\n", "US-ASCII")
         executable compiler.absolutePath
         args(
                 "/nologo",
@@ -768,6 +797,7 @@ def moonsExe = tasks.register("moonsExe", Exec) {
                 "/reference:System.IO.Compression.dll",
                 "/reference:System.IO.Compression.FileSystem.dll",
                 "/out:${output.get().asFile.absolutePath}",
+                "/resource:${metadataFile.absolutePath},Moons.UiRuntime.properties",
                 "/resource:${payload26_1.get().asFile.absolutePath},Moons.Payload.26_1.jar",
                 "/resource:${payload26_2Patch.get().asFile.absolutePath},Moons.Payload.26_2.patch",
                 "/resource:${bootstrapApi.get().asFile.absolutePath},Moons.Api.jar",

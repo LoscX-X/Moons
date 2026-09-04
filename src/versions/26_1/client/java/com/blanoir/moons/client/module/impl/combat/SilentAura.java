@@ -77,12 +77,17 @@ public final class SilentAura {
     }
 
     public static int showStatus(Minecraft client) {
+        boolean fullLock = SilentAuraConfig.fullLockMode();
+        String aimProfile = fullLock ? "full_lock/center-corridor"
+                : SilentAuraConfig.aimMode() + "/" + SilentAuraConfig.aimPoint();
+        double activePrediction = fullLock
+                ? SilentAuraConfig.fullLockPrediction()
+                : SilentAuraConfig.prediction();
         ClientChat.send(client, String.format(Locale.ROOT,
-                "SilentAura %s | range %.2f+%.2f | FOV %.0f | %s/%s/%s | prediction %.2f | gate %s.",
+                "SilentAura %s | range %.2f+%.2f | FOV %.0f | %s/%s | prediction %.2f | gate %s.",
                 isEnabled() ? "enabled" : "disabled", SilentAuraConfig.aimRange(),
                 SilentAuraConfig.scanExtra(), SilentAuraConfig.fov(), SilentAuraConfig.targetMode(),
-                SilentAuraConfig.aimMode(), SilentAuraConfig.aimPoint(),
-                SilentAuraConfig.prediction(), TriggerBot.silentAuraGate()));
+                aimProfile, activePrediction, TriggerBot.silentAuraGate()));
         return 1;
     }
 
@@ -104,6 +109,9 @@ public final class SilentAura {
     }
     public static int setFullLockSmoothing(Minecraft client, double value) {
         SilentAuraConfig.fullLockSmoothing(value); return 1;
+    }
+    public static int setFullLockPrediction(Minecraft client, double value) {
+        SilentAuraConfig.fullLockPrediction(value); return 1;
     }
     public static int setReturnRotation(Minecraft client, boolean value) {
         SilentAuraConfig.returnRotation(value);
@@ -153,7 +161,9 @@ public final class SilentAura {
         if (!SilentAuraConfig.aimMode(value)) {
             ClientChat.send(client, "Aim mode must be balance, lock, or full_lock."); return 0;
         }
-        SilentAuraRuntime.resetTargeting(client);
+        // Each aim profile owns independent selector, controller and packet
+        // history. A mode switch must not revive inertia from its last use.
+        SilentAuraRuntime.reset(client);
         return 1;
     }
 
@@ -236,7 +246,8 @@ public final class SilentAura {
                 "SilentAura debugger",
                 "held=" + SilentAuraRuntime.activationHeld(client)
                         + " target=" + targetText
-                        + " profile=" + (SilentAuraConfig.matrixCompatibility()
+                        + " profile=" + (SilentAuraConfig.fullLockMode()
+                        ? "full-lock" : SilentAuraConfig.matrixCompatibility()
                         ? "matrix" : "generic"),
                 "candidate=" + candidateRay + " sent=" + sentRay
                         + " crossing=" + SilentAuraRuntime.crossingTarget(),

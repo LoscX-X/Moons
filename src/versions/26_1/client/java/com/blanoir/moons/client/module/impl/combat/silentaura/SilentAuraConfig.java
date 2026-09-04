@@ -29,6 +29,8 @@ public final class SilentAuraConfig {
             integer("silentaura.fullLock.angleStep", 90, 30, 180);
     private static final DoubleSetting FULL_LOCK_SMOOTHING =
             decimal("silentaura.fullLock.smoothing", 0.0D, 0.0D, 1.0D);
+    private static final DoubleSetting FULL_LOCK_PREDICTION =
+            decimal("silentaura.fullLock.prediction", 1.0D, 0.0D, 3.0D);
     private static final BooleanSetting RETURN_ROTATION = bool("silentaura.returnRotation", true);
     private static final DoubleSetting RETURN_SMOOTH = decimal("silentaura.returnSmooth", 0.45D, 0.05D, 1.0D);
     private static final DoubleSetting JITTER = decimal("silentaura.jitter", 0.38D, 0.0D, 1.0D);
@@ -80,10 +82,12 @@ public final class SilentAuraConfig {
     public static int aimWanderTicks() { return AIM_WANDER_TICKS.get(); }
     public static double aimWander() { return AIM_WANDER.get(); }
     public static double predictionLead() { return PREDICTION_LEAD.get(); }
+    public static boolean balanceMode() { return AIM_MODE.get() == AimMode.BALANCE; }
     public static boolean lockMode() { return AIM_MODE.get() != AimMode.BALANCE; }
     public static boolean fullLockMode() { return AIM_MODE.get() == AimMode.FULL_LOCK; }
     public static int fullLockAngleStep() { return FULL_LOCK_ANGLE_STEP.get(); }
     public static double fullLockSmoothing() { return FULL_LOCK_SMOOTHING.get(); }
+    public static double fullLockPrediction() { return FULL_LOCK_PREDICTION.get(); }
     public static boolean matrixCompatibility() {
         return MATRIX_COMPATIBILITY.get() && !fullLockMode();
     }
@@ -108,6 +112,7 @@ public final class SilentAuraConfig {
     public static void smooth(double value) { SMOOTH.set(value); }
     public static void fullLockAngleStep(int value) { FULL_LOCK_ANGLE_STEP.set(value); }
     public static void fullLockSmoothing(double value) { FULL_LOCK_SMOOTHING.set(value); }
+    public static void fullLockPrediction(double value) { FULL_LOCK_PREDICTION.set(value); }
     public static void returnRotation(boolean value) { RETURN_ROTATION.set(value); }
     public static void returnSmooth(double value) { RETURN_SMOOTH.set(value); }
     public static void jitter(double value) { JITTER.set(value); }

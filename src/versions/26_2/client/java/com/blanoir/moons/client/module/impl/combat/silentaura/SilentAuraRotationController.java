@@ -107,7 +107,7 @@ public final class SilentAuraRotationController {
         targetId = target.getId();
 
         if (fullLockMode) {
-            trackFullLock(client, point, deltaSeconds);
+            trackFullLock(client, target, point, deltaSeconds);
             return;
         }
 
@@ -344,11 +344,14 @@ public final class SilentAuraRotationController {
     }
 
     /** Leaves packet-cadence angle stepping to the FULL-Lock profile. */
-    private void trackFullLock(Minecraft client, Vec3 point, double rawDelta) {
+    private void trackFullLock(Minecraft client, LivingEntity target,
+                               Vec3 point, double rawDelta) {
         double delta = Mth.clamp(rawDelta, 1.0D / 1000.0D, 1.0D / 20.0D);
         float previousYaw = yaw;
         float previousPitch = pitch;
-        Rotation desired = RotationUtils.rotationTo(client.player.getEyePosition(), point);
+        Vec3 leadPoint = fullLockLeadPoint(client, target, point, delta);
+        Rotation desired = RotationUtils.rotationTo(
+                client.player.getEyePosition(), leadPoint);
         yaw += MathUtils.wrappedAngleDifference(yaw, desired.yaw());
         pitch = Mth.clamp(desired.pitch(), -90.0F, 90.0F);
         yawVelocity = MathUtils.wrappedAngleDifference(previousYaw, yaw) / (float) delta;
@@ -356,6 +359,43 @@ public final class SilentAuraRotationController {
         crossingTarget = false;
         pathJitterBlend = 0.0F;
         heldOrbitOffset = null;
+    }
+
+    /**
+     * FULL-Lock prediction is deliberately independent from the humanized
+     * Lock/Balance predictor. Lead is kept inside the entity's current box so
+     * the final packet ray can still prove a real HIT; it shifts the lock
+     * toward the moving half of the body instead of aiming at future air.
+     */
+    private Vec3 fullLockLeadPoint(Minecraft client, LivingEntity target,
+                                   Vec3 point, double deltaSeconds) {
+        double leadTicks = SilentAuraConfig.fullLockPrediction();
+        if (leadTicks <= 0.0D) return point;
+
+        Vec3 velocity = target.getDeltaMovement();
+        Vec3 horizontalVelocity = new Vec3(velocity.x, 0.0D, velocity.z);
+        double alpha = Mth.clamp(deltaSeconds * 20.0D, 0.0D, 1.0D);
+        smoothedRelativeVelocity = smoothedRelativeVelocity == null
+                ? horizontalVelocity
+                : smoothedRelativeVelocity.lerp(horizontalVelocity, alpha);
+        if (smoothedRelativeVelocity.horizontalDistanceSqr() < 4.0E-4D) {
+            return point;
+        }
+
+        AABB box = target.getBoundingBox();
+        // Preserve enough angular room for the one-degree FULL-Lock deadzone
+        // plus mouse-GCD quantization at the outer edge of attack reach.
+        double insetX = Math.min(box.getXsize() * 0.22D, 0.11D);
+        double insetZ = Math.min(box.getZsize() * 0.22D, 0.11D);
+        Vec3 predicted = new Vec3(
+                Mth.clamp(point.x + smoothedRelativeVelocity.x * leadTicks,
+                        box.minX + insetX, box.maxX - insetX),
+                point.y,
+                Mth.clamp(point.z + smoothedRelativeVelocity.z * leadTicks,
+                        box.minZ + insetZ, box.maxZ - insetZ));
+        Vec3 eye = client.player.getEyePosition();
+        return RaytraceUtils.canRayTraceTo(client, eye, predicted)
+                ? predicted : point;
     }
 
     public void returnToCamera(Minecraft client, double deltaSeconds) {

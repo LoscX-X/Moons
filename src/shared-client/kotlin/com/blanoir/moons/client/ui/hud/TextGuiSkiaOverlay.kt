@@ -2,7 +2,6 @@ package com.blanoir.moons.client.ui.hud
 
 import com.blanoir.moons.client.access.MinecraftClientAccess
 import com.blanoir.moons.client.module.framework.ModuleRegistry
-import com.blanoir.moons.client.module.impl.render.InventorySee
 import com.blanoir.moons.client.module.impl.render.TargetInfoHud
 import com.blanoir.moons.client.ui.animation.UiMotion
 import com.blanoir.moons.client.ui.clickgui.MoonsComposeScreen
@@ -11,8 +10,6 @@ import com.blanoir.moons.client.ui.MinecraftScreenAccess
 import com.blanoir.moons.client.ui.layout.Bounds
 import com.mojang.blaze3d.systems.RenderSystem
 import net.minecraft.client.Minecraft
-import net.minecraft.core.registries.BuiltInRegistries
-import net.minecraft.world.item.ItemStack
 import org.jetbrains.skia.BackendRenderTarget
 import org.jetbrains.skia.BlendMode
 import org.jetbrains.skia.ColorFilter
@@ -44,7 +41,7 @@ import kotlin.math.max
 import kotlin.math.min
 
 /**
- * TextGUI, InventorySee and TargetInfo rendered directly into GLFW's final framebuffer.
+ * TextGUI and TargetInfo rendered directly into GLFW's final framebuffer.
  * No Minecraft text, pose stack, resource reload or HUD render event is used.
  */
 object TextGuiSkiaOverlay {
@@ -60,7 +57,6 @@ object TextGuiSkiaOverlay {
     private var startedNanos = 0L
     private var lastAnimationNanos = 0L
     private val moduleEntries = LinkedHashMap<String, ModuleEntry>()
-    private val itemImages = HashMap<String, Image?>()
 
     private var loadedTextResources: TextResources? = null
     private val textResources: TextResources
@@ -96,12 +92,11 @@ object TextGuiSkiaOverlay {
             animationSeconds
         )
         val drawTextGui = editorVisible || moduleEntries.isNotEmpty()
-        val drawInventory = editorVisible || InventorySee.isEnabled()
         val targetSnapshot = TargetInfoHud.snapshot(editorVisible)
         if (!drawTextGui) {
             MoonsHud.updateExternalBounds(Bounds(0.0, 0.0, 0.0, 0.0), HudConfig.SCALE.get())
         }
-        if (!drawTextGui && !drawInventory && !targetSnapshot.visible()) {
+        if (!drawTextGui && !targetSnapshot.visible()) {
             return
         }
 
@@ -121,7 +116,6 @@ object TextGuiSkiaOverlay {
                 canvas, client, moduleEntries.values.toList(), editorVisible,
                 seconds, animationSeconds
             )
-            if (drawInventory) drawInventory(canvas, client)
             if (targetSnapshot.visible()) drawTargetInfo(canvas, targetSnapshot)
             surface?.flushAndSubmit()
         } finally {
@@ -286,132 +280,6 @@ object TextGuiSkiaOverlay {
         moduleEntries.entries.removeIf { (_, entry) ->
             !entry.present && entry.progress < 0.015
         }
-    }
-
-    private fun drawInventory(canvas: org.jetbrains.skia.Canvas, client: Minecraft) {
-        val player = client.player ?: return
-        val guiScale = client.window.guiScale.coerceAtLeast(1).toFloat()
-        val componentScale = InventorySee.scale().toFloat() * guiScale
-        val bounds = InventorySee.currentBounds()
-        val originX = bounds.x().toFloat() * guiScale
-        val originY = bounds.y().toFloat() * guiScale
-        val resources = textResources
-        val fill = Paint().apply { isAntiAlias = true }
-        val imagePaint = Paint().apply { isAntiAlias = false }
-        try {
-            fill.color = 0xD80C0D10.toInt()
-            canvas.drawRRect(
-                RRect.makeXYWH(originX, originY, 188.0f * componentScale,
-                    68.0f * componentScale, 6.0f * componentScale), fill
-            )
-            for (row in 0 until 3) {
-                for (column in 0 until 9) {
-                    val slotX = originX + (5.0f + column * 20.0f) * componentScale
-                    val slotY = originY + (5.0f + row * 20.0f) * componentScale
-                    fill.color = 0x761F2025
-                    canvas.drawRRect(
-                        RRect.makeXYWH(slotX, slotY, 18.0f * componentScale,
-                            18.0f * componentScale, 3.0f * componentScale), fill
-                    )
-
-                    val stack = player.inventory.getItem(9 + row * 9 + column)
-                    if (stack.isEmpty) continue
-                    val iconX = slotX + componentScale
-                    val iconY = slotY + componentScale
-                    val iconSize = 16.0f * componentScale
-                    val image = itemImage(stack)
-                    if (image != null) {
-                        canvas.drawImageRect(
-                            image,
-                            Rect.makeWH(image.width.toFloat(), image.height.toFloat()),
-                            Rect.makeXYWH(iconX, iconY, iconSize, iconSize),
-                            SamplingMode.DEFAULT,
-                            imagePaint,
-                            true
-                        )
-                    } else {
-                        drawFallbackItem(canvas, stack, iconX, iconY, iconSize, componentScale, fill)
-                    }
-
-                    if (stack.count > 1) {
-                        val countScale = max(0.72f, componentScale * 0.72f)
-                        val value = stack.count.toString()
-                        val width = resources.pixelFont.measure(value, countScale)
-                        resources.pixelFont.draw(
-                            canvas, value, slotX + 18.0f * componentScale - width,
-                            slotY + 18.0f * componentScale - 8.0f * countScale,
-                            countScale, 0xFFFFFFFF.toInt(), true
-                        )
-                    }
-                    if (stack.isDamageableItem && stack.maxDamage > 0) {
-                        val durability = (1.0f - stack.damageValue.toFloat() / stack.maxDamage)
-                            .coerceIn(0.0f, 1.0f)
-                        val barX = slotX + 2.0f * componentScale
-                        val barY = slotY + 16.0f * componentScale
-                        fill.color = 0xCC141518.toInt()
-                        canvas.drawRect(Rect.makeXYWH(barX, barY, 14.0f * componentScale,
-                            max(1.0f, componentScale)), fill)
-                        fill.color = HudText.withAlpha(
-                            if (durability > 0.45f) 0x70D69A else if (durability > 0.2f) 0xE0B75B else 0xEB6D79,
-                            230
-                        )
-                        canvas.drawRect(Rect.makeXYWH(barX, barY,
-                            14.0f * componentScale * durability, max(1.0f, componentScale)), fill)
-                    }
-                }
-            }
-        } finally {
-            imagePaint.close()
-            fill.close()
-        }
-    }
-
-    private fun drawFallbackItem(
-        canvas: org.jetbrains.skia.Canvas,
-        stack: ItemStack,
-        x: Float,
-        y: Float,
-        size: Float,
-        scale: Float,
-        paint: Paint
-    ) {
-        val key = BuiltInRegistries.ITEM.getKey(stack.item)
-        val hash = key.toString().hashCode()
-        val red = 82 + ((hash ushr 16) and 0x4F)
-        val green = 82 + ((hash ushr 8) and 0x4F)
-        val blue = 82 + (hash and 0x4F)
-        paint.color = 0xFF000000.toInt() or (red shl 16) or (green shl 8) or blue
-        canvas.drawRRect(RRect.makeXYWH(x + scale, y + scale, size - 2.0f * scale,
-            size - 2.0f * scale, 2.0f * scale), paint)
-        val label = key.path.split('_').mapNotNull { it.firstOrNull()?.uppercaseChar() }
-            .joinToString("").take(2).ifBlank { "?" }
-        val labelScale = max(0.62f, scale * 0.62f)
-        val width = textResources.pixelFont.measure(label, labelScale)
-        textResources.pixelFont.draw(canvas, label, x + (size - width) * 0.5f,
-            y + (size - 8.0f * labelScale) * 0.5f, labelScale, 0xFFFFFFFF.toInt(), true)
-    }
-
-    private fun itemImage(stack: ItemStack): Image? {
-        val key = BuiltInRegistries.ITEM.getKey(stack.item)
-        val cacheKey = key.toString()
-        if (itemImages.containsKey(cacheKey)) return itemImages[cacheKey]
-        val loader = TextGuiSkiaOverlay::class.java.classLoader
-        val candidates = arrayOf(
-            "assets/${key.namespace}/textures/item/${key.path}.png",
-            "assets/${key.namespace}/textures/block/${key.path}.png"
-        )
-        var loaded: Image? = null
-        for (resource in candidates) {
-            val bytes = loader.getResourceAsStream(resource)?.use { it.readAllBytes() } ?: continue
-            loaded = try {
-                Image.makeFromEncoded(bytes)
-            } catch (_: RuntimeException) {
-                null
-            }
-            if (loaded != null) break
-        }
-        itemImages[cacheKey] = loaded
-        return loaded
     }
 
     private fun drawTargetInfo(
@@ -696,8 +564,6 @@ object TextGuiSkiaOverlay {
         closeSurface()
         moduleEntries.clear()
         lastAnimationNanos = 0L
-        itemImages.values.filterNotNull().forEach { it.close() }
-        itemImages.clear()
         loadedTextResources?.close()
         loadedTextResources = null
     }

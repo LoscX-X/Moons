@@ -141,7 +141,7 @@ final class RuntimeLoader implements AutoCloseable {
     }
 
     /**
-     * Lunar-style isolated game loaders do not always delegate arbitrary packages to
+     * Isolated game loaders do not always delegate arbitrary packages to
      * bootstrap. Keep one API identity while still exposing game classes to runtime.
      */
     private static final class BridgeParentClassLoader extends ClassLoader {

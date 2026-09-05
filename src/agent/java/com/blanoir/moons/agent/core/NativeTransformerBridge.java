@@ -48,7 +48,7 @@ public final class NativeTransformerBridge {
     /**
      * Classes which native code defines directly in the hostile game loader.
      *
-     * <p>Lunar's Genesis loader does not delegate arbitrary application packages
+     * <p>A non-delegating game loader may not expose arbitrary application packages
      * to bootstrap, so transformed game classes cannot link the bootstrap copy of
      * AgentBridge. A loader-local facade keeps the bytecode linkage local while a
      * JDK Proxy forwards calls to the real bootstrap/runtime bridge.</p>

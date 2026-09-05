@@ -126,7 +126,7 @@ public final class ScoreboardChanger {
                     DynamicMiniMessage.parse(LAST_LINE.get(), animationTime),
                     original.score()));
         } else if (MODE.get() == Mode.ADD_LAST_LINE && !addedLine) {
-            // A native/Lunar sidebar is capped at 15 entries. The direct
+            // A host-owned sidebar is capped at 15 entries. The direct
             // renderer can still show the requested appended line when the
             // server already occupies every native slot.
             lines.add(new Line(DynamicMiniMessage.parse(LAST_LINE.get(), animationTime),
@@ -148,7 +148,7 @@ public final class ScoreboardChanger {
             return;
         }
         // LastLine and title replacements are already present in the client
-        // Scoreboard. This lets Lunar or another host-owned HUD render them
+        // Scoreboard. This lets a host-owned HUD render them
         // without drawing a second sidebar over the top.
         if (MODE.get() != Mode.CUSTOM) return;
         Objective objective = currentObjective();

@@ -6,7 +6,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 /**
  * Emits the custom world overlay once per game-renderer frame.
  *
- * <p>Sodium renders its terrain through a redirected chunk-layer call. Lunar
+ * <p>Sodium renders its terrain through a redirected chunk-layer call. A host
  * can consequently remove the vanilla instruction used by the regular
  * world-render hook. Both boundaries feed this dispatcher, so whichever one
  * survives in the active renderer supplies the event without drawing twice.</p>

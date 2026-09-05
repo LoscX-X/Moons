@@ -45,7 +45,7 @@ try {
         throw "Fixture readiness timeout"
     }
 
-    & (Join-Path $PSScriptRoot "moons-inject.ps1") `
+    & (Join-Path $PSScriptRoot "moons-load.ps1") `
         -ProcessId $process.Id `
         -Dll $dllFull `
         -Payload $payloadFull `

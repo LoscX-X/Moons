@@ -1,7 +1,7 @@
 package com.blanoir.moons.api.bridge;
 
 /**
- * Loader-neutral boundary called by injected bytecode.
+ * Loader-neutral boundary called by loaded bytecode.
  *
  * <p>Only JDK types and {@code Object} may appear here: this interface is
  * loaded by the bootstrap loader and must never resolve a Minecraft class.

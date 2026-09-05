@@ -97,13 +97,13 @@ public final class MoonsLauncher {
         Object selection = JOptionPane.showInputDialog(
                 null,
                 "选择要注入的 Minecraft 进程",
-                AgentBranding.name() + " Injector",
+                AgentBranding.name() + " Loader",
                 JOptionPane.PLAIN_MESSAGE,
                 null,
                 candidates.stream().map(MinecraftProcess::label).toArray(String[]::new),
                 candidates.getFirst().label()
         );
-        if (selection == null) throw new IllegalStateException("Injection cancelled");
+        if (selection == null) throw new IllegalStateException("Load cancelled");
         return candidates.stream()
                 .filter(process -> process.label().equals(selection.toString()))
                 .findFirst()
@@ -134,10 +134,10 @@ public final class MoonsLauncher {
         } finally {
             machine.detach();
         }
-        System.out.println(AgentBranding.prefix() + " Injection completed");
-        progress(options, 100, "Injection completed");
+        System.out.println(AgentBranding.prefix() + " Load completed");
+        progress(options, 100, "Load completed");
         if (showSuccessDialog && !GraphicsEnvironment.isHeadless()) {
-            JOptionPane.showMessageDialog(null, "注入完成", AgentBranding.name() + " Injector", JOptionPane.INFORMATION_MESSAGE);
+            JOptionPane.showMessageDialog(null, "注入完成", AgentBranding.name() + " Loader", JOptionPane.INFORMATION_MESSAGE);
         }
     }
 

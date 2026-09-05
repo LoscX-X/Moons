@@ -104,8 +104,8 @@ public final class GameAccess {
             MethodHandle createRenderSetup;
             VarHandle renderSetupBufferSize;
             try {
-                // The published vanilla 26.2 classes and Lunar's baked 26.2
-                // classes both use the ten-argument layout.
+                // Published and host-bundled 26.2 classes both use the
+                // ten-argument layout.
                 createRenderSetup = setupLookup.findConstructor(
                         RenderSetup.class,
                         java.lang.invoke.MethodType.methodType(

@@ -36,14 +36,15 @@ def isolatedBuildDirectory = providers.gradleProperty("moons_build_directory").o
 if (isolatedBuildDirectory != null && !isolatedBuildDirectory.isBlank()) {
     layout.buildDirectory.set(file(isolatedBuildDirectory))
 }
-def versionedDistDirectory = "dist/${selectedVersionDirectory}"
+def legacyDistDirectory = "dist/legacy/${selectedVersionDirectory}"
+def loaderStagingDirectory = "loader-staging/${selectedVersionDirectory}"
 def versionedPayloadDirectory = "moons-payload/${selectedVersionDirectory}"
 def versionedTestDirectory = "moons-test/${selectedVersionDirectory}"
-// A running injected JVM can keep its agent JAR open on Windows.  Verification
+// A running loaded JVM can keep its agent JAR open on Windows.  Verification
 // builds may select an internal staging directory instead of requiring the user
 // to close Minecraft just so Gradle can overwrite the public artifact.
 def moonsJarOutputDirectory = providers.gradleProperty("moons_jar_output_directory")
-        .getOrElse(versionedDistDirectory)
+        .getOrElse(legacyDistDirectory)
 
 sourceSets {
     main {
@@ -72,9 +73,9 @@ sourceSets {
         resources.setSrcDirs(["src/features/resources"])
         compileClasspath += sourceSets.api.output + sourceSets.runtime.output
     }
-    injectorTest {
-        java.setSrcDirs(["src/injectorTest/java"])
-        resources.setSrcDirs(["src/injectorTest/resources"])
+    loaderTest {
+        java.setSrcDirs(["src/loaderTest/java"])
+        resources.setSrcDirs(["src/loaderTest/resources"])
         compileClasspath += sourceSets.agent.output + sourceSets.runtime.output + sourceSets.api.output + configurations.agentRuntimeClasspath
         runtimeClasspath += sourceSets.agent.output + sourceSets.runtime.output + sourceSets.api.output + configurations.agentRuntimeClasspath
     }
@@ -161,7 +162,7 @@ dependencies {
     composeEmbedded(compose.desktop.currentOs)
     composeEmbedded(compose.material3)
 
-    // The standalone injector is deliberately isolated from Fabric/Minecraft.
+    // The standalone loader is deliberately isolated from Fabric/Minecraft.
     // Its only non-JDK dependency is ASM, which is folded into moons.jar.
     agentImplementation "org.ow2.asm:asm:9.10.1"
     agentImplementation "org.ow2.asm:asm-tree:9.10.1"
@@ -233,11 +234,11 @@ def featuresJar = tasks.register("featuresJar", Jar) {
     from sourceSets.client.output
 }
 
-tasks.register("injectorFixtureJar", Jar) {
-    archiveFileName = "moons-injector-fixture.jar"
+tasks.register("loaderFixtureJar", Jar) {
+    archiveFileName = "moons-loader-fixture.jar"
     destinationDirectory = layout.buildDirectory.dir(versionedTestDirectory)
-    dependsOn tasks.named("injectorTestClasses")
-    from sourceSets.injectorTest.output
+    dependsOn tasks.named("loaderTestClasses")
+    from sourceSets.loaderTest.output
     manifest {
         attributes("Main-Class": "com.blanoir.moons.fixture.AttachTarget")
     }
@@ -246,9 +247,9 @@ tasks.register("injectorFixtureJar", Jar) {
 def nativeAgentFixtureJar = tasks.register("nativeAgentFixtureJar", Jar) {
     archiveFileName = "moons-native-agent-fixture.jar"
     destinationDirectory = layout.buildDirectory.dir(versionedTestDirectory)
-    dependsOn tasks.named("injectorTestClasses")
+    dependsOn tasks.named("loaderTestClasses")
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-    from sourceSets.injectorTest.output
+    from sourceSets.loaderTest.output
     from({
         configurations.agentRuntimeClasspath
                 .findAll { it.isFile() }
@@ -266,8 +267,8 @@ def nativeAgentFixtureJar = tasks.register("nativeAgentFixtureJar", Jar) {
 tasks.register("verifyMinecraftTransformers", JavaExec) {
     group = "verification"
     description = "Transforms and bytecode-verifies every supported hook against the actual Minecraft JAR."
-    dependsOn tasks.named("injectorTestClasses")
-    classpath = sourceSets.injectorTest.runtimeClasspath
+    dependsOn tasks.named("loaderTestClasses")
+    classpath = sourceSets.loaderTest.runtimeClasspath
     mainClass = "com.blanoir.moons.agent.core.TransformerVerification"
     doFirst {
         def minecraftJars = sourceSets.client.compileClasspath.files.findAll {
@@ -286,8 +287,8 @@ tasks.register("verifyMinecraftTransformers", JavaExec) {
 tasks.register("verifyRuntimeLifecycle", JavaExec) {
     group = "verification"
     description = "Verifies deterministic subscription and module resource cleanup."
-    dependsOn tasks.named("injectorTestClasses")
-    classpath = sourceSets.injectorTest.runtimeClasspath
+    dependsOn tasks.named("loaderTestClasses")
+    classpath = sourceSets.loaderTest.runtimeClasspath
     mainClass = "com.blanoir.moons.runtime.LifecycleVerification"
 }
 
@@ -335,7 +336,7 @@ tasks.register("moonsJar", Jar) {
                 "Agent-Class": "com.blanoir.moons.agent.MoonsAgent",
                 "Can-Redefine-Classes": "true",
                 "Can-Retransform-Classes": "true",
-                "Implementation-Title": "Moons single-file injector",
+                "Implementation-Title": "Moons single-file loader",
                 "Implementation-Version": project.version
         )
     }
@@ -347,8 +348,10 @@ def windowsHost = System.getProperty("os.name")
 def nativeAgentSourceDirectory = layout.projectDirectory.dir("native-agent")
 def nativeAgentBuildDirectory = layout.buildDirectory.dir("native-agent")
 def nativeAgentBuiltDll = nativeAgentBuildDirectory.map { it.file("out/moons-native.dll") }
-def nativeAgentDistDll = layout.buildDirectory.file("${versionedDistDirectory}/moons-native.dll")
-def nativeAgentDistApiJar = layout.buildDirectory.file("${versionedDistDirectory}/moons-api.jar")
+def nativeAgentTestDll = layout.buildDirectory.file(
+        "${versionedTestDirectory}/native-agent/moons-native.dll")
+def nativeAgentTestApiJar = layout.buildDirectory.file(
+        "${versionedTestDirectory}/native-agent/moons-api.jar")
 
 def locateCmake = {
     def executableName = windowsHost ? "cmake.exe" : "cmake"
@@ -402,8 +405,8 @@ def locateJdkHome = {
 }
 
 def configureNativeAgent = tasks.register("configureNativeAgent", Exec) {
-    group = "build"
-    description = "Configures the optional Windows JVMTI startup agent."
+    group = "verification"
+    description = "Configures the test-only Windows JVMTI startup agent."
     onlyIf { windowsHost }
     inputs.files(fileTree(nativeAgentSourceDirectory) {
         include "CMakeLists.txt", "src/**/*.cpp", "src/**/*.h"
@@ -426,8 +429,8 @@ def configureNativeAgent = tasks.register("configureNativeAgent", Exec) {
 }
 
 def compileNativeAgent = tasks.register("compileNativeAgent", Exec) {
-    group = "build"
-    description = "Builds moons-native.dll using the discovered Visual Studio toolchain."
+    group = "verification"
+    description = "Builds the test-only startup JVMTI transport."
     dependsOn configureNativeAgent
     onlyIf { windowsHost }
     inputs.files(fileTree(nativeAgentSourceDirectory) {
@@ -446,16 +449,16 @@ def compileNativeAgent = tasks.register("compileNativeAgent", Exec) {
 }
 
 def nativeAgentDll = tasks.register("nativeAgentDll") {
-    group = "build"
-    description = "Copies the optional JVMTI startup agent into build/dist."
+    group = "verification"
+    description = "Stages the startup JVMTI transport under the test output tree."
     dependsOn compileNativeAgent
     onlyIf { windowsHost }
     inputs.file(nativeAgentBuiltDll)
-    outputs.file(nativeAgentDistDll)
+    outputs.file(nativeAgentTestDll)
 
     doLast {
         def source = nativeAgentBuiltDll.get().asFile.toPath()
-        def destination = nativeAgentDistDll.get().asFile.toPath()
+        def destination = nativeAgentTestDll.get().asFile.toPath()
         java.nio.file.Files.createDirectories(destination.parent)
         java.nio.file.Files.copy(
                 source,
@@ -466,15 +469,15 @@ def nativeAgentDll = tasks.register("nativeAgentDll") {
 }
 
 def nativeAgentApiJar = tasks.register("nativeAgentApiJar") {
-    group = "build"
-    description = "Copies the bootstrap-visible API required by the JVMTI distribution."
+    group = "verification"
+    description = "Stages the bootstrap API required by startup-agent tests."
     dependsOn apiJar
     inputs.file(apiJar.flatMap { it.archiveFile })
-    outputs.file(nativeAgentDistApiJar)
+    outputs.file(nativeAgentTestApiJar)
 
     doLast {
         def source = apiJar.get().archiveFile.get().asFile.toPath()
-        def destination = nativeAgentDistApiJar.get().asFile.toPath()
+        def destination = nativeAgentTestApiJar.get().asFile.toPath()
         java.nio.file.Files.createDirectories(destination.parent)
         java.nio.file.Files.copy(
                 source,
@@ -493,7 +496,7 @@ def verifyNativeAgent = tasks.register("verifyNativeAgent", JavaExec) {
     mainClass = "com.blanoir.moons.nativebridge.NativeAgentVerification"
 
     doFirst {
-        def dll = nativeAgentDistDll.get().asFile.absolutePath
+        def dll = nativeAgentTestDll.get().asFile.absolutePath
         def fixture = nativeAgentFixtureJar.get().archiveFile.get().asFile.absolutePath
         setJvmArgs([
                 "-agentpath:${dll}=jar=${fixture};"
@@ -506,7 +509,8 @@ def verifyNativeAgent = tasks.register("verifyNativeAgent", JavaExec) {
 def verifyNativeMoonsTransformer = tasks.register("verifyNativeMoonsTransformer", JavaExec) {
     group = "verification"
     description = "Verifies that JVMTI runs the production Moons tick transformer and bridge."
-    dependsOn nativeAgentDll, nativeAgentFixtureJar, tasks.named("moonsJar"), apiJar
+    dependsOn nativeAgentDll, nativeAgentApiJar, nativeAgentFixtureJar,
+            tasks.named("moonsJar"), apiJar
     onlyIf { windowsHost }
     classpath = files(
             nativeAgentFixtureJar.flatMap { it.archiveFile },
@@ -515,9 +519,9 @@ def verifyNativeMoonsTransformer = tasks.register("verifyNativeMoonsTransformer"
     mainClass = "com.blanoir.moons.nativebridge.NativeMoonsTransformerVerification"
 
     doFirst {
-        def dll = nativeAgentDistDll.get().asFile.absolutePath
+        def dll = nativeAgentTestDll.get().asFile.absolutePath
         def transformer = tasks.named("moonsJar", Jar).get().archiveFile.get().asFile.absolutePath
-        def bootstrap = apiJar.get().archiveFile.get().asFile.absolutePath
+        def bootstrap = nativeAgentTestApiJar.get().asFile.absolutePath
         setJvmArgs([
                 "-agentpath:${dll}=jar=${transformer};bootstrap=${bootstrap};"
                         + "include=net/minecraft/client/Minecraft"
@@ -533,11 +537,12 @@ tasks.named("check").configure {
 def nativeBridgeSourceDirectory = layout.projectDirectory.dir("native-bridge")
 def nativeBridgeBuildDirectory = layout.buildDirectory.dir("native-bridge")
 def nativeBridgeBuiltDll = nativeBridgeBuildDirectory.map { it.file("out/moons-bridge.dll") }
-def nativeBridgeDistDll = layout.buildDirectory.file("${versionedDistDirectory}/moons-bridge.dll")
+def nativeBridgeStagedDll = layout.buildDirectory.file(
+        "${loaderStagingDirectory}/moons-bridge.dll")
 
 def configureNativeBridge = tasks.register("configureNativeBridge", Exec) {
     group = "build"
-    description = "Configures the Windows JNI bridge DLL for runtime injection."
+    description = "Configures the Windows JNI bridge DLL for runtime load."
     onlyIf { windowsHost }
     inputs.files(fileTree(nativeBridgeSourceDirectory) {
         include "CMakeLists.txt", "src/**/*.cpp", "src/**/*.h"
@@ -585,11 +590,11 @@ def bridgeDll = tasks.register("bridgeDll") {
     dependsOn compileNativeBridge
     onlyIf { windowsHost }
     inputs.file(nativeBridgeBuiltDll)
-    outputs.file(nativeBridgeDistDll)
+    outputs.file(nativeBridgeStagedDll)
 
     doLast {
         def source = nativeBridgeBuiltDll.get().asFile.toPath()
-        def destination = nativeBridgeDistDll.get().asFile.toPath()
+        def destination = nativeBridgeStagedDll.get().asFile.toPath()
         java.nio.file.Files.createDirectories(destination.parent)
         java.nio.file.Files.copy(
                 source,
@@ -608,7 +613,7 @@ def nestedPayloadBuildRoot = "build/universal-work/${nestedInvocation}"
 
 def universalPayload26_1 = tasks.register("universalPayload26_1", Exec) {
     group = "build"
-    description = "Builds the Minecraft 26.1 payload for the universal injector."
+    description = "Builds the Minecraft 26.1 payload for the universal loader."
     def nestedBuild = "${nestedPayloadBuildRoot}/26.1"
     def nestedPayload = file("${nestedBuild}/universal/26.1/moons.jar")
     def publishedPayload = layout.buildDirectory.file("universal/26.1/moons.jar")
@@ -638,7 +643,7 @@ universalPayload26_1.configure {
 
 def universalPayload26_2 = tasks.register("universalPayload26_2", Exec) {
     group = "build"
-    description = "Builds the Minecraft 26.2 payload for the universal injector."
+    description = "Builds the Minecraft 26.2 payload for the universal loader."
     dependsOn universalPayload26_1
     def nestedBuild = "${nestedPayloadBuildRoot}/26.2"
     def nestedPayload = file("${nestedBuild}/universal/26.2/moons.jar")
@@ -732,21 +737,24 @@ def moonsHwidExe = tasks.register("moonsHwidExe", Exec) {
 
 def moonsExe = tasks.register("moonsExe", Exec) {
     group = "build"
-    description = "Builds one Windows injector with a separately downloaded UI runtime."
+    description = "Builds one Windows loader with a separately downloaded UI runtime."
     dependsOn universalPayloadPatch, apiJar, bridgeDll, moonsHwidExe, uiDependenciesJar
 
     def source = layout.projectDirectory.file("src/launcher/csharp/MoonsExeLauncher.cs")
     def hardwareIdGenerator = layout.projectDirectory.file("src/shared-csharp/HardwareIdGenerator.cs")
+    def processEvidenceCache = layout.projectDirectory.file("src/launcher/csharp/ProcessEvidenceCache.cs")
+    def loadLease = layout.projectDirectory.file("src/launcher/csharp/LoadLease.cs")
+    def bridgeAttemptMonitor = layout.projectDirectory.file("src/launcher/csharp/BridgeAttemptMonitor.cs")
     def payload26_1 = layout.buildDirectory.file("universal/26.1/moons.jar")
     def payload26_2Patch = layout.buildDirectory.file("universal/moons-26.2.patch.zip")
     def bootstrapApi = layout.buildDirectory.file("moons-payload/26_1/moons-api.jar")
-    def bridge = layout.buildDirectory.file("dist/26_1/moons-bridge.dll")
+    def bridge = layout.buildDirectory.file("loader-staging/26_1/moons-bridge.dll")
     def uiRuntime = uiDependenciesJar.flatMap { it.archiveFile }
     def uiMetadata = layout.buildDirectory.file("generated/launcher/ui-runtime.properties")
     def uiDownloadUrl = providers.gradleProperty("moons_ui_download_url").getOrElse("").trim()
     def output = layout.buildDirectory.file("dist/moons.exe")
-    inputs.file(source)
-    inputs.file(hardwareIdGenerator)
+    inputs.files(source, hardwareIdGenerator, processEvidenceCache, loadLease,
+            bridgeAttemptMonitor)
     inputs.file(payload26_1)
     inputs.file(payload26_2Patch)
     inputs.file(bootstrapApi)
@@ -803,6 +811,9 @@ def moonsExe = tasks.register("moonsExe", Exec) {
                 "/resource:${bootstrapApi.get().asFile.absolutePath},Moons.Api.jar",
                 "/resource:${bridge.get().asFile.absolutePath},Moons.Bridge.dll",
                 hardwareIdGenerator.asFile.absolutePath,
+                processEvidenceCache.asFile.absolutePath,
+                loadLease.asFile.absolutePath,
+                bridgeAttemptMonitor.asFile.absolutePath,
                 source.asFile.absolutePath
         )
     }
@@ -810,8 +821,8 @@ def moonsExe = tasks.register("moonsExe", Exec) {
 
 tasks.register("verifyJvmtiBridge", Exec) {
     group = "verification"
-    description = "Injects the JNI/JVMTI bridge into the fake Minecraft JVM and verifies ASM hooks."
-    dependsOn tasks.named("moonsJar"), tasks.named("injectorFixtureJar"), bridgeDll
+    description = "Loads the JNI/JVMTI bridge into the fake Minecraft JVM and verifies ASM hooks."
+    dependsOn tasks.named("moonsJar"), tasks.named("loaderFixtureJar"), bridgeDll
     onlyIf { windowsHost }
 
     doFirst {
@@ -823,8 +834,8 @@ tasks.register("verifyJvmtiBridge", Exec) {
                 "-File", file("scripts/verify-jvmti-bridge.ps1").absolutePath,
                 "-Java", javaExecutable.absolutePath,
                 "-Fixture", layout.buildDirectory.file(
-                        "${versionedTestDirectory}/moons-injector-fixture.jar").get().asFile.absolutePath,
-                "-Dll", nativeBridgeDistDll.get().asFile.absolutePath,
+                        "${versionedTestDirectory}/moons-loader-fixture.jar").get().asFile.absolutePath,
+                "-Dll", nativeBridgeStagedDll.get().asFile.absolutePath,
                 "-Payload", tasks.named("moonsJar", Jar).get()
                         .archiveFile.get().asFile.absolutePath
         )
@@ -834,7 +845,7 @@ tasks.register("verifyJvmtiBridge", Exec) {
 tasks.register("verifyJvmtiBridgeSystemLoader", Exec) {
     group = "verification"
     description = "Verifies the JNI/JVMTI bridge when Minecraft uses the vanilla system ClassLoader."
-    dependsOn tasks.named("moonsJar"), tasks.named("injectorFixtureJar"), bridgeDll
+    dependsOn tasks.named("moonsJar"), tasks.named("loaderFixtureJar"), bridgeDll
     onlyIf { windowsHost }
 
     doFirst {
@@ -846,8 +857,8 @@ tasks.register("verifyJvmtiBridgeSystemLoader", Exec) {
                 "-File", file("scripts/verify-jvmti-bridge.ps1").absolutePath,
                 "-Java", javaExecutable.absolutePath,
                 "-Fixture", layout.buildDirectory.file(
-                        "${versionedTestDirectory}/moons-injector-fixture.jar").get().asFile.absolutePath,
-                "-Dll", nativeBridgeDistDll.get().asFile.absolutePath,
+                        "${versionedTestDirectory}/moons-loader-fixture.jar").get().asFile.absolutePath,
+                "-Dll", nativeBridgeStagedDll.get().asFile.absolutePath,
                 "-Payload", tasks.named("moonsJar", Jar).get()
                         .archiveFile.get().asFile.absolutePath,
                 "-SystemLoader"
@@ -858,8 +869,6 @@ tasks.register("verifyJvmtiBridgeSystemLoader", Exec) {
 tasks.named("assemble").configure {
     dependsOn tasks.named("moonsJar")
     dependsOn moonsExe
-    dependsOn nativeAgentDll
-    dependsOn nativeAgentApiJar
     dependsOn bridgeDll
 }
 

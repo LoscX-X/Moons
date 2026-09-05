@@ -10,7 +10,6 @@ record MinecraftProcess(String pid, String displayName, boolean likelyMinecraft)
                 || normalized.contains("knotclient")
                 || normalized.contains("launchwrapper")
                 || normalized.contains("bootstraplauncher")
-                || normalized.contains("lunar")
                 || normalized.contains("feather");
         return new MinecraftProcess(descriptor.id(), displayName, likely);
     }

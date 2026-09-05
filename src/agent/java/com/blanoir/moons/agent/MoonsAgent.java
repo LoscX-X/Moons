@@ -1,13 +1,9 @@
 package com.blanoir.moons.agent;
 
-import java.io.IOException;
 import java.lang.instrument.Instrumentation;
 import java.lang.reflect.InvocationTargetException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
@@ -20,49 +16,11 @@ public final class MoonsAgent {
     private MoonsAgent() { }
 
     public static void premain(String arguments, Instrumentation instrumentation) {
-        if (writeLunarProbe(arguments)) return;
         start("PREMAIN", arguments, instrumentation);
     }
 
     public static void agentmain(String arguments, Instrumentation instrumentation) {
-        if (writeLunarProbe(arguments)) return;
         start("ATTACH", arguments, instrumentation);
-    }
-
-    private static boolean writeLunarProbe(String arguments) {
-        String source = argument(arguments, "lunarProbe");
-        if (source == null) return false;
-
-        try {
-            String encodedPath = argument(arguments, "probe64");
-            if (encodedPath == null) {
-                throw new IllegalArgumentException("Missing probe64 argument");
-            }
-            Path output = Path.of(new String(
-                    Base64.getUrlDecoder().decode(encodedPath), StandardCharsets.UTF_8
-            )).toAbsolutePath().normalize();
-            Path parent = output.getParent();
-            if (parent != null) Files.createDirectories(parent);
-            String command = System.getProperty("sun.java.command", "unknown")
-                    .replace('\r', ' ')
-                    .replace('\n', ' ');
-            String line = "source=" + source
-                    + " pid=" + ProcessHandle.current().pid()
-                    + " java=" + System.getProperty("java.version", "unknown")
-                    + " command=" + command
-                    + " time=" + Instant.now();
-            Files.writeString(
-                    output,
-                    line + System.lineSeparator(),
-                    StandardCharsets.UTF_8,
-                    StandardOpenOption.CREATE,
-                    StandardOpenOption.APPEND
-            );
-            System.out.println(AgentBranding.prefix() + " Lunar premain probe reached target JVM via " + source);
-        } catch (Throwable failure) {
-            System.err.println(AgentBranding.prefix() + " Lunar premain probe could not write its result: " + failure);
-        }
-        return true;
     }
 
     private static synchronized void start(String mode, String arguments, Instrumentation instrumentation) {

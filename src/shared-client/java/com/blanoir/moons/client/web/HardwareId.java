@@ -14,7 +14,7 @@ public final class HardwareId {
         if (cached != null) return cached;
         String value = System.getProperty("moons.hwid", "").trim();
         if (!VALID.matcher(value).matches()) {
-            throw new IllegalStateException("External HWID was not supplied for this injection.");
+            throw new IllegalStateException("External HWID was not supplied for this load.");
         }
         cached = value;
         return value;

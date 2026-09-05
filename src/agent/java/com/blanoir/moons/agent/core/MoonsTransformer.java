@@ -66,11 +66,11 @@ final class MoonsTransformer implements ClassFileTransformer {
                     matched = true;
                     boolean hooked = containsHook(method, target);
                     if (!hooked) {
-                        hooked = inject(method, target);
+                        hooked = load(method, target);
                         changed |= hooked;
                     }
                     if (hooked) installedHooks.add(target.id());
-                    else failedHooks.add(target.id() + ":injection-point-not-found");
+                    else failedHooks.add(target.id() + ":load-point-not-found");
                 }
                 if (!matched) failedHooks.add(target.id() + ":target-not-found");
             }
@@ -80,7 +80,7 @@ final class MoonsTransformer implements ClassFileTransformer {
             // sufficient for straight-line hooks but invalid for those new branch
             // targets.  The vanilla verification fixture does not expose this because
             // ASM's BasicInterpreter ignores the serialized StackMapTable; HotSpot does
-            // validate it during a live JVMTI retransformation and Lunar consequently
+            // validate it during a live JVMTI retransformation and an isolated host consequently
             // rejected ItemInHandRenderer with JVMTI_ERROR_FAILS_VERIFICATION.
             boolean recomputeFrames = targets.stream()
                     .anyMatch(target -> target.hook() == TargetMethod.HookKind.HAND_ANIMATION);
@@ -97,69 +97,69 @@ final class MoonsTransformer implements ClassFileTransformer {
         }
     }
 
-    private static boolean inject(MethodNode method, TargetMethod target) {
+    private static boolean load(MethodNode method, TargetMethod target) {
         return switch (target.hook()) {
-            case CLIENT_TICK -> injectClientTick(method);
-            case FRAME -> injectFrame(method);
-            case HUD -> injectHud(method);
-            case SCOREBOARD -> injectScoreboard(method, target.id());
-            case WORLD_RENDER -> injectWorldRender(method);
-            case KEY -> injectKey(method);
-            case MOUSE_BUTTON -> injectMouseButton(method);
-            case MOUSE_SCROLL -> injectMouseScroll(method);
-            case MOUSE_MOVEMENT -> injectSimpleStartEnd(method, "onMouseMoveStart", "onMouseMoveEnd");
-            case ATTACK -> injectBooleanAction(method, "onAttack", "onAttackEnd");
-            case USE -> injectVoidAction(method, "onUse", "onUseEnd");
-            case PACKET_SEND -> injectPacketSend(method);
-            case PACKET_RECEIVE -> injectPacketReceive(method);
-            case PACKET_APPLY -> injectPacketApply(method);
-            case BLOCK_SET -> injectBlockSet(method);
-            case BLOCK_SERVER_SET -> injectBlockServerSet(method);
-            case PLAYER_UPDATE -> injectPlayerUpdate(method);
-            case MOVE_INPUT -> injectMoveInput(method);
-            case PLAYER_MOVE -> injectPlayerMove(method);
-            case PLAYER_POSITION -> injectSimpleStartEnd(
+            case CLIENT_TICK -> loadClientTick(method);
+            case FRAME -> loadFrame(method);
+            case HUD -> loadHud(method);
+            case SCOREBOARD -> loadScoreboard(method, target.id());
+            case WORLD_RENDER -> loadWorldRender(method);
+            case KEY -> loadKey(method);
+            case MOUSE_BUTTON -> loadMouseButton(method);
+            case MOUSE_SCROLL -> loadMouseScroll(method);
+            case MOUSE_MOVEMENT -> loadSimpleStartEnd(method, "onMouseMoveStart", "onMouseMoveEnd");
+            case ATTACK -> loadBooleanAction(method, "onAttack", "onAttackEnd");
+            case USE -> loadVoidAction(method, "onUse", "onUseEnd");
+            case PACKET_SEND -> loadPacketSend(method);
+            case PACKET_RECEIVE -> loadPacketReceive(method);
+            case PACKET_APPLY -> loadPacketApply(method);
+            case BLOCK_SET -> loadBlockSet(method);
+            case BLOCK_SERVER_SET -> loadBlockServerSet(method);
+            case PLAYER_UPDATE -> loadPlayerUpdate(method);
+            case MOVE_INPUT -> loadMoveInput(method);
+            case PLAYER_MOVE -> loadPlayerMove(method);
+            case PLAYER_POSITION -> loadSimpleStartEnd(
                     method, "onPlayerPositionStart", "onPlayerPositionEnd");
-            case RENDER_STATE -> injectRenderState(method);
-            case RENDERER_CLOSE -> injectRendererClose(method);
-            case VOID_HEAD -> injectVoidHook(method, target.id(), false);
-            case VOID_RETURN -> injectVoidHook(method, target.id(), true);
-            case PRESENT_BEFORE_GPU_PRESENT -> injectBeforeGpuPresent(method, target.id());
-            case FLOAT_RETURN -> injectFloatReturn(method, target.id(), false);
-            case FLOAT_RETURN_ARG -> injectFloatReturn(method, target.id());
-            case FLOAT_HEAD_BOOLEAN_GATE -> injectFloatHeadBooleanGate(method, target.id());
-            case BOOLEAN_RETURN_ARG -> injectBooleanReturn(method, target.id());
-            case OBJECT_RETURN -> injectObjectReturn(method, target.id());
-            case OBJECT_ARGUMENT -> injectObjectArgument(method, target.id());
-            case ITEM_STACK_ARGUMENT_5 -> injectItemStackArgument5(method, target.id());
-            case OBJECT_INVOKE_RETURN -> injectObjectInvocationReturn(method, target.id());
-            case NAMED_FLOAT_LOCAL -> injectNamedFloatLocal(method, target.id(), "brightnessOption");
-            case SPRINT_DECISIONS -> injectSprintDecisions(method);
-            case YAW_RESULT -> injectYawResult(method, target.id());
-            case BOOLEAN_GATE -> injectBooleanGate(method, target.id());
-            case STATIC_BOOLEAN_RETURN_ARG1 -> injectStaticBooleanReturn(method, target.id());
-            case XRAY_TESSELLATE -> injectXrayTessellate(method, target.id());
-            case XRAY_QUAD -> injectXrayQuad(method, target.id());
-            case XRAY_SECTION_QUAD_26_2 -> injectXraySectionQuad26_2(method, target.id());
-            case VOID_START_END_ARG0 -> injectVoidStartEndArgument(method, target.id());
-            case CHAMS_FRAME -> injectChamsFrame(method, target.id());
-            case SODIUM_RENDER_MODEL -> injectSodiumRenderModel(method, target.id());
-            case SODIUM_PROCESS_QUAD -> injectSodiumProcessQuad(method, target.id());
-            case CHAMS_REMAP_SUBMIT_MODEL -> injectInvocationArgumentRemap(
+            case RENDER_STATE -> loadRenderState(method);
+            case RENDERER_CLOSE -> loadRendererClose(method);
+            case VOID_HEAD -> loadVoidHook(method, target.id(), false);
+            case VOID_RETURN -> loadVoidHook(method, target.id(), true);
+            case PRESENT_BEFORE_GPU_PRESENT -> loadBeforeGpuPresent(method, target.id());
+            case FLOAT_RETURN -> loadFloatReturn(method, target.id(), false);
+            case FLOAT_RETURN_ARG -> loadFloatReturn(method, target.id());
+            case FLOAT_HEAD_BOOLEAN_GATE -> loadFloatHeadBooleanGate(method, target.id());
+            case BOOLEAN_RETURN_ARG -> loadBooleanReturn(method, target.id());
+            case OBJECT_RETURN -> loadObjectReturn(method, target.id());
+            case OBJECT_ARGUMENT -> loadObjectArgument(method, target.id());
+            case ITEM_STACK_ARGUMENT_5 -> loadItemStackArgument5(method, target.id());
+            case OBJECT_INVOKE_RETURN -> loadObjectInvocationReturn(method, target.id());
+            case NAMED_FLOAT_LOCAL -> loadNamedFloatLocal(method, target.id(), "brightnessOption");
+            case SPRINT_DECISIONS -> loadSprintDecisions(method);
+            case YAW_RESULT -> loadYawResult(method, target.id());
+            case BOOLEAN_GATE -> loadBooleanGate(method, target.id());
+            case STATIC_BOOLEAN_RETURN_ARG1 -> loadStaticBooleanReturn(method, target.id());
+            case XRAY_TESSELLATE -> loadXrayTessellate(method, target.id());
+            case XRAY_QUAD -> loadXrayQuad(method, target.id());
+            case XRAY_SECTION_QUAD_26_2 -> loadXraySectionQuad26_2(method, target.id());
+            case VOID_START_END_ARG0 -> loadVoidStartEndArgument(method, target.id());
+            case CHAMS_FRAME -> loadChamsFrame(method, target.id());
+            case SODIUM_RENDER_MODEL -> loadSodiumRenderModel(method, target.id());
+            case SODIUM_PROCESS_QUAD -> loadSodiumProcessQuad(method, target.id());
+            case CHAMS_REMAP_SUBMIT_MODEL -> loadInvocationArgumentRemap(
                     method, target.id(), "submitModel", 3);
-            case CHAMS_MARK_ITEM -> injectVoidHook(method, target.id(), true);
-            case CHAMS_ITEM_RENDER -> injectChamsItemRender(method, target.id());
-            case CHAMS_FOIL_BUFFER -> injectInvocationArgumentRemap(
+            case CHAMS_MARK_ITEM -> loadVoidHook(method, target.id(), true);
+            case CHAMS_ITEM_RENDER -> loadChamsItemRender(method, target.id());
+            case CHAMS_FOIL_BUFFER -> loadInvocationArgumentRemap(
                     method, target.id() + ".type", "getBuffer", 0);
-            case CHAMS_MARK_ITEM_26_2 -> injectChamsMarkItem26_2(method, target.id());
-            case CHAMS_ITEM_PREPARE_26_2 -> injectChamsItemPrepare26_2(method, target.id());
-            case CHAMS_FOIL_BUFFER_26_2 -> injectInvocationArgumentRemap(
+            case CHAMS_MARK_ITEM_26_2 -> loadChamsMarkItem26_2(method, target.id());
+            case CHAMS_ITEM_PREPARE_26_2 -> loadChamsItemPrepare26_2(method, target.id());
+            case CHAMS_FOIL_BUFFER_26_2 -> loadInvocationArgumentRemap(
                     method, target.id() + ".type", "getVertexBuilder", 0);
-            case HAND_ANIMATION -> injectHandAnimation(method, target.id());
+            case HAND_ANIMATION -> loadHandAnimation(method, target.id());
         };
     }
 
-    private static boolean injectClientTick(MethodNode method) {
+    private static boolean loadClientTick(MethodNode method) {
         InsnList start = new InsnList();
         loadThisAndCall(start, "onClientTickStart");
         method.instructions.insert(start);
@@ -167,7 +167,7 @@ final class MoonsTransformer implements ClassFileTransformer {
         return true;
     }
 
-    private static boolean injectFrame(MethodNode method) {
+    private static boolean loadFrame(MethodNode method) {
         InsnList hook = new InsnList();
         hook.add(new VarInsnNode(Opcodes.ALOAD, 0));
         hook.add(new VarInsnNode(Opcodes.ALOAD, 1));
@@ -176,7 +176,7 @@ final class MoonsTransformer implements ClassFileTransformer {
         return true;
     }
 
-    private static boolean injectHud(MethodNode method) {
+    private static boolean loadHud(MethodNode method) {
         int extractorSlot = -1;
         if (method.desc.equals("(Lnet/minecraft/client/DeltaTracker;ZZ)V")) {
             boolean constructingExtractor = false;
@@ -215,7 +215,7 @@ final class MoonsTransformer implements ClassFileTransformer {
         return true;
     }
 
-    private static boolean injectScoreboard(MethodNode method, String id) {
+    private static boolean loadScoreboard(MethodNode method, String id) {
         LabelNode proceed = new LabelNode();
         InsnList hook = new InsnList();
         hook.add(new LdcInsnNode(id));
@@ -241,7 +241,7 @@ final class MoonsTransformer implements ClassFileTransformer {
         return true;
     }
 
-    private static boolean injectMouseScroll(MethodNode method) {
+    private static boolean loadMouseScroll(MethodNode method) {
         InsnList hook = new InsnList();
         hook.add(new VarInsnNode(Opcodes.ALOAD, 0));
         hook.add(new VarInsnNode(Opcodes.LLOAD, 1));
@@ -253,7 +253,7 @@ final class MoonsTransformer implements ClassFileTransformer {
         return true;
     }
 
-    private static boolean injectBeforeGpuPresent(MethodNode method, String id) {
+    private static boolean loadBeforeGpuPresent(MethodNode method, String id) {
         for (AbstractInsnNode instruction : method.instructions.toArray()) {
             if (instruction instanceof MethodInsnNode invocation
                     && invocation.owner.equals("com/mojang/blaze3d/systems/GpuSurface")
@@ -271,7 +271,7 @@ final class MoonsTransformer implements ClassFileTransformer {
         return false;
     }
 
-    private static boolean injectWorldRender(MethodNode method) {
+    private static boolean loadWorldRender(MethodNode method) {
         int poseStackSlot = -1;
         AbstractInsnNode poseCreation = null;
         for (AbstractInsnNode instruction : method.instructions.toArray()) {
@@ -288,11 +288,11 @@ final class MoonsTransformer implements ClassFileTransformer {
                 break;
             }
         }
-        boolean collectInjected = false;
-        boolean translucentInjected = false;
+        boolean collectLoaded = false;
+        boolean translucentLoaded = false;
         int renderGroupOrdinal = 0;
         for (AbstractInsnNode instruction : method.instructions.toArray()) {
-            if (!collectInjected
+            if (!collectLoaded
                     && instruction instanceof LdcInsnNode constant
                     && "renderSolidFeatures".equals(constant.cst)) {
                 AbstractInsnNode insertionPoint = constant.getPrevious();
@@ -310,7 +310,7 @@ final class MoonsTransformer implements ClassFileTransformer {
                 }
                 method.instructions.insertBefore(insertionPoint,
                         worldRenderCall(poseStackSlot, 0));
-                collectInjected = true;
+                collectLoaded = true;
             }
             if (instruction instanceof MethodInsnNode invocation
                     && invocation.owner.equals(
@@ -319,11 +319,11 @@ final class MoonsTransformer implements ClassFileTransformer {
                 if (renderGroupOrdinal++ == 1) {
                     method.instructions.insert(instruction,
                             worldRenderCall(poseStackSlot, 1));
-                    translucentInjected = true;
+                    translucentLoaded = true;
                 }
             }
         }
-        return collectInjected && translucentInjected;
+        return collectLoaded && translucentLoaded;
     }
 
     private static InsnList worldRenderCall(int poseStackSlot, int stage) {
@@ -348,7 +348,7 @@ final class MoonsTransformer implements ClassFileTransformer {
         return hook;
     }
 
-    private static boolean injectKey(MethodNode method) {
+    private static boolean loadKey(MethodNode method) {
         InsnList hook = new InsnList();
         hook.add(new VarInsnNode(Opcodes.ALOAD, 0));
         hook.add(new VarInsnNode(Opcodes.LLOAD, 1));
@@ -360,7 +360,7 @@ final class MoonsTransformer implements ClassFileTransformer {
         return true;
     }
 
-    private static boolean injectMouseButton(MethodNode method) {
+    private static boolean loadMouseButton(MethodNode method) {
         InsnList hook = new InsnList();
         hook.add(new VarInsnNode(Opcodes.ALOAD, 0));
         hook.add(new VarInsnNode(Opcodes.LLOAD, 1));
@@ -372,7 +372,7 @@ final class MoonsTransformer implements ClassFileTransformer {
         return true;
     }
 
-    private static boolean injectBooleanAction(MethodNode method, String hookName, String endHookName) {
+    private static boolean loadBooleanAction(MethodNode method, String hookName, String endHookName) {
         InsnList hook = new InsnList();
         hook.add(new VarInsnNode(Opcodes.ALOAD, 0));
         hook.add(call(hookName, "(Ljava/lang/Object;)Z"));
@@ -387,7 +387,7 @@ final class MoonsTransformer implements ClassFileTransformer {
         return true;
     }
 
-    private static boolean injectVoidAction(MethodNode method, String hookName, String endHookName) {
+    private static boolean loadVoidAction(MethodNode method, String hookName, String endHookName) {
         InsnList hook = new InsnList();
         hook.add(new VarInsnNode(Opcodes.ALOAD, 0));
         hook.add(call(hookName, "(Ljava/lang/Object;)Z"));
@@ -397,7 +397,7 @@ final class MoonsTransformer implements ClassFileTransformer {
         return true;
     }
 
-    private static boolean injectPacketSend(MethodNode method) {
+    private static boolean loadPacketSend(MethodNode method) {
         InsnList start = new InsnList();
         start.add(new VarInsnNode(Opcodes.ALOAD, 0));
         start.add(new VarInsnNode(Opcodes.ALOAD, 1));
@@ -414,7 +414,7 @@ final class MoonsTransformer implements ClassFileTransformer {
         return true;
     }
 
-    private static boolean injectPacketReceive(MethodNode method) {
+    private static boolean loadPacketReceive(MethodNode method) {
         InsnList hook = new InsnList();
         hook.add(new VarInsnNode(Opcodes.ALOAD, 0));
         hook.add(new VarInsnNode(Opcodes.ALOAD, 1));
@@ -424,7 +424,7 @@ final class MoonsTransformer implements ClassFileTransformer {
         return true;
     }
 
-    private static boolean injectPacketApply(MethodNode method) {
+    private static boolean loadPacketApply(MethodNode method) {
         beforeReturns(method, Opcodes.RETURN, () -> {
             InsnList hook = new InsnList();
             hook.add(new VarInsnNode(Opcodes.ALOAD, 0));
@@ -435,7 +435,7 @@ final class MoonsTransformer implements ClassFileTransformer {
         return true;
     }
 
-    private static boolean injectBlockSet(MethodNode method) {
+    private static boolean loadBlockSet(MethodNode method) {
         method.instructions.insert(blockUpdateStart());
         int resultLocal = method.maxLocals++;
         beforeReturns(method, Opcodes.IRETURN, () -> {
@@ -452,7 +452,7 @@ final class MoonsTransformer implements ClassFileTransformer {
         return true;
     }
 
-    private static boolean injectBlockServerSet(MethodNode method) {
+    private static boolean loadBlockServerSet(MethodNode method) {
         method.instructions.insert(blockUpdateStart());
         beforeReturns(method, Opcodes.RETURN, () -> {
             InsnList hook = new InsnList();
@@ -475,7 +475,7 @@ final class MoonsTransformer implements ClassFileTransformer {
         return hook;
     }
 
-    private static boolean injectMoveInput(MethodNode method) {
+    private static boolean loadMoveInput(MethodNode method) {
         for (AbstractInsnNode instruction : method.instructions.toArray()) {
             if (!(instruction instanceof MethodInsnNode invocation)
                     || !invocation.name.equals("tick")
@@ -490,7 +490,7 @@ final class MoonsTransformer implements ClassFileTransformer {
         return false;
     }
 
-    private static boolean injectPlayerUpdate(MethodNode method) {
+    private static boolean loadPlayerUpdate(MethodNode method) {
         InsnList hook = new InsnList();
         hook.add(new VarInsnNode(Opcodes.ALOAD, 0));
         hook.add(call("onPlayerUpdate", "(Ljava/lang/Object;)Z"));
@@ -499,7 +499,7 @@ final class MoonsTransformer implements ClassFileTransformer {
         return true;
     }
 
-    private static boolean injectPlayerMove(MethodNode method) {
+    private static boolean loadPlayerMove(MethodNode method) {
         int result = method.maxLocals++;
         InsnList hook = new InsnList();
         hook.add(new VarInsnNode(Opcodes.ALOAD, 0));
@@ -524,7 +524,7 @@ final class MoonsTransformer implements ClassFileTransformer {
         return true;
     }
 
-    private static boolean injectRenderState(MethodNode method) {
+    private static boolean loadRenderState(MethodNode method) {
         beforeReturns(method, Opcodes.RETURN, () -> {
             InsnList hook = new InsnList();
             hook.add(new VarInsnNode(Opcodes.ALOAD, 1));
@@ -536,12 +536,12 @@ final class MoonsTransformer implements ClassFileTransformer {
         return true;
     }
 
-    private static boolean injectRendererClose(MethodNode method) {
+    private static boolean loadRendererClose(MethodNode method) {
         beforeReturns(method, Opcodes.RETURN, () -> thisCall("onRendererClose"));
         return true;
     }
 
-    private static boolean injectVoidHook(MethodNode method, String id, boolean atReturn) {
+    private static boolean loadVoidHook(MethodNode method, String id, boolean atReturn) {
         Instructions factory = () -> {
             InsnList hook = new InsnList();
             hook.add(new LdcInsnNode(id));
@@ -555,11 +555,11 @@ final class MoonsTransformer implements ClassFileTransformer {
         return true;
     }
 
-    private static boolean injectFloatReturn(MethodNode method, String id) {
-        return injectFloatReturn(method, id, true);
+    private static boolean loadFloatReturn(MethodNode method, String id) {
+        return loadFloatReturn(method, id, true);
     }
 
-    private static boolean injectFloatReturn(MethodNode method, String id, boolean hasFloatArgument) {
+    private static boolean loadFloatReturn(MethodNode method, String id, boolean hasFloatArgument) {
         int result = method.maxLocals++;
         beforeReturns(method, Opcodes.FRETURN, () -> {
             InsnList hook = new InsnList();
@@ -577,7 +577,7 @@ final class MoonsTransformer implements ClassFileTransformer {
     }
 
     /** Returns the requested float argument immediately when the runtime gate is enabled. */
-    private static boolean injectFloatHeadBooleanGate(MethodNode method, String id) {
+    private static boolean loadFloatHeadBooleanGate(MethodNode method, String id) {
         LabelNode proceed = new LabelNode();
         InsnList hook = new InsnList();
         hook.add(new LdcInsnNode(id));
@@ -595,7 +595,7 @@ final class MoonsTransformer implements ClassFileTransformer {
         return true;
     }
 
-    private static boolean injectBooleanReturn(MethodNode method, String id) {
+    private static boolean loadBooleanReturn(MethodNode method, String id) {
         int result = method.maxLocals++;
         beforeReturns(method, Opcodes.IRETURN, () -> {
             InsnList hook = new InsnList();
@@ -610,7 +610,7 @@ final class MoonsTransformer implements ClassFileTransformer {
         return true;
     }
 
-    private static boolean injectObjectReturn(MethodNode method, String id) {
+    private static boolean loadObjectReturn(MethodNode method, String id) {
         int result = method.maxLocals++;
         String returnType = org.objectweb.asm.Type.getReturnType(method.desc).getInternalName();
         boolean hasArgument = org.objectweb.asm.Type.getArgumentTypes(method.desc).length > 0;
@@ -628,7 +628,7 @@ final class MoonsTransformer implements ClassFileTransformer {
         return true;
     }
 
-    private static boolean injectObjectArgument(MethodNode method, String id) {
+    private static boolean loadObjectArgument(MethodNode method, String id) {
         InsnList hook = new InsnList();
         hook.add(new LdcInsnNode(id));
         hook.add(new VarInsnNode(Opcodes.ALOAD, 0));
@@ -641,7 +641,7 @@ final class MoonsTransformer implements ClassFileTransformer {
         return true;
     }
 
-    private static boolean injectNamedFloatLocal(
+    private static boolean loadNamedFloatLocal(
             MethodNode method, String id, String localName) {
         LocalVariableNode local = method.localVariables == null ? null : method.localVariables.stream()
                 .filter(candidate -> candidate.name.equals(localName) && candidate.desc.equals("F"))
@@ -665,7 +665,7 @@ final class MoonsTransformer implements ClassFileTransformer {
         return true;
     }
 
-    private static boolean injectSprintDecisions(MethodNode method) {
+    private static boolean loadSprintDecisions(MethodNode method) {
         boolean changed = false;
         for (AbstractInsnNode instruction : method.instructions.toArray()) {
             if (!(instruction instanceof MethodInsnNode invocation)
@@ -691,7 +691,7 @@ final class MoonsTransformer implements ClassFileTransformer {
         return changed;
     }
 
-    private static boolean injectYawResult(MethodNode method, String id) {
+    private static boolean loadYawResult(MethodNode method, String id) {
         for (AbstractInsnNode instruction : method.instructions.toArray()) {
             if (instruction instanceof MethodInsnNode invocation
                     && invocation.name.equals("getYRot")
@@ -711,7 +711,7 @@ final class MoonsTransformer implements ClassFileTransformer {
         return false;
     }
 
-    private static boolean injectHandAnimation(MethodNode method, String id) {
+    private static boolean loadHandAnimation(MethodNode method, String id) {
         // renderArmWithItem: hand=4, swingProgress=5, equipProgress=7, PoseStack=8.
         InsnList start = new InsnList();
         start.add(new VarInsnNode(Opcodes.ALOAD, 8));
@@ -805,7 +805,7 @@ final class MoonsTransformer implements ClassFileTransformer {
     }
 
     /** Replaces the fifth declared argument of EquipmentLayerRenderer#renderLayers. */
-    private static boolean injectItemStackArgument5(MethodNode method, String id) {
+    private static boolean loadItemStackArgument5(MethodNode method, String id) {
         org.objectweb.asm.Type[] arguments = org.objectweb.asm.Type.getArgumentTypes(method.desc);
         if (arguments.length < 5
                 || !arguments[4].getDescriptor().equals("Lnet/minecraft/world/item/ItemStack;")) {
@@ -832,7 +832,7 @@ final class MoonsTransformer implements ClassFileTransformer {
     }
 
     /** Replaces the ItemStack returned by LocalPlayer#getMainHandItem inside a target method. */
-    private static boolean injectObjectInvocationReturn(MethodNode method, String id) {
+    private static boolean loadObjectInvocationReturn(MethodNode method, String id) {
         String invocationName = id.contains("hud") ? "getSelectedItem" : "getMainHandItem";
         boolean changed = false;
         for (AbstractInsnNode instruction : method.instructions.toArray()) {
@@ -858,7 +858,7 @@ final class MoonsTransformer implements ClassFileTransformer {
         return changed;
     }
 
-    private static boolean injectBooleanGate(MethodNode method, String id) {
+    private static boolean loadBooleanGate(MethodNode method, String id) {
         InsnList hook = new InsnList();
         hook.add(new LdcInsnNode(id));
         hook.add(new VarInsnNode(Opcodes.ALOAD, 0));
@@ -880,7 +880,7 @@ final class MoonsTransformer implements ClassFileTransformer {
         return true;
     }
 
-    private static boolean injectStaticBooleanReturn(MethodNode method, String id) {
+    private static boolean loadStaticBooleanReturn(MethodNode method, String id) {
         int result = method.maxLocals++;
         beforeReturns(method, Opcodes.IRETURN, () -> {
             InsnList hook = new InsnList();
@@ -895,7 +895,7 @@ final class MoonsTransformer implements ClassFileTransformer {
         return true;
     }
 
-    private static boolean injectXrayTessellate(MethodNode method, String id) {
+    private static boolean loadXrayTessellate(MethodNode method, String id) {
         InsnList hook = new InsnList();
         hook.add(new LdcInsnNode(id));
         hook.add(new VarInsnNode(Opcodes.ALOAD, 0));
@@ -926,7 +926,7 @@ final class MoonsTransformer implements ClassFileTransformer {
         instructions.add(new InsnNode(Opcodes.AASTORE));
     }
 
-    private static boolean injectXrayQuad(MethodNode method, String id) {
+    private static boolean loadXrayQuad(MethodNode method, String id) {
         for (AbstractInsnNode instruction : method.instructions.toArray()) {
             if (instruction instanceof MethodInsnNode invocation
                     && invocation.owner.equals("net/minecraft/client/renderer/block/BlockQuadOutput")
@@ -943,7 +943,7 @@ final class MoonsTransformer implements ClassFileTransformer {
         return false;
     }
 
-    private static boolean injectVoidStartEndArgument(MethodNode method, String id) {
+    private static boolean loadVoidStartEndArgument(MethodNode method, String id) {
         InsnList start = new InsnList();
         start.add(new LdcInsnNode(id));
         start.add(new VarInsnNode(Opcodes.ALOAD, 0));
@@ -961,7 +961,7 @@ final class MoonsTransformer implements ClassFileTransformer {
         return true;
     }
 
-    private static boolean injectChamsFrame(MethodNode method, String id) {
+    private static boolean loadChamsFrame(MethodNode method, String id) {
         MethodInsnNode beginPoint = null;
         MethodInsnNode oldEndPoint = null;
         MethodInsnNode secondRenderGroup = null;
@@ -1000,7 +1000,7 @@ final class MoonsTransformer implements ClassFileTransformer {
         return hook;
     }
 
-    private static boolean injectSodiumRenderModel(MethodNode method, String id) {
+    private static boolean loadSodiumRenderModel(MethodNode method, String id) {
         InsnList start = new InsnList();
         start.add(new LdcInsnNode(id));
         start.add(new VarInsnNode(Opcodes.ALOAD, 0));
@@ -1027,7 +1027,7 @@ final class MoonsTransformer implements ClassFileTransformer {
         return true;
     }
 
-    private static boolean injectSodiumProcessQuad(MethodNode method, String id) {
+    private static boolean loadSodiumProcessQuad(MethodNode method, String id) {
         FieldInsnNode forceOpaque = null;
         MethodInsnNode renderType = null;
         MethodInsnNode shadeQuad = null;
@@ -1079,7 +1079,7 @@ final class MoonsTransformer implements ClassFileTransformer {
         return true;
     }
 
-    private static boolean injectChamsItemRender(MethodNode method, String id) {
+    private static boolean loadChamsItemRender(MethodNode method, String id) {
         InsnList start = new InsnList();
         start.add(new LdcInsnNode(id));
         start.add(new VarInsnNode(Opcodes.ALOAD, 0));
@@ -1094,10 +1094,10 @@ final class MoonsTransformer implements ClassFileTransformer {
             end.add(call("onVoidHook", "(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;)V"));
             return end;
         });
-        return injectInvocationArgumentRemap(method, id + ".type", "getBuffer", 0);
+        return loadInvocationArgumentRemap(method, id + ".type", "getBuffer", 0);
     }
 
-    private static boolean injectChamsMarkItem26_2(MethodNode method, String id) {
+    private static boolean loadChamsMarkItem26_2(MethodNode method, String id) {
         boolean sawSubmit = false;
         for (AbstractInsnNode instruction : method.instructions.toArray()) {
             if (instruction instanceof TypeInsnNode type
@@ -1125,7 +1125,7 @@ final class MoonsTransformer implements ClassFileTransformer {
      * BlockQuadOutput lambda. Keep both the alpha and layer rewrite at that
      * final output boundary instead of changing BakedQuad material globally.
      */
-    private static boolean injectXraySectionQuad26_2(MethodNode method, String id) {
+    private static boolean loadXraySectionQuad26_2(MethodNode method, String id) {
         MethodInsnNode layerCall = null;
         for (AbstractInsnNode instruction : method.instructions.toArray()) {
             if (instruction instanceof MethodInsnNode invocation
@@ -1162,18 +1162,18 @@ final class MoonsTransformer implements ClassFileTransformer {
         return true;
     }
 
-    private static boolean injectChamsItemPrepare26_2(MethodNode method, String id) {
-        boolean remapped = injectInvocationArgumentRemap(
+    private static boolean loadChamsItemPrepare26_2(MethodNode method, String id) {
+        boolean remapped = loadInvocationArgumentRemap(
                 method, id + ".type", "getVertexBuilder", 0);
-        remapped |= injectInvocationArgumentRemap(
+        remapped |= loadInvocationArgumentRemap(
                 method, id + ".type", "getFoilBuffer", 0);
         if (!remapped) return false;
-        injectVoidStartEndArgument(method, id);
+        loadVoidStartEndArgument(method, id);
         return true;
     }
 
     /** Rewrites one reference argument immediately before a selected invocation. */
-    private static boolean injectInvocationArgumentRemap(
+    private static boolean loadInvocationArgumentRemap(
             MethodNode method,
             String id,
             String invocationName,
@@ -1213,7 +1213,7 @@ final class MoonsTransformer implements ClassFileTransformer {
         return changed;
     }
 
-    private static boolean injectSimpleStartEnd(MethodNode method, String startName, String endName) {
+    private static boolean loadSimpleStartEnd(MethodNode method, String startName, String endName) {
         InsnList start = new InsnList();
         loadThisAndCall(start, startName);
         method.instructions.insert(start);
@@ -1269,7 +1269,7 @@ final class MoonsTransformer implements ClassFileTransformer {
                         ? "java/lang/Object"
                         : first.getName().replace('.', '/');
             } catch (ClassNotFoundException | LinkageError unavailable) {
-                // Object is a conservative verifier-safe merge when a Lunar-generated
+                // Object is a conservative verifier-safe merge when a host-generated
                 // helper is not visible through the game loader.
                 return "java/lang/Object";
             }

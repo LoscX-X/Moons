@@ -1,9 +1,9 @@
-# Moons native startup agent
+# Moons native startup-agent test transport
 
-This directory contains the optional thin JVMTI transport for JVMs whose launch
-command is under the user's control. It is loaded only through the standard
-`-agentpath` JVM option. It does not implement process injection or an Attach
-bypass.
+This directory contains a test-only thin JVMTI transport. It is loaded through
+the standard `-agentpath` JVM option to verify startup-phase JVMTI/JNI/ASM
+integration. It is not a public load method, does not implement process
+load, and does not bypass Attach.
 
 The native side owns only four responsibilities:
 
@@ -23,18 +23,20 @@ On Windows with the Visual Studio C++ tools and a JDK installed:
 gradle build --console=plain
 ```
 
-The build discovers CMake from PATH or the Visual Studio installation and
-places these native-startup artifacts in `build/dist`:
+The build discovers CMake from PATH or the Visual Studio installation and stages
+these test artifacts below `build/moons-test/<version>/native-agent`:
 
 - `moons-native.dll`
 - `moons-api.jar`
-- `moons.jar`
+
+The transformer JAR remains the separately classified Legacy Agent artifact at
+`build/dist/legacy/<version>/moons.jar`; verification consumes it as test input.
 
 `verifyNativeAgent` proves the generic JVMTI/JNI/ASM byte round trip.
 `verifyNativeMoonsTransformer` additionally proves that the production Moons
 tick transformer reaches `AgentBridge`.
 
-## Standard startup form
+## Manual verification form
 
 PowerShell requires the complete `-agentpath` argument to be quoted because its
 options are separated by semicolons:
@@ -46,7 +48,7 @@ java '-agentpath:C:\path\moons-native.dll=jar=C:\path\moons.jar;bootstrap=C:\pat
 Options:
 
 - `jar` (required): JAR containing the Java transformer bridge and ASM.
-- `bootstrap` (optional): bootstrap-visible API JAR used by injected hooks.
+- `bootstrap` (optional): bootstrap-visible API JAR used by loaded hooks.
 - `bridge` (optional): Java bridge class; defaults to the production bridge.
 - `include` (optional): comma-separated internal-name prefixes filtered before
   crossing JNI.

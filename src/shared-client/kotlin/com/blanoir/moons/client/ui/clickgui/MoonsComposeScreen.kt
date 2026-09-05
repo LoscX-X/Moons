@@ -144,7 +144,7 @@ class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} Cl
     private fun ensureSurface(frameWidth: Int, frameHeight: Int) {
         // The GLFW default framebuffer consumed by Skia is non-multisampled
         // and has no stencil attachment. These legacy queries raise
-        // GL_INVALID_ENUM every frame in Lunar's restricted core profile.
+        // GL_INVALID_ENUM every frame in a restricted core profile.
         val samples = 0
         val stencilBits = 0
         if (surface != null && surfaceWidth == frameWidth && surfaceHeight == frameHeight &&

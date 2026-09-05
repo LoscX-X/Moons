@@ -26,7 +26,7 @@ internal object FinalFrameGl {
         )
         GL20C.glUseProgram(0)
         GL33C.glBindBuffer(GL33C.GL_PIXEL_UNPACK_BUFFER, 0)
-        // Minecraft/Lunar may leave offsets that corrupt Skia's next glyph upload.
+        // The host renderer may leave offsets that corrupt Skia's next glyph upload.
         GL11C.glPixelStorei(GL11C.GL_UNPACK_ALIGNMENT, 1)
         GL11C.glPixelStorei(GL12C.GL_UNPACK_ROW_LENGTH, 0)
         GL11C.glPixelStorei(GL12C.GL_UNPACK_SKIP_PIXELS, 0)

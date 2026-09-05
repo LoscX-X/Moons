@@ -19,7 +19,7 @@ import java.util.Set;
  * Central owner for Moons keyboard and mouse bindings.
  *
  * <p>Moons bindings are stored only in its own config and are dispatched from
- * raw press callbacks. They never register, rewrite, or save Minecraft/Lunar
+ * raw press callbacks. They never register, rewrite, or save host
  * {@code KeyMapping}s. Changing a host mapping to
  * {@link InputConstants#UNKNOWN} leaves it with GLFW key {@code -1}, which some
  * clients still poll every render frame.</p>
@@ -234,7 +234,7 @@ public final class ModuleKeybinds {
                 .toList();
     }
 
-    /** Binds a module without changing any Minecraft or Lunar key mapping. */
+    /** Binds a module without changing any host key mapping. */
     public static boolean bind(String moduleId, InputConstants.Key key) {
         if (moduleId == null || moduleId.isBlank()) {
             return false;

@@ -6,7 +6,6 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.IO;
 using System.IO.Compression;
-using System.Management;
 using System.Net;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -17,10 +16,10 @@ using System.Threading;
 using System.Windows.Forms;
 using Moons.Shared;
 
-[assembly: AssemblyTitle("Moons Injector")]
-[assembly: AssemblyDescription("Moons JNI/JVMTI injector with cached UI runtime")]
+[assembly: AssemblyTitle("Moons Loader")]
+[assembly: AssemblyDescription("Moons JNI/JVMTI loader with cached UI runtime")]
 [assembly: AssemblyCompany("Moons")]
-[assembly: AssemblyProduct("Moons Injector")]
+[assembly: AssemblyProduct("Moons Loader")]
 [assembly: AssemblyVersion("1.0.0.0")]
 [assembly: AssemblyFileVersion("1.0.0.0")]
 
@@ -44,9 +43,6 @@ namespace Moons.WindowsLauncher
         private const string BootstrapApiResource = "Moons.Api.jar";
         private const string BridgeResource = "Moons.Bridge.dll";
         private const string UiRuntimeMetadataResource = "Moons.UiRuntime.properties";
-        private const string LunarProbeJdkOption = "-Dmoons.probe.jdk=1";
-        private const string LunarProbeToolOption = "-Dmoons.probe.tool=1";
-        private const string LunarProbeLegacyOption = "-Dmoons.probe.legacy=1";
 
         [DllImport("dwmapi.dll")]
         private static extern int DwmSetWindowAttribute(
@@ -58,6 +54,26 @@ namespace Moons.WindowsLauncher
         [DllImport("user32.dll")]
         private static extern IntPtr SendMessage(
             IntPtr window, int message, IntPtr wParam, IntPtr lParam);
+
+        private delegate bool EnumWindowsCallback(IntPtr window, IntPtr parameter);
+
+        [DllImport("user32.dll")]
+        private static extern bool EnumWindows(
+            EnumWindowsCallback callback, IntPtr parameter);
+
+        [DllImport("user32.dll")]
+        private static extern bool IsWindowVisible(IntPtr window);
+
+        [DllImport("user32.dll")]
+        private static extern int GetWindowTextLength(IntPtr window);
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern int GetWindowText(
+            IntPtr window, StringBuilder text, int maximumCount);
+
+        [DllImport("user32.dll")]
+        private static extern uint GetWindowThreadProcessId(
+            IntPtr window, out uint processId);
 
         [DllImport("gdi32.dll")]
         private static extern int GetDeviceCaps(IntPtr deviceContext, int index);
@@ -136,7 +152,7 @@ namespace Moons.WindowsLauncher
                 }
                 catch (Exception error)
                 {
-                    MessageBox.Show(error.Message, DisplayName + " Injector",
+                    MessageBox.Show(error.Message, DisplayName + " Loader",
                         MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return 1;
                 }
@@ -147,21 +163,21 @@ namespace Moons.WindowsLauncher
             string snapshotPath = OptionArgument(arguments, "--self-test-ui-snapshot");
             if (!String.IsNullOrWhiteSpace(snapshotPath))
             {
-                return SaveInjectorSnapshot(snapshotPath);
+                return SaveLoaderSnapshot(snapshotPath);
             }
-            InjectorForm form = new InjectorForm(arguments);
+            LoaderForm form = new LoaderForm(arguments);
             Application.Run(form);
             return form.ExitCode;
         }
 
-        private static int SaveInjectorSnapshot(string outputPath)
+        private static int SaveLoaderSnapshot(string outputPath)
         {
             try
             {
                 string fullPath = Path.GetFullPath(outputPath);
                 string directory = Path.GetDirectoryName(fullPath);
                 if (!String.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
-                using (InjectorForm form = new InjectorForm(new string[0], false))
+                using (LoaderForm form = new LoaderForm(new string[0], false))
                 {
                     form.ShowInTaskbar = false;
                     form.StartPosition = FormStartPosition.Manual;
@@ -191,7 +207,7 @@ namespace Moons.WindowsLauncher
                 "net.minecraft.client.main.Main --version 26.1.2"),
                 "26.1", StringComparison.Ordinal);
             passed &= String.Equals(MatchSupportedVersion(
-                @"C:\Users\test\.lunarclient\versions\26.2\client.jar"),
+                @"C:\Games\Minecraft\versions\26.2\client.jar"),
                 "26.2", StringComparison.Ordinal);
             passed &= String.Equals(NormalizeConfiguredVersion("26.1"),
                 "26.1", StringComparison.Ordinal);
@@ -200,6 +216,13 @@ namespace Moons.WindowsLauncher
             passed &= NormalizeConfiguredVersion("26.1.3") == null;
             passed &= MatchSupportedVersion("Minecraft 1.21.5") == null;
             passed &= MatchSupportedVersion("26.1.2 and 26.2") == null;
+            passed &= IsMinecraftTargetEvidence(
+                @"C:\Users\player\.lunarclient\jre\runtime\bin\javaw.exe", "", "");
+            passed &= IsMinecraftTargetEvidence(
+                @"C:\Program Files\Java\jdk-25\bin\java.exe", "",
+                "net.minecraft.client.main.Main --version 26.1.2");
+            passed &= !IsMinecraftTargetEvidence(
+                @"C:\Program Files\Java\jdk-25\bin\java.exe", "", "");
             return passed ? 0 : 3;
         }
 
@@ -442,12 +465,6 @@ namespace Moons.WindowsLauncher
             Func<IList<MinecraftTarget>, MinecraftTarget> chooseTarget,
             Func<bool> cancelled)
         {
-            if (Contains(arguments, "--lunar-probe"))
-            {
-                ExecuteLunarProbe(arguments, progress, cancelled);
-                return;
-            }
-
             string home = ResolveHome();
             progress(4, "Checking UI runtime dependencies");
             EnsureUiRuntime(home, arguments, progress, downloadProgress, cancelled);
@@ -497,160 +514,11 @@ namespace Moons.WindowsLauncher
             progress(43, "Minecraft " + detectedVersion + " selected: " + target.Label);
             string payload = ExtractPayload(home, detectedVersion);
             progress(48, "Loaded embedded Minecraft " + detectedVersion + " payload");
-            InjectBridge(bridge, payload, bootstrapApi, home, hardwareId,
+            LoadBridge(bridge, payload, bootstrapApi, home, hardwareId,
                 target.Pid, progress, cancelled);
         }
 
-        private static void ExecuteLunarProbe(
-            string[] arguments,
-            Action<int, string> progress,
-            Func<bool> cancelled)
-        {
-            progress(8, "Extracting harmless Lunar probe Agent");
-            string home = ResolveHome();
-            string payload = ExtractPayload(home, "26.2");
-            string probeResult = Path.Combine(home, "lunar-probe.log");
-            if (File.Exists(probeResult))
-            {
-                File.Delete(probeResult);
-            }
-            ThrowIfCancelled(cancelled);
-
-            progress(25, "Locating Lunar Client");
-            string launcher = FindLunarLauncher(OptionArgument(arguments, "--lunar-path"));
-            if (launcher == null)
-            {
-                throw new FileNotFoundException(
-                    "Lunar Client was not found. Install Lunar Client in its default location, " +
-                    "or use --lunar-path followed by the full path to Lunar Client.exe.");
-            }
-            ThrowIfCancelled(cancelled);
-
-            progress(45, "Checking for existing Lunar processes");
-            IList<string> running = FindRunningLunarProcesses();
-            if (running.Count > 0)
-            {
-                throw new InvalidOperationException(
-                    "Close Lunar Client and every Lunar Minecraft instance before running the probe.\r\n\r\n" +
-                    "Existing processes cannot inherit the child-only probe environment.\r\n\r\n" +
-                    String.Join("\r\n", running));
-            }
-            ThrowIfCancelled(cancelled);
-
-            progress(65, "Adding child-only JVM probe markers");
-            ProcessStartInfo info = new ProcessStartInfo();
-            info.FileName = launcher;
-            info.WorkingDirectory = Path.GetDirectoryName(launcher);
-            info.UseShellExecute = false;
-            info.EnvironmentVariables["JDK_JAVA_OPTIONS"] = AppendJvmOption(
-                info.EnvironmentVariables["JDK_JAVA_OPTIONS"],
-                LunarProbeJdkOption + " " + LunarProbeAgentOption(payload, "jdk", probeResult));
-            info.EnvironmentVariables["JAVA_TOOL_OPTIONS"] = AppendJvmOption(
-                info.EnvironmentVariables["JAVA_TOOL_OPTIONS"],
-                LunarProbeToolOption + " " + LunarProbeAgentOption(payload, "tool", probeResult));
-            info.EnvironmentVariables["_JAVA_OPTIONS"] = AppendJvmOption(
-                info.EnvironmentVariables["_JAVA_OPTIONS"],
-                LunarProbeLegacyOption + " " + LunarProbeAgentOption(payload, "legacy", probeResult));
-            ThrowIfCancelled(cancelled);
-
-            progress(85, "Starting Lunar Client with probe markers");
-            using (Process process = Process.Start(info))
-            {
-                if (process == null)
-                {
-                    throw new InvalidOperationException("Lunar Client did not start.");
-                }
-            }
-            progress(100, "Lunar probe started");
-        }
-
-        private static string FindLunarLauncher(string configured)
-        {
-            if (!String.IsNullOrWhiteSpace(configured))
-            {
-                string explicitPath = Path.GetFullPath(configured.Trim());
-                if (!File.Exists(explicitPath))
-                {
-                    throw new FileNotFoundException(
-                        "The configured Lunar Client executable does not exist.", explicitPath);
-                }
-                return explicitPath;
-            }
-
-            string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            string programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
-            string programFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
-            string[] candidates =
-            {
-                Path.Combine(local, "Programs", "Lunar Client", "Lunar Client.exe"),
-                Path.Combine(local, "Programs", "lunarclient", "Lunar Client.exe"),
-                Path.Combine(local, "Lunar Client", "Lunar Client.exe"),
-                Path.Combine(programFiles, "Lunar Client", "Lunar Client.exe"),
-                Path.Combine(programFilesX86, "Lunar Client", "Lunar Client.exe")
-            };
-            foreach (string candidate in candidates)
-            {
-                if (File.Exists(candidate))
-                {
-                    return Path.GetFullPath(candidate);
-                }
-            }
-            return null;
-        }
-
-        private static IList<string> FindRunningLunarProcesses()
-        {
-            List<string> result = new List<string>();
-            foreach (Process process in Process.GetProcesses())
-            {
-                using (process)
-                {
-                    try
-                    {
-                        string name = process.ProcessName ?? String.Empty;
-                        bool lunar = name.IndexOf("lunar", StringComparison.OrdinalIgnoreCase) >= 0;
-                        if (!lunar && (String.Equals(name, "java", StringComparison.OrdinalIgnoreCase)
-                                || String.Equals(name, "javaw", StringComparison.OrdinalIgnoreCase)))
-                        {
-                            string executable = process.MainModule == null
-                                ? String.Empty : process.MainModule.FileName;
-                            lunar = executable.IndexOf(
-                                ".lunarclient", StringComparison.OrdinalIgnoreCase) >= 0;
-                        }
-                        if (lunar)
-                        {
-                            result.Add("PID " + process.Id + "  " + name);
-                        }
-                    }
-                    catch (Win32Exception)
-                    {
-                    }
-                    catch (InvalidOperationException)
-                    {
-                    }
-                }
-            }
-            return result;
-        }
-
-        private static string AppendJvmOption(string existing, string option)
-        {
-            return String.IsNullOrWhiteSpace(existing)
-                ? option : existing.Trim() + " " + option;
-        }
-
-        private static string LunarProbeAgentOption(
-            string payload,
-            string source,
-            string probeResult)
-        {
-            string option = "-javaagent:" + payload
-                + "=lunarProbe=" + source
-                + ";probe64=" + Encode(probeResult);
-            return "\"" + option.Replace("\"", "\\\"") + "\"";
-        }
-
-        private sealed class InjectorForm : Form
+        private sealed class LoaderForm : Form
         {
             private static readonly PointF[] Stars =
             {
@@ -683,14 +551,14 @@ namespace Moons.WindowsLauncher
 
             internal int ExitCode { get; private set; }
 
-            internal InjectorForm(string[] arguments) : this(arguments, true)
+            internal LoaderForm(string[] arguments) : this(arguments, true)
             {
             }
 
-            internal InjectorForm(string[] arguments, bool autoStart)
+            internal LoaderForm(string[] arguments, bool autoStart)
             {
                 this.arguments = arguments;
-                Text = DisplayName + " Injector";
+                Text = DisplayName + " Loader";
                 ClientSize = new Size(640, 360);
                 BackColor = WindowBackground;
                 ForeColor = Color.White;
@@ -920,9 +788,7 @@ namespace Moons.WindowsLauncher
                 {
                     pendingCompletion = eventArgs;
                     targetProgress = 100;
-                    bool lunarProbe = Program.Contains(arguments, "--lunar-probe");
-                    status.Text = lunarProbe
-                        ? "Finishing Lunar probe" : "Finalizing injection";
+                    status.Text = "Finalizing load";
                     if (displayedProgress < 99.999)
                     {
                         return;
@@ -945,8 +811,8 @@ namespace Moons.WindowsLauncher
                 if (eventArgs.Error != null)
                 {
                     ExitCode = 1;
-                    status.Text = "Injection failed";
-                    MessageBox.Show(this, eventArgs.Error.Message, DisplayName + " Injector",
+                    status.Text = "Load failed";
+                    MessageBox.Show(this, eventArgs.Error.Message, DisplayName + " Loader",
                         MessageBoxButtons.OK, MessageBoxIcon.Error);
                     Close();
                     return;
@@ -956,22 +822,12 @@ namespace Moons.WindowsLauncher
                 displayedProgress = 100.0;
                 targetProgress = 100;
                 RenderProgress();
-                bool lunarProbe = Program.Contains(arguments, "--lunar-probe");
-                status.Text = lunarProbe ? "Lunar probe started" : "Injection completed";
+                status.Text = "Load completed";
                 if (!Program.Contains(arguments, "--no-success-dialog"))
                 {
-                    string message = lunarProbe
-                        ? "Lunar Client was started with a harmless premain probe.\r\n\r\n" +
-                          "Start Minecraft, then check:\r\n" +
-                          Path.Combine(ResolveHome(), "lunar-probe.log") + "\r\n\r\n" +
-                          "The launcher also adds these diagnostic markers:\r\n" +
-                          LunarProbeJdkOption + "\r\n" +
-                          LunarProbeToolOption + "\r\n" +
-                          LunarProbeLegacyOption + "\r\n\r\n" +
-                          "This probe did not load or inject " + DisplayName + "."
-                        : DisplayName + " was injected successfully.";
+                    string message = DisplayName + " was loaded successfully.";
                     MessageBox.Show(this, message,
-                        lunarProbe ? DisplayName + " Lunar Probe" : DisplayName + " Injector",
+                        DisplayName + " Loader",
                         MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
                 Close();
@@ -987,7 +843,7 @@ namespace Moons.WindowsLauncher
                 using (TargetDialog dialog = new TargetDialog(targets))
                 {
                     // Keep both windows in the normal z-order. A modal owned dialog
-                    // is guaranteed to stay above this injector without pinning
+                    // is guaranteed to stay above this loader without pinning
                     // either window above unrelated desktop applications.
                     dialog.ShowInTaskbar = false;
                     dialog.Shown += delegate
@@ -1110,15 +966,15 @@ namespace Moons.WindowsLauncher
                 };
                 listCard.Controls.Add(targets);
 
-                Button inject = new Button();
-                inject.Text = "Inject Moons";
-                inject.DialogResult = DialogResult.OK;
-                inject.Left = 364;
-                inject.Top = 226;
-                inject.Width = 152;
-                inject.Height = 34;
-                StyleButton(inject, true);
-                Controls.Add(inject);
+                Button load = new Button();
+                load.Text = "Load Moons";
+                load.DialogResult = DialogResult.OK;
+                load.Left = 364;
+                load.Top = 226;
+                load.Width = 152;
+                load.Height = 34;
+                StyleButton(load, true);
+                Controls.Add(load);
 
                 Button cancel = new Button();
                 cancel.Text = "Cancel";
@@ -1130,7 +986,7 @@ namespace Moons.WindowsLauncher
                 StyleButton(cancel, false);
                 Controls.Add(cancel);
 
-                AcceptButton = inject;
+                AcceptButton = load;
                 CancelButton = cancel;
                 EnableWindowDrag(this, title);
                 InstallWindowChrome(this, false);
@@ -1231,7 +1087,7 @@ namespace Moons.WindowsLauncher
 
             throw new InvalidOperationException(
                 "Unable to identify whether PID " + target.Pid
-                + " is Minecraft 26.1.2 or 26.2. Injection was cancelled to avoid loading "
+                + " is Minecraft 26.1.2 or 26.2. Load was cancelled to avoid loading "
                 + "the wrong mappings.\r\n\r\n"
                 + "Start the game normally so its command line contains --version, or run "
                 + DisplayName + " with --minecraft-version 26.1/26.1.2/26.2.");
@@ -1270,31 +1126,7 @@ namespace Moons.WindowsLauncher
 
         private static string ReadProcessCommandLine(int pid)
         {
-            try
-            {
-                using (ManagementObjectSearcher searcher = new ManagementObjectSearcher(
-                    "SELECT CommandLine FROM Win32_Process WHERE ProcessId=" + pid))
-                {
-                    foreach (ManagementObject process in searcher.Get())
-                    {
-                        using (process)
-                        {
-                            object value = process["CommandLine"];
-                            return value == null ? String.Empty : value.ToString();
-                        }
-                    }
-                }
-            }
-            catch (ManagementException)
-            {
-            }
-            catch (UnauthorizedAccessException)
-            {
-            }
-            catch (COMException)
-            {
-            }
-            return String.Empty;
+            return ProcessEvidenceCache.CommandLine(pid);
         }
 
         private static string OptionArgument(string[] arguments, string name)
@@ -1322,7 +1154,6 @@ namespace Moons.WindowsLauncher
             IList<MinecraftTarget> targets,
             ISet<string> seen)
         {
-            List<MinecraftTarget> fallback = new List<MinecraftTarget>();
             foreach (Process process in Process.GetProcesses())
             {
                 using (process)
@@ -1336,31 +1167,22 @@ namespace Moons.WindowsLauncher
                         }
                         string executable = process.MainModule == null
                             ? String.Empty : process.MainModule.FileName;
-                        string title = process.MainWindowTitle ?? String.Empty;
-                        string normalizedPath = executable.ToLowerInvariant();
-                        string normalizedTitle = title.ToLowerInvariant();
-                        bool minecraftRuntime = normalizedPath.Contains(".minecraft")
-                            && normalizedPath.Contains("runtime");
-                        bool thirdPartyRuntime = normalizedPath.Contains("lunar")
-                            || normalizedPath.Contains("feather")
-                            || normalizedPath.Contains("multimc")
-                            || normalizedPath.Contains("prismlauncher");
-                        bool minecraftWindow = normalizedTitle.Contains("minecraft");
+                        string title = FindProcessWindowTitle(
+                            process.Id, process.MainWindowTitle);
+                        string commandLine = ReadProcessCommandLine(process.Id);
+                        if (!IsMinecraftTargetEvidence(executable, title, commandLine))
+                        {
+                            continue;
+                        }
                         string pid = process.Id.ToString();
-                        string display = title.Length > 0 ? title : executable;
+                        string display = title.Length > 0
+                            ? title : FallbackMinecraftDisplay(executable);
                         string detectedVersion = MatchSupportedVersion(
-                            display + Environment.NewLine + ReadProcessCommandLine(process.Id));
+                            display + Environment.NewLine + commandLine);
                         string label = pid + "  " + display
                             + (detectedVersion == null ? "  [version unknown]"
                                 : "  [Minecraft " + detectedVersion + "]");
-                        if (minecraftRuntime || thirdPartyRuntime || minecraftWindow)
-                        {
-                            if (seen.Add(pid)) targets.Add(new MinecraftTarget(pid, label));
-                        }
-                        else
-                        {
-                            fallback.Add(new MinecraftTarget(pid, label));
-                        }
+                        if (seen.Add(pid)) targets.Add(new MinecraftTarget(pid, label));
                     }
                     catch (Win32Exception)
                     {
@@ -1370,13 +1192,69 @@ namespace Moons.WindowsLauncher
                     }
                 }
             }
-            if (targets.Count == 0)
+        }
+
+        private static bool IsMinecraftTargetEvidence(
+            string executable,
+            string title,
+            string commandLine)
+        {
+            string normalizedPath = (executable ?? String.Empty).ToLowerInvariant();
+            string normalizedTitle = (title ?? String.Empty).ToLowerInvariant();
+            string normalizedCommand = (commandLine ?? String.Empty).ToLowerInvariant();
+            bool officialRuntime = normalizedPath.Contains(".minecraft")
+                && normalizedPath.Contains("runtime");
+            bool knownClientRuntime = normalizedPath.Contains(".lunarclient")
+                || normalizedPath.Contains("feather")
+                || normalizedPath.Contains("multimc")
+                || normalizedPath.Contains("prismlauncher");
+            bool knownWindow = normalizedTitle.Contains("minecraft")
+                || normalizedTitle.Contains("lunar client");
+            bool minecraftMain = normalizedCommand.Contains("net.minecraft.client.main.main")
+                || normalizedCommand.Contains("knotclient")
+                || normalizedCommand.Contains("launchwrapper")
+                || normalizedCommand.Contains("bootstraplauncher");
+            return officialRuntime || knownClientRuntime || knownWindow || minecraftMain;
+        }
+
+        private static string FallbackMinecraftDisplay(string executable)
+        {
+            string normalizedPath = (executable ?? String.Empty).ToLowerInvariant();
+            if (normalizedPath.Contains(".lunarclient")) return "Lunar Client";
+            if (normalizedPath.Contains("feather")) return "Feather Client";
+            if (normalizedPath.Contains("prismlauncher")) return "Prism Launcher Minecraft";
+            if (normalizedPath.Contains("multimc")) return "MultiMC Minecraft";
+            return String.IsNullOrWhiteSpace(executable) ? "Minecraft Java" : executable;
+        }
+
+        private static string FindProcessWindowTitle(int processId, string primaryTitle)
+        {
+            if (!String.IsNullOrWhiteSpace(primaryTitle)) return primaryTitle.Trim();
+            string best = String.Empty;
+            try
             {
-                foreach (MinecraftTarget candidate in fallback)
+                EnumWindows(delegate(IntPtr window, IntPtr parameter)
                 {
-                    if (seen.Add(candidate.Pid)) targets.Add(candidate);
-                }
+                    if (!IsWindowVisible(window)) return true;
+                    uint owner;
+                    GetWindowThreadProcessId(window, out owner);
+                    if (owner != (uint)processId) return true;
+                    int length = GetWindowTextLength(window);
+                    if (length <= 0 || length > 4096) return true;
+                    StringBuilder text = new StringBuilder(length + 1);
+                    if (GetWindowText(window, text, text.Capacity) <= 0) return true;
+                    string candidate = text.ToString().Trim();
+                    if (candidate.Length > best.Length) best = candidate;
+                    return true;
+                }, IntPtr.Zero);
             }
+            catch (DllNotFoundException)
+            {
+            }
+            catch (EntryPointNotFoundException)
+            {
+            }
+            return best;
         }
 
         private static string RunJavaCapture(
@@ -1461,7 +1339,7 @@ namespace Moons.WindowsLauncher
             }
             catch
             {
-                // Branding must never prevent the injector from starting.
+                // Branding must never prevent the loader from starting.
             }
             return DefaultDisplayName;
         }
@@ -2124,7 +2002,7 @@ namespace Moons.WindowsLauncher
             }
         }
 
-        private static void InjectBridge(
+        private static void LoadBridge(
             string bridge,
             string payload,
             string bootstrapApi,
@@ -2141,13 +2019,30 @@ namespace Moons.WindowsLauncher
             }
             if (pid == Process.GetCurrentProcess().Id)
             {
-                throw new InvalidOperationException("Refusing to inject the launcher itself.");
+                throw new InvalidOperationException("Refusing to load the launcher itself.");
             }
             if (!Environment.Is64BitProcess)
             {
                 throw new InvalidOperationException("The JVMTI launcher must run as a 64-bit process.");
             }
 
+            using (LoadLease lease = LoadLease.Acquire(pid, cancelled))
+            {
+                LoadBridgeLocked(bridge, payload, bootstrapApi, home, hardwareId,
+                    pid, progress, cancelled);
+            }
+        }
+
+        private static void LoadBridgeLocked(
+            string bridge,
+            string payload,
+            string bootstrapApi,
+            string home,
+            string hardwareId,
+            int pid,
+            Action<int, string> progress,
+            Func<bool> cancelled)
+        {
             progress(52, "Validating target identity and architecture");
             ThrowIfCancelled(cancelled);
             DateTime targetStarted;
@@ -2182,11 +2077,13 @@ namespace Moons.WindowsLauncher
                 }
             }
 
-            const uint processAccess = 0x0002 | 0x0400 | 0x0008 | 0x0020 | 0x0010;
+            const uint processAccess = 0x0002 | 0x0400 | 0x0008 | 0x0020
+                | 0x0010 | 0x00100000;
             IntPtr processHandle = OpenProcess(processAccess, false, pid);
             if (processHandle == IntPtr.Zero) ThrowWin32("OpenProcess");
             IntPtr remotePath = IntPtr.Zero;
             IntPtr remoteThread = IntPtr.Zero;
+            bool remoteThreadCompleted = false;
             string configPath = null;
             try
             {
@@ -2255,6 +2152,7 @@ namespace Moons.WindowsLauncher
                     + "hwid=" + hardwareId + Environment.NewLine
                     + "attempt=" + attempt,
                     new UTF8Encoding(false));
+                long bridgeLogOffset = BridgeAttemptMonitor.CaptureOffset(dataDirectory);
 
                 progress(70, "Loading JVMTI bridge into target JVM");
                 byte[] pathBytes = Encoding.Unicode.GetBytes(bridge + "\0");
@@ -2280,11 +2178,32 @@ namespace Moons.WindowsLauncher
                     loadLibrary, remotePath, 0, out threadId);
                 if (remoteThread == IntPtr.Zero) ThrowWin32("CreateRemoteThread");
 
+                DateTime loadDeadline = DateTime.UtcNow.AddSeconds(15);
                 while (true)
                 {
+                    ThrowIfCancelled(cancelled);
+                    uint processWait = WaitForSingleObject(processHandle, 0);
+                    if (processWait == 0)
+                    {
+                        throw new InvalidOperationException(
+                            "The target JVM exited while loading the JVMTI bridge.");
+                    }
+                    if (processWait == 0xFFFFFFFF)
+                    {
+                        ThrowWin32("WaitForSingleObject(target process)");
+                    }
                     uint wait = WaitForSingleObject(remoteThread, 200);
-                    if (wait == 0) break;
+                    if (wait == 0)
+                    {
+                        remoteThreadCompleted = true;
+                        break;
+                    }
                     if (wait != 0x102) ThrowWin32("WaitForSingleObject");
+                    if (DateTime.UtcNow >= loadDeadline)
+                    {
+                        throw new TimeoutException(
+                            "LoadLibraryW did not finish within 15 seconds.");
+                    }
                 }
                 uint loadResult;
                 if (!GetExitCodeThread(remoteThread, out loadResult))
@@ -2297,62 +2216,20 @@ namespace Moons.WindowsLauncher
                         "LoadLibraryW returned NULL; the bridge DLL was not loaded.");
                 }
 
-                progress(86, "Waiting for Live-phase JVMTI hook");
-                WaitForBridgeAttempt(dataDirectory, attempt, cancelled);
-                progress(100, "JVMTI hook active for the selected process");
+                progress(86, "Waiting for Runtime and initial retransformation");
+                BridgeAttemptMonitor.WaitForReady(
+                    dataDirectory, attempt, processHandle, bridgeLogOffset, cancelled);
+                progress(100, "Runtime and JVMTI hooks are ready for the selected process");
             }
             finally
             {
                 if (remoteThread != IntPtr.Zero) CloseHandle(remoteThread);
-                if (remotePath != IntPtr.Zero)
+                if (remotePath != IntPtr.Zero && remoteThreadCompleted)
                 {
                     VirtualFreeEx(processHandle, remotePath, UIntPtr.Zero, 0x8000);
                 }
                 CloseHandle(processHandle);
             }
-        }
-
-        private static void WaitForBridgeAttempt(
-            string dataDirectory,
-            string attempt,
-            Func<bool> cancelled)
-        {
-            string log = Path.Combine(dataDirectory, "bridge-dll.log");
-            string marker = "[" + attempt + "]";
-            DateTime deadline = DateTime.UtcNow.AddSeconds(20);
-            while (DateTime.UtcNow < deadline)
-            {
-                ThrowIfCancelled(cancelled);
-                try
-                {
-                    if (File.Exists(log))
-                    {
-                        string[] lines = File.ReadAllLines(log, Encoding.UTF8);
-                        foreach (string line in lines)
-                        {
-                            if (line.IndexOf(marker, StringComparison.Ordinal) < 0) continue;
-                            if (line.IndexOf("hard failure", StringComparison.OrdinalIgnoreCase) >= 0
-                                || line.IndexOf("bridge failed", StringComparison.OrdinalIgnoreCase) >= 0
-                                || line.IndexOf("invalid one-shot config", StringComparison.OrdinalIgnoreCase) >= 0)
-                            {
-                                throw new InvalidOperationException(line);
-                            }
-                            if (line.IndexOf("JVMTI ClassFileLoadHook active",
-                                StringComparison.Ordinal) >= 0)
-                            {
-                                return;
-                            }
-                        }
-                    }
-                }
-                catch (IOException)
-                {
-                    // The DLL may be appending this file; retry.
-                }
-                Thread.Sleep(100);
-            }
-            throw new TimeoutException(
-                "The DLL loaded, but the JVMTI hook did not become active. Check " + log);
         }
 
         private static ushort ReadPeMachine(string path)
@@ -2446,7 +2323,7 @@ namespace Moons.WindowsLauncher
                         details = errors.ToString().Trim();
                     }
                     throw new InvalidOperationException(
-                        "The Java injector exited with code " + exitCode + "." +
+                        "The Java loader exited with code " + exitCode + "." +
                         (details.Length == 0 ? String.Empty : "\r\n\r\n" + details));
                 }
             }
@@ -2493,14 +2370,6 @@ namespace Moons.WindowsLauncher
                     break;
             }
             return Encoding.UTF8.GetString(Convert.FromBase64String(normalized));
-        }
-
-        private static string Encode(string value)
-        {
-            return Convert.ToBase64String(Encoding.UTF8.GetBytes(value))
-                .TrimEnd('=')
-                .Replace('+', '-')
-                .Replace('/', '_');
         }
 
         private static string Quote(string value)

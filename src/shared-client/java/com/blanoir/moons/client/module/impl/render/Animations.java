@@ -437,7 +437,7 @@ public final class Animations {
             }
         }
 
-        // The Myau injection returns immediately before Minecraft 1.8's
+        // The Myau load returns immediately before Minecraft 1.8's
         // original doBlockTransformations invocation, which therefore runs for
         // every enum value, including VANILLA and MYAU_1_8.
         block(pose);

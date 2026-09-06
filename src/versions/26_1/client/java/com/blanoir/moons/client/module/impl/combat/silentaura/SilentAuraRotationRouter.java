@@ -33,6 +33,7 @@ final class SilentAuraRotationRouter {
     void completeReturn() { activeController().completeReturn(); }
     void cancelReturn(Minecraft client) { activeController().cancelReturn(client); }
     boolean active() { return activeController().active(); }
+    void beginFrom(float yaw, float pitch) { activeController().beginFrom(yaw, pitch); }
     boolean returning() { return activeController().returning(); }
     int targetId() { return activeController().targetId(); }
     float yaw() { return activeController().yaw(); }

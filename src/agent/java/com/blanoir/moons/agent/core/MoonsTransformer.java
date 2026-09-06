@@ -398,12 +398,8 @@ final class MoonsTransformer implements ClassFileTransformer {
     }
 
     private static boolean loadPacketSend(MethodNode method) {
-        InsnList start = new InsnList();
-        start.add(new VarInsnNode(Opcodes.ALOAD, 0));
-        start.add(new VarInsnNode(Opcodes.ALOAD, 1));
-        start.add(call("onPacketSend", "(Ljava/lang/Object;Ljava/lang/Object;)Z"));
-        appendVoidCancellation(start);
-        method.instructions.insert(start);
+        // Instrument original returns only: the PRE cancellation must not
+        // report a packet as sent to rotation and position observers.
         beforeReturns(method, Opcodes.RETURN, () -> {
             InsnList end = new InsnList();
             end.add(new VarInsnNode(Opcodes.ALOAD, 0));
@@ -411,6 +407,12 @@ final class MoonsTransformer implements ClassFileTransformer {
             end.add(call("onPacketSent", "(Ljava/lang/Object;Ljava/lang/Object;)V"));
             return end;
         });
+        InsnList start = new InsnList();
+        start.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        start.add(new VarInsnNode(Opcodes.ALOAD, 1));
+        start.add(call("onPacketSend", "(Ljava/lang/Object;Ljava/lang/Object;)Z"));
+        appendVoidCancellation(start);
+        method.instructions.insert(start);
         return true;
     }
 

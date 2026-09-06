@@ -109,6 +109,50 @@ sourceSets.client.resources.setSrcDirs([
         "src/versions/${selectedVersionDirectory}/client/resources"
 ])
 
+sourceSets {
+    scaffoldVerification {
+        java.setSrcDirs(["src/scaffoldVerification/java"])
+        compileClasspath += sourceSets.client.output + sourceSets.client.compileClasspath
+        runtimeClasspath += sourceSets.api.output + sourceSets.client.output + sourceSets.client.runtimeClasspath
+    }
+    combatVerification {
+        java.setSrcDirs(["src/combatVerification/java"])
+        compileClasspath += sourceSets.client.output + sourceSets.client.compileClasspath
+        runtimeClasspath += sourceSets.api.output + sourceSets.client.output + sourceSets.client.runtimeClasspath
+    }
+}
+
+tasks.register("verifyScaffoldRotations", JavaExec) {
+    group = "verification"
+    description = "Verifies Scaffold placement rotation history and settling."
+    dependsOn tasks.named("scaffoldVerificationClasses")
+    classpath = sourceSets.scaffoldVerification.runtimeClasspath
+    mainClass = "com.blanoir.moons.client.module.world.scaffold.PlacementRotationVerification"
+}
+
+tasks.register("verifyPlacementTransactions", JavaExec) {
+    group = "verification"
+    dependsOn tasks.named("scaffoldVerificationClasses")
+    classpath = sourceSets.scaffoldVerification.runtimeClasspath
+    mainClass = "com.blanoir.moons.client.management.rotation.PlacementTransactionVerification"
+}
+
+tasks.register("verifySilentAura", JavaExec) {
+    group = "verification"
+    description = "Verifies SilentAura prediction, noise, acquisition and packet motion invariants."
+    dependsOn tasks.named("combatVerificationClasses")
+    classpath = sourceSets.combatVerification.runtimeClasspath
+    mainClass = "com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraVerification"
+}
+
+tasks.register("verifyXrayMerge", JavaExec) {
+    group = "verification"
+    description = "Verifies merged Xray settings migration and packet scan gating."
+    dependsOn tasks.named("combatVerificationClasses")
+    classpath = sourceSets.combatVerification.runtimeClasspath
+    mainClass = "com.blanoir.moons.client.module.impl.render.xray.XrayMergeVerification"
+}
+
 tasks.named("processFeaturesResources") {
     inputs.property("minecraftVersion", selectedMinecraftVersion)
     filesMatching("META-INF/moons-module.properties") {
@@ -293,6 +337,9 @@ tasks.register("verifyRuntimeLifecycle", JavaExec) {
 }
 
 tasks.named("check").configure {
+    dependsOn tasks.named("verifyScaffoldRotations")
+    dependsOn tasks.named("verifyPlacementTransactions")
+    dependsOn tasks.named("verifySilentAura")
     dependsOn tasks.named("clientClasses")
     dependsOn tasks.named("featuresClasses")
     dependsOn verifyFeatureMetadata

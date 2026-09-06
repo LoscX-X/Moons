@@ -126,18 +126,15 @@ public final class SilentAuraConfig {
     public static void prediction(double value) { PREDICTION.set(value); }
     public static void block(boolean value) { BLOCK.set(value); }
     public static boolean aimMode(String value) {
-        AIM_MODE.deserialize(value);
-        return true;
+        return AIM_MODE.tryDeserialize(value);
     }
 
     public static boolean aimPoint(String value) {
-        AIM_POINT.deserialize(value);
-        return true;
+        return AIM_POINT.tryDeserialize(value);
     }
 
     public static boolean targetMode(String value) {
-        TARGET_MODE.deserialize(value);
-        return true;
+        return TARGET_MODE.tryDeserialize(value);
     }
 
     public static void charge(double min, double max) {

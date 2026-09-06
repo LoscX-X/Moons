@@ -26,7 +26,7 @@ final class SilentAuraPacketRotationRouter {
     }
 
     void confirm(float yaw, float pitch) { activeSmoother().confirm(yaw, pitch); }
-    void invalidateSample() { activeSmoother().invalidateSample(); }
+    void rebase(float yaw, float pitch) { activeSmoother().rebase(yaw, pitch); }
 
     void reset() {
         lock.reset();

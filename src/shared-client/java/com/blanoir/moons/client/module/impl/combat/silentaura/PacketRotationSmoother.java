@@ -1,7 +1,6 @@
 package com.blanoir.moons.client.module.impl.combat.silentaura;
 
 import com.blanoir.moons.client.utils.math.MathUtils;
-import com.blanoir.moons.client.utils.math.RandomMath;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 import com.blanoir.moons.client.utils.rotation.aim.HumanAimSimulator;
 import net.minecraft.util.Mth;
@@ -36,6 +35,7 @@ public final class PacketRotationSmoother {
     private Rotation sampled = new Rotation(0.0F, 0.0F);
     private float sampledBaseYaw;
     private float sampledBasePitch;
+    private HumanAimSimulator.PacketMotion previousMotion;
 
     public PacketRotationSmoother(boolean lockMode) {
         this(lockMode, false);
@@ -69,7 +69,7 @@ public final class PacketRotationSmoother {
         sampledBasePitch = confirmed ? confirmedPitch : cameraPitch;
         if (fullLockMode) {
             sampled = sampleFullLock(desiredYaw, desiredPitch,
-                    fullLockAngleStep, fullLockSmoothing);
+                    fullLockAngleStep, fullLockSmoothing, sensitivity);
             return sampled;
         }
         float yawDemand = MathUtils.wrappedAngleDifference(sampledBaseYaw, desiredYaw);
@@ -82,10 +82,17 @@ public final class PacketRotationSmoother {
         HumanAimSimulator.PacketMotion motion = matrixCompatibility
                 ? HumanAimSimulator.samplePacketMotion(lockMode, urgency)
                 : HumanAimSimulator.sampleResponsivePacketMotion(lockMode, urgency);
+        if (previousMotion != null) {
+            motion = new HumanAimSimulator.PacketMotion(
+                    Mth.lerp(0.3D, previousMotion.yawAcceleration(), motion.yawAcceleration()),
+                    Mth.lerp(0.3D, previousMotion.pitchAcceleration(), motion.pitchAcceleration()),
+                    0.0D, 0.0D);
+        }
+        previousMotion = motion;
 
         float yawStep = HumanAimSimulator.acceleratedAxisStep(
                 yawDemand, previousYawStep,
-                motion.yawAcceleration(), motion.yawError(),
+                motion.yawAcceleration(), 0.0D,
                 YAW_DEADZONE, MAX_YAW_STEP);
         // The look direction is geometrically unstable while the eye is in the
         // target box. Cap the final packet-domain delta as well as the render
@@ -98,11 +105,10 @@ public final class PacketRotationSmoother {
         // Keep airborne tracking in target prediction; this step remains bounded.
         float pitchStep = HumanAimSimulator.acceleratedAxisStep(
                 pitchDemand, previousPitchStep,
-                motion.pitchAcceleration(), motion.pitchError(),
+                motion.pitchAcceleration(), 0.0D,
                 PITCH_DEADZONE, MAX_PITCH_STEP);
-        pitchStep = HumanAimSimulator.coupledPitchStep(
-                lockMode, yawStep, pitchStep, pitchDemand, previousPitchStep,
-                sampledBasePitch, sensitivity);
+        // Point-space noise already expresses the desired motion. Injecting a
+        // synthetic pitch count here created a +/-1 GCD oscillation at level aim.
         sampled = new Rotation(
                 sampledBaseYaw + yawStep,
                 Mth.clamp(sampledBasePitch + pitchStep, -90.0F, 90.0F));
@@ -111,24 +117,25 @@ public final class PacketRotationSmoother {
 
     /** FULL-Lock angle stepping; the caller applies sensitivity quantization. */
     private Rotation sampleFullLock(float desiredYaw, float desiredPitch,
-                                    int configuredAngleStep, double configuredSmoothing) {
+                                    int configuredAngleStep, double configuredSmoothing,
+                                    double sensitivity) {
         float angleStep = (float) Mth.clamp(
-                configuredAngleStep + RandomMath.between(-5.0D, 5.0D),
+                configuredAngleStep,
                 0.0D, 180.0D);
         float yawDemand = MathUtils.wrappedAngleDifference(sampledBaseYaw, desiredYaw);
         float pitchDemand = desiredPitch - sampledBasePitch;
-        float yawStep = fullLockAxisStep(yawDemand, angleStep, configuredSmoothing);
-        float pitchStep = fullLockAxisStep(pitchDemand, angleStep, configuredSmoothing);
+        float deadzone = (float) Math.min(0.06D,
+                HumanAimSimulator.mouseSensitivityGcd(sensitivity) * 0.5D);
+        float yawStep = fullLockAxisStep(yawDemand, angleStep, configuredSmoothing, deadzone);
+        float pitchStep = fullLockAxisStep(pitchDemand, angleStep, configuredSmoothing, deadzone);
         return new Rotation(
                 sampledBaseYaw + yawStep,
                 Mth.clamp(sampledBasePitch + pitchStep, -90.0F, 90.0F));
     }
 
-    private static float fullLockAxisStep(float demand, float angleStep, double smoothing) {
-        if (Math.abs(demand) <= 1.0F) return 0.0F;
-        double randomizedSmoothing = Mth.clamp(
-                smoothing + RandomMath.between(-0.1D, 0.1D), 0.0D, 1.0D);
-        double scale = 0.5D + 0.5D * (1.0D - randomizedSmoothing);
+    private static float fullLockAxisStep(float demand, float angleStep, double smoothing, float deadzone) {
+        if (Math.abs(demand) <= deadzone) return 0.0F;
+        double scale = 1.0D - 0.5D * Mth.clamp(smoothing, 0.0D, 1.0D);
         return (float) (Mth.clamp(demand, -angleStep, angleStep) * scale);
     }
 
@@ -143,18 +150,22 @@ public final class PacketRotationSmoother {
         confirmed = true;
     }
 
-    /** Recompute this tick's candidate after a target handoff. */
-    public void invalidateSample() {
-        sampledTick = Integer.MIN_VALUE;
-    }
-
     public void reset() {
+        previousMotion = null;
         confirmed = false;
         confirmedYaw = confirmedPitch = 0.0F;
         previousYawStep = previousPitchStep = 0.0F;
         sampledTick = Integer.MIN_VALUE;
         sampled = new Rotation(0.0F, 0.0F);
         sampledBaseYaw = sampledBasePitch = 0.0F;
+    }
+
+    /** Start a new owner/profile from the latest observed server rotation. */
+    public void rebase(float yaw, float pitch) {
+        reset();
+        confirmed = true;
+        confirmedYaw = yaw;
+        confirmedPitch = pitch;
     }
 
 }

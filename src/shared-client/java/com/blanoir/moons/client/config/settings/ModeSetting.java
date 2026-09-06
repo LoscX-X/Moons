@@ -57,6 +57,14 @@ public final class ModeSetting<T> {
         storage.set(option(value).id());
     }
 
+    /** Command input rejects unknown values without replacing the current mode. */
+    public boolean tryDeserialize(String value) {
+        Option<T> found = lookup.get(normalize(value));
+        if (found == null) return false;
+        storage.set(found.id());
+        return true;
+    }
+
     public List<String> optionIds() {
         return options.stream().map(Option::id).toList();
     }

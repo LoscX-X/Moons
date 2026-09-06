@@ -40,6 +40,8 @@ public final class SilentAuraTargetSelector {
     private double anchorFractionX = 0.5D;
     private double anchorFractionY = 0.5D;
     private double anchorFractionZ = 0.5D;
+    private Vec3 wanderFrom;
+    private int anchorStartTick;
     private int closestAnchorTargetId = -1;
     private int nextClosestAnchorTick = Integer.MIN_VALUE;
     private double closestFractionX = 0.5D;
@@ -135,6 +137,7 @@ public final class SilentAuraTargetSelector {
         targetId = -1;
         selectionTick = Integer.MIN_VALUE;
         anchorTargetId = -1;
+        wanderFrom = null;
         nextAnchorTick = Integer.MIN_VALUE;
         closestAnchorTargetId = -1;
         nextClosestAnchorTick = Integer.MIN_VALUE;
@@ -211,7 +214,8 @@ public final class SilentAuraTargetSelector {
     private Vec3 trackingAimPoint(Minecraft client, LivingEntity target, Vec3 look) {
         Vec3 eye = client.player.getEyePosition();
         AABB box = target.getBoundingBox();
-        double trackingRange = scanRange(client);
+        double trackingRange = inAttackRange(client, target)
+                ? attackRange(client) : scanRange(client);
 
         if (fullLockMode) {
             Vec3 preferred = fullLockAimPoint(eye, box);
@@ -249,7 +253,7 @@ public final class SilentAuraTargetSelector {
             // "Center" is the established humanized policy: the horizontal
             // point is pulled inward while Y follows the local eye height.
             Vec3 wander = wanderPoint(client, target, eye, box);
-            if (wander != null) return wander;
+            if (wander != null && eye.distanceToSqr(wander) <= trackingRange * trackingRange) return wander;
             preferred = centerTrackingPoint(eye, box);
         }
         if (eye.distanceToSqr(preferred) <= trackingRange * trackingRange
@@ -386,6 +390,8 @@ public final class SilentAuraTargetSelector {
         if (wander <= 0.0D) return null;
         int tick = client.player.tickCount;
         if (anchorTargetId != target.getId() || tick >= nextAnchorTick) {
+            boolean changed = anchorTargetId != target.getId() || wanderFrom == null;
+            Vec3 previous = changed ? null : wanderFractions(tick);
             anchorTargetId = target.getId();
             double spread = 0.5D * Mth.clamp(wander, 0.0D, 1.0D);
             anchorFractionX = RandomMath.between(0.5D - spread, 0.5D + spread);
@@ -405,15 +411,27 @@ public final class SilentAuraTargetSelector {
                     Math.max(UPPER_BODY_FLOOR, closestFractionY - verticalSpread),
                     Math.min(0.90D, closestFractionY + verticalSpread));
             anchorFractionZ = RandomMath.between(0.5D - spread, 0.5D + spread);
-            nextAnchorTick = tick + Math.max(2, SilentAuraConfig.aimWanderTicks());
+            int duration = Math.max(2, SilentAuraConfig.aimWanderTicks());
+            anchorStartTick = tick;
+            nextAnchorTick = tick + RandomMath.betweenInclusive(
+                    Math.max(2, (int) Math.round(duration * 0.65D)),
+                    Math.max(3, (int) Math.round(duration * 1.35D)));
+            wanderFrom = changed
+                    ? new Vec3(anchorFractionX, anchorFractionY, anchorFractionZ) : previous;
         }
-        Vec3 anchor = new Vec3(
-                Mth.lerp(Mth.clamp(anchorFractionX, 0.0D, 1.0D), box.minX, box.maxX),
-                Mth.lerp(Mth.clamp(anchorFractionY, 0.0D, 1.0D), box.minY, box.maxY),
-                Mth.lerp(Mth.clamp(anchorFractionZ, 0.0D, 1.0D), box.minZ, box.maxZ));
+        Vec3 fractions = wanderFractions(tick);
+        Vec3 anchor = localPoint(box, fractions.x, fractions.y, fractions.z);
         double trackingRange = scanRange(client);
         if (eye.distanceToSqr(anchor) > trackingRange * trackingRange) return null;
         return RaytraceUtils.canRayTraceTo(client, eye, anchor) ? anchor : null;
+    }
+
+    private Vec3 wanderFractions(int tick) {
+        double progress = Mth.clamp((double) (tick - anchorStartTick)
+                / Math.max(1, nextAnchorTick - anchorStartTick), 0.0D, 1.0D);
+        double blend = progress * progress * progress
+                * (progress * (progress * 6.0D - 15.0D) + 10.0D);
+        return wanderFrom.lerp(new Vec3(anchorFractionX, anchorFractionY, anchorFractionZ), blend);
     }
 
     private double angle(Minecraft client, LivingEntity entity) {

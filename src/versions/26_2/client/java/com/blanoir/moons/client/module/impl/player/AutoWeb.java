@@ -4,9 +4,8 @@
  * Two triggers share one instant silent packet-RotationA placement path (the
  * first-person camera stays fixed while the third-person model turns):
  * - Auto: scores feet, body and eye voxels along the target's trajectory.
- * - Wall (attack only): adds the expected knockback impulse, searches the next
- *   3-6 ticks for an actual wall contact and strongly prefers the eye path in
- *   the air voxel directly in front of that wall.
+ * - Wall (attack only): follows observed knockback, resolves the next 3-6 ticks
+ *   against block collisions and scores body coverage at the wall contact.
  * A short cooldown after each successful placement keeps the pressure
  * continuous without spamming the same cell.
  */
@@ -31,7 +30,6 @@ import net.minecraft.core.Direction;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Pose;
-import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -70,11 +68,9 @@ public final class AutoWeb {
     private static final double DEFAULT_COOLDOWN_SECONDS = 0.5D;
     private static final double MIN_COOLDOWN_SECONDS = 0.0D;
     private static final double MAX_COOLDOWN_SECONDS = 30.0D;
-    private static final double KNOCKBACK_HORIZONTAL_RETENTION = 0.5D;
     private static final double HORIZONTAL_DRAG = 0.91D;
     private static final double GRAVITY = 0.08D;
     private static final double VERTICAL_DRAG = 0.98D;
-    private static final double WALL_CONTACT_PADDING = 0.08D;
     private static final double MIN_WALL_ALIGNMENT = 0.25D;
     private static final double CORNER_WALL_GAP = 0.35D;
     private static final double RAY_EPSILON = 1.0E-4D;
@@ -296,27 +292,24 @@ public final class AutoWeb {
     }
 
     private static boolean tryStartWallPlacement(Minecraft client, Player target) {
-        if (pendingWallAttempted) {
+        if (pendingWallAttempted || !WALL_ENABLED.get()) {
+            return false;
+        }
+        // Retry as the real knockback arrives. A guessed impulse or merely
+        // being near a corner is not evidence that this wall will be reached.
+        PlacementPlan plan = findWallPlan(client, target);
+        if (plan == null) {
             return false;
         }
         pendingWallAttempted = true;
-        PlacementPlan plan = null;
-        if (WALL_ENABLED.get()) {
-            // The trajectory search already includes tick zero and strongly
-            // rewards upper-body/eye-path cells. Running CurrentWeb first made
-            // any presently placeable corner suppress the lateral knockback
-            // prediction entirely.
-            plan = findWallPlan(client, target);
-            if (plan == null) {
-                plan = findImmediateFeetPlan(client, target, true);
-            }
-        }
-        return plan != null && consumePlacementAttempt(client, plan);
+        return consumePlacementAttempt(client, plan);
     }
 
     private static boolean tryStartLandingPlacement(Minecraft client, Player target) {
         if (!GROUND_ENABLED.get()) {
-            clearPendingAttack();
+            if (!WALL_ENABLED.get()) {
+                clearPendingAttack();
+            }
             return false;
         }
         PostHitLandingWindow.Snapshot landing = GROUND_LANDING_WINDOW.update(
@@ -325,7 +318,7 @@ public final class AutoWeb {
             clearPendingAttack();
             return false;
         }
-        if (!landing.insideLandingWindow()
+        if (!target.onGround() || !landing.insideLandingWindow()
                 || landing.targetHorizontalSpeed() > MAX_GROUND_TARGET_SPEED
                 || landing.relativeHorizontalSpeed() > MAX_GROUND_RELATIVE_SPEED) {
             return false;
@@ -346,17 +339,22 @@ public final class AutoWeb {
         return true;
     }
 
-    /** First landed feet cell, with only a one-tick fallback instead of a long guess. */
+    /** Aim at the next feet position, without rewarding cells already being left. */
     private static PlacementPlan findLandingGroundPlan(
             Minecraft client, Player target) {
-        PlacementPlan current = findImmediateFeetPlan(client, target, false);
-        if (current != null) {
-            return current;
-        }
-        return findTrajectoryPlan(
-                client, target, observedTargetVelocity(target),
-                Math.min(1, PREDICTION_TICKS.get()),
-                false, false, true);
+        Vec3 velocity = observedTargetVelocity(target);
+        int leadTicks = Math.min(1, PREDICTION_TICKS.get());
+        Vec3 travel = Entity.collideBoundingBox(
+                target, new Vec3(velocity.x * leadTicks, 0.0D, velocity.z * leadTicks),
+                target.getBoundingBox(), client.level, java.util.List.of());
+        AABB box = target.getBoundingBox().move(travel);
+        Vec3 feet = target.position().add(travel);
+        Vec3 eye = target.getEyePosition().add(travel);
+        // Both samples describe the use-time footprint. Including the old box
+        // or swept feet path lets a trailing cell win after knockback.
+        return findBestVoxel(
+                client, target, box, box, feet, feet, eye, eye, velocity,
+                leadTicks, leadTicks, false, false, true);
     }
 
     private static void tickPlacement(Minecraft client) {
@@ -613,32 +611,34 @@ public final class AutoWeb {
         Vec3 position = target.position();
         Vec3 velocity = initialVelocity;
         boolean grounded = target.onGround();
-        AABB previousBox = target.getDimensions(Pose.STANDING)
-                .makeBoundingBox(position);
+        AABB previousBox = target.getBoundingBox();
         Vec3 previousFeet = position;
         Vec3 previousEye = predictedEyePosition(target, position);
         PlacementPlan best = null;
 
         for (int tick = 0; tick <= horizon; tick++) {
+            Vec3 incomingVelocity = velocity;
             if (tick > 0) {
-                TrajectoryStep step = advanceTrajectory(position, velocity, grounded);
+                TrajectoryStep step = advanceTrajectory(
+                        client, target, position, velocity, grounded);
                 position = step.position();
                 velocity = step.velocity();
+                grounded = step.grounded();
             }
 
-            AABB targetBox = target.getDimensions(Pose.STANDING)
-                    .makeBoundingBox(position);
+            AABB targetBox = target.getBoundingBox().move(
+                    position.subtract(target.position()));
             Vec3 predictedEye = predictedEyePosition(target, position);
             PlacementPlan candidate = findBestVoxel(
                     client,
                     target,
                     targetBox,
-                    previousBox,
+                    requireWallCollision ? targetBox : previousBox,
                     position,
-                    previousFeet,
+                    requireWallCollision ? position : previousFeet,
                     predictedEye,
-                    previousEye,
-                    velocity,
+                    requireWallCollision ? predictedEye : previousEye,
+                    incomingVelocity,
                     tick,
                     horizon,
                     requireWallCollision,
@@ -702,6 +702,7 @@ public final class AutoWeb {
                             && !voxel.intersects(previousBox)
                             && !intersectsFeet
                             && !intersectsEye)
+                            || !isReplaceableForWeb(client, placePos)
                             || !isSafeForPlayer(client, placePos, predictionTick)) {
                         continue;
                     }
@@ -713,21 +714,13 @@ public final class AutoWeb {
                         continue;
                     }
 
-                    if (groundOnly
-                            && supportHit(client, placePos, Direction.DOWN) == null) {
-                        continue;
-                    }
-                    BlockHitResult hit = findSupportHit(
-                            client, placePos, wall.direction());
+                    BlockHitResult hit = groundOnly
+                            ? supportHit(client, placePos, Direction.DOWN)
+                            : findSupportHit(client, placePos, wall.direction());
                     if (hit == null || !withinPlacementRange(client, hit.getLocation())) {
                         continue;
                     }
 
-                    double eyeIntersection = intersectsEye ? 1.0D : 0.0D;
-                    double feetIntersection = intersectsFeet ? 1.0D : 0.0D;
-                    double predictedIntersection = Math.max(
-                            intersectionRatio(voxel, targetBox),
-                            intersectionRatio(voxel, previousBox));
                     double wallSupport = wall.direction() == null ? 0.0D : 1.0D;
                     int rawLeadTicks = 1
                             + (requireWallCollision ? 0 : DELAY_TICKS.get());
@@ -749,24 +742,25 @@ public final class AutoWeb {
                             client.player.getEyePosition(),
                             hit.getLocation()) ? 1.0D : 0.0D;
 
-                    // Lower is better. The weights intentionally make a valid
-                    // eye-path wall voxel beat a conventional feet placement.
+                    // Lower is better. At a wall, use the footprint at contact:
+                    // a small eye-path sliver must not beat the main body cell.
                     // An entity crossing the visual ray is a risk signal, not
                     // a hard rejection: the queued use carries the explicit
                     // support face and the target normally stands between us
                     // and the wall by definition.
-                    double score = -eyeIntersection * 4.0D
-                            - predictedIntersection * 3.0D
+                    double score = coverageScore(
+                            voxel, targetBox, previousBox,
+                            intersectsEye, intersectsFeet, requireWallCollision)
+                            - wall.coverage() * 2.0D
                             - wallSupport * 2.0D
                             - wall.alignment() * 2.0D
-                            - feetIntersection * 1.25D
                             + predictionError * 3.0D
                             + placementDelay * 2.0D
                             + entityOcclusion * 0.75D
                             + rotationCost * 0.65D
                             + eyeDistance * 0.08D;
                     PlacementPlan candidate = new PlacementPlan(
-                            target.getId(), placePos, hit, predictionTick, score);
+                            target.getId(), placePos, hit, predictionTick, score, groundOnly);
                     if (best == null || candidate.score() < best.score()) {
                         best = candidate;
                     }
@@ -794,11 +788,7 @@ public final class AutoWeb {
             Player target,
             boolean upperBodyOnly
     ) {
-        Vec3 direction = knockbackDirection(client, target);
-        if (direction == null) {
-            return null;
-        }
-        Vec3 velocity = predictedKnockbackVelocity(client, target, direction);
+        Vec3 velocity = observedTargetVelocity(target);
         int horizon = clampInt(
                 PREDICTION_TICKS.get(),
                 MIN_WALL_PREDICTION_TICKS,
@@ -825,6 +815,7 @@ public final class AutoWeb {
             for (int z = minZ; z <= maxZ; z++) {
                 BlockPos placePos = new BlockPos(x, feetY, z);
                 if (!new AABB(placePos).intersects(box)
+                        || !isReplaceableForWeb(client, placePos)
                         || !isSafeForPlayer(client, placePos, 0)) {
                     continue;
                 }
@@ -844,7 +835,7 @@ public final class AutoWeb {
                         .distanceTo(hit.getLocation()) * 0.08D
                         - (wallDirection == null ? 0.0D : 3.0D);
                 PlacementPlan candidate = new PlacementPlan(
-                        target.getId(), placePos, hit, 0, score);
+                        target.getId(), placePos, hit, 0, score, !requireCornerWall);
                 if (best == null || candidate.score() < best.score()) {
                     best = candidate;
                 }
@@ -885,27 +876,32 @@ public final class AutoWeb {
     }
 
     private static TrajectoryStep advanceTrajectory(
+            Minecraft client,
+            Player target,
             Vec3 position,
             Vec3 velocity,
             boolean grounded
     ) {
-        if (grounded) {
-            return new TrajectoryStep(
-                    position.add(velocity.x, 0.0D, velocity.z),
-                    new Vec3(
-                            velocity.x * HORIZONTAL_DRAG,
-                            0.0D,
-                            velocity.z * HORIZONTAL_DRAG));
-        }
+        // Resolve each step against real block shapes. The small downward
+        // grounded step detects both floor support and walking off an edge.
+        Vec3 requested = grounded && velocity.y <= 0.0D
+                ? new Vec3(velocity.x, -GRAVITY, velocity.z) : velocity;
+        AABB box = target.getBoundingBox().move(position.subtract(target.position()));
+        Vec3 movement = Entity.collideBoundingBox(
+                target, requested, box, client.level, java.util.List.of());
+        boolean blockedX = Math.abs(movement.x - requested.x) > RAY_EPSILON;
+        boolean blockedY = Math.abs(movement.y - requested.y) > RAY_EPSILON;
+        boolean blockedZ = Math.abs(movement.z - requested.z) > RAY_EPSILON;
         Vec3 nextVelocity = new Vec3(
-                velocity.x * HORIZONTAL_DRAG,
-                (velocity.y - GRAVITY) * VERTICAL_DRAG,
-                velocity.z * HORIZONTAL_DRAG);
-        return new TrajectoryStep(position.add(nextVelocity), nextVelocity);
+                blockedX ? 0.0D : velocity.x * HORIZONTAL_DRAG,
+                blockedY ? 0.0D : (requested.y - GRAVITY) * VERTICAL_DRAG,
+                blockedZ ? 0.0D : velocity.z * HORIZONTAL_DRAG);
+        return new TrajectoryStep(
+                position.add(movement), nextVelocity, blockedY && requested.y < 0.0D);
     }
 
     private static Vec3 predictedEyePosition(Player target, Vec3 feetPosition) {
-        return feetPosition.add(0.0D, target.getEyeHeight(Pose.STANDING), 0.0D);
+        return feetPosition.add(0.0D, target.getEyeHeight(), 0.0D);
     }
 
     private static boolean intersectsPointPath(AABB voxel, Vec3 start, Vec3 end) {
@@ -930,6 +926,26 @@ public final class AutoWeb {
         return targetVolume <= 1.0E-8D ? 0.0D : x * y * z / targetVolume;
     }
 
+    private static double coverageScore(
+            AABB voxel, AABB targetBox, AABB previousBox,
+            boolean intersectsEye, boolean intersectsFeet, boolean wall) {
+        double footprint = horizontalIntersectionRatio(voxel, targetBox);
+        double eye = intersectsEye ? (wall ? footprint : 1.0D) : 0.0D;
+        double overlap = Math.max(
+                intersectionRatio(voxel, targetBox), intersectionRatio(voxel, previousBox));
+        return -eye * 4.0D - overlap * 3.0D
+                - (wall ? footprint * 6.0D : 0.0D) - (intersectsFeet ? 1.25D : 0.0D);
+    }
+
+    private static double horizontalIntersectionRatio(AABB voxel, AABB targetBox) {
+        double x = Math.max(0.0D,
+                Math.min(voxel.maxX, targetBox.maxX) - Math.max(voxel.minX, targetBox.minX));
+        double z = Math.max(0.0D,
+                Math.min(voxel.maxZ, targetBox.maxZ) - Math.max(voxel.minZ, targetBox.minZ));
+        double area = (targetBox.maxX - targetBox.minX) * (targetBox.maxZ - targetBox.minZ);
+        return area <= 1.0E-8D ? 0.0D : x * z / area;
+    }
+
     private static WallGeometry findWallGeometry(
             Minecraft client,
             BlockPos placePos,
@@ -937,52 +953,87 @@ public final class AutoWeb {
             Vec3 velocity
     ) {
         Vec3 expectedTravel = horizontalDirection(velocity);
-        if (expectedTravel.lengthSqr() < 1.0E-8D) {
-            expectedTravel = horizontalDirectionFromPlayer(
-                    client, targetBox.getCenter());
-        }
-        if (expectedTravel.lengthSqr() < 1.0E-8D) {
-            return WallGeometry.NONE;
-        }
 
         Direction bestDirection = null;
         double bestAlignment = 0.0D;
+        double bestCoverage = 0.0D;
         double bestGap = Double.POSITIVE_INFINITY;
         for (Direction direction : HORIZONTAL_DIRECTIONS) {
-            if (supportHit(client, placePos, direction) == null) {
-                continue;
-            }
             double alignment = expectedTravel.x * direction.getStepX()
                     + expectedTravel.z * direction.getStepZ();
-            if (alignment < MIN_WALL_ALIGNMENT) {
+            if (alignment < -RAY_EPSILON) {
                 continue;
             }
-            double gap = wallGap(
-                    client, targetBox, placePos.relative(direction), direction);
-            if (!Double.isFinite(gap)) {
-                continue;
-            }
-            if (alignment > bestAlignment
-                    || (Math.abs(alignment - bestAlignment) < 1.0E-6D
-                    && gap < bestGap)) {
-                bestDirection = direction;
-                bestAlignment = alignment;
-                bestGap = gap;
+            // A narrow wall may touch only one side of the body. Establish
+            // contact across the whole footprint, then let the web candidate
+            // use any reachable support face in its own (possibly wider) cell.
+            boolean xFace = direction.getAxis() == Direction.Axis.X;
+            int first = Mth.floor((xFace ? targetBox.minZ : targetBox.minX) + RAY_EPSILON);
+            int last = Mth.floor((xFace ? targetBox.maxZ : targetBox.maxX) - RAY_EPSILON);
+            for (int lateral = first; lateral <= last; lateral++) {
+                BlockPos wallPos = switch (direction) {
+                    case EAST -> new BlockPos(Mth.floor(targetBox.maxX + RAY_EPSILON),
+                            placePos.getY(), lateral);
+                    case WEST -> new BlockPos(Mth.floor(targetBox.minX - RAY_EPSILON),
+                            placePos.getY(), lateral);
+                    case SOUTH -> new BlockPos(lateral, placePos.getY(),
+                            Mth.floor(targetBox.maxZ + RAY_EPSILON));
+                    case NORTH -> new BlockPos(lateral, placePos.getY(),
+                            Mth.floor(targetBox.minZ - RAY_EPSILON));
+                    default -> throw new IllegalStateException("Expected horizontal wall");
+                };
+                double gap = wallGap(client, targetBox, wallPos, direction);
+                if (!Double.isFinite(gap) || gap > RAY_EPSILON) continue;
+                double coverage = wallContactCoverage(client, targetBox, wallPos, direction);
+                if (coverage > bestCoverage
+                        || (coverage > 0.0D && Math.abs(coverage - bestCoverage) < 1.0E-6D
+                        && alignment > bestAlignment)) {
+                    bestDirection = direction;
+                    bestAlignment = alignment;
+                    bestCoverage = coverage;
+                    bestGap = gap;
+                }
             }
         }
 
         if (bestDirection == null) {
             return WallGeometry.NONE;
         }
-        // Accept both an existing contact and a wall the sampled motion reaches
-        // during the next movement step.
-        double closingSpeed = Math.max(0.0D,
-                velocity.x * bestDirection.getStepX()
-                        + velocity.z * bestDirection.getStepZ());
-        boolean collisionOpportunity = bestGap
-                <= WALL_CONTACT_PADDING + closingSpeed;
+        // This sample has reached the wall after collision resolution, so its
+        // lateral overlap is the contact area, not a pre-impact guess.
         return new WallGeometry(
-                bestDirection, bestAlignment, bestGap, collisionOpportunity);
+                bestDirection, bestAlignment, bestGap, bestCoverage, true);
+    }
+
+    private static double wallContactCoverage(
+            Minecraft client, AABB targetBox, BlockPos wallPos, Direction direction) {
+        double best = 0.0D;
+        for (AABB local : client.level.getBlockState(wallPos)
+                .getCollisionShape(client.level, wallPos).toAabbs()) {
+            best = Math.max(best, wallFaceCoverage(targetBox, local.move(wallPos), direction));
+        }
+        return best;
+    }
+
+    private static double wallFaceCoverage(AABB targetBox, AABB shape, Direction direction) {
+        boolean xFace = direction.getAxis() == Direction.Axis.X;
+        double faceArea = (targetBox.maxY - targetBox.minY)
+                * (xFace ? targetBox.maxZ - targetBox.minZ : targetBox.maxX - targetBox.minX);
+        if (faceArea <= 1.0E-8D) return 0.0D;
+        double gap = switch (direction) {
+            case EAST -> shape.minX - targetBox.maxX;
+            case WEST -> targetBox.minX - shape.maxX;
+            case SOUTH -> shape.minZ - targetBox.maxZ;
+            case NORTH -> targetBox.minZ - shape.maxZ;
+            default -> Double.POSITIVE_INFINITY;
+        };
+        if (Math.abs(gap) > RAY_EPSILON) return 0.0D;
+        double vertical = Math.max(0.0D,
+                Math.min(targetBox.maxY, shape.maxY) - Math.max(targetBox.minY, shape.minY));
+        double lateral = xFace
+                ? Math.min(targetBox.maxZ, shape.maxZ) - Math.max(targetBox.minZ, shape.minZ)
+                : Math.min(targetBox.maxX, shape.maxX) - Math.max(targetBox.minX, shape.minX);
+        return vertical * Math.max(0.0D, lateral) / faceArea;
     }
 
     private static double wallGap(
@@ -1018,7 +1069,9 @@ public final class AutoWeb {
                 case NORTH -> targetBox.minZ - wallShape.maxZ;
                 default -> Double.POSITIVE_INFINITY;
             };
-            bestGap = Math.min(bestGap, Math.max(0.0D, gap));
+            if (gap >= -RAY_EPSILON) {
+                bestGap = Math.min(bestGap, Math.max(0.0D, gap));
+            }
         }
         return bestGap;
     }
@@ -1055,51 +1108,14 @@ public final class AutoWeb {
         return false;
     }
 
-    private static Vec3 predictedKnockbackVelocity(
-            Minecraft client,
-            Player target,
-            Vec3 direction
-    ) {
-        Vec3 current = observedTargetVelocity(target);
-        Vec3 away = direction;
-        double levels = Math.max(0.0D,
-                client.player.getAttributeValue(Attributes.ATTACK_KNOCKBACK))
-                + (client.player.isSprinting() ? 1.0D : 0.0D);
-        double expected = levels * 0.5D;
-        expected *= 1.0D - Mth.clamp(
-                target.getAttributeValue(Attributes.KNOCKBACK_RESISTANCE),
-                0.0D, 1.0D);
-        if (expected <= 1.0E-6D) return current;
-        return new Vec3(
-                current.x * KNOCKBACK_HORIZONTAL_RETENTION + away.x * expected,
-                current.y,
-                current.z * KNOCKBACK_HORIZONTAL_RETENTION + away.z * expected);
-    }
-
-    /** Remote-player delta movement often trails interpolation by one update. */
+    /** Follow measured displacement; stale delta movement can retain old knockback. */
     private static Vec3 observedTargetVelocity(Player target) {
-        Vec3 reported = target.getDeltaMovement();
         Vec3 observed = new Vec3(
                 target.getX() - target.xo,
                 target.getY() - target.yo,
                 target.getZ() - target.zo);
-        double horizontal = Math.hypot(observed.x, observed.z);
-        if (!Double.isFinite(horizontal) || horizontal > 1.5D) return reported;
-        if (horizontal < 1.0E-4D) return reported;
-        return new Vec3(
-                observed.x * 0.72D + reported.x * 0.28D,
-                reported.y,
-                observed.z * 0.72D + reported.z * 0.28D);
-    }
-
-    private static Vec3 knockbackDirection(Minecraft client, Player target) {
-        double dx = target.getX() - client.player.getX();
-        double dz = target.getZ() - client.player.getZ();
-        if (dx * dx + dz * dz < 1.0E-6D) {
-            return null;
-        }
-        double length = Math.sqrt(dx * dx + dz * dz);
-        return new Vec3(dx / length, 0.0D, dz / length);
+        return Double.isFinite(observed.lengthSqr()) && observed.lengthSqr() <= 2.25D
+                ? observed : Vec3.ZERO;
     }
 
     private static Vec3 horizontalDirectionFromPlayer(
@@ -1182,7 +1198,8 @@ public final class AutoWeb {
                         client.player));
                 if (actual.getType() != HitResult.Type.BLOCK
                         || !actual.getBlockPos().equals(supportPos)
-                        || actual.getDirection() != supportFace) {
+                        || actual.getDirection() != supportFace
+                        || !withinPlacementRange(client, actual.getLocation())) {
                     continue;
                 }
                 double centerOffset = Math.abs(first - 0.5D)
@@ -1244,11 +1261,29 @@ public final class AutoWeb {
             return null;
         }
 
+        if (plan.groundOnly()) {
+            Vec3 velocity = observedTargetVelocity(target);
+            // Rotation may have waited a tick or longer. Do not click an old
+            // feet cell after another knockback, jump or direction change.
+            if (!target.onGround()
+                    || Math.hypot(velocity.x, velocity.z) > MAX_GROUND_TARGET_SPEED) {
+                return null;
+            }
+            PlacementPlan current = findLandingGroundPlan(client, target);
+            if (current == null || !current.placePos().equals(plan.placePos())) {
+                return null;
+            }
+        } else {
+            PlacementPlan current = findWallPlan(client, target);
+            if (current == null || !current.placePos().equals(plan.placePos())) {
+                return null;
+            }
+        }
+
         if (!isSafeForPlayer(client, plan.placePos(), plan.predictionTick())) {
             return null;
         }
-        BlockState placeState = client.level.getBlockState(plan.placePos());
-        if (placeState.is(Blocks.COBWEB) || !placeState.canBeReplaced()) {
+        if (!isReplaceableForWeb(client, plan.placePos())) {
             return null;
         }
 
@@ -1275,6 +1310,11 @@ public final class AutoWeb {
         return new BlockHitResult(
                 actual.getLocation(), actual.getDirection(),
                 actual.getBlockPos(), actual.isInside());
+    }
+
+    private static boolean isReplaceableForWeb(Minecraft client, BlockPos placePos) {
+        BlockState state = client.level.getBlockState(placePos);
+        return !state.is(Blocks.COBWEB) && state.canBeReplaced();
     }
 
     private static boolean isSafeForPlayer(
@@ -1560,17 +1600,18 @@ public final class AutoWeb {
         WAITING_FOR_RETURN
     }
 
-    private record TrajectoryStep(Vec3 position, Vec3 velocity) {
+    private record TrajectoryStep(Vec3 position, Vec3 velocity, boolean grounded) {
     }
 
     private record WallGeometry(
             Direction direction,
             double alignment,
             double gap,
+            double coverage,
             boolean collisionOpportunity
     ) {
         private static final WallGeometry NONE = new WallGeometry(
-                null, 0.0D, Double.POSITIVE_INFINITY, false);
+                null, 0.0D, Double.POSITIVE_INFINITY, 0.0D, false);
     }
 
     private record PlacementPlan(
@@ -1578,7 +1619,8 @@ public final class AutoWeb {
             BlockPos placePos,
             BlockHitResult hit,
             int predictionTick,
-            double score
+            double score,
+            boolean groundOnly
     ) {
     }
 

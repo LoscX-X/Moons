@@ -1,6 +1,7 @@
 package com.blanoir.moons.client.module.impl.combat.silentaura;
 
 import com.blanoir.moons.client.utils.rotation.aim.AimJitter;
+import com.blanoir.moons.client.utils.rotation.aim.AimMotionNoise;
 import com.blanoir.moons.client.utils.rotation.aim.HumanAimSimulator;
 import com.blanoir.moons.client.utils.rotation.aim.RotationUtils;
 import com.blanoir.moons.client.module.impl.combat.silentaura.aim.BalanceSilentAimType;
@@ -8,7 +9,6 @@ import com.blanoir.moons.client.module.impl.combat.silentaura.aim.LockSilentAimT
 import com.blanoir.moons.client.module.impl.combat.silentaura.aim.SilentAimType;
 import com.blanoir.moons.client.utils.math.RandomMath;
 import com.blanoir.moons.client.utils.math.MathUtils;
-import com.blanoir.moons.client.utils.math.SmoothNoise;
 import com.blanoir.moons.client.utils.raytrace.RaytraceUtils;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 import net.minecraft.client.Minecraft;
@@ -21,8 +21,8 @@ import net.minecraft.world.phys.Vec3;
 public final class SilentAuraRotationController {
     /** Ignore sub-GCD drift instead of emitting a servo correction every frame. */
     private static final float ANGLE_DEADZONE = 0.075F;
-    /** The humanizing orbit offset is only re-adopted once it drifts past this world-space gap; hands burst, they do not creep. */
-    private static final double ORBIT_OFFSET_DEADZONE = 0.03D;
+    /** Ignore insignificant changes to the target-local noise offset. */
+    private static final double ORBIT_OFFSET_DEADZONE = 0.002D;
     /** Enter slightly before the local horizontal centre reaches the box, then leave through a wider boundary to prevent edge chatter. */
     private static final double CROSSING_ENTER_MARGIN = 0.025D;
     private static final double CROSSING_EXIT_MARGIN = 0.22D;
@@ -47,8 +47,12 @@ public final class SilentAuraRotationController {
     private float pathJitterBlend;
     private long motionSeed;
     private double stickyAimY = Double.NaN;
-    private Vec3 smoothedRelativeVelocity;
     private Vec3 heldOrbitOffset;
+    private Vec3 orbitOffset = Vec3.ZERO;
+    private final SilentAuraPrediction prediction = new SilentAuraPrediction();
+    private double noiseTime;
+    private double noiseStrength;
+    private double noiseSpeed = 1.0D;
     private double nextAimSampleSeconds;
     private double flickYawAccelScale = 1.0D;
     private double flickPitchAccelScale = 1.0D;
@@ -84,6 +88,7 @@ public final class SilentAuraRotationController {
             returnToCamera(client, deltaSeconds);
             return;
         }
+        if (!Double.isFinite(deltaSeconds) || deltaSeconds <= 0.0D) return;
         if (!active) {
             yaw = client.player.getYRot();
             pitch = client.player.getXRot();
@@ -95,7 +100,12 @@ public final class SilentAuraRotationController {
             crossingRecoveryUntilTick = Integer.MIN_VALUE;
             yawVelocity = pitchVelocity = 0.0F;
             pathJitterBlend = 0.0F;
-            smoothedRelativeVelocity = null;
+            prediction.reset();
+            heldOrbitOffset = null;
+            orbitOffset = Vec3.ZERO;
+            nextAimSampleSeconds = 0.0D;
+            flickArmed = false;
+            flickYawAccelScale = flickPitchAccelScale = 1.0D;
             aimType.reset();
             motionSeed = System.nanoTime()
                     ^ Integer.toUnsignedLong(target.getId()) * 0xD1B54A32D192ED03L
@@ -105,13 +115,19 @@ public final class SilentAuraRotationController {
         active = true;
         returning = false;
         targetId = target.getId();
+        prediction.observe(client.player.tickCount, target.position(), target.getDeltaMovement());
+        double frameDelta = Math.max(0.0D, Math.min(0.05D, deltaSeconds));
+        double parameterBlend = 1.0D - Math.exp(-frameDelta * 12.0D);
+        noiseStrength += (SilentAuraConfig.jitter() - noiseStrength) * parameterBlend;
+        noiseSpeed += (SilentAuraConfig.jitterSpeed() - noiseSpeed) * parameterBlend;
+        noiseTime += frameDelta * noiseSpeed;
 
         if (fullLockMode) {
             trackFullLock(client, target, point, deltaSeconds);
             return;
         }
 
-        double time = System.nanoTime() * 1.0E-9D;
+        double time = noiseTime;
         Vec3 eye = client.player.getEyePosition();
         AABB targetBox = target.getBoundingBox();
         double bodyFloorFraction = bodyFloorFraction(point, targetBox);
@@ -148,9 +164,9 @@ public final class SilentAuraRotationController {
             // yaw and pitch at their entry values; repeated look packets with
             // that exact pair are what ACA EqualRotation checks directly.
             Vec3 centre = targetBox.getCenter();
-            double lookahead = crossingLookaheadTicks(client, target, eye, targetBox);
+            double lookahead = crossingLookaheadTicks(client, prediction.velocity(), eye, targetBox);
             Vec3 localVelocity = client.player.getDeltaMovement();
-            Vec3 targetVelocity = target.getDeltaMovement();
+            Vec3 targetVelocity = prediction.velocity();
             Vec3 yawEye = lookahead <= 0.0D ? eye
                     : eye.add(localVelocity.x * lookahead, 0.0D,
                     localVelocity.z * lookahead);
@@ -163,7 +179,7 @@ public final class SilentAuraRotationController {
                 crossingBodyYaw = RotationUtils.rotationTo(
                         yawEye, new Vec3(yawCentre.x, yawEye.y, yawCentre.z)).yaw();
             }
-            double crossingDelta = Mth.clamp(deltaSeconds, 1.0D / 1000.0D, 1.0D / 20.0D);
+            double crossingDelta = Mth.clamp(deltaSeconds, 0.0D, 1.0D / 20.0D);
             // Keep the 20 TPS target step below Matrix's consecutive >20
             // degree snap threshold. The packet smoother applies an 18-degree
             // backstop in case render sampling carries momentum into the box.
@@ -175,20 +191,11 @@ public final class SilentAuraRotationController {
             float previousCrossingYaw = crossingHeadYaw;
             float previousCrossingPitch = crossingHeadPitch;
             crossingHeadYaw = approachWrapped(crossingHeadYaw, crossingBodyYaw, yawLimit);
-            // Keep vertical movement coupled to the same geometric turn. A
-            // fixed pitch reaches its target almost immediately and then a
-            // long horizontal crossing becomes a pure one-axis aim step.
-            float remainingTurn = Math.abs(MathUtils.wrappedAngleDifference(
-                    crossingHeadYaw, crossingBodyYaw));
-            float turnBlend = (float) Mth.clamp(remainingTurn / 120.0F, 0.0F, 1.0F);
             boolean eyeInsideTarget = targetBox.inflate(CROSSING_ENTER_MARGIN).contains(eye);
-            // A level crossing keeps the established coupled 2-5 degree drift.
-            // During a jump the eye can sit above the target even though both
-            // bodies still overlap. Prepare pitch from the same selected Y at
-            // the predicted horizontal exit, rather than pretending the eye is
-            // inside the box and carrying a level pitch to the far side.
+            // Inside the body, preserve valid pitch. Above it, use actual exit
+            // geometry; a fixed 2-5 degree yaw-coupled pitch had no geometric basis.
             float crossingPitchTarget = eyeInsideTarget
-                    ? 2.0F + turnBlend * 3.0F
+                    ? crossingHeadPitch
                     : RotationUtils.rotationTo(yawEye,
                     new Vec3(yawCentre.x, point.y, yawCentre.z)).pitch();
             double crossingPitchRate = matrixProfile
@@ -220,7 +227,8 @@ public final class SilentAuraRotationController {
         } else if (remaining < 2.0D) {
             flickArmed = false;
         }
-        accelNoise = aimType.sampleAccelerationNoise();
+        accelNoise = 1.0D + AimMotionNoise.sample(time * 3.7D, motionSeed)
+                * (aimType.lock() ? 0.04D : 0.10D) * noiseStrength;
         double angularSpeed = Math.hypot(yawVelocity, pitchVelocity);
         float pathDemand = (float) Math.max(
                 Mth.clamp((remaining - 0.35D) / 6.0D, 0.0D, 1.0D),
@@ -231,15 +239,15 @@ public final class SilentAuraRotationController {
         // Preserve a small settled orbit instead of freezing on one point.
         // Full jitter is reserved for the active turn path.
         double effectiveJitter = Mth.clamp(
-                SilentAuraConfig.jitter() * (0.28D + pathJitterBlend * 0.72D), 0.0D, 1.0D);
+                noiseStrength * (0.28D + pathJitterBlend * 0.72D), 0.0D, 1.0D);
         effectiveJitter *= aimType.jitterScale();
         // A lower-body point means the selector could not see the preferred
         // upper region. Keep that exact exposed opening instead of wandering
         // the point back behind the block.
         if (lowerBodyFallback) effectiveJitter = 0.0D;
         Vec3 jitteredPoint = AimJitter.insideHitbox(
-                eye, point, target.getBoundingBox(), time, target.getId(),
-                effectiveJitter, SilentAuraConfig.jitterSpeed());
+                eye, point, target.getBoundingBox(), time, motionSeed,
+                effectiveJitter, 1.0D);
         if (!aimType.lock()) {
             // Balance humanizes yaw/depth only. Pitch must represent actual
             // geometry, not a noise channel, otherwise a level target causes
@@ -253,11 +261,11 @@ public final class SilentAuraRotationController {
         double assist = accelerationAssist(client, target, movingPoint);
         double jitter = effectiveJitter;
         long seed = motionSeed;
-        double responseVariation = 1.0D + SmoothNoise.sample(time * 0.91D, seed) * 0.12D * jitter;
+        double responseVariation = 1.0D + AimMotionNoise.sample(time * 0.91D, seed) * 0.12D * jitter;
         double yawAccelerationVariation = 1.0D
-                + SmoothNoise.sample(time * 2.15D, seed ^ 0x9E3779B97F4A7C15L) * 0.28D * jitter;
+                + AimMotionNoise.sample(time * 2.15D, seed ^ 0x9E3779B97F4A7C15L) * 0.28D * jitter;
         double pitchAccelerationVariation = 1.0D
-                + SmoothNoise.sample(time * 1.87D, seed ^ 0x94D049BB133111EBL) * 0.25D * jitter;
+                + AimMotionNoise.sample(time * 1.87D, seed ^ 0x94D049BB133111EBL) * 0.25D * jitter;
         // Lock is the combat-first profile: substantially higher response and
         // acceleration, almost no settled orbit, and a live point every frame.
         // Balance keeps the softer humanized path.
@@ -272,9 +280,7 @@ public final class SilentAuraRotationController {
         // point: the orbit keeps the settled aim drifting up/down and left/right
         // inside the hitbox, and the softened response lets it overshoot and
         // correct like a hand instead of snapping on a straight spring path.
-        // The orbit target is resampled in short saccadic bursts (80-150 ms)
-        // instead of every frame: hands correct in discrete bursts and rest
-        // between them, a continuous per-frame chase reads as a servo.
+        // Only the small target-local offset is sampled; geometry stays live.
         double settle = Mth.clamp(1.0D - remaining / 2.2D, 0.0D, 1.0D);
         // The pursuit base (movingPoint) stays live every frame so sent rays
         // keep intersecting a strafing target; only the humanizing orbit
@@ -296,7 +302,9 @@ public final class SilentAuraRotationController {
             nextAimSampleSeconds = time + RandomMath.between(
                     aimType.aimSampleMinSeconds(), aimType.aimSampleMaxSeconds());
         }
-        Vec3 desiredPoint = movingPoint.add(heldOrbitOffset);
+        orbitOffset = lowerBodyFallback ? Vec3.ZERO : orbitOffset.lerp(
+                heldOrbitOffset, 1.0D - Math.exp(-frameDelta * 16.0D));
+        Vec3 desiredPoint = movingPoint.add(orbitOffset);
         AABB aimBox = target.getBoundingBox();
         double insetX = lowerBodyFallback ? 0.002D
                 : Math.min(aimBox.getXsize() * 0.12D, 0.08D);
@@ -371,27 +379,17 @@ public final class SilentAuraRotationController {
                                    Vec3 point, double deltaSeconds) {
         double leadTicks = SilentAuraConfig.fullLockPrediction();
         if (leadTicks <= 0.0D) return point;
-
-        Vec3 velocity = target.getDeltaMovement();
-        Vec3 horizontalVelocity = new Vec3(velocity.x, 0.0D, velocity.z);
-        double alpha = Mth.clamp(deltaSeconds * 20.0D, 0.0D, 1.0D);
-        smoothedRelativeVelocity = smoothedRelativeVelocity == null
-                ? horizontalVelocity
-                : smoothedRelativeVelocity.lerp(horizontalVelocity, alpha);
-        if (smoothedRelativeVelocity.horizontalDistanceSqr() < 4.0E-4D) {
-            return point;
-        }
+        Vec3 travel = prediction.displacement(leadTicks);
 
         AABB box = target.getBoundingBox();
-        // Preserve enough angular room for the one-degree FULL-Lock deadzone
-        // plus mouse-GCD quantization at the outer edge of attack reach.
+        // Preserve angular room for quantization at the outer edge of reach.
         double insetX = Math.min(box.getXsize() * 0.22D, 0.11D);
         double insetZ = Math.min(box.getZsize() * 0.22D, 0.11D);
         Vec3 predicted = new Vec3(
-                Mth.clamp(point.x + smoothedRelativeVelocity.x * leadTicks,
+                Mth.clamp(point.x + travel.x,
                         box.minX + insetX, box.maxX - insetX),
                 point.y,
-                Mth.clamp(point.z + smoothedRelativeVelocity.z * leadTicks,
+                Mth.clamp(point.z + travel.z,
                         box.minZ + insetZ, box.maxZ - insetZ));
         Vec3 eye = client.player.getEyePosition();
         return RaytraceUtils.canRayTraceTo(client, eye, predicted)
@@ -411,7 +409,6 @@ public final class SilentAuraRotationController {
             returning = true;
             pathJitterBlend = 0.0F;
             heldOrbitOffset = null;
-            smoothedRelativeVelocity = null;
             returnMotionSeed = System.nanoTime()
                     ^ Integer.toUnsignedLong(client.player.tickCount)
                     * 0x94D049BB133111EBL;
@@ -438,15 +435,15 @@ public final class SilentAuraRotationController {
         double remaining = MathUtils.angularDistance(yaw, pitch, exactReturn);
         double variationBlend = Mth.clamp(
                 (remaining - RETURN_DONE_ANGLE * 1.8D) / 18.0D, 0.0D, 1.0D);
-        double yawCurve = SmoothNoise.sample(
+        double yawCurve = AimMotionNoise.sample(
                 time * 1.73D, returnMotionSeed)
                 * Math.min(0.65D, remaining * 0.018D) * variationBlend;
-        double pitchCurve = SmoothNoise.sample(
+        double pitchCurve = AimMotionNoise.sample(
                 time * 1.31D, returnMotionSeed ^ 0x9E3779B97F4A7C15L)
                 * Math.min(0.22D, remaining * 0.007D) * variationBlend;
-        double responseFlow = 1.0D + SmoothNoise.sample(
+        double responseFlow = AimMotionNoise.sample(
                 time * 3.17D, returnMotionSeed ^ 0xBF58476D1CE4E5B9L)
-                * 0.13D * variationBlend;
+                * 0.13D * variationBlend + 1.0D;
         double smooth = SilentAuraConfig.returnSmooth();
         stepToward(new Rotation(
                         returnYaw + (float) yawCurve,
@@ -478,7 +475,8 @@ public final class SilentAuraRotationController {
     private void stepToward(Rotation desired, double rawDelta, double response,
                             double maxYawSpeed, double maxPitchSpeed,
                             double yawStepScale, double pitchStepScale) {
-        double delta = Mth.clamp(rawDelta, 1.0D / 1000.0D, 1.0D / 20.0D);
+        double delta = Mth.clamp(rawDelta, 0.0D, 1.0D / 20.0D);
+        if (delta <= 0.0D) return;
         float yawDifference = MathUtils.wrappedAngleDifference(yaw, desired.yaw());
         float pitchDifference = desired.pitch() - pitch;
         double responseFraction = 1.0D - Math.exp(-Math.max(0.01D, response)
@@ -491,8 +489,21 @@ public final class SilentAuraRotationController {
                 : (float) Mth.clamp(yawDifference * responseFraction, -yawCap, yawCap);
         float pitchStep = Math.abs(pitchDifference) <= ANGLE_DEADZONE ? 0.0F
                 : (float) Mth.clamp(pitchDifference * responseFraction, -pitchCap, pitchCap);
-        yawVelocity = yawStep / (float) delta;
-        pitchVelocity = pitchStep / (float) delta;
+        if (!aimType.lock() && !returning) {
+            // Balance trades acquisition speed for a finite acceleration ramp.
+            // Integrate velocity instead of instantly replacing it with error * gain.
+            float nextYawVelocity = approach(yawVelocity, yawStep / (float) delta,
+                    (float) (3_600.0D * yawStepScale * delta));
+            float nextPitchVelocity = approach(pitchVelocity, pitchStep / (float) delta,
+                    (float) (2_600.0D * pitchStepScale * delta));
+            yawStep = (yawVelocity + nextYawVelocity) * 0.5F * (float) delta;
+            pitchStep = (pitchVelocity + nextPitchVelocity) * 0.5F * (float) delta;
+            yawVelocity = nextYawVelocity;
+            pitchVelocity = nextPitchVelocity;
+        } else {
+            yawVelocity = yawStep / (float) delta;
+            pitchVelocity = pitchStep / (float) delta;
+        }
         // Keep yaw continuous like vanilla instead of wrapping it to ±180:
         // a wrapped yaw snaps ~360° when crossing the boundary after a run of
         // small steps, which Grim's AimModulo360 reads as a modulo artifact.
@@ -507,7 +518,7 @@ public final class SilentAuraRotationController {
         // The eye position already contains local-player movement. Subtracting
         // our velocity here counts circling twice and creates a turn-rate boost
         // perfectly synchronized with strafing around a stationary target.
-        Vec3 relative = target.getDeltaMovement();
+        Vec3 relative = prediction.velocity();
         double distance = Math.max(client.player.getEyePosition().distanceTo(point), 0.25D);
         double angularDemand = Math.toDegrees(relative.length() / distance);
         return Mth.clamp(angularDemand / 8.0D * SilentAuraConfig.prediction(), 0.0D, 1.0D);
@@ -522,31 +533,14 @@ public final class SilentAuraRotationController {
     private Vec3 leadAimPoint(Minecraft client, LivingEntity target, Vec3 point,
                               double deltaSeconds, SilentAimType aimType,
                               boolean lowerBodyFallback) {
-        double leadTicks = SilentAuraConfig.predictionLead();
+        double leadTicks = SilentAuraConfig.predictionLead() * SilentAuraConfig.prediction()
+                * (aimType.lock() ? 1.15D : 0.85D);
         // Prediction is useful on an open hitbox, but when only a leg-sized
         // opening is exposed it can move an otherwise visible point behind the
         // cover. The live selector already follows the moving entity.
         if (leadTicks <= 0.0D || lowerBodyFallback) return point;
-        Vec3 targetVelocity = target.getDeltaMovement();
-        // Predict only displacement of the target in world space. Local-player
-        // displacement is already represented by the live eye position used by
-        // rotationTo; subtracting it again drags the aim point around the box in
-        // lockstep with local strafing.
-        Vec3 relative = new Vec3(
-                targetVelocity.x,
-                Mth.clamp(targetVelocity.y * 0.28D, -0.055D, 0.085D),
-                targetVelocity.z);
-        double step = Mth.clamp(deltaSeconds, 1.0D / 1000.0D, 1.0D / 20.0D);
-        double alpha = Mth.clamp(step * aimType.predictionResponse(), 0.0D, 1.0D);
-        smoothedRelativeVelocity = smoothedRelativeVelocity == null
-                ? relative : smoothedRelativeVelocity.lerp(relative, alpha);
-        double speed = smoothedRelativeVelocity.length();
-        if (speed < aimType.predictionThreshold()) return point;
-        double distance = Math.max(client.player.getEyePosition().distanceTo(point), 0.25D);
-        double leadSeconds = Math.min(leadTicks / 20.0D * aimType.predictionLeadScale(),
-                aimType.predictionHorizonScale() * distance / Math.max(speed, 1.0E-4D));
-        Vec3 lead = point.add(smoothedRelativeVelocity.scale(leadSeconds));
-        AABB box = target.getBoundingBox().inflate(0.06D);
+        Vec3 lead = point.add(prediction.displacement(leadTicks));
+        AABB box = target.getBoundingBox();
         double upperBodyFloor = Mth.lerp(UPPER_BODY_FLOOR, box.minY, box.maxY);
         double upperBodyCeiling = Mth.lerp(UPPER_BODY_CEILING, box.minY, box.maxY);
         return MathUtils.closestPoint(lead, new AABB(
@@ -561,7 +555,8 @@ public final class SilentAuraRotationController {
      */
     private Vec3 settledOrbit(Vec3 eye, Vec3 basePoint, Vec3 movingPoint,
                               LivingEntity target, double time, double blend) {
-        double strength = Mth.clamp(SilentAuraConfig.settledJitter(), 0.0D, 1.0D) * blend;
+        double strength = Mth.clamp(SilentAuraConfig.settledJitter(), 0.0D, 1.0D)
+                * blend * noiseStrength;
         if (strength <= 0.0D) return movingPoint;
         double distance = Math.max(eye.distanceTo(basePoint), 0.3D);
         AABB box = target.getBoundingBox();
@@ -575,8 +570,8 @@ public final class SilentAuraRotationController {
         double rightZ = horizontalLength < 1.0E-6D ? 0.0D : viewX / horizontalLength;
         double forwardX = horizontalLength < 1.0E-6D ? 0.0D : viewX / horizontalLength;
         double forwardZ = horizontalLength < 1.0E-6D ? 1.0D : viewZ / horizontalLength;
-        double sway = SmoothNoise.sample(time * SilentAuraConfig.jitterSpeed() * 1.25D, seed);
-        double depth = SmoothNoise.sample(time * SilentAuraConfig.jitterSpeed() * 0.83D, seed ^ 0x9E3779B97F4A7C15L);
+        double sway = AimMotionNoise.sample(time * 1.25D, seed);
+        double depth = AimMotionNoise.sample(time * 0.83D, seed ^ 0x9E3779B97F4A7C15L);
         Vec3 orbit = movingPoint
                 .add(rightX * sway * lateral, 0.0D, rightZ * sway * lateral)
                 .add(forwardX * depth * lateral * 0.5D, 0.0D, forwardZ * depth * lateral * 0.5D);
@@ -605,7 +600,7 @@ public final class SilentAuraRotationController {
         if (lowerBodyFallback
                 || client.player.tickCount < crossingRecoveryUntilTick) return desired;
         Vec3 localVelocity = client.player.getDeltaMovement();
-        Vec3 targetVelocity = target.getDeltaMovement();
+        Vec3 targetVelocity = prediction.velocity();
         boolean verticalMotion = (!client.player.onGround()
                 && Math.abs(localVelocity.y) > 0.012D)
                 || (!target.onGround() && Math.abs(targetVelocity.y) > 0.012D);
@@ -684,9 +679,8 @@ public final class SilentAuraRotationController {
      * far landing leaves almost the complete 180-degree turn for later ticks.
      */
     private static double crossingLookaheadTicks(
-            Minecraft client, LivingEntity target, Vec3 eye, AABB box) {
+            Minecraft client, Vec3 targetVelocity, Vec3 eye, AABB box) {
         Vec3 localVelocity = client.player.getDeltaMovement();
-        Vec3 targetVelocity = target.getDeltaMovement();
         double relativeX = localVelocity.x - targetVelocity.x;
         double relativeZ = localVelocity.z - targetVelocity.z;
         if (relativeX * relativeX + relativeZ * relativeZ
@@ -758,7 +752,7 @@ public final class SilentAuraRotationController {
         }
         lastTargetMinY = box.minY;
 
-        double delta = Mth.clamp(rawDelta, 1.0D / 1000.0D, 1.0D / 20.0D);
+        double delta = Mth.clamp(rawDelta, 0.0D, 1.0D / 20.0D);
         boolean lowerBodyFallback = bodyFloorFraction < UPPER_BODY_FLOOR;
         if (lowerBodyFallback) {
             // Move promptly but continuously from the old chest anchor into
@@ -811,6 +805,12 @@ public final class SilentAuraRotationController {
     }
 
     public boolean active() { return active; }
+    public void beginFrom(float yaw, float pitch) {
+        clear();
+        this.yaw = yaw;
+        this.pitch = pitch;
+        active = true;
+    }
     public boolean returning() { return returning; }
     public int targetId() { return targetId; }
     public float yaw() { return yaw; }
@@ -826,8 +826,11 @@ public final class SilentAuraRotationController {
         pathJitterBlend = 0.0F;
         motionSeed = 0L;
         stickyAimY = Double.NaN;
-        smoothedRelativeVelocity = null;
         heldOrbitOffset = null;
+        orbitOffset = Vec3.ZERO;
+        prediction.reset();
+        noiseTime = noiseStrength = 0.0D;
+        noiseSpeed = 1.0D;
         nextAimSampleSeconds = 0.0D;
         flickYawAccelScale = flickPitchAccelScale = 1.0D;
         flickArmed = false;

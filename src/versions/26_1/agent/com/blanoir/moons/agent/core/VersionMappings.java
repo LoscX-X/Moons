@@ -5,7 +5,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 
 /** Exact logical-to-runtime targets for Minecraft 26.1.2. */
-final class VersionMappings {
+final class    VersionMappings {
     private VersionMappings() { }
 
     static String version() {

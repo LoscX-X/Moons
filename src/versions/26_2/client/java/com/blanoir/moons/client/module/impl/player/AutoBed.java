@@ -6,6 +6,7 @@ import com.blanoir.moons.client.config.settings.DoubleSetting;
 import com.blanoir.moons.client.config.settings.IntSetting;
 import com.blanoir.moons.client.config.settings.ModeSetting;
 import com.blanoir.moons.client.event.EventBus;
+import net.minecraft.network.protocol.game.ServerboundUseItemOnPacket;
 import com.blanoir.moons.client.utils.math.MathUtils;
 import com.blanoir.moons.client.management.input.CombatInputController;
 import com.blanoir.moons.client.management.rotation.SilentPacketRotation;
@@ -171,6 +172,9 @@ public final class AutoBed {
     private static final Set<BlockPos> rejectedBasePositions = new HashSet<>();
     private static final Set<BlockPos> rejectedTargetSupports = new HashSet<>();
     private static int pointRetries;
+    private static boolean invokingBedUse;
+    private static boolean usedBeforeMovement;
+    private static Runnable afterUseMovement;
 
     private AutoBed() {
     }
@@ -181,6 +185,12 @@ public final class AutoBed {
         }
         initialized = true;
         EventBus.PLAYER_UPDATE.register("AutoBed.playerUpdate", event -> tick(event.client()));
+        EventBus.PACKET_SEND_POST.register("AutoBed.useSent", event -> {
+            if (invokingBedUse && event.packet() instanceof ServerboundUseItemOnPacket) {
+                usedBeforeMovement = true;
+            }
+        });
+        EventBus.PLAYER_MOTION_POST.register("AutoBed.afterMovement", event -> finishUseMovement());
     }
 
     private static void tick(Minecraft client) {
@@ -318,6 +328,7 @@ public final class AutoBed {
     }
 
     private static void beginBaseRotation(Minecraft client) {
+        if (deferAfterUse(() -> beginBaseRotation(client))) return;
         if (!validBasePlan(client)) {
             if (retryBasePlan(client)) {
                 return;
@@ -445,6 +456,7 @@ public final class AutoBed {
     }
 
     private static void beginTargetSupportRotation(Minecraft client) {
+        if (deferAfterUse(() -> beginTargetSupportRotation(client))) return;
         if (!validTargetSupportPlan(client)) {
             if (retryTargetSupport(client)) {
                 return;
@@ -521,6 +533,7 @@ public final class AutoBed {
     }
 
     private static void beginBedRotation(Minecraft client) {
+        if (deferAfterUse(() -> beginBedRotation(client))) return;
         // The sent yaw still belongs to the previous shield/support action at
         // this point. Validate the required bed facing only after this new
         // rotation has actually sent a packet.
@@ -588,6 +601,10 @@ public final class AutoBed {
         BlockHitResult interactHit = findBedHitOnSentRay(client, foot, head);
         if (interactHit == null) {
             interactHit = findVisibleBedHit(client, foot, head);
+            if (interactHit != null) {
+                beginBedClickRotation(client, interactHit);
+                return;
+            }
         }
         if (interactHit == null) {
             fail(client, "the placement view cannot reach the placed bed");
@@ -613,6 +630,7 @@ public final class AutoBed {
         if (phase == Phase.TURNING_BACK || phase == Phase.WAITING_FOR_RETURN_ROTATION) {
             return;
         }
+        if (deferAfterUse(() -> beginReturn(client))) return;
         transition(Phase.TURNING_BACK);
         SilentPacketRotation.beginReturnToCamera(
                 client,
@@ -1775,6 +1793,7 @@ public final class AutoBed {
         float cameraPitch = client.player.getXRot();
         client.player.setYRot(SilentPacketRotation.getInteractionYaw(client));
         client.player.setXRot(SilentPacketRotation.getInteractionPitch(client));
+        invokingBedUse = true;
         try {
             InteractionResult result = client.gameMode.useItemOn(client.player, hand, hit);
             if (result.consumesAction()) {
@@ -1782,9 +1801,32 @@ public final class AutoBed {
             }
             return result;
         } finally {
+            invokingBedUse = false;
             client.player.setYRot(cameraYaw);
             client.player.setXRot(cameraPitch);
         }
+    }
+
+    private static void beginBedClickRotation(Minecraft client, BlockHitResult hit) {
+        if (deferAfterUse(() -> beginBedClickRotation(client, hit))) return;
+        transition(Phase.TURNING_TO_BED_CLICK);
+        SilentPacketRotation.beginRotation(client, hit.getLocation(), effectiveSmoothTicks(),
+                () -> transitionIf(Phase.TURNING_TO_BED_CLICK, Phase.WAITING_FOR_BED_CLICK));
+    }
+
+    private static boolean deferAfterUse(Runnable action) {
+        if (!usedBeforeMovement) return false;
+        afterUseMovement = action;
+        return true;
+    }
+
+    private static void finishUseMovement() {
+        // Keep USE -> normal sendPosition -> next turn in the same tick.
+        // This is a phase boundary, not a server acknowledgment or angle lock.
+        usedBeforeMovement = false;
+        Runnable action = afterUseMovement;
+        afterUseMovement = null;
+        if (action != null) action.run();
     }
 
     private static boolean withinReach(Minecraft client, Vec3 point) {
@@ -1866,6 +1908,7 @@ public final class AutoBed {
         return current == Phase.TURNING_TO_BASE
                 || current == Phase.TURNING_TO_TARGET_SUPPORT
                 || current == Phase.TURNING_TO_BED
+                || current == Phase.TURNING_TO_BED_CLICK
                 || current == Phase.TURNING_BACK;
     }
 
@@ -1881,6 +1924,8 @@ public final class AutoBed {
     }
 
     private static void cleanup(Minecraft client, boolean disable, String message) {
+        invokingBedUse = usedBeforeMovement = false;
+        afterUseMovement = null;
         boolean ownedRotation = isBusy();
         if (ownedRotation && client != null && client.player != null
                 && originalSlot >= 0 && originalSlot <= 8) {
@@ -2096,6 +2141,7 @@ public final class AutoBed {
         WAITING_FOR_TARGET_SUPPORT_ROTATION("Target block"),
         WAITING_FOR_TARGET_SUPPORT_CONFIRM("Target block sync"),
         TURNING_TO_BED("Bed aim"),
+        TURNING_TO_BED_CLICK("Bed click aim"),
         WAITING_FOR_BED_ROTATION("Bed"),
         WAITING_FOR_BED_CLICK("Click wait"),
         TURNING_BACK("Return"),

@@ -65,7 +65,17 @@ public final class ModuleKeybinds {
         }
         initialized = true;
         removeObsoleteGeneratedDefaults();
+        migrateXrayScanBinding();
         restoreLegacyDisplacedHostMappings();
+    }
+
+    private static void migrateXrayScanBinding() {
+        String previous = Settings.getString(PREFIX + "xrayscan", "");
+        if (previous.isBlank()) return;
+        if (Settings.getString(PREFIX + "xray", "").isBlank()) {
+            Settings.setString(PREFIX + "xray", previous);
+        }
+        Settings.remove(PREFIX + "xrayscan");
     }
 
     /**

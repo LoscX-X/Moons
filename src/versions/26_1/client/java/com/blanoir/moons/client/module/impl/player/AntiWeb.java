@@ -374,7 +374,7 @@ public final class AntiWeb {
                 beginReturnRotation(client);
                 return;
             }
-            if (SilentPacketRotation.queueUse(client, activePlacementHit)) {
+            if (SilentPacketRotation.invokeUseInPlayerUpdate(client, activePlacementHit)) {
                 waterCyclePhase = WaterCyclePhase.CLICKING_TO_PLACE;
             }
             return;
@@ -442,7 +442,7 @@ public final class AntiWeb {
                 rotateToWaterSource(client);
                 return;
             }
-            if (SilentPacketRotation.queueUse(client, waterSourceHit(activeWaterPos))) {
+            if (SilentPacketRotation.invokeUseInPlayerUpdate(client, waterSourceHit(activeWaterPos))) {
                 collectAttempts++;
                 waterCyclePhase = WaterCyclePhase.CLICKING_TO_COLLECT;
             }
@@ -507,7 +507,7 @@ public final class AntiWeb {
         // Instant pickup rotation and vanilla empty-bucket use share this same
         // PLAYER_UPDATE. The following sendPosition confirms the exact pair.
         if (waterCyclePhase == WaterCyclePhase.WAITING_FOR_COLLECT_ROTATION
-                && SilentPacketRotation.queueUse(client, pickupHit)) {
+                && SilentPacketRotation.invokeUseInPlayerUpdate(client, pickupHit, false)) {
             collectAttempts++;
             waterCyclePhase = WaterCyclePhase.CLICKING_TO_COLLECT;
         }

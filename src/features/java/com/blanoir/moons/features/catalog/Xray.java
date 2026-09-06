@@ -23,16 +23,14 @@ final class Xray {
                                 (client, rgb) -> OreHighlighter.setColor(rgb[0], rgb[1], rgb[2])));
     }
 
-    static ModuleRegistry.Module scan() {
-        return module("xrayscan", "XrayScan", ModuleCategories.RENDER, OreScanner::isAutoScanEnabled,
-                        (client, value) -> { OreScanner.setAutoScanEnabled(client, value); return 1; }, () -> "",
-                        customBool("cover", "XrayCover", XrayCoverMode::isEnabled,
-                                (client, value) -> { XrayCoverMode.setEnabled(client, value); return 1; }));
-    }
-
     static ModuleRegistry.Module xray() {
-        return module("xray", "Xray", ModuleCategories.RENDER, XrayDestroyPacketMode::isEnabled,
-                        (client, value) -> { XrayDestroyPacketMode.setEnabled(client, value); return 1; }, XrayDestroyPacketMode::statusText,
+        return module("xray", "Xray", ModuleCategories.RENDER, OreScanner::isAutoScanEnabled,
+                        (client, value) -> { OreScanner.setAutoScanEnabled(client, value); return 1; },
+                        () -> XrayDestroyPacketMode.isEnabled() ? "packet" : "scan",
+                        customBool("packet", "Packet scan", XrayDestroyPacketMode::isPacketScanEnabled,
+                                (client, value) -> { XrayDestroyPacketMode.setEnabled(client, value); return 1; }),
+                        customBool("cover", "XrayCover", XrayCoverMode::isEnabled,
+                                (client, value) -> { XrayCoverMode.setEnabled(client, value); return 1; }),
                         customBool("static_scan", "Static scan", XrayDestroyPacketMode::isStaticScanEnabled,
                                 XrayDestroyPacketMode::setStaticScanEnabled),
                         integer("interval", "Static scan interval (ticks)", "xray.destroyPacket.intervalTicks",

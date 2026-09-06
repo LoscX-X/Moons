@@ -72,7 +72,15 @@ public final class XrayDestroyPacketMode {
     }
 
     public static boolean isEnabled() {
+        return OreScanner.isAutoScanEnabled() && ENABLED.get();
+    }
+
+    public static boolean isPacketScanEnabled() {
         return ENABLED.get();
+    }
+
+    public static void resetScan() {
+        resetAllState();
     }
 
     public static void setEnabled(Minecraft client, boolean newEnabled) {
@@ -89,7 +97,7 @@ public final class XrayDestroyPacketMode {
     }
 
     public static String statusText() {
-        if (!ENABLED.get()) {
+        if (!isEnabled()) {
             return "disabled";
         }
         return "enabled, mode="
@@ -125,7 +133,7 @@ public final class XrayDestroyPacketMode {
     }
 
     private static void tick(TickEvent event) {
-        if (!ENABLED.get()) {
+        if (!isEnabled()) {
             return;
         }
 
@@ -209,8 +217,8 @@ public final class XrayDestroyPacketMode {
 
     private static void tickStaticScan(Minecraft client) {
         BlockPos playerBlock = client.player.blockPosition().immutable();
-        if (!playerBlock.equals(staticOrigin) || STATIC_TARGETS.isEmpty()) {
-            rebuildStaticTargets(client, playerBlock);
+        if (!playerBlock.equals(staticOrigin)) {
+            STATIC_TARGETS.clear();
             staticOrigin = playerBlock;
             staticIntervalCounter = 0;
         }
@@ -219,6 +227,8 @@ public final class XrayDestroyPacketMode {
             return;
         }
         staticIntervalCounter = 0;
+        // An empty ray must obey the interval too; do not rebuild every tick.
+        if (STATIC_TARGETS.isEmpty()) rebuildStaticTargets(client, playerBlock);
 
         ProbeTarget target = STATIC_TARGETS.pollFirst();
         if (target != null) {
@@ -242,13 +252,12 @@ public final class XrayDestroyPacketMode {
                         continue;
                     }
 
-                    for (Direction direction : Direction.values()) {
-                        BlockHitResult hit = raycastTarget(client, pos, direction);
-                        if (hit != null) {
-                            STATIC_TARGETS.addLast(new ProbeTarget(
-                                    hit.getBlockPos().immutable(), hit.getDirection()));
-                            break;
-                        }
+                    // The ray already determines the hit face. Repeating the
+                    // identical shape clip for all six faces adds no candidates.
+                    BlockHitResult hit = raycastTarget(client, pos, null);
+                    if (hit != null) {
+                        STATIC_TARGETS.addLast(new ProbeTarget(
+                                hit.getBlockPos().immutable(), hit.getDirection()));
                     }
                 }
             }
@@ -302,13 +311,16 @@ public final class XrayDestroyPacketMode {
         BlockHitResult hit = client.level.clipWithInteractionOverride(
                 eye, end, pos, state.getShape(client.level, pos), state);
 
-        if (hit.getType() != HitResult.Type.BLOCK
-                || !hit.getBlockPos().equals(pos)
-                || requiredDirection != null && hit.getDirection() != requiredDirection
-                || hit.getLocation().distanceToSqr(eye) > reach * reach + DISTANCE_EPSILON) {
-            return null;
-        }
-        return hit;
+        return isValidProbeHit(hit, pos, requiredDirection, eye, reach) ? hit : null;
+    }
+
+    static boolean isValidProbeHit(BlockHitResult hit, BlockPos pos,
+                                   Direction requiredDirection, Vec3 eye, double reach) {
+        // clipWithInteractionOverride returns null for blocks outside the ray.
+        return hit != null && hit.getType() == HitResult.Type.BLOCK
+                && hit.getBlockPos().equals(pos)
+                && (requiredDirection == null || hit.getDirection() == requiredDirection)
+                && hit.getLocation().distanceToSqr(eye) <= reach * reach + DISTANCE_EPSILON;
     }
 
     private static boolean isProbeableBlock(Minecraft client, BlockPos pos) {

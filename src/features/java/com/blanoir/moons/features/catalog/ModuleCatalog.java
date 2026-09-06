@@ -46,7 +46,6 @@ public final class ModuleCatalog {
         ModuleRegistry.add(Render.clip());
         ModuleRegistry.add(Render.uhcFinder());
         ModuleRegistry.add(Xray.display());
-        ModuleRegistry.add(Xray.scan());
         ModuleRegistry.add(Xray.xray());
         ModuleRegistry.add(Xray.targets());
         ModuleRegistry.add(World.autoTool());

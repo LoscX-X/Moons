@@ -82,15 +82,11 @@ public final class SilentPacketRotation {
         initialized = true;
         EventBus.FRAME.register("SilentPacketRotation.update",
                 event -> update(event.client()));
-        // Registered after PacketEventRouter: cancelled/queued FakeLag
-        // packets stop propagation and are not mistaken for sent movement.
-        EventBus.PACKET_SEND_PRE.register(
-                "SilentPacketRotation.onPacketSend", SilentPacketRotation::onPacketSend);
         EventBus.PACKET_SEND_POST.register(
                 "SilentPacketRotation.onPacketSent", SilentPacketRotation::onPacketSent);
     }
 
-    private static void onPacketSend(PacketSendEvent.Pre event) {
+    private static void recordSentPacket(PacketSendEvent.Post event) {
         if (event.packet() instanceof ServerboundUseItemPacket useItemPacket
                 && USE_LOCK.markInteractionPacket(
                 useItemPacket.getYRot(), useItemPacket.getXRot())) {
@@ -101,8 +97,7 @@ public final class SilentPacketRotation {
                 simulatedUseYaw, simulatedUsePitch)) {
             return;
         }
-        if (!(event.packet() instanceof ServerboundMovePlayerPacket movement)
-                || event.isCancelled()) {
+        if (!(event.packet() instanceof ServerboundMovePlayerPacket movement)) {
             return;
         }
         Minecraft client = Minecraft.getInstance();
@@ -126,6 +121,7 @@ public final class SilentPacketRotation {
      * ROTATION -> USE_ITEM_ON.
      */
     private static void onPacketSent(PacketSendEvent.Post event) {
+        recordSentPacket(event);
         if (!(event.packet() instanceof ServerboundMovePlayerPacket)
                 || !simulatedUseQueued || simulatedUseRunning
                 || !rotationPacketSent
@@ -410,7 +406,17 @@ public final class SilentPacketRotation {
             Minecraft client,
             BlockHitResult hit
     ) {
-        if (!rotationPacketSent || !prepareUse(client, hit)) {
+        return invokeUseInPlayerUpdate(client, hit, true);
+    }
+
+    /**
+     * Instant turns may use their prepared pair before this tick's movement.
+     * Only pass false after an instant rotation has reached its target; the
+     * existing interaction transaction preserves that pair for sendPosition.
+     */
+    public static boolean invokeUseInPlayerUpdate(
+            Minecraft client, BlockHitResult hit, boolean requirePreviousRotation) {
+        if ((requirePreviousRotation && !rotationPacketSent) || !prepareUse(client, hit)) {
             return false;
         }
         GameAccess.invokeStartUseItem(client);
@@ -557,7 +563,7 @@ public final class SilentPacketRotation {
 
     /**
      * Random ±1..2 mouse-GCD steps. Applied to every scaffold-published
-     * rotation so two consecutive rotation deltas never repeat exactly
+     * rotation to vary consecutive rotation deltas (repetition is still possible)
      * (Grim DuplicateRotPlace) while every angle stays mouse-reachable.
      */
     public static float packetRotationJitter() {

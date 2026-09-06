@@ -2,6 +2,7 @@ package com.blanoir.moons.client.module.impl.render.xray;
 
 import com.blanoir.moons.client.config.ClientBranding;
 import com.blanoir.moons.client.config.MoonsConfig;
+import com.blanoir.moons.client.config.Settings;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.event.tick.TickEndEvent;
@@ -55,8 +56,9 @@ public final class OreScanner {
 
     private static final BooleanSetting AUTO_SCAN =
             new BooleanSetting.Builder()
-                    .name("xray.autoscan.enabled")
-                    .defaultValue(false)
+                    .name("xray.enabled")
+                    .defaultValue(Settings.getBoolean("xray.autoscan.enabled", false)
+                            || Settings.getBoolean("xray.destroyPacket.enabled", false))
                     .build();
 
     private static int tickCounter = 0;
@@ -66,43 +68,41 @@ public final class OreScanner {
     }
 
     public static void init() {
+        // Persist the merged master once; an old packet preference must not
+        // re-enable Xray on the next launch after the user turns it off.
+        AUTO_SCAN.set(AUTO_SCAN.get());
+        Settings.remove("xray.autoscan.enabled");
         ModuleKeybinds.registerAction("clearscan", () -> clearAll(Minecraft.getInstance()));
 
         EventBus.TICK_END.register("OreScanner.tickEnd", event -> {
             Minecraft client = event.client();
             if (AUTO_SCAN.get()) {
                 tickAutoScan(client);
-            } else if (XrayDestroyPacketMode.isEnabled()) {
-                tickPacketProbeUpdates(client);
             }
         });
     }
 
     private static void toggleAutoScan(Minecraft client) {
-        if (!isClientWorldReady(client)) {
-            return;
-        }
-
         AUTO_SCAN.set(!AUTO_SCAN.get());
+        XrayDestroyPacketMode.resetScan();
 
         if (AUTO_SCAN.get()) {
             resetScannerState();
             clearPendingUpdates();
             FOUND_TARGETS.set(0);
             enqueueNearbyChunks(client, true);
-            ClientChat.send(client, "Auto scan enabled. Queue=" + SCAN_QUEUE.size());
+            ClientChat.send(client, "Xray enabled. Queue=" + SCAN_QUEUE.size());
         } else {
             SCAN_QUEUE.clear();
             QUEUED_CHUNKS.clear();
             clearPendingUpdates();
-            ClientChat.send(client, "Auto scan disabled. Cached=" + OreCache.size());
+            ClientChat.send(client, "Xray disabled. Cached=" + OreCache.size());
         }
     }
 
     private static void tickAutoScan(Minecraft client) {
         if (!isClientWorldReady(client)) {
             resetScannerState();
-            AUTO_SCAN.set(false);
             return;
         }
 
@@ -135,14 +135,6 @@ public final class OreScanner {
         }
 
         processScanQueue(client, MoonsConfig.CHUNKS_PER_TICK);
-    }
-
-    private static void tickPacketProbeUpdates(Minecraft client) {
-        if (isClientWorldReady(client)) {
-            processBlockUpdates(client);
-        } else {
-            clearPendingUpdates();
-        }
     }
 
     public static void requestFullRescan(Minecraft client) {
@@ -338,7 +330,7 @@ public final class OreScanner {
      * Called by the block-update hook whenever a block changes on the client.
      */
     public static void queueBlockUpdate(BlockPos pos) {
-        if (pos == null || !AUTO_SCAN.get() && !XrayDestroyPacketMode.isEnabled()) {
+        if (pos == null || !AUTO_SCAN.get()) {
             return;
         }
 

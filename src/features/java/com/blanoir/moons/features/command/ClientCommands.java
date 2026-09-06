@@ -6,6 +6,7 @@ import com.blanoir.moons.client.command.PremiumCheckCommand;
 import com.blanoir.moons.client.command.NbtParserCommand;
 import com.blanoir.moons.client.module.impl.render.Nickname;
 import com.blanoir.moons.client.chat.ClientChat;
+import com.blanoir.moons.client.management.targeting.Targeting;
 import com.blanoir.moons.api.bridge.AgentBridge;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -30,6 +31,8 @@ public final class ClientCommands {
         String tail = root.length == 2 ? root[1].trim() : "";
         return switch (root[0].toLowerCase(Locale.ROOT)) {
             case "moons" -> handleMoons(tail);
+            case "team" -> handleTeam(tail);
+            case "bind" -> BindCommand.handle(tail);
             case "unload" -> unload();
             case "xray" -> XrayCommand.handle(tail);
             case "web" -> WebCommand.handle(tail);
@@ -46,6 +49,18 @@ public final class ClientCommands {
     private static boolean unload() {
         ClientChat.send(Minecraft.getInstance(), "正在卸载 Moons…");
         AgentBridge.requestUnload();
+        return true;
+    }
+
+    private static boolean handleTeam(String tail) {
+        Minecraft client = Minecraft.getInstance();
+        if (tail.equalsIgnoreCase("on") || tail.equalsIgnoreCase("off")) {
+            Targeting.setTeamCheckEnabled(client, tail.equalsIgnoreCase("on"));
+        } else if (!tail.isEmpty()) {
+            ClientChat.send(client, "用法：.team on|off");
+            return true;
+        }
+        ClientChat.send(client, "组队检测：" + (Targeting.isTeamCheckEnabled() ? "开启" : "关闭"));
         return true;
     }
 

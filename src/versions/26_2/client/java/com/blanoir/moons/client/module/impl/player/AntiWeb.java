@@ -354,7 +354,7 @@ public final class AntiWeb {
         }
 
         if (waterCyclePhase == WaterCyclePhase.WAITING_FOR_PLACE_ROTATION) {
-            if (SilentPacketRotation.queueUse(client, activePlacementHit)) {
+            if (SilentPacketRotation.invokeUseInPlayerUpdate(client, activePlacementHit)) {
                 waterCyclePhase = WaterCyclePhase.CLICKING_TO_PLACE;
             }
             return;
@@ -410,7 +410,7 @@ public final class AntiWeb {
                 deferWaterRecovery(client);
                 return;
             }
-            if (SilentPacketRotation.queueUse(client, waterSourceHit(activeWaterPos))) {
+            if (SilentPacketRotation.invokeUseInPlayerUpdate(client, waterSourceHit(activeWaterPos))) {
                 waterCyclePhase = WaterCyclePhase.CLICKING_TO_COLLECT;
             }
             return;
@@ -476,7 +476,7 @@ public final class AntiWeb {
                 () -> waterCyclePhase = WaterCyclePhase.WAITING_FOR_COLLECT_ROTATION);
         // Recompute and use the pickup yaw in this same PLAYER_UPDATE.
         if (waterCyclePhase == WaterCyclePhase.WAITING_FOR_COLLECT_ROTATION
-                && SilentPacketRotation.queueUse(client, pickupHit)) {
+                && SilentPacketRotation.invokeUseInPlayerUpdate(client, pickupHit, false)) {
             waterCyclePhase = WaterCyclePhase.CLICKING_TO_COLLECT;
         }
     }

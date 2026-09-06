@@ -38,6 +38,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.protocol.game.ServerboundSwingPacket;
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
+import net.minecraft.network.protocol.game.ServerboundUseItemOnPacket;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec2;
@@ -196,6 +197,8 @@ public final class ScaffoldEngine {
     private static float renderYaw;
     private static float renderPitch;
     private static float lastPacketYaw;
+    private static final PlacementRotationHistory PLACEMENT_ROTATIONS = new PlacementRotationHistory();
+    private static Object placementRotationConnection;
     private static float lastPacketPitch;
     private static boolean packetRotationValid;
     private static boolean silentInputAllowsSprint = true;
@@ -294,9 +297,18 @@ public final class ScaffoldEngine {
     }
 
     private static void onPacketSendPost(PacketSendEvent.Post event) {
-        if (!(event.packet() instanceof ServerboundMovePlayerPacket movement)) return;
         Minecraft client = Minecraft.getInstance();
         if (client.player == null) return;
+        if (placementRotationConnection != client.player.connection) {
+            placementRotationConnection = client.player.connection;
+            PLACEMENT_ROTATIONS.reset();
+        }
+        if (event.packet() instanceof ServerboundUseItemOnPacket) {
+            // A locally rejected prediction may still have sent this packet.
+            PLACEMENT_ROTATIONS.placementSent();
+            return;
+        }
+        if (!(event.packet() instanceof ServerboundMovePlayerPacket movement)) return;
 
         double fallbackX = serverPositionValid ? lastServerX : client.player.getX();
         double fallbackY = serverPositionValid ? lastServerY : client.player.getY();
@@ -308,6 +320,7 @@ public final class ScaffoldEngine {
         lastServerZ = movement.getZ(fallbackZ);
         lastPacketYaw = movement.getYRot(fallbackYaw);
         lastPacketPitch = movement.getXRot(fallbackPitch);
+        if (movement.hasRotation()) PLACEMENT_ROTATIONS.rotationSent(lastPacketYaw);
         serverPositionValid = true;
         packetRotationValid = true;
         lastMovementPacketTick = client.player.tickCount;
@@ -504,9 +517,33 @@ public final class ScaffoldEngine {
         if (scaffoldPath == ScaffoldPath.RESCUE) {
             attemptTellyPlacement(client, belowFeetRescueIntent(playerPosition), false);
         } else if (scaffoldPath == ScaffoldPath.TOWER) {
+            if (!holdTowerRotation(client)) return;
+            // Enter Tower with an emitted downward angle before the first use.
+            if (!packetRotationValid || Math.abs(lastPacketPitch - 90.0F) > 0.01F) {
+                tellyDebugReason = "waiting for downward rotation packet";
+                return;
+            }
             attemptTellyPlacement(client,
                     new PlacementIntent(desiredPlacementPos(client, playerPosition), false), true);
         }
+    }
+
+    /** Tower owns one downward angle across takeoff, landing and empty searches. */
+    private static boolean holdTowerRotation(Minecraft client) {
+        if (!towerRotationInitialized) {
+            float cameraYaw = client.player.getYRot();
+            towerRotationYaw = SilentPacketRotation.quantizePacketYaw(
+                    cameraYaw, cameraYaw + SilentPacketRotation.packetRotationJitter());
+            towerRotationInitialized = true;
+        }
+        Float variedYaw = PLACEMENT_ROTATIONS.variedYaw(
+                towerRotationYaw, SilentPacketRotation.packetRotationJitter(),
+                yaw -> SilentPacketRotation.quantizePacketYaw(lastPacketYaw, yaw), yaw -> true);
+        if (variedYaw != null) towerRotationYaw = variedYaw;
+        if (!ROTATION.acquire(new RotationRequest(
+                towerRotationYaw, 90.0F, 1, 0.35F, null))) return false;
+        publishTellyRotation(client, towerRotationYaw, 90.0F);
+        return true;
     }
 
     /**
@@ -576,6 +613,15 @@ public final class ScaffoldEngine {
             return;
         }
 
+        if (PLACEMENT_ROTATIONS.needsSettling()) {
+            // The latest already-sent look belongs to this placement. Changing
+            // only the upcoming look cannot repair that delta. Wait for a real
+            // look send on a tick without UseItemOn, then select/trace again.
+            publishSettlingRotation(client, verticalTower);
+            tellyDebugReason = "settling repeated rotation delta";
+            return;
+        }
+
         transitionTelly(TellyPhase.PLACE, "rotation ready");
         if (place(client, published.target(), published.hit().getLocation())) {
             if (!verticalTower) {
@@ -585,7 +631,8 @@ public final class ScaffoldEngine {
             tellyDebugReason = "placed";
         } else {
             tellyDebugReason = "interaction rejected; retry next tick";
-            if (!intaveTellyMode()) clearTellyAim();
+            // useItemOn can send before returning PASS/FAIL. Preserve this
+            // attempt's angle for the following vanilla movement packet.
         }
         if (shouldSuppressSprint(client)) client.player.setSprinting(false);
     }
@@ -620,11 +667,39 @@ public final class ScaffoldEngine {
                 }
             }
         }
+        final float checkedPitch = pubPitch;
+        final boolean requireHit = hit != null;
+        Float variedYaw = PLACEMENT_ROTATIONS.variedYaw(
+                pubYaw, SilentPacketRotation.packetRotationJitter(),
+                yaw -> SilentPacketRotation.quantizePacketYaw(lastPacketYaw, yaw),
+                yaw -> !requireHit || BlockPlacementUtils.traceFace(
+                        client, client.player.getEyePosition(), yaw, checkedPitch,
+                        client.player.blockInteractionRange(),
+                        step.target().support(), step.target().face()) != null);
+        if (variedYaw == null) {
+            // No reachable nearby alternative: publish a look without placing.
+            if (!publishSettlingRotation(client, scaffoldPath == ScaffoldPath.TOWER)) return null;
+            return new PlacementStep(step.target(), new Rotation(outgoingYaw, outgoingPitch), null);
+        }
+        if (variedYaw != pubYaw && requireHit) {
+            hit = BlockPlacementUtils.traceFace(client, client.player.getEyePosition(),
+                    variedYaw, pubPitch, client.player.blockInteractionRange(),
+                    step.target().support(), step.target().face());
+        }
+        pubYaw = variedYaw;
+        if (scaffoldPath == ScaffoldPath.TOWER) towerRotationYaw = pubYaw;
         publishTellyRotation(client, pubYaw, pubPitch);
         if (!ROTATION.acquire(new RotationRequest(
                 outgoingYaw, outgoingPitch, 1, 0.35F, null))) return null;
         return new PlacementStep(step.target(),
                 new Rotation(pubYaw, pubPitch), hit);
+    }
+
+    private static boolean publishSettlingRotation(Minecraft client, boolean verticalTower) {
+        float settledYaw = PLACEMENT_ROTATIONS.settlingYaw(
+                SilentPacketRotation.packetRotationJitter());
+        publishTellyRotation(client, settledYaw, verticalTower ? 90.0F : lastPacketPitch);
+        return ROTATION.acquire(new RotationRequest(outgoingYaw, outgoingPitch, 1, 0.35F, null));
     }
 
     private static void publishTellyRotation(
@@ -746,6 +821,9 @@ public final class ScaffoldEngine {
 
     private static void clearTellyAim() {
         renderTarget = null;
+        // Missing a placeable cell between jumps must not turn Tower back to
+        // the camera. Exiting Tower clears its initialization before cleanup.
+        if (scaffoldPath == ScaffoldPath.TOWER && towerRotationInitialized) return;
         ROTATION.release();
         canRotate = false;
         if (!intaveTellyMode()) rotationInitialized = false;
@@ -1331,12 +1409,6 @@ public final class ScaffoldEngine {
                 .thenComparingDouble(target -> Vec3.atCenterOf(target.placePos())
                         .distanceToSqr(desiredCenter))
                 .thenComparingInt(target -> target.face() == Direction.UP ? 0 : 1));
-        if (!towerRotationInitialized) {
-            float cameraYaw = client.player.getYRot();
-            towerRotationYaw = SilentPacketRotation.quantizePacketYaw(
-                    cameraYaw, cameraYaw + SilentPacketRotation.packetRotationJitter());
-            towerRotationInitialized = true;
-        }
         for (PlacementTarget target : targets) {
             BlockHitResult hit = BlockPlacementUtils.traceFace(
                     client, eye, towerRotationYaw, 90.0F,

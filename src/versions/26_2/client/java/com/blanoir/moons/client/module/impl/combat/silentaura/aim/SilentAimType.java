@@ -7,17 +7,12 @@ public interface SilentAimType {
     boolean lock();
     double sampleFlickYawScale();
     double sampleFlickPitchScale();
-    double sampleAccelerationNoise();
     double jitterScale();
     double response(double smooth);
     double maxYawSpeed();
     double maxPitchSpeed();
     double yawAssistScale();
     double pitchAssistScale();
-    double predictionResponse();
-    double predictionThreshold();
-    double predictionLeadScale();
-    double predictionHorizonScale();
     double pitchInertiaStrength();
     double pitchCorridorSafetyFraction();
     double pitchPredictionScale();

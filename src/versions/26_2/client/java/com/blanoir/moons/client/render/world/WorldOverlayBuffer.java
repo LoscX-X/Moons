@@ -31,12 +31,16 @@ public final class WorldOverlayBuffer {
             String label,
             Consumer<VertexConsumer> writer
     ) {
+        var mainTarget = MinecraftClientAccess.mainRenderTarget(client);
+        var colorView = mainTarget.getColorTextureView();
+        var format = pipeline.getVertexFormatBinding(0);
+        if (colorView == null || format == null) return;
         PrimitiveTopology topology = pipeline.getPrimitiveTopology();
         VertexSorting sorting = topology == PrimitiveTopology.QUADS
                 ? RenderSystem.getProjectionType().vertexSorting()
                 : null;
         StagedVertexBuffer.Draw draw = BUFFER.appendDraw(
-                pipeline.getVertexFormatBinding(0),
+                format,
                 topology,
                 sorting
         );
@@ -49,9 +53,9 @@ public final class WorldOverlayBuffer {
                     .writeTransform(RenderSystem.getModelViewMatrixCopy());
             try (RenderPass pass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(
                     () -> MoonsConfig.MOD_ID + " " + label,
-                    MinecraftClientAccess.mainRenderTarget(client).getColorTextureView(),
+                    colorView,
                     Optional.empty(),
-                    MinecraftClientAccess.mainRenderTarget(client).getDepthTextureView(),
+                    mainTarget.getDepthTextureView(),
                     OptionalDouble.empty()
             )) {
                 pass.setPipeline(pipeline);

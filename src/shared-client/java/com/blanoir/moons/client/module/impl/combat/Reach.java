@@ -300,16 +300,17 @@ public final class Reach {
      * lagged logical AABB used by Advanced's release test.
      */
     private static void updateDisplayedDistances(Minecraft client, Entity target) {
+        var currentPlayer = client == null ? null : client.player;
         AABB realBox = TARGET_LAG.realBox();
         AABB laggedBox = TARGET_LAG.laggedBox();
-        if (client == null || client.player == null || target == null
+        if (client == null || currentPlayer == null || target == null
                 || realBox == null || laggedBox == null) {
             return;
         }
         displayedRealDistance = Math.sqrt(EntityDistance.squaredToBox(
-                client.player.getEyePosition(), realBox));
+                currentPlayer.getEyePosition(), realBox));
         displayedCurrentDistance = Math.sqrt(EntityDistance.squaredToBox(
-                client.player.getEyePosition(), laggedBox));
+                currentPlayer.getEyePosition(), laggedBox));
         distanceDisplayTicks = 40;
     }
 
@@ -334,7 +335,7 @@ public final class Reach {
         }
         Minecraft client = Minecraft.getInstance();
         ClientGamePacketListener listener = client == null ? null : client.getConnection();
-        if (listener == null || client.level == null) {
+        if (client == null || listener == null || client.level == null) {
             return;
         }
         for (Packet<?> packet : packets) {

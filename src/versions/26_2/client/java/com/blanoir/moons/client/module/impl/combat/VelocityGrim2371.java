@@ -151,7 +151,7 @@ final class VelocityGrim2371 {
             return;
         }
         Minecraft client = Minecraft.getInstance();
-        LocalPlayer player = client.player;
+        LocalPlayer player = client == null ? null : client.player;
         float fallbackYaw = serverRotationValid ? serverYaw
                 : player == null ? 0.0F : player.getYRot();
         float fallbackPitch = serverRotationValid ? serverPitch
@@ -164,7 +164,7 @@ final class VelocityGrim2371 {
     private static synchronized void onReceivePre(PacketReceiveEvent.Pre event) {
         if (!running()) return;
         Minecraft client = Minecraft.getInstance();
-        LocalPlayer player = client.player;
+        LocalPlayer player = client == null ? null : client.player;
         if (player == null) return;
 
         Packet<?> packet = event.packet();
@@ -202,9 +202,11 @@ final class VelocityGrim2371 {
     private static synchronized void onPlayerUpdate(PlayerUpdateEvent event) {
         if (!running()) return;
         Minecraft client = event.client();
-        LocalPlayer player = client.player;
-        if (player == null || client.level == null || client.gameMode == null
-                || client.getConnection() == null) {
+        var currentGameMode = client == null ? null : client.gameMode;
+        var connectionSnapshot = client == null ? null : client.getConnection();
+        LocalPlayer player = client == null ? null : client.player;
+        if (client == null || player == null || client.level == null || currentGameMode == null
+                || connectionSnapshot == null) {
             return;
         }
 
@@ -217,18 +219,18 @@ final class VelocityGrim2371 {
             delay = false;
             flushIncoming(client);
 
-            InteractionResult result = client.gameMode.useItemOn(
+            InteractionResult result = currentGameMode.useItemOn(
                     player, InteractionHand.MAIN_HAND, click);
             if (result.consumesAction()) {
                 player.swing(InteractionHand.MAIN_HAND);
             }
 
             if (!serverRotationValid || Float.compare(serverPitch, 90.0F) != 0) {
-                client.getConnection().send(new ServerboundMovePlayerPacket.Rot(
+                connectionSnapshot.send(new ServerboundMovePlayerPacket.Rot(
                         player.getYRot(), 90.0F, player.onGround(),
                         player.horizontalCollision));
             } else {
-                client.getConnection().send(new ServerboundMovePlayerPacket.StatusOnly(
+                connectionSnapshot.send(new ServerboundMovePlayerPacket.StatusOnly(
                         player.onGround(), player.horizontalCollision));
             }
 

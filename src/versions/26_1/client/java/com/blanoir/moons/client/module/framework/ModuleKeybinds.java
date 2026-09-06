@@ -1,19 +1,14 @@
 package com.blanoir.moons.client.module.framework;
 
 import com.blanoir.moons.client.config.Settings;
-import com.blanoir.moons.client.access.GameAccess;
 import com.blanoir.moons.client.module.framework.ModuleRegistry.Module;
 import com.mojang.blaze3d.platform.InputConstants;
-import net.minecraft.client.KeyMapping;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.input.KeyEvent;
 import org.lwjgl.glfw.GLFW;
 
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * Central owner for Moons keyboard and mouse bindings.
@@ -25,25 +20,12 @@ import java.util.Set;
  * clients still poll every render frame.</p>
  */
 public final class ModuleKeybinds {
-    public static final int GUI_KEY = GLFW.GLFW_KEY_RIGHT_SHIFT;
 
     private static final String DEFAULT_GUI_KEY_NAME = "key.keyboard.right.shift";
     private static final String PREFIX = "keybind.";
     private static final String ACTION_PREFIX = "keybind.action.";
     private static final String GUI_KEY_CONFIG = "keybind.gui";
-    private static final String DEFAULT_BINDING_MIGRATION =
-            "keybind.migration.allModuleDefaultsRemoved";
-    private static final String HOST_BINDING_RESTORE_MIGRATION =
-            "keybind.migration.displacedHostMappingsRestored";
-    private static final Set<String> LEGACY_CLAIMED_KEYS = Set.of(
-            "key.keyboard.right.shift", "key.keyboard.g", "key.keyboard.j",
-            "key.keyboard.k", "key.keyboard.l", "key.keyboard.p",
-            "key.keyboard.m", "key.keyboard.n", "key.keyboard.b",
-            "key.keyboard.c", "key.keyboard.o", "key.keyboard.r",
-            "key.keyboard.u", "key.keyboard.v", "key.keyboard.x",
-            "key.keyboard.z", "key.keyboard.i", "key.keyboard.h");
     private static final Map<String, Runnable> ACTIONS = new LinkedHashMap<>();
-    private static boolean initialized;
 
     private ModuleKeybinds() {
     }
@@ -57,92 +39,6 @@ public final class ModuleKeybinds {
         public boolean consumed() {
             return this != NONE;
         }
-    }
-
-    public static void init() {
-        if (initialized) {
-            return;
-        }
-        initialized = true;
-        removeObsoleteGeneratedDefaults();
-        migrateXrayScanBinding();
-        restoreLegacyDisplacedHostMappings();
-    }
-
-    private static void migrateXrayScanBinding() {
-        String previous = Settings.getString(PREFIX + "xrayscan", "");
-        if (previous.isBlank()) return;
-        if (Settings.getString(PREFIX + "xray", "").isBlank()) {
-            Settings.setString(PREFIX + "xray", previous);
-        }
-        Settings.remove(PREFIX + "xrayscan");
-    }
-
-    /**
-     * Old builds silently assigned a large set of letter keys. Remove only
-     * those exact generated values once; user-selected bindings are preserved.
-     */
-    private static void removeObsoleteGeneratedDefaults() {
-        if (Settings.getBoolean(DEFAULT_BINDING_MIGRATION, false)) {
-            return;
-        }
-        Map.ofEntries(
-                Map.entry("xrayscan", "key.keyboard.g"),
-                Map.entry("xraydisplay", "key.keyboard.j"),
-                Map.entry("triggerbot", "key.keyboard.k"),
-                Map.entry("aimassist", "key.keyboard.l"),
-                Map.entry("critical", "key.keyboard.p"),
-                Map.entry("nametags", "key.keyboard.m"),
-                Map.entry("jumpreset", "key.keyboard.n"),
-                Map.entry("clip", "key.keyboard.b"),
-                Map.entry("caver", "key.keyboard.c"),
-                Map.entry("backtrack", "key.keyboard.o"),
-                Map.entry("sprint", "key.keyboard.r"),
-                Map.entry("autototem", "key.keyboard.u"),
-                Map.entry("autotool", "key.keyboard.v"),
-                Map.entry("autosword", "key.keyboard.x"),
-                Map.entry("autoweb", "key.keyboard.z"),
-                Map.entry("autolava", "key.keyboard.i")
-        ).forEach(ModuleKeybinds::removeIfExact);
-        if ("key.keyboard.h".equals(Settings.getString(ACTION_PREFIX + "clearscan", ""))) {
-            Settings.remove(ACTION_PREFIX + "clearscan");
-        }
-        Settings.setBoolean(DEFAULT_BINDING_MIGRATION, true);
-    }
-
-    private static void removeIfExact(String moduleId, String generatedValue) {
-        if (generatedValue.equals(Settings.getString(PREFIX + moduleId, ""))) {
-            Settings.remove(PREFIX + moduleId);
-        }
-    }
-
-    /**
-     * Early self-owned-key builds persisted every conflicting host mapping as
-     * UNKNOWN. Restore only an unbound mapping whose own default was one of the
-     * exact keys claimed by that build, then rebuild Minecraft's key index.
-     */
-    private static void restoreLegacyDisplacedHostMappings() {
-        if (Settings.getBoolean(HOST_BINDING_RESTORE_MIGRATION, false)) return;
-        Minecraft client = Minecraft.getInstance();
-        if (client == null || client.options == null) return;
-
-        List<KeyMapping> unknown = GameAccess.keyMappings().get(InputConstants.UNKNOWN);
-        boolean changed = false;
-        if (unknown != null) {
-            for (KeyMapping mapping : new ArrayList<>(unknown)) {
-                if (mapping == null || !mapping.isUnbound()) continue;
-                InputConstants.Key defaultKey = mapping.getDefaultKey();
-                if (defaultKey == null || defaultKey == InputConstants.UNKNOWN
-                        || !LEGACY_CLAIMED_KEYS.contains(defaultKey.getName())) continue;
-                mapping.setKey(defaultKey);
-                changed = true;
-            }
-        }
-        if (changed) {
-            KeyMapping.resetMapping();
-            client.options.save();
-        }
-        Settings.setBoolean(HOST_BINDING_RESTORE_MIGRATION, true);
     }
 
     public static void registerAction(String actionId, Runnable handler) {
@@ -225,10 +121,6 @@ public final class ModuleKeybinds {
             return InputConstants.UNKNOWN;
         }
         return parse(Settings.getString(PREFIX + moduleId, ""));
-    }
-
-    public static boolean isBound(String moduleId) {
-        return isValid(getBoundKey(moduleId));
     }
 
     /** Modules bound to this key. ClickGUI is routed before module bindings. */

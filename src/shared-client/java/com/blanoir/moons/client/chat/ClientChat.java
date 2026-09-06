@@ -45,12 +45,12 @@ public final class ClientChat {
         return ClientBranding.name();
     }
 
-    public static int setPrefixEnabled(Minecraft client, boolean enabled) {
+    public static int setPrefixEnabled(Minecraft ignoredClient, boolean enabled) {
         Settings.setBoolean(ENABLED_KEY, enabled);
         return 1;
     }
 
-    public static int setPrefix(Minecraft client, String value) {
+    public static int setPrefix(Minecraft ignoredClient, String value) {
         return ClientBranding.setName(value == null ? "" : value.replace('§', '&')) ? 1 : 0;
     }
 

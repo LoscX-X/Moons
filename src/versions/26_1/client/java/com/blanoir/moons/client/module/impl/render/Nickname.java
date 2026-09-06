@@ -86,15 +86,18 @@ public final class Nickname {
 
     public static boolean appliesTo(Player player) {
         Minecraft client = Minecraft.getInstance();
-        return isEnabled() && client.player != null && player == client.player;
+        var currentPlayer = client == null ? null : client.player;
+        return isEnabled() && currentPlayer != null && player == currentPlayer;
     }
 
     public static boolean appliesTo(UUID uuid) {
         Minecraft client = Minecraft.getInstance();
+        var currentPlayer = client == null ? null : client.player;
+        var connectionSnapshot = client == null ? null : client.getConnection();
         if (!isEnabled() || uuid == null) return false;
-        if (client.player != null && uuid.equals(client.player.getUUID())) return true;
-        return client.getConnection() != null
-                && uuid.equals(client.getConnection().getLocalGameProfile().id());
+        if (currentPlayer != null && uuid.equals(currentPlayer.getUUID())) return true;
+        return connectionSnapshot != null
+                && uuid.equals(connectionSnapshot.getLocalGameProfile().id());
     }
 
     public static boolean appliesTo(PlayerInfo info) {
@@ -119,19 +122,6 @@ public final class Nickname {
         // structured component that represents the exact local name; never
         // flatten and animate a matching substring in the whole line.
         return isEnabled() ? replace(original, realName(), true) : original;
-    }
-
-    /** Standalone command entrypoints replacing Fabric's client command callback. */
-    public static int commandStatus(Minecraft client) {
-        return showStatus(client);
-    }
-
-    public static int commandReset(Minecraft client) {
-        return reset(client);
-    }
-
-    public static int commandSet(Minecraft client, String name) {
-        return set(client, name);
     }
 
     private static Component replace(
@@ -272,54 +262,53 @@ public final class Nickname {
 
     private static String realName() {
         Minecraft client = Minecraft.getInstance();
-        if (client.getConnection() != null) {
-            return client.getConnection().getLocalGameProfile().name();
+        var currentPlayer = client == null ? null : client.player;
+        var connectionSnapshot = client == null ? null : client.getConnection();
+        if (connectionSnapshot != null) {
+            return connectionSnapshot.getLocalGameProfile().name();
         }
-        return client.player == null ? "" : client.player.getGameProfile().name();
+        return currentPlayer == null ? "" : currentPlayer.getGameProfile().name();
     }
 
-    private static int set(Minecraft client, String raw) {
+    public static void commandSet(Minecraft client, String raw) {
         String nickname = raw == null ? "" : raw.trim();
         if (nickname.isEmpty()) {
             ClientChat.send(client, "Nickname cannot be empty. Use .nickname reset.");
-            return 0;
+            return;
         }
         if (nickname.codePointCount(0, nickname.length()) > MAX_MARKUP_CODE_POINTS) {
             ClientChat.send(client, "Nickname markup is too long (maximum 512 characters).");
-            return 0;
+            return;
         }
         if (nickname.codePoints().anyMatch(codePoint -> Character.isISOControl(codePoint))) {
             ClientChat.send(client, "Nickname cannot contain control characters.");
-            return 0;
+            return;
         }
 
         Component styled = DynamicMiniMessage.parse(nickname);
         String visible = styled.getString();
         if (visible.isBlank()) {
             ClientChat.send(client, "Nickname must contain visible text.");
-            return 0;
+            return;
         }
         if (visible.codePointCount(0, visible.length()) > MAX_CODE_POINTS) {
             ClientChat.send(client, "Nickname is too long (maximum 64 visible characters).");
-            return 0;
+            return;
         }
 
         VALUE.set(nickname);
         ClientChat.send(client, "Local nickname set to " + nickname
                 + ". Only you can see this change.");
-        return 1;
     }
 
-    private static int reset(Minecraft client) {
+    public static void commandReset(Minecraft client) {
         VALUE.set("");
         ClientChat.send(client, "Local nickname reset to your account name.");
-        return 1;
     }
 
-    private static int showStatus(Minecraft client) {
+    public static void commandStatus(Minecraft client) {
         ClientChat.send(client, isEnabled()
                 ? "Local nickname: " + VALUE.get() + ". Usage: .nickname <name> or .nickname reset."
                 : "Local nickname is disabled. Usage: .nickname <name>; [] and MiniMessage-style colors are supported.");
-        return 1;
     }
 }

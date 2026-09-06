@@ -38,7 +38,7 @@ public final class StaticFov {
         return 1;
     }
 
-    public static int setFov(Minecraft client, double fov) {
+    public static int setFov(Minecraft ignoredClient, double fov) {
         FOV.set(fov);
         return 1;
     }

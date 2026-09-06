@@ -5,7 +5,6 @@ import com.blanoir.moons.client.access.MinecraftClientAccess;
 import com.blanoir.moons.client.access.GameAccess;
 
 import com.blanoir.moons.client.config.MoonsConfig;
-import com.blanoir.moons.client.render.WorldOverlayRenderer;
 import com.mojang.blaze3d.buffers.GpuBuffer;
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
@@ -201,76 +200,79 @@ public final class BacktrackRenderer {
             RenderPipeline pipeline,
             String label
     ) {
-        MeshData builtBuffer = buffer.buildOrThrow();
-        MeshData.DrawState drawParameters = builtBuffer.drawState();
-        VertexFormat format = drawParameters.format();
+        try (MeshData builtBuffer = buffer.buildOrThrow()) {
+            var mainTarget = MinecraftClientAccess.mainRenderTarget(client);
+            var colorView = mainTarget.getColorTextureView();
+            if (colorView == null) return;
+            MeshData.DrawState drawParameters = builtBuffer.drawState();
+            VertexFormat format = drawParameters.format();
 
-        int vertexBufferSize = drawParameters.vertexCount() * format.getVertexSize();
+            int vertexBufferSize = drawParameters.vertexCount() * format.getVertexSize();
 
-        if (vertexBuffer == null || vertexBuffer.size() < vertexBufferSize) {
-            if (vertexBuffer != null) {
-                vertexBuffer.close();
+            if (vertexBuffer == null || vertexBuffer.size() < vertexBufferSize) {
+                if (vertexBuffer != null) {
+                    vertexBuffer.close();
+                }
+
+                vertexBuffer = new MappableRingBuffer(
+                        () -> MoonsConfig.MOD_ID + " " + label,
+                        GpuBuffer.USAGE_VERTEX | GpuBuffer.USAGE_MAP_WRITE,
+                        vertexBufferSize
+                );
             }
 
-            vertexBuffer = new MappableRingBuffer(
-                    () -> MoonsConfig.MOD_ID + " " + label,
-                    GpuBuffer.USAGE_VERTEX | GpuBuffer.USAGE_MAP_WRITE,
-                    vertexBufferSize
-            );
+            CommandEncoder commandEncoder = RenderSystem.getDevice().createCommandEncoder();
+
+            try (GpuBuffer.MappedView mappedView = commandEncoder.mapBuffer(
+                    vertexBuffer.currentBuffer().slice(0, builtBuffer.vertexBuffer().remaining()),
+                    false,
+                    true
+            )) {
+                MemoryUtil.memCopy(builtBuffer.vertexBuffer(), mappedView.data());
+            }
+
+            GpuBuffer vertices = vertexBuffer.currentBuffer();
+            GpuBuffer indices;
+            VertexFormat.IndexType indexType;
+
+            if (pipeline.getVertexFormatMode() == VertexFormat.Mode.QUADS) {
+                builtBuffer.sortQuads(ALLOCATOR, RenderSystem.getProjectionType().vertexSorting());
+                indices = pipeline.getVertexFormat().uploadImmediateIndexBuffer(builtBuffer.indexBuffer());
+                indexType = builtBuffer.drawState().indexType();
+            } else {
+                RenderSystem.AutoStorageIndexBuffer shapeIndexBuffer =
+                        RenderSystem.getSequentialBuffer(pipeline.getVertexFormatMode());
+
+                indices = shapeIndexBuffer.getBuffer(drawParameters.indexCount());
+                indexType = shapeIndexBuffer.type();
+            }
+
+            GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
+                    .writeTransform(
+                            RenderSystem.getModelViewMatrix(),
+                            COLOR_MODULATOR,
+                            MODEL_OFFSET,
+                            TEXTURE_MATRIX
+                    );
+
+            try (RenderPass renderPass = RenderSystem.getDevice()
+                    .createCommandEncoder()
+                    .createRenderPass(
+                            () -> MoonsConfig.MOD_ID + " " + label + " rendering",
+                            colorView,
+                            OptionalInt.empty(),
+                            mainTarget.getDepthTextureView(),
+                            OptionalDouble.empty()
+                    )) {
+                renderPass.setPipeline(pipeline);
+                RenderSystem.bindDefaultUniforms(renderPass);
+                renderPass.setUniform("DynamicTransforms", dynamicTransforms);
+                renderPass.setVertexBuffer(0, vertices);
+                renderPass.setIndexBuffer(indices, indexType);
+                renderPass.drawIndexed(0, 0, drawParameters.indexCount(), 1);
+            }
+
         }
-
-        CommandEncoder commandEncoder = RenderSystem.getDevice().createCommandEncoder();
-
-        try (GpuBuffer.MappedView mappedView = commandEncoder.mapBuffer(
-                vertexBuffer.currentBuffer().slice(0, builtBuffer.vertexBuffer().remaining()),
-                false,
-                true
-        )) {
-            MemoryUtil.memCopy(builtBuffer.vertexBuffer(), mappedView.data());
-        }
-
-        GpuBuffer vertices = vertexBuffer.currentBuffer();
-        GpuBuffer indices;
-        VertexFormat.IndexType indexType;
-
-        if (pipeline.getVertexFormatMode() == VertexFormat.Mode.QUADS) {
-            builtBuffer.sortQuads(ALLOCATOR, RenderSystem.getProjectionType().vertexSorting());
-            indices = pipeline.getVertexFormat().uploadImmediateIndexBuffer(builtBuffer.indexBuffer());
-            indexType = builtBuffer.drawState().indexType();
-        } else {
-            RenderSystem.AutoStorageIndexBuffer shapeIndexBuffer =
-                    RenderSystem.getSequentialBuffer(pipeline.getVertexFormatMode());
-
-            indices = shapeIndexBuffer.getBuffer(drawParameters.indexCount());
-            indexType = shapeIndexBuffer.type();
-        }
-
-        GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
-                .writeTransform(
-                        RenderSystem.getModelViewMatrix(),
-                        COLOR_MODULATOR,
-                        MODEL_OFFSET,
-                        TEXTURE_MATRIX
-                );
-
-        try (RenderPass renderPass = RenderSystem.getDevice()
-                .createCommandEncoder()
-                .createRenderPass(
-                        () -> MoonsConfig.MOD_ID + " " + label + " rendering",
-                        MinecraftClientAccess.mainRenderTarget(client).getColorTextureView(),
-                        OptionalInt.empty(),
-                        MinecraftClientAccess.mainRenderTarget(client).getDepthTextureView(),
-                        OptionalDouble.empty()
-                )) {
-            renderPass.setPipeline(pipeline);
-            RenderSystem.bindDefaultUniforms(renderPass);
-            renderPass.setUniform("DynamicTransforms", dynamicTransforms);
-            renderPass.setVertexBuffer(0, vertices);
-            renderPass.setIndexBuffer(indices, indexType);
-            renderPass.drawIndexed(0, 0, drawParameters.indexCount(), 1);
-        }
-
-        builtBuffer.close();
 
         if (vertexBuffer != null) {
             vertexBuffer.rotate();

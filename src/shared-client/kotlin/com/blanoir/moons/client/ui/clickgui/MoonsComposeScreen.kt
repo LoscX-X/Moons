@@ -63,6 +63,9 @@ import org.lwjgl.glfw.GLFW
 import java.awt.event.KeyEvent as AwtKeyEvent
 import java.awt.event.MouseEvent as AwtMouseEvent
 
+// Rows subscribe explicitly so registry polling still reaches cached/lazy panels.
+internal val ClickGuiRevision = mutableIntStateOf(0)
+
 /**
  * Compose/Skia ClickGUI rendered independently into GLFW's default framebuffer.
  * Minecraft still owns the Screen lifecycle and input; Compose owns layout and final-frame drawing.
@@ -75,13 +78,11 @@ class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} Cl
     private var surface: SkiaSurface? = null
     private var surfaceWidth = -1
     private var surfaceHeight = -1
-    private var surfaceSamples = -1
-    private var surfaceStencilBits = -1
     private var currentScale = 1f
     private var currentUiDensity = 1.4f
 
     private var bindingModuleId by mutableStateOf<String?>(null)
-    private var revision by mutableIntStateOf(0)
+    private var revision by ClickGuiRevision
     private val hudLayoutController = HudLayoutController()
     private var hudLayoutEditing by mutableStateOf(false)
     private var hudPointerCaptured = false
@@ -118,10 +119,10 @@ class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} Cl
 
         val state = FinalFrameGl.prepare(frameWidth, frameHeight)
         try {
+            skiaContext?.resetAll()
             ensureSurface(frameWidth, frameHeight)
             val scene = composeScene ?: return
             val targetSurface = surface ?: return
-            skiaContext?.resetAll()
             scene.render(targetSurface.canvas.asComposeCanvas(), now)
             targetSurface.flushAndSubmit()
         } finally {
@@ -143,57 +144,52 @@ class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} Cl
 
     private fun ensureSurface(frameWidth: Int, frameHeight: Int) {
         // The GLFW default framebuffer consumed by Skia is non-multisampled
-        // and has no stencil attachment. These legacy queries raise
+        // and has no stencil attachment. Querying either attachment raises
         // GL_INVALID_ENUM every frame in a restricted core profile.
         val samples = 0
         val stencilBits = 0
-        if (surface != null && surfaceWidth == frameWidth && surfaceHeight == frameHeight &&
-            surfaceSamples == samples && surfaceStencilBits == stencilBits) return
-        closeSkiaResources()
-        skiaContext = DirectContext.makeGL()
-        renderTarget = BackendRenderTarget.makeGL(
+        if (surface != null && surfaceWidth == frameWidth && surfaceHeight == frameHeight) return
+        closeSurface()
+        val context = skiaContext ?: DirectContext.makeGL().also { skiaContext = it }
+        val target = BackendRenderTarget.makeGL(
             frameWidth, frameHeight, samples, stencilBits, 0, FramebufferFormat.GR_GL_RGBA8
-        )
+        ).also { renderTarget = it }
         surface = SkiaSurface.makeFromBackendRenderTarget(
-            skiaContext!!, renderTarget!!, SurfaceOrigin.BOTTOM_LEFT,
+            context, target, SurfaceOrigin.BOTTOM_LEFT,
             SurfaceColorFormat.RGBA_8888, ColorSpace.sRGB
         )
         surfaceWidth = frameWidth
         surfaceHeight = frameHeight
-        surfaceSamples = samples
-        surfaceStencilBits = stencilBits
     }
 
-    private fun closeSkiaResources() {
+    private fun closeSurface() {
         surface?.close()
         renderTarget?.close()
-        skiaContext?.close()
         surface = null
         renderTarget = null
-        skiaContext = null
         surfaceWidth = -1
         surfaceHeight = -1
-        surfaceSamples = -1
-        surfaceStencilBits = -1
     }
 
-    private fun releaseCompose() {
-        closeSkiaResources()
+    fun dispose() {
         composeScene?.close()
         composeScene = null
+        closeSurface()
+        skiaContext?.close()
+        skiaContext = null
     }
 
+    @OptIn(ExperimentalComposeUiApi::class)
     override fun removed() {
         hudLayoutController.mouseReleased()
         hudPointerCaptured = false
-        releaseCompose()
+        setDragging(false)
+        composeScene?.cancelPointerInput()
+        composeScene?.focusManager?.releaseFocus()
         bindingModuleId = null
+        hudLayoutEditing = false
+        nextRegistrySyncNanos = 0L
         super.removed()
-    }
-
-    override fun resize(width: Int, height: Int) {
-        closeSkiaResources()
-        super.resize(width, height)
     }
 
     override fun onClose() {

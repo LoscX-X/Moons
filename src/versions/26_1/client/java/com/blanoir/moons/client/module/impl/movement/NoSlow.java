@@ -144,8 +144,9 @@ public final class NoSlow {
 
             Minecraft client = event.client();
             LocalPlayer player = client.player;
+            var connection = client.getConnection();
             if (!ENABLED.get() || player == null || client.level == null
-                    || client.getConnection() == null || !player.isUsingItem()
+                    || connection == null || !player.isUsingItem()
                     || !isConfigured(player.getUseItem())
                     // Vanilla will release later in this same client tick when
                     // the key is up or the use duration reaches its last frame.
@@ -163,7 +164,7 @@ public final class NoSlow {
                 PENDING_USE_PACKETS.put(packet, requestedPhase);
 
                 // Normal send: NoSlow PRE -> other PRE listeners -> actual write -> all POST listeners.
-                client.getConnection().send(packet);
+                connection.send(packet);
             });
         }
     }
@@ -254,32 +255,32 @@ public final class NoSlow {
         return 1;
     }
 
-    public static int setBow(Minecraft client, boolean value) {
+    public static int setBow(Minecraft ignoredClient, boolean value) {
         BOW.set(value);
         return 1;
     }
 
-    public static int setKeepSprinting(Minecraft client, boolean value) {
+    public static int setKeepSprinting(Minecraft ignoredClient, boolean value) {
         KEEP_SPRINTING.set(value);
         return 1;
     }
 
-    public static int setCrossbow(Minecraft client, boolean value) {
+    public static int setCrossbow(Minecraft ignoredClient, boolean value) {
         CROSSBOW.set(value);
         return 1;
     }
 
-    public static int setFood(Minecraft client, boolean value) {
+    public static int setFood(Minecraft ignoredClient, boolean value) {
         FOOD.set(value);
         return 1;
     }
 
-    public static int setPotion(Minecraft client, boolean value) {
+    public static int setPotion(Minecraft ignoredClient, boolean value) {
         POTION.set(value);
         return 1;
     }
 
-    public static int setShield(Minecraft client, boolean value) {
+    public static int setShield(Minecraft ignoredClient, boolean value) {
         SHIELD.set(value);
         return 1;
     }

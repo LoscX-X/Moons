@@ -1,6 +1,5 @@
 package com.blanoir.moons.client.module.impl.player;
 
-import com.blanoir.moons.client.config.Settings;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.DoubleSetting;
 import com.blanoir.moons.client.config.settings.IntSetting;
@@ -26,7 +25,6 @@ public final class NoFall {
     private NoFall() { }
 
     public static void init() {
-        Settings.remove("nofall.mode");
         EventBus.PLAYER_UPDATE.register("NoFall.playerUpdate", event -> {
             Minecraft client = event.client();
             if (!ENABLED.get() || !ready(client)) {
@@ -60,17 +58,17 @@ public final class NoFall {
         return 1;
     }
 
-    public static int setPredictTicks(Minecraft client, int value) {
+    public static int setPredictTicks(Minecraft ignoredClient, int value) {
         PREDICT_TICKS.set(value);
         return 1;
     }
 
-    public static int setSolidCheck(Minecraft client, boolean value) {
+    public static int setSolidCheck(Minecraft ignoredClient, boolean value) {
         SOLID_CHECK.set(value);
         return 1;
     }
 
-    public static int setRecovery(Minecraft client, boolean value) {
+    public static int setRecovery(Minecraft ignoredClient, boolean value) {
         RECOVERY.set(value);
         return 1;
     }

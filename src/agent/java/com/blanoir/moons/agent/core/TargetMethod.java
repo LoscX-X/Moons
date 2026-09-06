@@ -54,6 +54,7 @@ record TargetMethod(
         , OBJECT_RETURN
         , OBJECT_ARGUMENT
         , ITEM_STACK_ARGUMENT_5
+        , TRIM_RENDER
         , OBJECT_INVOKE_RETURN
         , NAMED_FLOAT_LOCAL
         , SPRINT_DECISIONS

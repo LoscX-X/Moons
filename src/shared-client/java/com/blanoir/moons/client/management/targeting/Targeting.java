@@ -20,18 +20,14 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.network.chat.TextColor;
 import net.minecraft.ChatFormatting;
-import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.Collection;
-import java.util.Comparator;
-import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.function.Predicate;
-import java.util.function.ToDoubleFunction;
 
 public final class Targeting {
     private static final BooleanSetting TEAM_CHECK_ENABLED =
@@ -63,17 +59,18 @@ public final class Targeting {
     }
 
     public static boolean isValidTargetPlayer(Minecraft client, Player target) {
-        if (client == null || client.player == null || target == null) {
+        var currentPlayer = client == null ? null : client.player;
+        if (client == null || currentPlayer == null || target == null) {
             return false;
         }
 
-        return target != client.player
+        return target != currentPlayer
                 && !target.isRemoved()
                 && target.isAlive()
                 && target.isAttackable()
                 && !target.isSpectator()
                 && !ignoreCheck.test(target)
-                && !target.isInvisibleTo(client.player)
+                && !target.isInvisibleTo(currentPlayer)
                 && (!TEAM_CHECK_ENABLED.get() || !isSameTeam(client, target));
     }
 
@@ -85,10 +82,9 @@ public final class Targeting {
         return TEAM_CHECK_ENABLED.get() ? "enabled" : "disabled";
     }
 
-    public static int setTeamCheckEnabled(Minecraft client, boolean newEnabled) {
+    public static void setTeamCheckEnabled(Minecraft client, boolean newEnabled) {
         TEAM_CHECK_ENABLED.set(newEnabled);
         ClientChat.send(client, "Team check " + teamStatusText() + ".");
-        return 1;
     }
 
     public static boolean isValidTargetPlayerWithinRange(Minecraft client, Player target, double range) {
@@ -109,11 +105,12 @@ public final class Targeting {
      * large entities and underestimates it for small ones.
      */
     public static boolean isWithinInteractionRange(Minecraft client, Entity target) {
-        if (client == null || client.player == null || target == null) {
+        var currentPlayer = client == null ? null : client.player;
+        if (client == null || currentPlayer == null || target == null) {
             return false;
         }
 
-        double range = client.player.getAttributeValue(Attributes.ENTITY_INTERACTION_RANGE);
+        double range = currentPlayer.getAttributeValue(Attributes.ENTITY_INTERACTION_RANGE);
         return EntityDistance.squaredToEntity(client, target) <= range * range;
     }
 
@@ -136,26 +133,6 @@ public final class Targeting {
     ) {
         return findTargetOnViewRay(
                 client,
-                entity -> isConfiguredTarget(
-                        client, entity, targetPlayers, targetMobs, entityTypes),
-                throughBlocks);
-    }
-
-    public static Entity findConfiguredTargetOnRay(
-            Minecraft client,
-            Vec3 start,
-            Vec3 look,
-            double range,
-            boolean targetPlayers,
-            boolean targetMobs,
-            Collection<Identifier> entityTypes,
-            boolean throughBlocks
-    ) {
-        return findTargetOnRay(
-                client,
-                start,
-                look,
-                range,
                 entity -> isConfiguredTarget(
                         client, entity, targetPlayers, targetMobs, entityTypes),
                 throughBlocks);
@@ -185,16 +162,17 @@ public final class Targeting {
             Predicate<Entity> predicate,
             boolean throughBlocks
     ) {
-        if (client == null || client.player == null || client.level == null) {
+        var currentPlayer = client == null ? null : client.player;
+        if (client == null || currentPlayer == null || client.level == null) {
             return null;
         }
 
-        double range = client.player.getAttributeValue(Attributes.ENTITY_INTERACTION_RANGE);
-        Vec3 start = client.player.getEyePosition();
+        double range = currentPlayer.getAttributeValue(Attributes.ENTITY_INTERACTION_RANGE);
+        Vec3 start = currentPlayer.getEyePosition();
         return findTargetOnRay(
                 client,
                 start,
-                client.player.getViewVector(1.0F),
+                currentPlayer.getViewVector(1.0F),
                 range,
                 predicate,
                 throughBlocks);
@@ -207,9 +185,10 @@ public final class Targeting {
             boolean targetMobs,
             Collection<Identifier> entityTypes
     ) {
-        if (client == null || client.player == null
+        var currentPlayer = client == null ? null : client.player;
+        if (client == null || currentPlayer == null
                 || !(entity instanceof LivingEntity living)
-                || living == client.player
+                || living == currentPlayer
                 || !living.isAlive()
                 || !living.isAttackable()
                 || living.isSpectator()) {
@@ -221,48 +200,6 @@ public final class Targeting {
         Identifier id = BuiltInRegistries.ENTITY_TYPE.getKey(living.getType());
         return targetMobs && living instanceof Mob
                 || entityTypes != null && entityTypes.contains(id);
-    }
-
-    /**
-     * Selects a target without running expensive visibility/ray checks for
-     * every nearby entity. The locked target is validated first. New targets
-     * are cheaply filtered and sorted before visibility is tested in score
-     * order, so the common case performs only one expensive check.
-     */
-    public static <T extends LivingEntity> T selectBestTarget(
-            Minecraft client,
-            Class<T> entityClass,
-            AABB searchBox,
-            T lockedTarget,
-            Predicate<T> lockedValidator,
-            Predicate<T> candidateValidator,
-            Predicate<T> visibilityValidator,
-            ToDoubleFunction<T> score
-    ) {
-        if (client == null || client.level == null || entityClass == null
-                || searchBox == null || lockedValidator == null
-                || candidateValidator == null || visibilityValidator == null
-                || score == null) {
-            return null;
-        }
-
-        if (lockedTarget != null
-                && lockedValidator.test(lockedTarget)
-                && visibilityValidator.test(lockedTarget)) {
-            return lockedTarget;
-        }
-
-        List<T> candidates = client.level.getEntitiesOfClass(
-                entityClass,
-                searchBox,
-                entity -> entity != lockedTarget && candidateValidator.test(entity));
-        candidates.sort(Comparator.comparingDouble(score));
-        for (T candidate : candidates) {
-            if (visibilityValidator.test(candidate)) {
-                return candidate;
-            }
-        }
-        return null;
     }
 
     public static Identifier parseEntityTypeId(String rawId) {
@@ -326,11 +263,12 @@ public final class Targeting {
     }
 
     public static boolean isHoldingTriggerWeapon(Minecraft client) {
-        if (client == null || client.player == null) {
+        var currentPlayer = client == null ? null : client.player;
+        if (client == null || currentPlayer == null) {
             return false;
         }
 
-        ItemStack stack = client.player.getMainHandItem();
+        ItemStack stack = currentPlayer.getMainHandItem();
         if (stack.isEmpty()) {
             return false;
         }
@@ -343,11 +281,12 @@ public final class Targeting {
     }
 
     private static boolean isSameTeam(Minecraft client, Player target) {
-        if (client == null || client.player == null || target == null) {
+        var currentPlayer = client == null ? null : client.player;
+        if (client == null || currentPlayer == null || target == null) {
             return false;
         }
 
-        Player player = client.player;
+        Player player = currentPlayer;
         return isScoreboardTeammate(player, target)
                 || hasSameNameColor(player, target)
                 || hasSameDisplayNamePrefix(player, target)
@@ -359,10 +298,10 @@ public final class Targeting {
     }
 
     private static boolean hasSameNameColor(Player player, Player target) {
-        TextColor playerColor = player.getDisplayName() == null ? null : player.getDisplayName().getStyle().getColor();
-        TextColor targetColor = target.getDisplayName() == null ? null : target.getDisplayName().getStyle().getColor();
+        TextColor playerColor = player.getDisplayName().getStyle().getColor();
+        TextColor targetColor = target.getDisplayName().getStyle().getColor();
 
-        return playerColor != null && playerColor.equals(targetColor);
+        return playerColor != null && targetColor != null && playerColor.equals(targetColor);
     }
 
     private static boolean hasSameDisplayNamePrefix(Player player, Player target) {

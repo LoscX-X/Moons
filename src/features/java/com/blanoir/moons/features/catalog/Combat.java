@@ -8,7 +8,6 @@ import com.blanoir.moons.client.module.impl.combat.critical.Critical;
 import com.blanoir.moons.client.module.impl.combat.critical.mode.Predict;
 import com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraConfig;
 import com.blanoir.moons.client.module.impl.movement.JumpReset;
-import com.blanoir.moons.client.config.feature.HitEstimateSettings;
 
 import static com.blanoir.moons.client.module.framework.ModuleRegistry.*;
 
@@ -130,21 +129,21 @@ final class Combat {
                         AimAssist::isEnabled,
                         AimAssist::setEnabled,
                         () -> "Assist",
-        
+
                         number(
                                 "range", "Range",
                                 "aimassist.range",
                                 4.2, 1, 8, .05,
                                 AimAssist::setRange
                         ),
-        
+
                         number(
                                 "fov", "FOV",
                                 "aimassist.fov",
                                 45, 1, 360, 1,
                                 AimAssist::setFov
                         ),
-        
+
                         number(
                                 "smooth", "Smooth",
                                 "aimassist.smooth",

@@ -101,6 +101,7 @@ internal fun ModuleRow(
     onBindingModuleChange: (String?) -> Unit,
     onMutated: () -> Unit
 ) {
+    ClickGuiRevision.intValue
     val registryEnabled = moduleEnabled(module)
     var enabled by remember(module.id()) { mutableStateOf(registryEnabled) }
     var settingsRevision by remember(module.id()) { mutableIntStateOf(0) }
@@ -200,6 +201,7 @@ private fun KeybindSetting(
 
 @Composable
 private fun CompactSetting(module: Module, setting: Setting, onMutated: () -> Unit) {
+    ClickGuiRevision.intValue
     when (setting.type()) {
         "boolean" -> BooleanSetting(module, setting, onMutated)
         "number", "integer" -> NumberSetting(module, setting, onMutated)
@@ -388,7 +390,7 @@ private fun ChoiceSetting(module: Module, setting: Setting, onMutated: () -> Uni
     val options = setting.options()
     var displayedChoice by remember(module.id(), setting.id()) { mutableStateOf(current) }
     LaunchedEffect(current) { displayedChoice = current }
-    if (module.id() == "trimchanger" && setting.id() == "trim") {
+    if (module.id() == "trim" && setting.id() == "trim") {
         TrimChoiceSetting(module, setting, options, displayedChoice, onMutated) {
             displayedChoice = it
         }

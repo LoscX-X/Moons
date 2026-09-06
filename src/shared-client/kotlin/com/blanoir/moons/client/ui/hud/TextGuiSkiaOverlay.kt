@@ -3,7 +3,7 @@ package com.blanoir.moons.client.ui.hud
 import com.blanoir.moons.client.access.MinecraftClientAccess
 import com.blanoir.moons.client.module.framework.ModuleRegistry
 import com.blanoir.moons.client.module.impl.render.TargetInfoHud
-import com.blanoir.moons.client.ui.animation.UiMotion
+import com.blanoir.moons.client.ui.animation.Animation
 import com.blanoir.moons.client.ui.clickgui.MoonsComposeScreen
 import com.blanoir.moons.client.ui.compose.FinalFrameGl
 import com.blanoir.moons.client.ui.MinecraftScreenAccess
@@ -164,7 +164,7 @@ object TextGuiSkiaOverlay {
         rows.forEachIndexed { index, row ->
             val target = index.toDouble()
             row.entry.positionRows = if (row.entry.positionRows.isNaN()) target else
-                UiMotion.approach(row.entry.positionRows, target, animationSeconds, 21.0)
+                Animation.approach(row.entry.positionRows, target, animationSeconds, 21.0)
         }
 
         val headerWidth = if (header.isBlank()) 0.0f
@@ -272,7 +272,7 @@ object TextGuiSkiaOverlay {
         }
         moduleEntries.forEach { (id, entry) ->
             entry.present = id in activeIds
-            entry.progress = UiMotion.approach(
+            entry.progress = Animation.approach(
                 entry.progress, if (entry.present) 1.0 else 0.0,
                 animationSeconds, 16.0
             )
@@ -536,12 +536,12 @@ object TextGuiSkiaOverlay {
     private fun ensureSurface(width: Int, height: Int) {
         if (surface != null && surfaceWidth == width && surfaceHeight == height) return
         closeSurface()
-        context = DirectContext.makeGL()
-        target = BackendRenderTarget.makeGL(
+        val newContext = DirectContext.makeGL().also { context = it }
+        val newTarget = BackendRenderTarget.makeGL(
             width, height, 0, 0, 0, FramebufferFormat.GR_GL_RGBA8
-        )
+        ).also { target = it }
         surface = SkiaSurface.makeFromBackendRenderTarget(
-            context!!, target!!, SurfaceOrigin.BOTTOM_LEFT,
+            newContext, newTarget, SurfaceOrigin.BOTTOM_LEFT,
             SurfaceColorFormat.RGBA_8888, ColorSpace.sRGB
         )
         surfaceWidth = width

@@ -22,14 +22,12 @@ public final class Caver {
     private Caver() {
     }
 
-    public static void init() {
-    }
-
     public static boolean isEnabled() {
         return ENABLED.get();
     }
 
     public static void setEnabled(Minecraft client, boolean newEnabled) {
+        var currentLevel = client == null ? null : client.level;
         if (ENABLED.get() == newEnabled) {
             ClientChat.send(client, "Caver is already " + statusText() + ".");
             return;
@@ -37,7 +35,7 @@ public final class Caver {
 
         ENABLED.set(newEnabled);
 
-        if (client.level != null && client.levelRenderer != null) {
+        if (client != null && currentLevel != null && client.levelRenderer != null) {
             MinecraftClientAccess.rebuildLevelRenderer(client);
         }
 

@@ -71,10 +71,6 @@ public final class Critical {
         return List.copyOf(MODES.keySet());
     }
 
-    public static boolean hasMode(String id) {
-        return MODES.containsKey(id == null ? "" : id.toLowerCase(Locale.ROOT));
-    }
-
     public static String modeName() {
         return active().displayName();
     }

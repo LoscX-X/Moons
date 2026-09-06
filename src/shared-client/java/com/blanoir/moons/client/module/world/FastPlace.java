@@ -156,27 +156,27 @@ public final class FastPlace {
         return 1;
     }
 
-    public static int setDelay(Minecraft client, double value) {
+    public static int setDelay(Minecraft ignoredClient, double value) {
         DELAY.set(value);
         return 1;
     }
 
-    public static int setBlocksOnly(Minecraft client, boolean value) {
+    public static int setBlocksOnly(Minecraft ignoredClient, boolean value) {
         BLOCKS_ONLY.set(value);
         return 1;
     }
 
-    public static int setPlaceFix(Minecraft client, boolean value) {
+    public static int setPlaceFix(Minecraft ignoredClient, boolean value) {
         PLACE_FIX.set(value);
         return 1;
     }
 
-    public static int setSkipObsidian(Minecraft client, boolean value) {
+    public static int setSkipObsidian(Minecraft ignoredClient, boolean value) {
         SKIP_OBSIDIAN.set(value);
         return 1;
     }
 
-    public static int setSkipInteractable(Minecraft client, boolean value) {
+    public static int setSkipInteractable(Minecraft ignoredClient, boolean value) {
         SKIP_INTERACTABLE.set(value);
         return 1;
     }

@@ -48,7 +48,8 @@ public final class OfflinePlayerDetect {
     }
 
     public static void notifyIfNeeded(Minecraft client, LivingEntity entity) {
-        if (!isOfflinePlayerZombie(entity) || client == null || client.player == null) {
+        var currentPlayer = client == null ? null : client.player;
+        if (!isOfflinePlayerZombie(entity) || client == null || currentPlayer == null) {
             return;
         }
 
@@ -57,7 +58,7 @@ public final class OfflinePlayerDetect {
         }
 
         BlockPos pos = entity.blockPosition();
-        double distance = Math.sqrt(client.player.distanceToSqr(entity));
+        double distance = Math.sqrt(currentPlayer.distanceToSqr(entity));
 
         ClientChat.send(
                 client,

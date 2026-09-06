@@ -7,6 +7,7 @@ import com.blanoir.moons.client.module.impl.render.Animations;
 import com.blanoir.moons.client.management.input.CombatInputController;
 import com.blanoir.moons.client.management.rotation.RotationLease;
 import com.blanoir.moons.client.management.rotation.RotationRequest;
+import com.blanoir.moons.client.management.rotation.RotationHistory;
 import com.blanoir.moons.client.management.rotation.SilentPacketRotation;
 import com.blanoir.moons.client.utils.client.ClientReady;
 import com.blanoir.moons.client.management.targeting.Targeting;
@@ -26,19 +27,9 @@ public final class SilentAuraRuntime {
     private static String activeMode;
     private static boolean activeMatrix;
     private static SentRotation sent = SentRotation.invalid();
-    private static float outgoingYaw;
-    private static float outgoingPitch;
-    private static int outgoingTick = Integer.MIN_VALUE;
-    private static float lastMovementYaw;
-    private static float lastMovementPitch;
-    private static int lastMovementTick = Integer.MIN_VALUE;
-    private static boolean lastMovementValid;
     private static boolean deferredManualUse;
     private static boolean replayingManualUse;
     private static int deferredManualUseTick = Integer.MIN_VALUE;
-    private static boolean manualUseRotationPending;
-    private static float manualUseYaw;
-    private static float manualUsePitch;
     private static final SilentAuraPacketRotationRouter PACKET_ROTATION =
             new SilentAuraPacketRotationRouter();
     private static final RotationLease ROTATION_LEASE = new RotationLease(
@@ -64,7 +55,7 @@ public final class SilentAuraRuntime {
         if (!baseCanRun(client)) { reset(client); return; }
         if (!SilentAuraConfig.aimMode().equals(activeMode)
                 || SilentAuraConfig.matrixCompatibility() != activeMatrix) {
-            resetTargeting(client);
+            resetTargeting();
             activeMode = SilentAuraConfig.aimMode();
             activeMatrix = SilentAuraConfig.matrixCompatibility();
         }
@@ -114,9 +105,15 @@ public final class SilentAuraRuntime {
         // Holding the target owns the visual block pose. Attack range and
         // cooldown only decide when a block-hit swing is fired.
         Animations.setAuraBlocking(SilentAuraConfig.block());
-        if (!ROTATION.active() && lastMovementValid) {
-            ROTATION.beginFrom(lastMovementYaw, lastMovementPitch);
-            PACKET_ROTATION.rebase(lastMovementYaw, lastMovementPitch);
+        if (!ROTATION_LEASE.active()) {
+            Rotation camera = new Rotation(client.player.getYRot(), client.player.getXRot());
+            if (!ROTATION_LEASE.acquire(new RotationRequest(
+                    camera.yaw(), camera.pitch(), 1, 0.35F, null), camera, start -> {
+                ROTATION.clear();
+                PACKET_ROTATION.reset();
+                ROTATION.beginFrom(start.yaw(), start.pitch());
+                PACKET_ROTATION.rebase(start.yaw(), start.pitch());
+            })) return;
         }
         ROTATION.track(client, target, point, deltaSeconds);
         syncLease();
@@ -156,10 +153,14 @@ public final class SilentAuraRuntime {
         if (triggerWeaponRotation) {
             return true;
         }
-        boolean postMovementMismatch = lastMovementValid
-                && lastMovementTick == client.player.tickCount
-                && (!sameAngle(lastMovementYaw, client.player.getYRot())
-                || !sameAngle(lastMovementPitch, client.player.getXRot()));
+        RotationHistory.Sent previous = RotationHistory.latest();
+        RotationLease.Submission committed = RotationLease.submission();
+        boolean postMovementMismatch = previous.valid()
+                && previous.tick() == client.player.tickCount
+                && (!sameAngle(previous.yaw(), client.player.getYRot())
+                || !sameAngle(previous.pitch(), client.player.getXRot()));
+        postMovementMismatch |= committed != null && !RotationHistory.same(committed.rotation(),
+                new Rotation(client.player.getYRot(), client.player.getXRot()));
         boolean utilityInterruptedAura = !Targeting.isHoldingTriggerWeapon(client)
                 && ROTATION.active();
         if (!postMovementMismatch && !utilityInterruptedAura) {
@@ -179,53 +180,49 @@ public final class SilentAuraRuntime {
 
     private static void trackRotationPacket(PacketSendEvent.Post event) {
         Minecraft client = Minecraft.getInstance();
-        if (client == null || client.player == null) {
+        var currentPlayer = client == null ? null : client.player;
+        if (client == null || currentPlayer == null) {
             return;
         }
         if (event.packet() instanceof ServerboundUseItemPacket use
                 && SilentAuraConfig.enabled()
                 && !SilentPacketRotation.isUseRotationLocked()
                 && !SilentPacketRotation.shouldApplyRotation()
-                && lastMovementTick != client.player.tickCount) {
+                && RotationHistory.latest().tick() != currentPlayer.tickCount) {
             // A vanilla USE_ITEM sent before LocalPlayer.tick must own the
             // exact float pair of the movement packet that closes this tick.
             // Even a sub-display-decimal mouse/GCD change trips BadPacketsJ.
-            manualUseYaw = use.getYRot();
-            manualUsePitch = use.getXRot();
-            manualUseRotationPending = true;
+            RotationLease.holdManual(new Rotation(use.getYRot(), use.getXRot()));
             return;
         }
-        if (!(event.packet() instanceof ServerboundMovePlayerPacket movement)) {
+        if (!(event.packet() instanceof ServerboundMovePlayerPacket)) {
             return;
         }
-        float fallbackYaw = lastMovementValid
-                ? lastMovementYaw : client.player.getYRot();
-        float fallbackPitch = lastMovementValid
-                ? lastMovementPitch : client.player.getXRot();
-        lastMovementYaw = movement.getYRot(fallbackYaw);
-        lastMovementPitch = movement.getXRot(fallbackPitch);
-        lastMovementTick = client.player.tickCount;
-        lastMovementValid = true;
-        // One movement packet is the transaction boundary Grim uses. Never
-        // carry a manual-use angle into a later physical tick.
-        manualUseRotationPending = false;
+        if (!RotationHistory.observed(event.packet())) return;
+        RotationHistory.Sent previous = RotationHistory.latest();
+        if (RotationHistory.sentFor(ROTATION_LEASE, event.packet())) {
+            confirmOutgoingRotation(previous.yaw(), previous.pitch());
+        }
     }
 
     public static boolean shouldApplyManualUseRotation() {
-        return manualUseRotationPending;
+        return RotationLease.manualRotation() != null;
     }
 
     public static float manualUseYaw() {
-        return manualUseYaw;
+        Rotation rotation = RotationLease.manualRotation();
+        return rotation == null ? 0 : rotation.yaw();
     }
 
     public static float manualUsePitch() {
-        return manualUsePitch;
+        Rotation rotation = RotationLease.manualRotation();
+        return rotation == null ? 0 : rotation.pitch();
     }
 
     private static void replayDeferredManualUse(Minecraft client) {
-        if (!deferredManualUse || client == null || client.player == null
-                || client.player.tickCount == deferredManualUseTick) {
+        var currentPlayer = client == null ? null : client.player;
+        if (!deferredManualUse || client == null || currentPlayer == null
+                || currentPlayer.tickCount == deferredManualUseTick) {
             return;
         }
         if (!baseCanRun(client)) {
@@ -254,9 +251,6 @@ public final class SilentAuraRuntime {
         SELECTOR.clear();
         ROTATION.clear();
         sent = SentRotation.invalid();
-        outgoingYaw = 0.0F;
-        outgoingPitch = 0.0F;
-        outgoingTick = Integer.MIN_VALUE;
         PACKET_ROTATION.reset();
         ROTATION_LEASE.release();
     }
@@ -275,31 +269,17 @@ public final class SilentAuraRuntime {
     public static boolean crossingTarget() { return ROTATION.crossingTarget(); }
     public static float bodyYaw() { return ROTATION.bodyYaw(); }
     public static float movementYaw() {
-        // Movement input and moveRelative must use the exact same tick-domain
-        // yaw that sendPosition will publish. Bypassing PacketRotationSmoother
-        // here made large crossing turns simulate against a different yaw on
-        // the server. sample() is tick-cached, so the later packet hook reuses
-        // this same candidate rather than drawing a second step.
-        AttackRotation candidate = attackRotation(Minecraft.getInstance());
-        if (candidate.valid()) return candidate.yaw();
-        float base = lastMovementValid ? lastMovementYaw : ROTATION.yaw();
-        return SilentPacketRotation.quantizePacketYaw(base, packetRotation().yaw());
+        return committedRotation().yaw();
     }
 
-    public static void markOutgoingRotation(float yaw, float pitch, int tick) {
+    private static void confirmOutgoingRotation(float yaw, float pitch) {
         Minecraft client = Minecraft.getInstance();
-        if (!shouldApplyRotation() || client == null || client.player == null) return;
-        if (outgoingTick == tick
-                && Float.floatToIntBits(outgoingYaw) == Float.floatToIntBits(yaw)
-                && Float.floatToIntBits(outgoingPitch) == Float.floatToIntBits(pitch)) return;
-        outgoingTick = tick;
-        outgoingYaw = yaw;
-        outgoingPitch = pitch;
+        var currentPlayer = client == null ? null : client.player;
+        if (!shouldApplyRotation() || client == null || currentPlayer == null) return;
         PACKET_ROTATION.confirm(yaw, pitch);
         int targetId = ROTATION.returning() ? -1 : ROTATION.targetId();
-        sent = new SentRotation(targetId >= 0, yaw, pitch, client.player.getEyePosition(),
+        sent = new SentRotation(targetId >= 0, yaw, pitch, currentPlayer.getEyePosition(),
                 Vec3.directionFromRotation(pitch, yaw), targetId);
-        ROTATION_LEASE.confirm(yaw, pitch);
         if (ROTATION.returnPacketReached(yaw, pitch)) {
             ROTATION.completeReturn();
             sent = SentRotation.invalid();
@@ -308,10 +288,16 @@ public final class SilentAuraRuntime {
         }
     }
 
-    public static float packetYaw() { return packetRotation().yaw(); }
-    public static float packetPitch() { return packetRotation().pitch(); }
+    public static float packetYaw() { return committedRotation().yaw(); }
+    public static float packetPitch() { return committedRotation().pitch(); }
 
-    public static Vec3 sentLookVector() { return sent.valid() ? sent.look() : ROTATION.lookVector(); }
+    public static Rotation committedRotation() {
+        RotationLease.Submission existing = RotationLease.submission();
+        if (existing != null && existing.lease() == ROTATION_LEASE) return existing.rotation();
+        Rotation result = ROTATION_LEASE.commit(packetRotation(), false, true);
+        return result != null ? result : RotationHistory.start(Minecraft.getInstance());
+    }
+
     public static SentRotation sentRotation() { return sent; }
 
     /**
@@ -322,7 +308,8 @@ public final class SilentAuraRuntime {
      * tick-cached, so the attack and movement hooks consume the same candidate.
      */
     public static AttackRotation attackRotation(Minecraft client) {
-        if (client == null || client.player == null || !shouldApplyRotation()
+        var currentPlayer = client == null ? null : client.player;
+        if (client == null || currentPlayer == null || !shouldApplyRotation()
                 || ROTATION.returning()) {
             return AttackRotation.invalid();
         }
@@ -330,12 +317,10 @@ public final class SilentAuraRuntime {
         if (target == null || ROTATION.targetId() != target.getId()) {
             return AttackRotation.invalid();
         }
-        Rotation candidate = packetRotation();
-        float baseYaw = lastMovementValid ? lastMovementYaw : client.player.getYRot();
-        float basePitch = lastMovementValid ? lastMovementPitch : client.player.getXRot();
-        float yaw = SilentPacketRotation.quantizePacketYaw(baseYaw, candidate.yaw());
-        float pitch = SilentPacketRotation.quantizePacketPitch(basePitch, candidate.pitch());
-        Vec3 eye = client.player.getEyePosition();
+        Rotation candidate = committedRotation();
+        float yaw = candidate.yaw();
+        float pitch = candidate.pitch();
+        Vec3 eye = currentPlayer.getEyePosition();
         return new AttackRotation(true, yaw, pitch, eye,
                 Vec3.directionFromRotation(pitch, yaw), target.getId());
     }
@@ -347,7 +332,7 @@ public final class SilentAuraRuntime {
 
     public static void clearVisualBlock() { Animations.setAuraBlocking(false); }
 
-    public static void resetTargeting(Minecraft client) {
+    public static void resetTargeting() {
         clearAuraRotationForManualUse();
     }
 
@@ -364,17 +349,9 @@ public final class SilentAuraRuntime {
         SELECTOR.clear();
         ROTATION.clear();
         sent = SentRotation.invalid();
-        outgoingYaw = 0.0F;
-        outgoingPitch = 0.0F;
-        outgoingTick = Integer.MIN_VALUE;
         PACKET_ROTATION.reset();
         ROTATION_LEASE.release();
         clearDeferredManualUse();
-        lastMovementValid = false;
-        lastMovementTick = Integer.MIN_VALUE;
-        manualUseRotationPending = false;
-        manualUseYaw = 0.0F;
-        manualUsePitch = 0.0F;
     }
 
     private static void syncLease() {
@@ -388,12 +365,13 @@ public final class SilentAuraRuntime {
 
     private static Rotation packetRotation() {
         Minecraft client = Minecraft.getInstance();
-        if (client == null || client.player == null) {
+        var currentPlayer = client == null ? null : client.player;
+        if (client == null || currentPlayer == null) {
             return new Rotation(ROTATION.yaw(), ROTATION.pitch());
         }
         return PACKET_ROTATION.sample(
-                client.player.tickCount,
-                client.player.getYRot(), client.player.getXRot(),
+                currentPlayer.tickCount,
+                currentPlayer.getYRot(), currentPlayer.getXRot(),
                 ROTATION.yaw(), ROTATION.pitch(), SilentAuraConfig.lockMode(),
                 client.options.sensitivity().get(), ROTATION.crossingTarget(),
                 SilentAuraConfig.matrixCompatibility());

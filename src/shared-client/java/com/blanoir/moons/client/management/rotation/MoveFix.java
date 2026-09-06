@@ -16,6 +16,7 @@ import net.minecraft.client.player.LocalPlayer;
 public final class MoveFix {
     public enum Source {
         NONE,
+        MANUAL_USE,
         BLOCK_INTERACTION,
         SCAFFOLD,
         SILENT_AURA
@@ -57,6 +58,17 @@ public final class MoveFix {
     }
 
     private static State resolve(int tick) {
+        var manual = RotationLease.manualRotation();
+        if (manual != null) return new State(true, manual.yaw(), Source.MANUAL_USE, tick);
+        RotationLease.Submission committed = RotationLease.submission();
+        if (committed != null) {
+            Source source = switch (committed.lease().owner()) {
+                case "SilentAura" -> Source.SILENT_AURA;
+                case "Scaffold" -> Source.SCAFFOLD;
+                default -> Source.BLOCK_INTERACTION;
+            };
+            return new State(committed.correctMovement(), committed.rotation().yaw(), source, tick);
+        }
         // Must exactly match RuntimeEventAdapter.applyPacketRotation precedence.
         if (SilentPacketRotation.shouldCorrectMovement()) {
             return new State(true, SilentPacketRotation.getMovementYaw(),

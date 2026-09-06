@@ -294,13 +294,14 @@ public final class CombatInputController {
 
     /** Consumed by Minecraft.startAttack; stale or cross-world targets are rejected. */
     public static EntityHitResult consumePendingAttackHit(Minecraft client) {
+        var currentLevel = client == null ? null : client.level;
         Entity target = pendingAttackTarget;
         pendingAttackTarget = null;
-        if (client.level != null && (!valid(client)
+        if (client == null || currentLevel == null || !valid(client)
                 || target == null
                 || !target.isAlive()
                 || target == client.player
-                || client.level.getEntity(target.getId()) != target)) {
+                || currentLevel.getEntity(target.getId()) != target) {
             return null;
         }
         return new EntityHitResult(target);

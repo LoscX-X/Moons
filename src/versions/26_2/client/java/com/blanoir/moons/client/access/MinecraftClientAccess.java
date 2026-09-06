@@ -41,7 +41,7 @@ public final class MinecraftClientAccess {
     }
 
     public static void rebuildLevelRenderer(Minecraft client) {
-        if (client.level != null) {
+        if (client != null && client.level != null) {
             // 26.2 owns terrain invalidation in LevelExtractor. allChanged()
             // rebuilds its SectionUpdateTracker with every section dirty and
             // defers compiled-geometry invalidation to the next extract pass.

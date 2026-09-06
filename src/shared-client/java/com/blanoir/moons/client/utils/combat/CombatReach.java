@@ -11,10 +11,11 @@ public final class CombatReach {
     }
 
     public static double entityInteractionRange(Minecraft client, double requestedRange) {
-        if (client == null || client.player == null || !Double.isFinite(requestedRange)) {
+        var currentPlayer = client == null ? null : client.player;
+        if (client == null || currentPlayer == null || !Double.isFinite(requestedRange)) {
             return 0.0D;
         }
-        double vanillaRange = client.player.getAttributeValue(Attributes.ENTITY_INTERACTION_RANGE);
+        double vanillaRange = currentPlayer.getAttributeValue(Attributes.ENTITY_INTERACTION_RANGE);
         return Math.max(0.0D, Math.min(requestedRange, vanillaRange));
     }
 

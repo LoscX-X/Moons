@@ -84,23 +84,6 @@ public final class HumanAimSimulator {
                 desiredStep - previousStep, -acceleration, acceleration);
     }
 
-    /** Applies the established mode-specific pitch coupling to vanilla mouse GCD. */
-    public static float coupledPitchStep(
-            boolean lockMode,
-            float yawStep,
-            float pitchStep,
-            float pitchDemand,
-            float previousPitchStep,
-            float basePitch,
-            double sensitivity
-    ) {
-        return lockMode
-                ? lockCoupledPitchStep(yawStep, pitchStep, pitchDemand,
-                previousPitchStep, basePitch, sensitivity)
-                : balancePitchStep(yawStep, pitchStep, pitchDemand,
-                basePitch, sensitivity);
-    }
-
     /** Quantizes an angle to the vanilla mouse delta quantum. */
     public static float quantizeMouseStep(float lastSent, float desired, double sensitivity) {
         double gcd = mouseSensitivityGcd(sensitivity);
@@ -114,53 +97,6 @@ public final class HumanAimSimulator {
         double value = Mth.clamp(sensitivity, 0.0D, 1.0D);
         double factor = value * 0.6D + 0.2D;
         return (double) ((float) (factor * factor * factor * 8.0D) * 0.15F);
-    }
-
-    private static float lockCoupledPitchStep(
-            float yawStep,
-            float pitchStep,
-            float pitchDemand,
-            float previousPitchStep,
-            float basePitch,
-            double sensitivity
-    ) {
-        double gcd = mouseSensitivityGcd(sensitivity);
-        if (!Double.isFinite(gcd) || gcd <= 1.0E-7D) return pitchStep;
-        long yawCounts = Math.round(yawStep / gcd);
-        long pitchCounts = Math.round(pitchStep / gcd);
-        if (yawCounts == 0L || pitchCounts != 0L) return pitchStep;
-
-        double direction;
-        if (Math.abs(pitchDemand) >= gcd * 0.35D) {
-            direction = Math.signum(pitchDemand);
-        } else if (Math.abs(previousPitchStep) >= gcd * 0.35D) {
-            direction = -Math.signum(previousPitchStep);
-        } else {
-            direction = yawCounts < 0L ? -1.0D : 1.0D;
-        }
-        if (basePitch >= 90.0F - gcd) direction = -1.0D;
-        else if (basePitch <= -90.0F + gcd) direction = 1.0D;
-        return (float) (direction * gcd);
-    }
-
-    private static float balancePitchStep(
-            float yawStep,
-            float pitchStep,
-            float pitchDemand,
-            float basePitch,
-            double sensitivity
-    ) {
-        double gcd = mouseSensitivityGcd(sensitivity);
-        if (!Double.isFinite(gcd) || gcd <= 1.0E-7D) return pitchStep;
-        long yawCounts = Math.round(yawStep / gcd);
-        long pitchCounts = Math.round(pitchStep / gcd);
-        if (yawCounts == 0L || pitchCounts != 0L
-                || Math.abs(pitchDemand) < gcd * 0.35D) return pitchStep;
-
-        double direction = Math.signum(pitchDemand);
-        if (basePitch >= 90.0F - gcd) direction = -1.0D;
-        else if (basePitch <= -90.0F + gcd) direction = 1.0D;
-        return (float) (direction * gcd);
     }
 
     public record PacketMotion(

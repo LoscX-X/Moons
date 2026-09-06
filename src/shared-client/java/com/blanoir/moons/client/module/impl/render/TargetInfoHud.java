@@ -7,7 +7,7 @@ import com.blanoir.moons.client.config.settings.DoubleSetting;
 import com.blanoir.moons.client.config.settings.IntSetting;
 import com.blanoir.moons.client.management.targeting.Targeting;
 import com.blanoir.moons.client.module.impl.combat.SilentAura;
-import com.blanoir.moons.client.ui.animation.UiMotion;
+import com.blanoir.moons.client.ui.animation.Animation;
 import com.blanoir.moons.client.ui.clickgui.MoonsComposeScreen;
 import com.blanoir.moons.client.ui.layout.Bounds;
 import com.blanoir.moons.client.utils.combat.damage.PlayerHitEstimator;
@@ -43,7 +43,6 @@ public final class TargetInfoHud {
     private long lastTargetNanos;
     private double visibility;
     private double displayedHealth = Double.NaN;
-    private Bounds lastBounds = new Bounds(0, 0, 0, 0);
 
     private TargetInfoHud() {
     }
@@ -59,7 +58,8 @@ public final class TargetInfoHud {
 
     private Snapshot createSnapshot(boolean editing) {
         Minecraft client = Minecraft.getInstance();
-        if (client.player == null || client.level == null
+        var currentPlayer = client == null ? null : client.player;
+        if (currentPlayer == null || client.level == null
                 || (!editing && !ENABLED.get())
                 || (!editing && MinecraftClientAccess.screen(client) instanceof MoonsComposeScreen)) {
             if (!editing) resetHiddenState();
@@ -67,15 +67,15 @@ public final class TargetInfoHud {
         }
 
         double seconds = frameClock.nextDeltaSeconds();
-        Player liveTarget = editing ? client.player : findTarget(client);
+        Player liveTarget = editing ? currentPlayer : findTarget(client);
         long now = System.nanoTime();
         if (liveTarget != null) retain(liveTarget, now);
 
         boolean holding = retainedTarget != null && now - lastTargetNanos <= HOLD_NANOS;
         double targetVisibility = editing || liveTarget != null || holding ? 1.0D : 0.0D;
-        visibility = editing ? 1.0D : UiMotion.approach(visibility, targetVisibility, seconds, 9.5D);
+        visibility = editing ? 1.0D : Animation.approach(visibility, targetVisibility, seconds, 9.5D);
 
-        Player shown = editing ? client.player : retainedTarget;
+        Player shown = editing ? currentPlayer : retainedTarget;
         if (shown == null || visibility < 0.004D) {
             if (!editing && targetVisibility == 0.0D) resetHiddenState();
             return Snapshot.HIDDEN;
@@ -88,11 +88,10 @@ public final class TargetInfoHud {
             animatedTargetId = shown.getUUID();
             displayedHealth = resolvedHealth;
         } else {
-            displayedHealth = UiMotion.approach(displayedHealth, resolvedHealth, seconds, 7.5D);
+            displayedHealth = Animation.approach(displayedHealth, resolvedHealth, seconds, 7.5D);
         }
 
         Bounds bounds = currentBounds();
-        lastBounds = bounds;
         double easedVisibility = editing ? 1.0D : easeOut(visibility);
         int alpha = (int) Math.round(255.0D * easedVisibility);
         float slide = editing ? 0.0F : (float) (-6.0D * (1.0D - easedVisibility));
@@ -117,7 +116,6 @@ public final class TargetInfoHud {
         retainedTarget = null;
         animatedTargetId = null;
         displayedHealth = Double.NaN;
-        lastBounds = new Bounds(0, 0, 0, 0);
         frameClock.reset();
     }
 
@@ -184,14 +182,13 @@ public final class TargetInfoHud {
         int y = (int) Math.round(Math.max(0.0D, Math.min(screenHeight - height, top)));
         POSITION_X.set(x);
         POSITION_Y.set(y);
-        INSTANCE.lastBounds = new Bounds(x, y, width, height);
     }
 
     public static double scale() {
         return crispScale(SCALE.get());
     }
 
-    public static int setScale(Minecraft client, double value) {
+    public static int setScale(Minecraft ignoredClient, double value) {
         SCALE.set(crispScale(value));
         return 1;
     }

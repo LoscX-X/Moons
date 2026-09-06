@@ -1,8 +1,6 @@
 package com.blanoir.moons.agent.core;
 
 import java.util.List;
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
 
 /** Exact logical-to-runtime targets for Minecraft 26.1.2. */
 final class    VersionMappings {
@@ -463,7 +461,7 @@ final class    VersionMappings {
                         TargetMethod.HookKind.CHAMS_REMAP_SUBMIT_MODEL
                 ),
                 new TargetMethod(
-                        "render.trim-changer",
+                        "render.trim",
                         List.of("net/minecraft/client/renderer/entity/layers/EquipmentLayerRenderer"),
                         List.of("renderLayers"),
                         "(Lnet/minecraft/client/resources/model/EquipmentClientInfo$LayerType;"
@@ -473,6 +471,18 @@ final class    VersionMappings {
                                 + "Lnet/minecraft/client/renderer/SubmitNodeCollector;I"
                                 + "Lnet/minecraft/resources/Identifier;II)V",
                         TargetMethod.HookKind.ITEM_STACK_ARGUMENT_5
+                ),
+                new TargetMethod(
+                        "render.trim.direct",
+                        List.of("net/minecraft/client/renderer/entity/layers/EquipmentLayerRenderer"),
+                        List.of("renderLayers"),
+                        "(Lnet/minecraft/client/resources/model/EquipmentClientInfo$LayerType;"
+                                + "Lnet/minecraft/resources/ResourceKey;Lnet/minecraft/client/model/Model;"
+                                + "Ljava/lang/Object;Lnet/minecraft/world/item/ItemStack;"
+                                + "Lcom/mojang/blaze3d/vertex/PoseStack;"
+                                + "Lnet/minecraft/client/renderer/SubmitNodeCollector;I"
+                                + "Lnet/minecraft/resources/Identifier;II)V",
+                        TargetMethod.HookKind.TRIM_RENDER
                 ),
                 new TargetMethod(
                         "render.chams-cape",

@@ -30,13 +30,10 @@ public final class Sprint {
                     .defaultValue(Mode.LEGIT)
                     .option(Mode.LEGIT, "legit")
                     .option(Mode.ALWAYS, "always")
-                    .option(Mode.ON_GROUND, "onground", "on_ground", "on-ground")
+                    .option(Mode.ON_GROUND, "onground")
                     .build();
 
     private Sprint() {
-    }
-
-    public static void init() {
     }
 
     public static boolean isEnabled() {

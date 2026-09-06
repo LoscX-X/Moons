@@ -186,7 +186,4 @@ public final class EntityLag {
         }
     }
 
-    public int queuedPackets() {
-        return packets.size();
-    }
 }

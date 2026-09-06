@@ -87,8 +87,8 @@ public final class AutoBed {
             new ModeSetting.Builder<Mode>()
                     .name("autobed.mode")
                     .defaultValue(Mode.BALANCE)
-                    .option(Mode.BALANCE, MODE_BALANCE, "balanced")
-                    .option(Mode.BLATANT, MODE_BLATANT, "balant", "balantmode")
+                    .option(Mode.BALANCE, MODE_BALANCE)
+                    .option(Mode.BLATANT, MODE_BLATANT)
                     .build();
     private static final DoubleSetting FOV =
             new DoubleSetting.Builder()
@@ -280,10 +280,6 @@ public final class AutoBed {
         BedPlan existingBalanceBed = !isBlatant()
                 ? findExistingBalanceBedPlan(client) : null;
         BasePlan foundBase = findBasePlan(client, material, target);
-        if (material == null && existingBalanceBed == null) {
-            cleanup(client, true, "AutoBed disabled: no solid block in offhand or hotbar.");
-            return;
-        }
         if (foundBedSlot < 0) {
             cleanup(client, true, "AutoBed disabled: no bed in hotbar.");
             return;
@@ -309,6 +305,10 @@ public final class AutoBed {
             CombatInputController.suppressAttack(
                     client, CombatInputController.Owner.AUTO_BED);
             selectBedAndRotate(client);
+            return;
+        }
+        if (material == null) {
+            cleanup(client, true, "AutoBed disabled: no solid block in offhand or hotbar.");
             return;
         }
         materialHand = material.hand();
@@ -443,7 +443,7 @@ public final class AutoBed {
         if (plan == null) {
             return false;
         }
-        materialHand = material.hand();
+materialHand = material.hand();
         materialSlot = material.hotbarSlot();
         materialItem = material.item();
         targetSupportPlan = plan;
@@ -1631,10 +1631,6 @@ public final class AutoBed {
                 && withinReach(client, targetSupportPlan.hit().getLocation());
     }
 
-    private static boolean validBedPlan(Minecraft client) {
-        return validBedPlan(client, true);
-    }
-
     private static boolean validBedPlan(
             Minecraft client, boolean requireSentFacing) {
         if (bedPlan == null || bedSlot < 0
@@ -1896,12 +1892,13 @@ public final class AutoBed {
     }
 
     private static boolean ready(Minecraft client) {
+        var currentPlayer = client == null ? null : client.player;
         return client != null
-                && client.player != null
+                && currentPlayer != null
                 && client.level != null
                 && client.gameMode != null
                 && MinecraftClientAccess.screen(client) == null
-                && !client.player.isDeadOrDying();
+                && !currentPlayer.isDeadOrDying();
     }
 
     private static boolean isTurningPhase(Phase current) {
@@ -1924,12 +1921,13 @@ public final class AutoBed {
     }
 
     private static void cleanup(Minecraft client, boolean disable, String message) {
+        var currentPlayer = client == null ? null : client.player;
         invokingBedUse = usedBeforeMovement = false;
         afterUseMovement = null;
         boolean ownedRotation = isBusy();
-        if (ownedRotation && client != null && client.player != null
+        if (ownedRotation && client != null && currentPlayer != null
                 && originalSlot >= 0 && originalSlot <= 8) {
-            client.player.getInventory().setSelectedSlot(originalSlot);
+            currentPlayer.getInventory().setSelectedSlot(originalSlot);
         }
         CombatInputController.releaseAttack(client, CombatInputController.Owner.AUTO_BED);
         if (ownedRotation) {

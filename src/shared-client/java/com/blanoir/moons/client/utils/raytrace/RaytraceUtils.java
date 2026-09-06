@@ -44,19 +44,21 @@ public final class RaytraceUtils {
     }
 
     public static HitResult clipBlocks(Minecraft client, Vec3 start, Vec3 end) {
-        if (client == null || client.level == null || client.player == null
+        var currentPlayer = client == null ? null : client.player;
+        var currentLevel = client == null ? null : client.level;
+        if (client == null || currentLevel == null || currentPlayer == null
                 || start == null || end == null) {
             return BlockHitResult.miss(
                     start == null ? Vec3.ZERO : start,
                     Direction.UP,
                     BlockPos.ZERO);
         }
-        return client.level.clip(new ClipContext(
+        return currentLevel.clip(new ClipContext(
                 start,
                 end,
                 ClipContext.Block.COLLIDER,
                 ClipContext.Fluid.NONE,
-                client.player));
+                currentPlayer));
     }
 
     public static EntityHitResult findEntity(
@@ -67,7 +69,8 @@ public final class RaytraceUtils {
             boolean throughBlocks,
             Predicate<Entity> predicate
     ) {
-        if (client == null || client.level == null || client.player == null
+        var currentPlayer = client == null ? null : client.player;
+        if (client == null || client.level == null || currentPlayer == null
                 || start == null || end == null || predicate == null
                 || !Double.isFinite(maxDistance) || maxDistance <= 0.0D) {
             return null;
@@ -92,7 +95,7 @@ public final class RaytraceUtils {
                 .expandTowards(rayEnd.subtract(start))
                 .inflate(1.0D);
         return ProjectileUtil.getEntityHitResult(
-                client.player,
+                currentPlayer,
                 start,
                 rayEnd,
                 searchBox,
@@ -162,7 +165,8 @@ public final class RaytraceUtils {
      */
     private static Optional<Vec3> firstCobwebHit(
             Minecraft client, Vec3 start, Vec3 end) {
-        if (client == null || client.level == null || start == null || end == null) {
+        var currentLevel = client == null ? null : client.level;
+        if (client == null || currentLevel == null || start == null || end == null) {
             return Optional.empty();
         }
         int minX = Mth.floor(Math.min(start.x, end.x));
@@ -177,7 +181,7 @@ public final class RaytraceUtils {
             for (int y = minY; y <= maxY; y++) {
                 for (int z = minZ; z <= maxZ; z++) {
                     BlockPos pos = new BlockPos(x, y, z);
-                    if (!client.level.getBlockState(pos).is(Blocks.COBWEB)) continue;
+                    if (!currentLevel.getBlockState(pos).is(Blocks.COBWEB)) continue;
                     AABB web = new AABB(x, y, z, x + 1.0D, y + 1.0D, z + 1.0D);
                     if (web.contains(start)) continue;
                     Optional<Vec3> hit = web.clip(start, end);

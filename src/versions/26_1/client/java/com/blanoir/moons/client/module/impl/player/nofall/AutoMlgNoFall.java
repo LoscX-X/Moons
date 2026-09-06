@@ -14,7 +14,6 @@ import net.minecraft.world.level.material.Fluids;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
-import net.minecraft.util.Mth;
 
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -43,27 +42,28 @@ public final class AutoMlgNoFall {
 
     public void tick(Minecraft client, double triggerDistance, int predictTicks,
                      boolean solidCheck, boolean recovery) {
-        if (client == null || client.player == null || client.level == null) return;
-        if (client.player.isFallFlying()) return;
+        var currentPlayer = client == null ? null : client.player;
+        if (client == null || currentPlayer == null || client.level == null) return;
+        if (currentPlayer.isFallFlying()) return;
 
-        if (client.player.onGround() || client.player.getAbilities().flying
-                || client.player.isInWaterOrRain() || client.player.isInLava()) {
+        if (currentPlayer.onGround() || currentPlayer.getAbilities().flying
+                || currentPlayer.isInWaterOrRain() || currentPlayer.isInLava()) {
             accumulatedFall = 0.0F;
         } else {
-            double deltaY = client.player.getY() - lastY;
+            double deltaY = currentPlayer.getY() - lastY;
             if (deltaY < 0.0D) accumulatedFall -= (float) deltaY;
         }
-        lastY = client.player.getY();
+        lastY = currentPlayer.getY();
 
         if (postPlaceCooldown > 0) postPlaceCooldown--;
         if (postActionCooldown > 0) postActionCooldown--;
         if (extraCooldown > 0) extraCooldown--;
 
         if (slotToRestore != null) {
-            client.player.getInventory().setSelectedSlot(slotToRestore);
+            currentPlayer.getInventory().setSelectedSlot(slotToRestore);
             slotToRestore = null;
         }
-        if (client.player.onGround() || accumulatedFall <= 0.0F) {
+        if (currentPlayer.onGround() || accumulatedFall <= 0.0F) {
             waterPlaced = false;
             readyToPlace = false;
         }
@@ -90,7 +90,7 @@ public final class AutoMlgNoFall {
                 }
                 waterBucketSlot = slot;
             }
-            if (client.player.getInventory().getItem(waterBucketSlot).is(Items.WATER_BUCKET)) {
+            if (currentPlayer.getInventory().getItem(waterBucketSlot).is(Items.WATER_BUCKET)) {
                 recoveryActive = false;
                 waterBucketSlot = null;
                 placedWaterPos = null;
@@ -132,7 +132,7 @@ public final class AutoMlgNoFall {
             }
         }
 
-        if (waterPlaced && !readyToPlace && client.player.getDeltaMovement().y < 0.0D) {
+        if (waterPlaced && !readyToPlace && currentPlayer.getDeltaMovement().y < 0.0D) {
             double distance = distanceToGround(client, 2.5D);
             if (distance > 0.0D && distance <= 1.05D) readyToPlace = true;
         }
@@ -140,17 +140,18 @@ public final class AutoMlgNoFall {
 
         int waterSlot = findHotbarSlot(client, Items.WATER_BUCKET);
         if (waterSlot < 0 || ticksUntilGround(client) > predictTicks + 1) return;
-        if (solidCheck && !hasSolidBelow(client, client.player.blockPosition())) return;
+        if (solidCheck && !hasSolidBelow(client, currentPlayer.blockPosition())) return;
 
-        Rotation down = new Rotation(client.player.getYRot(), 90.0F);
+        Rotation down = new Rotation(currentPlayer.getYRot(), 90.0F);
         BlockHitResult hit = raycast(client, down, 5.0D, ClipContext.Fluid.NONE);
         if (hit.getType() == HitResult.Type.MISS) return;
         placeWaterBucket(client, waterSlot, hit, recovery);
     }
 
     public void reset(Minecraft client) {
-        if (slotToRestore != null && client != null && client.player != null) {
-            client.player.getInventory().setSelectedSlot(slotToRestore);
+        var currentPlayer = client == null ? null : client.player;
+        if (slotToRestore != null && client != null && currentPlayer != null) {
+            currentPlayer.getInventory().setSelectedSlot(slotToRestore);
         }
         if (silentUsePhase != SilentUsePhase.IDLE) {
             SilentPacketRotation.reset();
@@ -168,7 +169,7 @@ public final class AutoMlgNoFall {
         postActionCooldown = 0;
         extraCooldown = 0;
         accumulatedFall = 0.0F;
-        lastY = client != null && client.player != null ? client.player.getY() : 0.0D;
+        lastY = client != null && currentPlayer != null ? currentPlayer.getY() : 0.0D;
     }
 
     private int ticksUntilGround(Minecraft client) {

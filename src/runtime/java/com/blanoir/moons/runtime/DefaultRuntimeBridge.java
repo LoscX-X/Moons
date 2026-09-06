@@ -21,12 +21,7 @@ public final class DefaultRuntimeBridge implements RuntimeBridge {
     private final ModuleManager modules;
     private final String minecraftVersion;
 
-    /** Retained for callers built against the original 26.1 runtime API. */
-    public DefaultRuntimeBridge(AgentMode mode, Path home, Path outerJar) throws Exception {
-        this(mode, home, outerJar, "26.1.2");
-    }
-
-    public DefaultRuntimeBridge(
+public DefaultRuntimeBridge(
             AgentMode mode,
             Path home,
             Path outerJar,

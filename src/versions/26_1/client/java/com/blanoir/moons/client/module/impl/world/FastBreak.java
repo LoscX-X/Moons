@@ -27,14 +27,11 @@ public final class FastBreak {
             new ModeSetting.Builder<Mode>()
                     .name("fastbreak.mode")
                     .defaultValue(Mode.ABORT_ANOTHER)
-                    .option(Mode.ABORT_ANOTHER, "abort_another", "abortanother")
-                    .option(Mode.OFF, "off", "disabled")
+                    .option(Mode.ABORT_ANOTHER, "abort_another")
+                    .option(Mode.OFF, "off")
                     .build();
 
     private FastBreak() {
-    }
-
-    public static void init() {
     }
 
     public static int showStatus(Minecraft client) {
@@ -65,15 +62,16 @@ public final class FastBreak {
 
     public static void handleOutgoingPacket(Packet<?> packet) {
         Minecraft client = Minecraft.getInstance();
-        if (!ENABLED.get() || MODE.get() == Mode.OFF || client == null || client.player == null || client.level == null) {
+        var currentPlayer = client == null ? null : client.player;
+        if (!ENABLED.get() || MODE.get() == Mode.OFF || client == null || currentPlayer == null || client.level == null) {
             return;
         }
 
-        if (ONLY_TOOL.get() && !isMiningTool(client.player.getMainHandItem())) {
+        if (ONLY_TOOL.get() && !isMiningTool(currentPlayer.getMainHandItem())) {
             return;
         }
 
-        if (client.player == null || client.player.connection == null) {
+        if (currentPlayer == null || currentPlayer.connection == null) {
             return;
         }
 
@@ -81,7 +79,7 @@ public final class FastBreak {
                 && packet instanceof ServerboundPlayerActionPacket actionPacket
                 && actionPacket.getAction() == ServerboundPlayerActionPacket.Action.STOP_DESTROY_BLOCK) {
 
-            client.player.connection.send(new ServerboundPlayerActionPacket(
+            currentPlayer.connection.send(new ServerboundPlayerActionPacket(
                     ServerboundPlayerActionPacket.Action.ABORT_DESTROY_BLOCK,
                     actionPacket.getPos().above(),
                     actionPacket.getDirection(),

@@ -26,7 +26,6 @@ public final class Predict {
     private static final long SAME_TICK_GUARD_NANOS = 5_000_000L;
     private static final int MAX_HORIZON_TICKS = 12;
     private static final int MAX_TRIGGER_WAIT_TICKS = 12;
-    private static final double RISING_APEX_MIN_VELOCITY = -0.01D;
 
     private static final BooleanSetting ENABLED =
             new BooleanSetting.Builder()
@@ -94,7 +93,8 @@ public final class Predict {
     }
 
     private static void tick(Minecraft client) {
-        if (ready(client)) {
+        var currentLevel = client == null ? null : client.level;
+        if (client == null || unavailable(client)) {
             clear(client);
             return;
         }
@@ -104,8 +104,8 @@ public final class Predict {
             return;
         }
 
-        if (client.level != null) {
-            Entity target = client.level.getEntity(targetId);
+        if (currentLevel != null) {
+            Entity target = currentLevel.getEntity(targetId);
             if (!Targeting.isEnemyPlayer(client, target)) {
                 clear(client);
                 return;
@@ -307,7 +307,7 @@ public final class Predict {
             int earliestAttackTick,
             boolean throughBlock
     ) {
-        if (!ENABLED.get() || ready(client)) {
+        if (!ENABLED.get() || unavailable(client)) {
             return Critical.AttackDecision.NONE;
         }
         if (targetId != -1
@@ -345,7 +345,7 @@ public final class Predict {
             releasePredictionMovement(client);
             return Critical.AutomaticAttackGate.ALLOW;
         }
-        if (ready(client)) {
+        if (client == null || unavailable(client)) {
             clearAutomaticPlan();
             releasePredictionMovement(client);
             return Critical.AutomaticAttackGate.BLOCK;
@@ -511,6 +511,7 @@ public final class Predict {
             Minecraft client,
             CombatDecisionEngine.Decision decision
     ) {
+        var currentPlayer = client == null ? null : client.player;
         boolean stopSprintNow = STOP_SPRINT.get()
                 && decision.attackKind() == CombatDecisionEngine.AttackKind.CRITICAL
                 && decision.ticksAhead() <= 1;
@@ -522,8 +523,8 @@ public final class Predict {
             // Ensure the STOP_SPRINTING state is submitted before the planned
             // falling attack; the Silent-only validator no longer blocks
             // ordinary running attacks globally.
-            if (client.player != null && client.player.isSprinting()) {
-                client.player.setSprinting(false);
+            if (currentPlayer != null && currentPlayer.isSprinting()) {
+                currentPlayer.setSprinting(false);
             }
         } else {
             releasePredictionMovement(client);
@@ -583,7 +584,7 @@ public final class Predict {
         resetState();
     }
 
-    private static boolean ready(Minecraft client) {
+    private static boolean unavailable(Minecraft client) {
         return !Critical.predictMode()
                 || !ENABLED.get()
                 || client == null
@@ -593,25 +594,19 @@ public final class Predict {
                 || MinecraftClientAccess.screen(client) != null;
     }
 
-    private static boolean isRisingOrAtApex(Minecraft client) {
-        return client != null
-                && client.player != null
-                && !client.player.onGround()
-                && client.player.getDeltaMovement().y >= RISING_APEX_MIN_VELOCITY;
-    }
-
     private static int configuredHorizonTicks() {
-        return clampInt((int) Math.ceil(WINDOW.get() * 20.0D), 1, MAX_HORIZON_TICKS);
+        return Math.clamp((int) Math.ceil(WINDOW.get() * 20.0D), 1, MAX_HORIZON_TICKS);
     }
 
     private static void updateCooldownPhase(Minecraft client) {
-        if (!ENABLED.get() || client == null || client.player == null || client.level == null) {
+        var currentPlayer = client == null ? null : client.player;
+        if (!ENABLED.get() || client == null || currentPlayer == null || client.level == null) {
             cooldownWasFull = false;
             currentOverchargeTicks = 0;
             return;
         }
 
-        boolean full = client.player.getAttackStrengthScale(0.5F) >= 0.999F;
+        boolean full = currentPlayer.getAttackStrengthScale(0.5F) >= 0.999F;
         if (!full) {
             cooldownWasFull = false;
             currentOverchargeTicks = 0;
@@ -711,14 +706,6 @@ public final class Predict {
         SYNC_CYCLES.set(value);
         clear(client);
         return showStatus(client);
-    }
-
-    private static double clampWindow(double value) {
-        return Math.clamp(value, 0.05D, 0.60D);
-    }
-
-    private static int clampInt(int value, int min, int max) {
-        return Math.clamp(max, min, value);
     }
 
     private static String format(double value) {

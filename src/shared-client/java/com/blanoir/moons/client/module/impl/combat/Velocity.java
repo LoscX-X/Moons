@@ -15,15 +15,11 @@ import com.blanoir.moons.client.management.input.CombatInputController;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.core.BlockPos;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.network.protocol.game.ClientboundSetEntityMotionPacket;
 import net.minecraft.network.protocol.game.ClientboundSetTimePacket;
 import net.minecraft.network.protocol.game.ClientboundSystemChatPacket;
-import net.minecraft.world.effect.MobEffects;
-import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.List;
@@ -45,8 +41,8 @@ public final class Velocity {
             .defaultValue(Mode.JUMP_RESET)
             .option(Mode.VANILLA, "vanilla")
             .option(Mode.JUMP, "jump")
-            .option(Mode.GRIM2371, "grim2371", "grim")
-            .option(Mode.JUMP_RESET, "jumpreset", "jump_reset")
+            .option(Mode.GRIM2371, "grim2371")
+            .option(Mode.JUMP_RESET, "jumpreset")
             .build();
     private static final DoubleSetting CHANCE = percent("velocity.chance", 100.0D);
     private static final DoubleSetting HORIZONTAL = percent("velocity.horizontal", 0.0D);
@@ -140,7 +136,7 @@ public final class Velocity {
             if (enabled && !wasEnabled) VelocityGrim2371.enable();
             else if (!enabled && wasEnabled) VelocityGrim2371.disable(client);
         }
-        return JumpReset.setEnabled(client, enabled);
+        return JumpReset.setEnabled(enabled);
     }
 
     public static String statusTag() {
@@ -173,12 +169,6 @@ public final class Velocity {
         return 1;
     }
 
-    /** Used by packet bundle expansion; both packet-driven modes need individual sub-packets. */
-    public static boolean vanillaOrJumpMode() {
-        Mode mode = MODE.get();
-        return mode == Mode.VANILLA || mode == Mode.JUMP;
-    }
-
     /** Modes whose damage/velocity packets must be expanded out of bundles. */
     public static boolean packetDrivenMode() {
         Mode mode = MODE.get();
@@ -201,32 +191,32 @@ public final class Velocity {
         return MODE.get() == Mode.GRIM2371;
     }
 
-    public static int setChance(Minecraft client, double value) {
+    public static int setChance(Minecraft ignoredClient, double value) {
         CHANCE.set(value);
         return 1;
     }
 
-    public static int setHorizontal(Minecraft client, double value) {
+    public static int setHorizontal(Minecraft ignoredClient, double value) {
         HORIZONTAL.set(value);
         return 1;
     }
 
-    public static int setVertical(Minecraft client, double value) {
+    public static int setVertical(Minecraft ignoredClient, double value) {
         VERTICAL.set(value);
         return 1;
     }
 
-    public static int setExplosionHorizontal(Minecraft client, double value) {
+    public static int setExplosionHorizontal(Minecraft ignoredClient, double value) {
         EXPLOSION_HORIZONTAL.set(value);
         return 1;
     }
 
-    public static int setExplosionVertical(Minecraft client, double value) {
+    public static int setExplosionVertical(Minecraft ignoredClient, double value) {
         EXPLOSION_VERTICAL.set(value);
         return 1;
     }
 
-    public static int setFakeCheck(Minecraft client, boolean value) {
+    public static int setFakeCheck(Minecraft ignoredClient, boolean value) {
         FAKE_CHECK.set(value);
         synchronized (Velocity.class) {
             allowNext = true;
@@ -239,7 +229,7 @@ public final class Velocity {
         return FAKE_CHECK.get();
     }
 
-    public static int setOtherAttacks(Minecraft client, boolean value) {
+    public static int setOtherAttacks(Minecraft ignoredClient, boolean value) {
         OTHER_ATTACKS.set(value);
         synchronized (Velocity.class) {
             allowNext = true;
@@ -248,19 +238,19 @@ public final class Velocity {
         return 1;
     }
 
-    public static int setRotate(Minecraft client, boolean value) {
+    public static int setRotate(Minecraft ignoredClient, boolean value) {
         ROTATE.set(value);
-        if (!value && !FOLLOW_DIRECTION.get()) clearJumpRotation(client);
+        if (!value && !FOLLOW_DIRECTION.get()) clearJumpRotation();
         return 1;
     }
 
-    public static int setFollowDirection(Minecraft client, boolean value) {
+    public static int setFollowDirection(Minecraft ignoredClient, boolean value) {
         FOLLOW_DIRECTION.set(value);
-        if (!value && !ROTATE.get()) clearJumpRotation(client);
+        if (!value && !ROTATE.get()) clearJumpRotation();
         return 1;
     }
 
-    public static int setRotateTicks(Minecraft client, int value) {
+    public static int setRotateTicks(Minecraft ignoredClient, int value) {
         ROTATE_TICKS.set(value);
         return 1;
     }
@@ -448,14 +438,15 @@ public final class Velocity {
         if (activeRotationYaw != null && (player.hurtTime == 0
                 || rotationHeldTicks > ROTATE_TICKS.get()
                 || !jumpRotationEnabled())) {
-            clearJumpRotation(client);
+            clearJumpRotation();
         }
     }
 
     private static synchronized void snapshot(Minecraft client) {
+        var currentLevel = client == null ? null : client.level;
         LocalPlayer player = client == null ? null : client.player;
         PlayerSnapshot previous = playerSnapshot;
-        if (player == null) {
+        if (client == null || player == null) {
             playerSnapshot = PlayerSnapshot.EMPTY;
             synchronized (Velocity.class) {
                 allowNext = true;
@@ -464,9 +455,9 @@ public final class Velocity {
             return;
         }
         int entityId = player.getId();
-        Set<Integer> playerIds = client.level == null
+        Set<Integer> playerIds = currentLevel == null
                 ? Set.of(entityId)
-                : client.level.players().stream()
+                : currentLevel.players().stream()
                 .map(entity -> entity.getId())
                 .collect(Collectors.toUnmodifiableSet());
         playerSnapshot = new PlayerSnapshot(
@@ -504,14 +495,15 @@ public final class Velocity {
     }
 
     private static void activateJumpRotation(Minecraft client, float yaw) {
-        if (client == null || client.player == null || !jumpRotationEnabled()) return;
+        var currentPlayer = client == null ? null : client.player;
+        if (client == null || currentPlayer == null || !jumpRotationEnabled()) return;
         // Velocity is not part of the player-module busy interlock. Do not
         // replace a block interaction (or its accepted pending rotation) that
         // already owns the shared silent-rotation controller.
         if (SilentPacketRotation.isBusy() && !ownsPacketRotation) return;
         activeRotationYaw = yaw;
         rotationHeldTicks = 0;
-        float pitch = client.player.getXRot();
+        float pitch = currentPlayer.getXRot();
         double yawRadians = Math.toRadians(yaw);
         double pitchRadians = Math.toRadians(pitch);
         double cosPitch = Math.cos(pitchRadians);
@@ -521,10 +513,10 @@ public final class Velocity {
                 Math.cos(yawRadians) * cosPitch
         );
         ownsPacketRotation = SilentPacketRotation.beginRotation(
-                client, client.player.getEyePosition().add(direction.scale(8.0D)), 1, () -> { });
+                client, currentPlayer.getEyePosition().add(direction.scale(8.0D)), 1, () -> { });
     }
 
-    private static void clearJumpRotation(Minecraft client) {
+    private static void clearJumpRotation() {
         activeRotationYaw = null;
         pendingRotationYaw = null;
         rotationHeldTicks = 0;
@@ -547,26 +539,7 @@ public final class Velocity {
         resetJumpStateOnly();
         forcedJumpTicks = 0;
         CombatInputController.releaseJump(client, CombatInputController.Owner.VELOCITY_JUMP);
-        clearJumpRotation(client);
-    }
-
-    private static boolean touchingCobweb(Minecraft client, LocalPlayer player) {
-        if (client.level == null) return false;
-        AABB box = player.getBoundingBox().deflate(1.0E-5D);
-        int minX = (int) Math.floor(box.minX);
-        int minY = (int) Math.floor(box.minY);
-        int minZ = (int) Math.floor(box.minZ);
-        int maxX = (int) Math.floor(box.maxX);
-        int maxY = (int) Math.floor(box.maxY);
-        int maxZ = (int) Math.floor(box.maxZ);
-        for (int x = minX; x <= maxX; x++) {
-            for (int y = minY; y <= maxY; y++) {
-                for (int z = minZ; z <= maxZ; z++) {
-                    if (client.level.getBlockState(new BlockPos(x, y, z)).is(Blocks.COBWEB)) return true;
-                }
-            }
-        }
-        return false;
+        clearJumpRotation();
     }
 
     private static DoubleSetting percent(String key, double fallback) {

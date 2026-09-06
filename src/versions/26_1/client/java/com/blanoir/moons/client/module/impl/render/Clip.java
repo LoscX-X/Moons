@@ -15,9 +15,6 @@ public final class Clip {
     private Clip() {
     }
 
-    public static void init() {
-    }
-
     public static boolean isEnabled() {
         return ENABLED.get();
     }

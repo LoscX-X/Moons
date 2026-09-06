@@ -3,7 +3,6 @@ package com.blanoir.moons.client.module.impl.world;
 import com.blanoir.moons.client.module.world.scaffold.ScaffoldEngine;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.phys.Vec3;
 
 import java.util.List;
 
@@ -52,13 +51,13 @@ public final class Scaffold {
     public static float getRenderYaw() { return ScaffoldEngine.renderYaw(); }
     public static float getRenderPitch() { return ScaffoldEngine.renderPitch(); }
     public static float getMovementYaw() { return ScaffoldEngine.movementYaw(); }
+    public static com.blanoir.moons.client.utils.rotation.Rotation getPacketRotation() {
+        return ScaffoldEngine.packetRotation();
+    }
     public static boolean cancelManualActions() { return ScaffoldEngine.cancelManualActions(); }
     public static boolean cancelUseAction() { return ScaffoldEngine.cancelUseAction(); }
     public static boolean handleHotbarSwap(int slot, int offset) { return ScaffoldEngine.handleHotbarSwap(slot, offset); }
     public static ItemStack spoofedItem(ItemStack original) { return ScaffoldEngine.spoofedItem(original); }
-    public static Vec3 adjustMovement(Minecraft c, Vec3 v) { return ScaffoldEngine.adjustMovement(c, v); }
-    public static void markOutgoingRotation(float y, float p) { ScaffoldEngine.markOutgoingRotation(y, p); }
-    public static void preMotionPlace() { ScaffoldEngine.preMotionPlace(); }
 
     // Debug
     public static int setDebugger(Minecraft c, boolean v) { return ScaffoldEngine.setDebugger(c, v); }

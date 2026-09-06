@@ -18,7 +18,7 @@ public final class SprintReset {
     private static final BooleanSetting ENABLED = bool("sprintreset.enabled", false);
     private static final ModeSetting<Mode> MODE = new ModeSetting.Builder<Mode>()
             .name("sprintreset.mode").defaultValue(Mode.NO_STOP)
-            .option(Mode.NO_STOP, "no_stop", "nostop")
+            .option(Mode.NO_STOP, "no_stop")
             .option(Mode.LEGIT, "legit").build();
     private static final IntSetting INTERVAL_MS = integer("sprintreset.intervalMs", 400, 0, 2000);
     private static final BooleanSetting REQUIRE_TARGET_DAMAGE = bool("sprintreset.requireTargetDamage", true);
@@ -41,8 +41,9 @@ public final class SprintReset {
     /** Called immediately before vanilla sends the attack. */
     public static void onAttack(Entity entity) {
         Minecraft client = Minecraft.getInstance();
+        var currentPlayer = client == null ? null : client.player;
         if (!ENABLED.get() || !(entity instanceof LivingEntity target)
-                || client.player == null || !client.player.isSprinting()
+                || currentPlayer == null || !currentPlayer.isSprinting()
                 || System.currentTimeMillis() - lastResetAtMs < INTERVAL_MS.get()) return;
 
         if (REQUIRE_TARGET_DAMAGE.get()) {
@@ -55,13 +56,15 @@ public final class SprintReset {
     }
 
     private static void tick(Minecraft client) {
-        if (client == null || client.player == null || client.level == null || !ENABLED.get()) {
+        var currentPlayer = client == null ? null : client.player;
+        var currentLevel = client == null ? null : client.level;
+        if (client == null || currentPlayer == null || currentLevel == null || !ENABLED.get()) {
             clear(client);
             return;
         }
 
         if (pendingTargetId >= 0) {
-            Entity entity = client.level.getEntity(pendingTargetId);
+            Entity entity = currentLevel.getEntity(pendingTargetId);
             if (entity instanceof LivingEntity target
                     && (target.hurtTime > pendingInitialHurtTime || target.hurtTime >= 9)) {
                 pendingTargetId = -1;
@@ -76,19 +79,20 @@ public final class SprintReset {
         if (resetActive && System.currentTimeMillis() >= restoreAtMs) {
             CombatInputController.releaseForward(client, CombatInputController.Owner.SPRINT_RESET);
             CombatInputController.releaseSprint(client, CombatInputController.Owner.SPRINT_RESET);
-            if (resumeSprint && client.player.input != null) client.player.setSprinting(true);
+            if (resumeSprint && currentPlayer.input != null) currentPlayer.setSprinting(true);
             resetActive = false;
             resumeSprint = false;
         }
     }
 
     private static void beginReset(Minecraft client) {
-        if (client.player == null || resetActive) return;
+        var currentPlayer = client == null ? null : client.player;
+        if (currentPlayer == null || resetActive) return;
         lastResetAtMs = System.currentTimeMillis();
         restoreAtMs = lastResetAtMs + DURATION_MS.get();
-        resumeSprint = client.player.isSprinting();
+        resumeSprint = currentPlayer.isSprinting();
         CombatInputController.suppressSprint(client, CombatInputController.Owner.SPRINT_RESET);
-        client.player.setSprinting(false);
+        currentPlayer.setSprinting(false);
         if (MODE.get() == Mode.LEGIT) {
             CombatInputController.suppressForward(client, CombatInputController.Owner.SPRINT_RESET);
         }
@@ -114,11 +118,11 @@ public final class SprintReset {
         return 1;
     }
     public static String hudTag() { return MODE.serialized(); }
-    public static int setMode(Minecraft client, String value) { MODE.deserialize(value); return 1; }
+    public static int setMode(Minecraft ignoredClient, String value) { MODE.deserialize(value); return 1; }
     public static List<String> modeOptions() { return MODE.optionIds(); }
-    public static int setIntervalMs(Minecraft client, int value) { INTERVAL_MS.set(value); return 1; }
-    public static int setRequireTargetDamage(Minecraft client, boolean value) { REQUIRE_TARGET_DAMAGE.set(value); return 1; }
-    public static int setDurationMs(Minecraft client, int value) { DURATION_MS.set(value); return 1; }
+    public static int setIntervalMs(Minecraft ignoredClient, int value) { INTERVAL_MS.set(value); return 1; }
+    public static int setRequireTargetDamage(Minecraft ignoredClient, boolean value) { REQUIRE_TARGET_DAMAGE.set(value); return 1; }
+    public static int setDurationMs(Minecraft ignoredClient, int value) { DURATION_MS.set(value); return 1; }
 
     private enum Mode {
         NO_STOP, LEGIT

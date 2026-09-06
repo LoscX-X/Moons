@@ -23,7 +23,7 @@ public final class AntiBot {
             .name("antibot.mode").defaultValue(AntiBotMode.CUSTOM)
             .option(AntiBotMode.CUSTOM, "custom")
             .option(AntiBotMode.MATRIX, "matrix")
-            .option(AntiBotMode.INTAVE_HEAVY, "intave_heavy", "intaveheavy")
+            .option(AntiBotMode.INTAVE_HEAVY, "intave_heavy")
             .option(AntiBotMode.HORIZON, "horizon").build();
     private static final BooleanSetting LITERAL_NPC = bool("antibot.literalNpc", false);
     private static final BooleanSetting NOT_IN_TAB = bool("antibot.notInTabList", false);
@@ -63,7 +63,8 @@ public final class AntiBot {
 
     public static boolean isBot(Entity entity) {
         Minecraft client = Minecraft.getInstance();
-        if (!ENABLED.get() || client.player == null || entity == client.player
+        var currentPlayer = client == null ? null : client.player;
+        if (!ENABLED.get() || currentPlayer == null || entity == currentPlayer
                 || !(entity instanceof Player player)) return false;
         if (LITERAL_NPC.get() && !PlayerListUtils.isOnline(client, player.getUUID())) return true;
         if (NOT_IN_TAB.get() && !PlayerListUtils.isListed(client, player.getUUID())) return true;
@@ -110,33 +111,33 @@ public final class AntiBot {
         return 1;
     }
 
-    public static int setMode(Minecraft client, String value) {
+    public static int setMode(Minecraft ignoredClient, String value) {
         MODE.deserialize(value);
         STATE.reset();
         return 1;
     }
 
-    public static int setLiteralNpc(Minecraft client, boolean value) { LITERAL_NPC.set(value); return 1; }
-    public static int setNotInTab(Minecraft client, boolean value) { NOT_IN_TAB.set(value); return 1; }
-    public static int setInvalidGround(Minecraft client, boolean value) { INVALID_GROUND.set(value); return 1; }
-    public static int setInvalidGroundVl(Minecraft client, int value) { INVALID_GROUND_VL.set(value); return 1; }
-    public static int setAlwaysInRadius(Minecraft client, boolean value) { ALWAYS_IN_RADIUS.set(value); return 1; }
-    public static int setRadius(Minecraft client, double value) { RADIUS.set(value); return 1; }
-    public static int setAgeCheck(Minecraft client, boolean value) { AGE_CHECK.set(value); return 1; }
-    public static int setMinimumAge(Minecraft client, int value) { MINIMUM_AGE.set(value); return 1; }
-    public static int setNameCheck(Minecraft client, boolean value) { NAME_CHECK.set(value); return 1; }
-    public static int setNameMin(Minecraft client, int value) { NAME_MIN.set(value); return 1; }
-    public static int setNameMax(Minecraft client, int value) { NAME_MAX.set(value); return 1; }
-    public static int setDuplicate(Minecraft client, boolean value) { DUPLICATE.set(value); return 1; }
-    public static int setNoGameMode(Minecraft client, boolean value) { NO_GAME_MODE.set(value); return 1; }
-    public static int setIllegalPitch(Minecraft client, boolean value) { ILLEGAL_PITCH.set(value); return 1; }
-    public static int setFakeEntityId(Minecraft client, boolean value) { FAKE_ENTITY_ID.set(value); return 1; }
-    public static int setNeedHit(Minecraft client, boolean value) { NEED_HIT.set(value); return 1; }
-    public static int setIllegalHealth(Minecraft client, boolean value) { ILLEGAL_HEALTH.set(value); return 1; }
-    public static int setNeedSwing(Minecraft client, boolean value) { NEED_SWING.set(value); return 1; }
-    public static int setNeedCrit(Minecraft client, boolean value) { NEED_CRIT.set(value); return 1; }
-    public static int setNeedAttributes(Minecraft client, boolean value) { NEED_ATTRIBUTES.set(value); return 1; }
-    public static int setIllegalScale(Minecraft client, boolean value) { ILLEGAL_SCALE.set(value); return 1; }
+    public static int setLiteralNpc(Minecraft ignoredClient, boolean value) { LITERAL_NPC.set(value); return 1; }
+    public static int setNotInTab(Minecraft ignoredClient, boolean value) { NOT_IN_TAB.set(value); return 1; }
+    public static int setInvalidGround(Minecraft ignoredClient, boolean value) { INVALID_GROUND.set(value); return 1; }
+    public static int setInvalidGroundVl(Minecraft ignoredClient, int value) { INVALID_GROUND_VL.set(value); return 1; }
+    public static int setAlwaysInRadius(Minecraft ignoredClient, boolean value) { ALWAYS_IN_RADIUS.set(value); return 1; }
+    public static int setRadius(Minecraft ignoredClient, double value) { RADIUS.set(value); return 1; }
+    public static int setAgeCheck(Minecraft ignoredClient, boolean value) { AGE_CHECK.set(value); return 1; }
+    public static int setMinimumAge(Minecraft ignoredClient, int value) { MINIMUM_AGE.set(value); return 1; }
+    public static int setNameCheck(Minecraft ignoredClient, boolean value) { NAME_CHECK.set(value); return 1; }
+    public static int setNameMin(Minecraft ignoredClient, int value) { NAME_MIN.set(value); return 1; }
+    public static int setNameMax(Minecraft ignoredClient, int value) { NAME_MAX.set(value); return 1; }
+    public static int setDuplicate(Minecraft ignoredClient, boolean value) { DUPLICATE.set(value); return 1; }
+    public static int setNoGameMode(Minecraft ignoredClient, boolean value) { NO_GAME_MODE.set(value); return 1; }
+    public static int setIllegalPitch(Minecraft ignoredClient, boolean value) { ILLEGAL_PITCH.set(value); return 1; }
+    public static int setFakeEntityId(Minecraft ignoredClient, boolean value) { FAKE_ENTITY_ID.set(value); return 1; }
+    public static int setNeedHit(Minecraft ignoredClient, boolean value) { NEED_HIT.set(value); return 1; }
+    public static int setIllegalHealth(Minecraft ignoredClient, boolean value) { ILLEGAL_HEALTH.set(value); return 1; }
+    public static int setNeedSwing(Minecraft ignoredClient, boolean value) { NEED_SWING.set(value); return 1; }
+    public static int setNeedCrit(Minecraft ignoredClient, boolean value) { NEED_CRIT.set(value); return 1; }
+    public static int setNeedAttributes(Minecraft ignoredClient, boolean value) { NEED_ATTRIBUTES.set(value); return 1; }
+    public static int setIllegalScale(Minecraft ignoredClient, boolean value) { ILLEGAL_SCALE.set(value); return 1; }
 
     private static BooleanSetting bool(String key, boolean fallback) {
         return new BooleanSetting.Builder().name(key).defaultValue(fallback).build();

@@ -837,10 +837,11 @@ public final class AutoObsidian {
     }
 
     private static boolean ready(Minecraft client) {
-        return client != null && client.player != null && client.level != null
+        var currentPlayer = client == null ? null : client.player;
+        return client != null && currentPlayer != null && client.level != null
                 && client.gameMode != null
                 && MinecraftClientAccess.screen(client) == null
-                && !client.player.isDeadOrDying();
+                && !currentPlayer.isDeadOrDying();
     }
 
     private static boolean isTurning(Phase value) {
@@ -863,10 +864,11 @@ public final class AutoObsidian {
     }
 
     private static void cleanup(Minecraft client, boolean disable, String message) {
+        var currentPlayer = client == null ? null : client.player;
         boolean owned = isBusy();
-        if (owned && client != null && client.player != null
+        if (owned && client != null && currentPlayer != null
                 && originalSlot >= 0 && originalSlot <= 8) {
-            client.player.getInventory().setSelectedSlot(originalSlot);
+            currentPlayer.getInventory().setSelectedSlot(originalSlot);
         }
         CombatInputController.releaseAttack(
                 client, CombatInputController.Owner.AUTO_OBSIDIAN);
@@ -917,32 +919,32 @@ public final class AutoObsidian {
         return 1;
     }
 
-    public static int setRange(Minecraft client, double value) {
+    public static int setRange(Minecraft ignoredClient, double value) {
         RANGE.set(Mth.clamp(value, 1.0D, 8.0D));
         return 1;
     }
 
-    public static int setFov(Minecraft client, double value) {
+    public static int setFov(Minecraft ignoredClient, double value) {
         FOV.set(Mth.clamp(value, 1.0D, 360.0D));
         return 1;
     }
 
-    public static int setMinWalls(Minecraft client, int value) {
+    public static int setMinWalls(Minecraft ignoredClient, int value) {
         MIN_WALLS.set(Mth.clamp(value, 2, 3));
         return 1;
     }
 
-    public static int setSmoothTicks(Minecraft client, int value) {
+    public static int setSmoothTicks(Minecraft ignoredClient, int value) {
         SMOOTH_TICKS.set(Mth.clamp(value, 1, 20));
         return 1;
     }
 
-    public static int setSwitchDelayMs(Minecraft client, int value) {
+    public static int setSwitchDelayMs(Minecraft ignoredClient, int value) {
         SWITCH_DELAY_MS.set(Mth.clamp(value, 0, 500));
         return 1;
     }
 
-    public static int setCollectWater(Minecraft client, boolean value) {
+    public static int setCollectWater(Minecraft ignoredClient, boolean value) {
         COLLECT_WATER.set(value);
         return 1;
     }

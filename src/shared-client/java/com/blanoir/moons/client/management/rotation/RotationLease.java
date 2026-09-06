@@ -1,5 +1,12 @@
 package com.blanoir.moons.client.management.rotation;
 
+import com.blanoir.moons.client.utils.rotation.Rotation;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.function.Consumer;
+import net.minecraft.client.Minecraft;
 import net.minecraft.util.Mth;
 
 /**
@@ -19,64 +26,235 @@ public final class RotationLease {
     public static final int PRIORITY_BLOCK_INTERACTION = 100;
 
     private static RotationLease holder;
+    private static Submission submission;
+    private static Rotation manual;
+    private static final Map<RotationLease, Runnable> continuations = new LinkedHashMap<>();
+    private static boolean resuming;
+    private static boolean motionWindow;
+    private static int packetObservers;
+
+    /** Final result used by an action/movement window; never a send acknowledgement. */
+    public record Submission(RotationLease lease, long generation, long requestId,
+                             Rotation rotation, boolean correctMovement) { }
 
     private final String owner;
     private final int priority;
     private RotationRequest request;
     private boolean confirmed;
     private boolean pinned;
+    private boolean releasePending;
+    private long generation;
+    private long requestId;
+    private Rotation start;
 
     public RotationLease(String owner, int priority) {
         this.owner = owner;
         this.priority = priority;
     }
 
-    public synchronized boolean acquire(RotationRequest request) {
-        if (request == null) return false;
-        synchronized (RotationLease.class) {
+    public boolean acquire(RotationRequest request) {
+        return acquire(request, RotationHistory.start(Minecraft.getInstance()), ignored -> { });
+    }
+
+    /** The initializer runs once per acquisition, before the new producer computes its trajectory. */
+    public boolean acquire(RotationRequest request, Rotation camera, Consumer<Rotation> initialize) {
+        synchronized (RotationHistory.class) {
+            if (request == null || manual != null) return false;
+            if (submission != null && submission.lease() != this) return false;
             if (holder != null && holder != this
                     && (holder.pinned || holder.priority >= priority)) return false;
+            boolean acquired = holder != this || this.request == null;
             if (holder != null && holder != this) holder.clearLocal();
             holder = this;
+            this.request = request;
+            confirmed = false;
+            requestId++;
+            if (acquired) {
+                generation++;
+                start = RotationHistory.start(camera);
+                try {
+                    initialize.accept(start);
+                } catch (RuntimeException | Error failure) {
+                    holder = null;
+                    clearLocal();
+                    throw failure;
+                }
+            }
+            return true;
         }
-        this.request = request;
-        confirmed = false;
-        return true;
     }
 
-    public synchronized boolean confirm(float sentYaw, float sentPitch) {
-        if (!active() || confirmed) return false;
+    void confirm(float sentYaw, float sentPitch) {
+        if (!active() || confirmed) return;
         if (Math.abs(Mth.wrapDegrees(request.yaw() - sentYaw)) > request.tolerance()
-                || Math.abs(request.pitch() - sentPitch) > request.tolerance()) return false;
+                || Math.abs(request.pitch() - sentPitch) > request.tolerance()) return;
         confirmed = true;
         request.onConfirmed().run();
-        return true;
     }
 
-    public synchronized boolean active() { return holder == this && request != null; }
-    public synchronized boolean confirmed() { return active() && confirmed; }
-    public synchronized RotationRequest request() { return request; }
-    public synchronized String owner() { return owner; }
+    public boolean active() { synchronized (RotationHistory.class) { return holder == this && request != null; } }
+    public boolean confirmed() { synchronized (RotationHistory.class) { return active() && confirmed; } }
+    public RotationRequest request() { synchronized (RotationHistory.class) { return request; } }
+    public String owner() { return owner; }
+
+    /** Commit once. Later readers, release requests and competing owners cannot replace it. */
+    public Rotation commit(Rotation candidate, boolean exact, boolean correctMovement) {
+        synchronized (RotationHistory.class) {
+            if (!active() || manual != null) return null;
+            if (submission != null) return submission.lease() == this ? submission.rotation() : null;
+            Rotation base = RotationHistory.start(start);
+            Rotation result = exact ? candidate : new Rotation(
+                    RotationQuantizer.yaw(base.yaw(), candidate.yaw()),
+                    RotationQuantizer.pitch(base.pitch(), candidate.pitch()));
+            submission = new Submission(this, generation, requestId, result, correctMovement);
+            return result;
+        }
+    }
+
+    public static Submission submission() { synchronized (RotationHistory.class) { return submission; } }
+
+    /** sendPosition completed (possibly cancelled/no packet); history is updated separately. */
+    public static void finishMotion() {
+        synchronized (RotationHistory.class) {
+            motionWindow = false;
+            RotationLease previous = submission == null ? null : submission.lease();
+            submission = null;
+            if (previous != null && previous.releasePending && !previous.pinned) previous.release();
+            resumePending();
+        }
+    }
+
+    /**
+     * Queue preparation after a blocked acquisition/phase change. One latest
+     * continuation per producer; reset must cancel it. It may prepare rotation,
+     * but actions still belong to their original PLAYER_UPDATE phase.
+     */
+    public void whenAvailable(Runnable continuation) {
+        synchronized (RotationHistory.class) {
+            continuations.put(this, java.util.Objects.requireNonNull(continuation));
+            resumePending();
+        }
+    }
+
+    public static void beginMotion() {
+        synchronized (RotationHistory.class) { motionWindow = true; }
+    }
+
+    public static void beginPacketObservation() {
+        synchronized (RotationHistory.class) { packetObservers++; }
+    }
+
+    public static void endPacketObservation() {
+        synchronized (RotationHistory.class) { packetObservers--; }
+    }
+
+    public void cancelPending() {
+        synchronized (RotationHistory.class) { continuations.remove(this); }
+    }
+
+    /** Runs ready preparation outside committed, temporary-camera and packet-observer windows. */
+    public static void resumePending() {
+        synchronized (RotationHistory.class) {
+            if (resuming || motionWindow || packetObservers != 0
+                    || submission != null || manual != null || continuations.isEmpty()) return;
+            resuming = true;
+            try {
+                var ready = new ArrayList<>(continuations.keySet());
+                ready.sort(Comparator.comparingInt((RotationLease lease) -> lease.priority).reversed());
+                for (RotationLease lease : ready) {
+                    if (submission != null || manual != null) break;
+                    if (holder != null && (holder.pinned
+                            || holder != lease && holder.priority >= lease.priority)) continue;
+                    Runnable continuation = continuations.remove(lease);
+                    if (continuation == null) continue;
+                    try {
+                        continuation.run();
+                    } catch (RuntimeException failure) {
+                        // One producer failure must not strand other already-ready work.
+                        System.err.println("[RotationLease] Continuation failed for " + lease.owner);
+                        failure.printStackTrace(System.err);
+                    }
+                }
+            } finally {
+                resuming = false;
+            }
+        }
+    }
+
+    boolean matches(Submission value) {
+        return active() && value == submission
+                && value.generation() == generation && value.requestId() == requestId;
+    }
+
+    /** The manual USE_ITEM floats belong to its closing movement, even if Aura is disabled. */
+    public static boolean holdManual(Rotation rotation) {
+        synchronized (RotationHistory.class) {
+            if (holder != null && holder.pinned
+                    || submission != null && !RotationHistory.same(submission.rotation(), rotation)) return false;
+            if (manual != null && !RotationHistory.same(manual, rotation)) return false;
+            manual = rotation;
+            return true;
+        }
+    }
+
+    public static Rotation manualRotation() { synchronized (RotationHistory.class) { return manual; } }
+
+    static void confirmManual(Rotation rotation) {
+        if (manual != null && RotationHistory.same(manual, rotation)) manual = null;
+    }
 
     /** Prevents a USE/USE_ON transaction from being split across two owners. */
-    public synchronized boolean pin() {
-        if (!active()) return false;
-        pinned = true;
-        return true;
+    public boolean pin() {
+        synchronized (RotationHistory.class) {
+            if (!active()) return false;
+            pinned = true;
+            return true;
+        }
     }
 
-    public synchronized void unpin() { pinned = false; }
-    public synchronized boolean pinned() { return active() && pinned; }
+    public void unpin() {
+        synchronized (RotationHistory.class) {
+            pinned = false;
+            if (releasePending) release();
+        }
+    }
+    public boolean pinned() { synchronized (RotationHistory.class) { return active() && pinned; } }
 
-    public synchronized void release() {
-        synchronized (RotationLease.class) { if (holder == this) holder = null; }
-        clearLocal();
+    public void release() {
+        synchronized (RotationHistory.class) {
+            if (pinned || submission != null && submission.lease() == this) {
+                releasePending = true;
+                return;
+            }
+            if (holder == this) holder = null;
+            clearLocal();
+            // A release in PLAYER_UPDATE must not make the next producer wait
+            // until that tick's movement has already passed. Packet observers
+            // and temporary-camera windows are explicitly excluded above.
+            resumePending();
+        }
     }
 
-    public static synchronized boolean busyFor(RotationLease lease) {
-        return holder != null && holder != lease
-                && (holder.pinned || holder.priority >= lease.priority);
+    public static boolean busyFor(RotationLease lease) {
+        synchronized (RotationHistory.class) {
+            return manual != null || submission != null && submission.lease() != lease
+                    || holder != null && holder != lease
+                    && (holder.pinned || holder.priority >= lease.priority);
+        }
     }
 
-    private void clearLocal() { request = null; confirmed = false; pinned = false; }
+    static void resetAll() {
+        if (holder != null) holder.clearLocal();
+        holder = null;
+        submission = null;
+        manual = null;
+        continuations.clear();
+    }
+
+    private void clearLocal() {
+        request = null;
+        confirmed = pinned = releasePending = false;
+        start = null;
+        generation++;
+    }
 }

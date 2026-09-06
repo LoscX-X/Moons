@@ -1,9 +1,9 @@
 package com.blanoir.moons.client.ui.hud;
 
-import com.blanoir.moons.client.ui.theme.UiThemes;
-
 /** Color sampling shared with the independent Skia TextGUI renderer. */
 final class HudText {
+    private static final int THEME_PRIMARY = 0xFFC49A6C;
+    private static final int THEME_PANEL = 0xD02D2723;
     private HudText() {
     }
 
@@ -12,9 +12,9 @@ final class HudText {
     }
 
     static int hudColor() {
-        if (HudConfig.USE_THEME_COLOR.get()) return UiThemes.COFFEE.palette().primary();
+        if (HudConfig.USE_THEME_COLOR.get()) return THEME_PRIMARY;
         Integer custom = HudConfig.parseColor(HudConfig.COLOR.get());
-        return custom == null ? UiThemes.COFFEE.palette().primary() : custom;
+        return custom == null ? THEME_PRIMARY : custom;
     }
 
     static int titleColor() {
@@ -58,9 +58,9 @@ final class HudText {
     }
 
     static int hudBackgroundColor() {
-        if (HudConfig.USE_THEME_BACKGROUND.get()) return UiThemes.COFFEE.palette().panel();
+        if (HudConfig.USE_THEME_BACKGROUND.get()) return THEME_PANEL;
         Integer custom = HudConfig.parseColor(HudConfig.BACKGROUND_COLOR.get());
-        return custom == null ? UiThemes.COFFEE.palette().panel() : custom;
+        return custom == null ? THEME_PANEL : custom;
     }
 
     private static int blendRgb(int first, int second, double amount) {

@@ -47,6 +47,9 @@ import com.blanoir.moons.client.ui.clickgui.ModuleGui;
 import com.blanoir.moons.client.management.input.CombatInputController;
 import com.blanoir.moons.client.management.input.MouseInputTracker;
 import com.blanoir.moons.client.management.rotation.SilentPacketRotation;
+import com.blanoir.moons.client.management.rotation.RotationLease;
+import com.blanoir.moons.client.management.rotation.RotationHistory;
+import com.blanoir.moons.client.utils.rotation.Rotation;
 import com.blanoir.moons.client.utils.time.FrameClock;
 import com.blanoir.moons.runtime.RuntimeEvents;
 import com.mojang.blaze3d.platform.InputConstants;
@@ -275,8 +278,9 @@ final class RuntimeEventAdapter {
             }
         }
         Minecraft client = Minecraft.getInstance();
-        if (client.player == null || client.level == null
-                || client.player.isSpectator()
+        var currentPlayer = client == null ? null : client.player;
+        if (currentPlayer == null || client.level == null
+                || currentPlayer.isSpectator()
                 || MinecraftClientAccess.screen(client) != null
                 || event.yOffset() == 0.0D) return;
         int offset = event.yOffset() > 0.0D ? 1 : -1;
@@ -309,7 +313,15 @@ final class RuntimeEventAdapter {
 
     private void action(RuntimeEvents.Action event) {
         if (!(event.minecraft() instanceof Minecraft client)) return;
+        var player = client.player;
         if (event.phase() == RuntimeEvents.Phase.START) {
+            Rotation manualRotation = RotationLease.manualRotation();
+            if (event.kind() == RuntimeEvents.Kind.USE && manualRotation != null && player != null
+                    && !RotationHistory.same(manualRotation,
+                    new Rotation(player.getYRot(), player.getXRot()))) {
+                event.control().cancel();
+                return;
+            }
             if (publishActionPre(client, event.kind())) {
                 event.control().cancel();
                 return;
@@ -418,7 +430,7 @@ final class RuntimeEventAdapter {
             capture.useActive = false;
             capture.usePlayer = null;
             capture.useHit = null;
-            SilentPacketRotation.finishSimulatedUse(client);
+            SilentPacketRotation.finishSimulatedUse();
         }
     }
 
@@ -433,8 +445,15 @@ final class RuntimeEventAdapter {
                 EventBus.PACKET_SEND_PRE.post(packetEvent);
                 if (packetEvent.isCancelled()) event.control().cancel();
             }
-            case SEND_POST -> EventBus.PACKET_SEND_POST.post(new PacketSendEvent.Post(
-                    (Connection) event.connection(), packet, thread));
+            case SEND_POST -> {
+                RotationLease.beginPacketObservation();
+                try {
+                    EventBus.PACKET_SEND_POST.post(new PacketSendEvent.Post(
+                            (Connection) event.connection(), packet, thread));
+                } finally {
+                    RotationLease.endPacketObservation();
+                }
+            }
             case RECEIVE_NETWORK -> {
                 if (thread == PacketThread.CLIENT) return;
                 PacketReceiveEvent.Pre packetEvent = new PacketReceiveEvent.Pre(
@@ -488,6 +507,9 @@ final class RuntimeEventAdapter {
         if (event.player() instanceof LocalPlayer player
                 && Minecraft.getInstance().player == player) {
             PlayerUpdateEvent updateEvent = new PlayerUpdateEvent(Minecraft.getInstance());
+            // A previous cancelled player update may never have reached sendPosition.
+            // Interaction pins survive this ordinary submission cleanup.
+            RotationLease.finishMotion();
             EventBus.PLAYER_UPDATE.post(updateEvent);
             if (updateEvent.isCancelled()) event.control().cancel();
         }
@@ -497,9 +519,7 @@ final class RuntimeEventAdapter {
         if (!(event.player() instanceof Entity entity)
                 || Minecraft.getInstance().player != entity) return;
         Minecraft client = Minecraft.getInstance();
-        if (event.movement() instanceof Vec3 originalMovement) {
-            Vec3 movement = Scaffold.isEnabled()
-                    ? Scaffold.adjustMovement(client, originalMovement) : originalMovement;
+        if (event.movement() instanceof Vec3 movement) {
             float initialStrafe = (float) movement.x;
             float initialForward = (float) movement.z;
             float initialFriction = event.scale();
@@ -511,8 +531,7 @@ final class RuntimeEventAdapter {
             // an old Strafe side effect and introduced needless prediction
             // drift even in the Vanilla Telly/Tower path.
             if (Float.compare(strafe.getStrafe(), initialStrafe) != 0
-                    || Float.compare(strafe.getForward(), initialForward) != 0
-                    || movement != originalMovement) {
+                    || Float.compare(strafe.getForward(), initialForward) != 0) {
                 event.movement(new Vec3(
                         strafe.getStrafe(), movement.y, strafe.getForward()));
             }
@@ -543,7 +562,7 @@ final class RuntimeEventAdapter {
         if (event.phase() == RuntimeEvents.Phase.START) {
             capture.eventCameraYaw = player.getYRot();
             capture.eventCameraPitch = player.getXRot();
-            Scaffold.preMotionPlace();
+            RotationLease.beginMotion();
             applyPacketRotation(player, capture);
             capture.eventOutgoingYaw = player.getYRot();
             capture.eventOutgoingPitch = player.getXRot();
@@ -567,78 +586,56 @@ final class RuntimeEventAdapter {
                     capture.eventOverridden);
             restorePacketRotation(player, capture);
             EventBus.PLAYER_MOTION_POST.post(motion);
+            // POST listeners may release an owner or enqueue the next phase.
+            // Prepare it now, after all observers saw the closing movement.
+            RotationLease.resumePending();
         }
     }
 
     private void applyPacketRotation(LocalPlayer player, PositionCapture state) {
-        boolean manualUse = SilentAura.shouldApplyManualUseRotation();
-        boolean packetModule = !manualUse && SilentPacketRotation.shouldApplyRotation();
-        boolean scaffold = !manualUse && !packetModule && Scaffold.shouldApplyRotation();
-        boolean aura = !manualUse && !packetModule && !scaffold
-                && SilentAura.shouldApplyRotation();
-        if (!manualUse && !packetModule && !aura && !scaffold) {
-            if (state.continuous) {
-                // Minimal hand-off: keep the visible camera direction, but
-                // express yaw as the nearest 360-degree equivalent of the last
-                // silent packet. No staged packets means movement and packet
-                // rotation cannot disagree during module shutdown.
-                float rebasedYaw = state.lastYaw
-                        + Mth.wrapDegrees(player.getYRot() - state.lastYaw);
-                player.setYRot(SilentPacketRotation.quantizePacketYaw(
-                        state.lastYaw, rebasedYaw));
-                player.setXRot(SilentPacketRotation.quantizePacketPitch(
-                        state.lastPitch, player.getXRot()));
-            }
+        Rotation rotation;
+        RotationLease.Submission committed = RotationLease.submission();
+        if (committed != null) {
+            rotation = committed.rotation();
+        } else if (SilentAura.shouldApplyManualUseRotation()) {
+            rotation = new Rotation(SilentAura.getManualUseYaw(), SilentAura.getManualUsePitch());
+        } else if (SilentPacketRotation.shouldApplyRotation()) {
+            rotation = SilentPacketRotation.packetRotation(Minecraft.getInstance());
+        } else if (Scaffold.shouldApplyRotation()) {
+            rotation = Scaffold.getPacketRotation();
+        } else if (SilentAura.shouldApplyRotation()) {
+            rotation = new Rotation(SilentAura.getPacketYaw(), SilentAura.getPacketPitch());
+        } else {
+            if (!state.continuous) return;
+            Rotation base = RotationHistory.start(Minecraft.getInstance());
+            rotation = new Rotation(
+                    SilentPacketRotation.quantizePacketYaw(base.yaw(), player.getYRot()),
+                    SilentPacketRotation.quantizePacketPitch(base.pitch(), player.getXRot()));
             state.continuous = false;
+            applyTemporaryRotation(player, state, rotation);
             return;
         }
+        state.continuous = true;
+        applyTemporaryRotation(player, state, rotation);
+    }
+
+    private void applyTemporaryRotation(LocalPlayer player, PositionCapture state, Rotation rotation) {
         state.cameraYaw = player.getYRot();
         state.cameraPitch = player.getXRot();
-        if (manualUse) {
-            // BadPacketsJ compares raw float bits. Do not GCD-quantize the
-            // movement that closes a vanilla pre-movement USE_ITEM.
-            state.sentYaw = SilentAura.getManualUseYaw();
-            state.sentPitch = SilentAura.getManualUsePitch();
-        } else if (scaffold) {
-            // ScaffoldEngine already applies the mouse-sensitivity GCD to
-            // its continuous angle. A second quantization from this adapter's
-            // base would create alternating modulo remainders.
-            state.sentYaw = Scaffold.getYaw();
-            state.sentPitch = Scaffold.getPitch();
-        } else if (packetModule && SilentPacketRotation.isUseRotationLocked()) {
-            state.sentYaw = SilentPacketRotation.getYaw();
-            state.sentPitch = SilentPacketRotation.getPitch();
-        } else {
-            float baseYaw = state.continuous ? state.lastYaw : state.cameraYaw;
-            float basePitch = state.continuous ? state.lastPitch : state.cameraPitch;
-            state.sentYaw = SilentPacketRotation.quantizePacketYaw(
-                    baseYaw, aura ? SilentAura.getPacketYaw()
-                            : scaffold ? Scaffold.getYaw() : SilentPacketRotation.getYaw());
-            state.sentPitch = SilentPacketRotation.quantizePacketPitch(
-                    basePitch, aura ? SilentAura.getPacketPitch()
-                            : scaffold ? Scaffold.getPitch() : SilentPacketRotation.getPitch());
-        }
-        state.continuous = true;
-        state.aura = aura;
-        state.scaffold = scaffold;
         state.packetActive = true;
-        player.setYRot(state.sentYaw);
-        player.setXRot(state.sentPitch);
+        player.setYRot(rotation.yaw());
+        player.setXRot(rotation.pitch());
     }
 
     private void restorePacketRotation(LocalPlayer player, PositionCapture state) {
-        if (!state.packetActive) return;
-        state.lastYaw = state.sentYaw;
-        state.lastPitch = state.sentPitch;
-        if (state.aura) SilentAura.markOutgoingRotation(
-                state.sentYaw, state.sentPitch, player.tickCount);
-        player.setYRot(state.cameraYaw);
-        player.setXRot(state.cameraPitch);
-        state.aura = false;
-        state.scaffold = false;
-        state.packetActive = false;
+        if (state.packetActive) {
+            player.setYRot(state.cameraYaw);
+            player.setXRot(state.cameraPitch);
+            state.packetActive = false;
+        }
+        // A completed method may have emitted no packet, or had its send cancelled.
+        RotationLease.finishMotion();
     }
-
     private void renderState(RuntimeEvents.RenderState event) {
         if (event.entity() instanceof Entity entity
                 && event.state() instanceof EntityRenderState state) {
@@ -665,7 +662,8 @@ final class RuntimeEventAdapter {
     private void applySilentBodyRotation(
             Avatar avatar, AvatarRenderState state, float partialTick) {
         Minecraft client = Minecraft.getInstance();
-        if (client.player == null || avatar.getId() != client.player.getId()) return;
+        var player = client.player;
+        if (player == null || avatar.getId() != player.getId()) return;
 
         BodyRotationState rotation = bodyRotations.computeIfAbsent(
                 avatar, ignored -> new BodyRotationState());
@@ -692,7 +690,7 @@ final class RuntimeEventAdapter {
             boolean fullLock = aura && SilentAura.isFullLockMode();
             if (fullLock) {
                 updateFullLockRenderRotation(rotation, silentYaw, silentPitch,
-                        vanillaHeadYaw, state.xRot, client.player.tickCount, partialTick);
+                        vanillaHeadYaw, state.xRot, player.tickCount, partialTick);
                 silentYaw = rotation.fullLockRenderYaw;
                 silentPitch = rotation.fullLockRenderPitch;
             } else {
@@ -849,15 +847,9 @@ final class RuntimeEventAdapter {
         boolean movementActive;
         float movementYaw;
         boolean packetActive;
-        boolean aura;
-        boolean scaffold;
         boolean continuous;
         float cameraYaw;
         float cameraPitch;
-        float sentYaw;
-        float sentPitch;
-        float lastYaw;
-        float lastPitch;
         float eventCameraYaw;
         float eventCameraPitch;
         float eventOutgoingYaw;

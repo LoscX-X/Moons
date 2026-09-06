@@ -22,30 +22,30 @@ public interface CriticalMode {
 
     boolean isEnabled();
 
-    int setEnabled(Minecraft client, boolean value);
+    int setEnabled(Minecraft ignoredClient, boolean value);
 
     Critical.AttackDecision requestAttack(
-            Minecraft client,
+            Minecraft ignoredClient,
             Entity target,
             int earliestAttackTick,
             boolean throughBlock
     );
 
     Critical.AutomaticAttackGate gateSilentAuraAttack(
-            Minecraft client,
+            Minecraft ignoredClient,
             Entity target,
             int earliestAttackTick
     );
 
-    void cancelSilentAuraPrediction(Minecraft client);
+    void cancelSilentAuraPrediction(Minecraft ignoredClient);
 
     boolean isAimingWindowActive();
 
     CombatDecisionEngine.Decision plannedDecision();
 
     /** Runs at the head of Minecraft's real entity-attack path. */
-    default void beforeAttack(Minecraft client, Entity target) {
+    default void beforeAttack(Minecraft ignoredClient, Entity target) {
     }
 
-    int showStatus(Minecraft client);
+    int showStatus(Minecraft ignoredClient);
 }

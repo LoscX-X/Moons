@@ -2,7 +2,6 @@ package com.blanoir.moons.client.module.impl.player;
 
 import com.blanoir.moons.client.access.MinecraftClientAccess;
 
-import com.blanoir.moons.client.config.Settings;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.DoubleSetting;
 import com.blanoir.moons.client.config.settings.IntSetting;
@@ -34,7 +33,6 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
-
 
 /** Critical-triggered lava place/collect cycle using vanilla bucket actions. */
 public final class AutoLava {
@@ -196,20 +194,7 @@ public final class AutoLava {
     }
 
     public static void init() {
-        migrateLegacyPickupDelay();
         EventBus.PLAYER_UPDATE.register("AutoLava.playerUpdate", event -> tick(event.client()));
-    }
-
-    private static void migrateLegacyPickupDelay() {
-        int unset = Integer.MIN_VALUE;
-        int configuredMs = Settings.getInt("autolava.pickupDelayMs", unset);
-        int legacyTicks = Settings.getInt("autolava.pickupDelay", unset);
-        if (configuredMs == unset && legacyTicks != unset) {
-            PICKUP_DELAY_MS.set(Mth.clamp(legacyTicks, 0, 20) * 15);
-        }
-        if (legacyTicks != unset) {
-            Settings.remove("autolava.pickupDelay");
-        }
     }
 
     /** Samples the critical gate before vanilla resets attack strength. */
@@ -589,7 +574,6 @@ public final class AutoLava {
                         CyclePhase.WAITING_FOR_PICKUP_ROTATION));
     }
 
-
     private static void beginAfterSlotDelay(Minecraft client) {
         if (bucketSlot < 0
                 || !client.player.getInventory().getItem(bucketSlot)
@@ -649,13 +633,14 @@ public final class AutoLava {
     }
 
     private static void restoreOriginalSlotWhenReady(Minecraft client) {
+        var currentPlayer = client == null ? null : client.player;
         if (deferredOriginalSlot < 0
                 || System.nanoTime() < deferredRestoreAtNanos
                 || client == null
-                || client.player == null) {
+                || currentPlayer == null) {
             return;
         }
-        if (client.player.getInventory().getSelectedSlot() == deferredBucketSlot) {
+        if (currentPlayer.getInventory().getSelectedSlot() == deferredBucketSlot) {
             selectSlot(client, deferredOriginalSlot);
         }
         deferredOriginalSlot = -1;
@@ -747,8 +732,9 @@ public final class AutoLava {
     }
 
     private static Player targetById(Minecraft client, int id) {
-        return client != null && client.level != null && id >= 0
-                && client.level.getEntity(id) instanceof Player player
+        var currentLevel = client == null ? null : client.level;
+        return client != null && currentLevel != null && id >= 0
+                && currentLevel.getEntity(id) instanceof Player player
                 ? player : null;
     }
 
@@ -1286,12 +1272,13 @@ public final class AutoLava {
     }
 
     private static boolean ready(Minecraft client) {
+        var currentPlayer = client == null ? null : client.player;
         return client != null
-                && client.player != null
+                && currentPlayer != null
                 && client.level != null
                 && client.gameMode != null
                 && MinecraftClientAccess.screen(client) == null
-                && !client.player.isDeadOrDying();
+                && !currentPlayer.isDeadOrDying();
     }
 
     public static boolean isBusy() {
@@ -1302,13 +1289,14 @@ public final class AutoLava {
     }
 
     private static void reset(Minecraft client) {
+        var currentPlayer = client == null ? null : client.player;
         SilentPacketRotation.reset();
         boolean deferredForCurrentCycle = returnSwitchScheduled
                 && deferredOriginalSlot == originalSlot
                 && deferredBucketSlot == bucketSlot;
-        if (client != null && client.player != null
+        if (client != null && currentPlayer != null
                 && originalSlot >= 0 && bucketSlot >= 0
-                && client.player.getInventory().getSelectedSlot() == bucketSlot
+                && currentPlayer.getInventory().getSelectedSlot() == bucketSlot
                 && !deferredForCurrentCycle) {
             selectSlot(client, originalSlot);
         }

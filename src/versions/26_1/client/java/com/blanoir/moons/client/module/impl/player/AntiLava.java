@@ -35,7 +35,6 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 
-
 /** Covers a newly placed hostile lava source with a hotbar/offhand block. */
 public final class AntiLava {
     private static final double ENEMY_PLACE_REACH = 5.0D;
@@ -443,12 +442,13 @@ public final class AntiLava {
     }
 
     private static boolean ready(Minecraft client) {
+        var currentPlayer = client == null ? null : client.player;
         return client != null
-                && client.player != null
+                && currentPlayer != null
                 && client.level != null
                 && client.gameMode != null
                 && MinecraftClientAccess.screen(client) == null
-                && !client.player.isDeadOrDying();
+                && !currentPlayer.isDeadOrDying();
     }
 
     public static boolean isBusy() {
@@ -456,13 +456,14 @@ public final class AntiLava {
     }
 
     private static void restoreMaterial(Minecraft client) {
+        var currentPlayer = client == null ? null : client.player;
         boolean ownedRotation = activePlan != null;
-        if (client != null && client.player != null
+        if (client != null && currentPlayer != null
                 && activeHand == InteractionHand.MAIN_HAND
                 && activeHotbarSlot >= 0
                 && originalHotbarSlot >= 0
-                && client.player.getInventory().getSelectedSlot() == activeHotbarSlot) {
-            client.player.getInventory().setSelectedSlot(originalHotbarSlot);
+                && currentPlayer.getInventory().getSelectedSlot() == activeHotbarSlot) {
+            currentPlayer.getInventory().setSelectedSlot(originalHotbarSlot);
         }
         CombatInputController.releaseAttack(client, CombatInputController.Owner.ANTI_LAVA);
         activePlan = null;

@@ -353,7 +353,7 @@ public final class RemoteConfigClient {
             }
             webSocket.request(1);
             sendHello(webSocket);
-            notifyChat("Web remote connection started. HWID: " + hardwareId());
+            notifyChat("Web remote connection started.");
         }
 
         @Override

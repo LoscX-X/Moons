@@ -45,16 +45,17 @@ final class AntiBotState {
     private Object levelIdentity;
 
     void tick(Minecraft client) {
+        var currentPlayer = client == null ? null : client.player;
         Object currentLevel = client == null ? null : client.level;
         if (currentLevel != levelIdentity) {
             reset();
             levelIdentity = currentLevel;
         }
-        if (!AntiBot.isEnabled() || client == null || client.player == null || client.level == null) return;
+        if (!AntiBot.isEnabled() || client == null || currentPlayer == null || client.level == null) return;
 
         double radiusSquared = AntiBot.radius() * AntiBot.radius();
         for (Player player : client.level.players()) {
-            if (player != client.player && client.player.distanceToSqr(player) > radiusSquared) {
+            if (player != currentPlayer && currentPlayer.distanceToSqr(player) > radiusSquared) {
                 leftRadius.add(player.getId());
             }
         }
@@ -89,6 +90,7 @@ final class AntiBotState {
     }
 
     boolean isCustomBot(Minecraft client, Player player) {
+        var currentPlayer = client == null ? null : client.player;
         int id = player.getId();
         if (AntiBot.invalidGround() && invalidGroundVl.getOrDefault(id, 0) >= AntiBot.invalidGroundVl()) return true;
         if (AntiBot.alwaysInRadius() && !leftRadius.contains(id)) return true;
@@ -100,8 +102,8 @@ final class AntiBotState {
         if (AntiBot.illegalPitch() && Math.abs(player.getXRot()) > 90.0F) return true;
         if (AntiBot.fakeEntityId() && (id < 0 || id > 1_000_000_000)) return true;
         if (AntiBot.needHit() && !hit.contains(id)) return true;
-        if (AntiBot.illegalHealth() && client.player != null
-                && player.getHealth() > client.player.getMaxHealth()) return true;
+        if (AntiBot.illegalHealth() && currentPlayer != null
+                && player.getHealth() > currentPlayer.getMaxHealth()) return true;
         if (AntiBot.needSwing() && !swung.contains(id)) return true;
         if (AntiBot.needCrit() && !critted.contains(id)) return true;
         if (AntiBot.needAttributes() && !attributes.contains(id)) return true;
@@ -133,8 +135,9 @@ final class AntiBotState {
     }
 
     private void updateInvalidGround(Minecraft client, ClientboundMoveEntityPacket packet) {
-        if (!packet.hasPosition() || client.level == null) return;
-        Entity entity = packet.getEntity(client.level);
+        var currentLevel = client == null ? null : client.level;
+        if (!packet.hasPosition() || currentLevel == null) return;
+        Entity entity = packet.getEntity(currentLevel);
         if (!(entity instanceof Player player)) return;
         int id = player.getId();
         int current = invalidGroundVl.getOrDefault(id, 0);
@@ -194,7 +197,8 @@ final class AntiBotState {
                 continue;
             }
             if (client.player.tickCount <= suspect.firstSeenTick()) continue;
-            boolean changed = !ItemStack.listMatches(suspect.armor(), armor);
+            boolean changed = java.util.stream.IntStream.range(0, armor.size())
+                    .anyMatch(index -> !ItemStack.matches(suspect.armor().get(index), armor.get(index)));
             if ((fullyArmored(player) || changed) && player.getGameProfile().properties().isEmpty()) {
                 matrixBots.add(player.getUUID());
             }

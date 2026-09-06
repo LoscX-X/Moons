@@ -39,23 +39,25 @@ public final class CriticalHitTracker {
         expire(now);
         if (PREPARED.containsKey(packet)) return;
         Minecraft client = Minecraft.getInstance();
-        if (client == null || client.player == null || client.level == null) return;
+        var currentPlayer = client == null ? null : client.player;
+        var currentLevel = client == null ? null : client.level;
+        if (client == null || currentPlayer == null || currentLevel == null) return;
 
-        Entity target = client.level.getEntity(targetId);
+        Entity target = currentLevel.getEntity(targetId);
         if (!(target instanceof LivingEntity living) || !living.isAlive()) return;
-        float charge = client.player.getAttackStrengthScale(0.5F);
+        float charge = currentPlayer.getAttackStrengthScale(0.5F);
 
         // Exact Player.canCriticalAttack movement predicate. Do not route this
         // through combat target filtering: recorded statistics also include a
         // valid hit on a neutral/friendly LivingEntity.
         boolean critical = charge > VANILLA_CRITICAL_CHARGE
-                && client.player.fallDistance > 0.0F
-                && !client.player.onGround()
-                && !client.player.onClimbable()
-                && !client.player.isInWater()
-                && !client.player.isMobilityRestricted()
-                && !client.player.isPassenger()
-                && !client.player.isSprinting();
+                && currentPlayer.fallDistance > 0.0F
+                && !currentPlayer.onGround()
+                && !currentPlayer.onClimbable()
+                && !currentPlayer.isInWater()
+                && !currentPlayer.isMobilityRestricted()
+                && !currentPlayer.isPassenger()
+                && !currentPlayer.isSprinting();
         PREPARED.put(packet, new PreparedAttack(
                 targetId,
                 charge + 1.0E-4F >= MIN_RECORDED_CHARGE,
@@ -84,8 +86,9 @@ public final class CriticalHitTracker {
      */
     public static synchronized void confirmDamageApplied(int targetId, int sourceCauseId) {
         Minecraft client = Minecraft.getInstance();
-        if (client == null || client.player == null
-                || sourceCauseId != client.player.getId()) return;
+        var currentPlayer = client == null ? null : client.player;
+        if (client == null || currentPlayer == null
+                || sourceCauseId != currentPlayer.getId()) return;
         long now = System.nanoTime();
         expire(now);
 

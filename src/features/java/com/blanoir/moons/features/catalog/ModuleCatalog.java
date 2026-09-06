@@ -2,7 +2,7 @@ package com.blanoir.moons.features.catalog;
 
 import com.blanoir.moons.client.module.framework.ModuleRegistry;
 
-/** Preserves the legacy module initialization and presentation order. */
+/** Defines module initialization and presentation order. */
 public final class ModuleCatalog {
     private ModuleCatalog() {
     }
@@ -55,7 +55,7 @@ public final class ModuleCatalog {
         ModuleRegistry.add(World.lightningTracker());
         ModuleRegistry.add(Misc.chatFilter());
         ModuleRegistry.add(Misc.chatPrefix());
-        ModuleRegistry.add(Render.trimChanger());
+        ModuleRegistry.add(Render.trim());
         ModuleRegistry.add(Render.offlinePlayerDetect());
         ModuleRegistry.add(Misc.premiumCheck());
         ModuleRegistry.add(Misc.staticFov());

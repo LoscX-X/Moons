@@ -11,11 +11,6 @@ import java.nio.file.Path;
 public final class RuntimeEntrypoint {
     private RuntimeEntrypoint() { }
 
-    /** Retained for older launchers that predate explicit version handoff. */
-    public static RuntimeBridge start(Path home, Path outerJar, AgentMode mode) throws Exception {
-        return start(home, outerJar, mode, "26.1.2");
-    }
-
     public static RuntimeBridge start(
             Path home,
             Path outerJar,

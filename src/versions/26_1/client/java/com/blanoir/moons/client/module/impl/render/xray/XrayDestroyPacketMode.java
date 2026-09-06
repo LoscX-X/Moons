@@ -120,10 +120,6 @@ public final class XrayDestroyPacketMode {
         return 1;
     }
 
-    public static int packetIntervalTicks() {
-        return PACKET_INTERVAL_TICKS.get();
-    }
-
     public static int setPacketIntervalTicks(Minecraft client, int ticks) {
         PACKET_INTERVAL_TICKS.set(ticks);
         staticIntervalCounter = 0;
@@ -200,7 +196,7 @@ public final class XrayDestroyPacketMode {
         BlockHitResult deepest = null;
         for (double distance = 0.0D; distance <= reach; distance += RAY_STEP) {
             BlockPos pos = BlockPos.containing(eye.add(view.scale(distance)));
-            if (pos.equals(previous)) {
+            if (previous != null && pos.equals(previous)) {
                 continue;
             }
             previous = pos;
@@ -265,12 +261,16 @@ public final class XrayDestroyPacketMode {
     }
 
     private static void sendProbe(Minecraft client, BlockPos pos, Direction direction) {
-        if (!OreScanner.isClientWorldReady(client)
-                || client.gameMode == null
-                || client.getConnection() == null
-                || client.player.blockActionRestricted(
-                        client.level, pos, client.gameMode.getPlayerMode())
-                || !client.level.getWorldBorder().isWithinBounds(pos)
+        var currentPlayer = client == null ? null : client.player;
+        var currentLevel = client == null ? null : client.level;
+        var currentGameMode = client == null ? null : client.gameMode;
+        var connectionSnapshot = client == null ? null : client.getConnection();
+        if (client == null || currentPlayer == null || currentLevel == null
+                || currentGameMode == null
+                || connectionSnapshot == null
+                || currentPlayer.blockActionRestricted(
+                        currentLevel, pos, currentGameMode.getPlayerMode())
+                || !currentLevel.getWorldBorder().isWithinBounds(pos)
                 || !isProbeableBlock(client, pos)) {
             return;
         }
@@ -280,18 +280,18 @@ public final class XrayDestroyPacketMode {
             return;
         }
 
-        GameAccess.withPredictionSequence(client.level, sequence ->
-                client.getConnection().send(new ServerboundPlayerActionPacket(
+        GameAccess.withPredictionSequence(currentLevel, sequence ->
+                connectionSnapshot.send(new ServerboundPlayerActionPacket(
                         ServerboundPlayerActionPacket.Action.START_DESTROY_BLOCK,
                         pos,
                         direction,
                         sequence)));
-        client.getConnection().send(new ServerboundPlayerActionPacket(
+        connectionSnapshot.send(new ServerboundPlayerActionPacket(
                 ServerboundPlayerActionPacket.Action.ABORT_DESTROY_BLOCK,
                 pos,
                 Direction.DOWN,
                 0));
-        client.getConnection().send(new ServerboundSwingPacket(InteractionHand.MAIN_HAND));
+        connectionSnapshot.send(new ServerboundSwingPacket(InteractionHand.MAIN_HAND));
         packetsSent++;
     }
 
@@ -324,40 +324,44 @@ public final class XrayDestroyPacketMode {
     }
 
     private static boolean isProbeableBlock(Minecraft client, BlockPos pos) {
-        if (client.level == null
+        var currentLevel = client == null ? null : client.level;
+        if (currentLevel == null
                 || pos == null
-                || !client.level.isInWorldBounds(pos)
-                || !client.level.isLoaded(pos)) {
+                || !currentLevel.isInWorldBounds(pos)
+                || !currentLevel.isLoaded(pos)) {
             return false;
         }
 
-        BlockState state = client.level.getBlockState(pos);
+        BlockState state = currentLevel.getBlockState(pos);
         return !state.isAir()
                 && state.getFluidState().isEmpty()
-                && state.getDestroySpeed(client.level, pos) >= 0.0F
-                && !state.getCollisionShape(client.level, pos).isEmpty()
-                && !state.getShape(client.level, pos).isEmpty();
+                && state.getDestroySpeed(currentLevel, pos) >= 0.0F
+                && !state.getCollisionShape(currentLevel, pos).isEmpty()
+                && !state.getShape(currentLevel, pos).isEmpty();
     }
 
     private static boolean canProbe(Minecraft client) {
-        if (client.player == null
-                || client.level == null
-                || client.gameMode == null
+        var currentPlayer = client == null ? null : client.player;
+        var currentLevel = client == null ? null : client.level;
+        var currentGameMode = client == null ? null : client.gameMode;
+        if (client == null || currentPlayer == null
+                || currentLevel == null
+                || currentGameMode == null
                 || client.getConnection() == null
                 || client.hasSingleplayerServer()
-                || client.level.dimension().equals(Level.END)
+                || currentLevel.dimension().equals(Level.END)
                 || MinecraftClientAccess.screen(client) != null
                 || client.options.keyAttack.isDown()
                 || client.options.keyUse.isDown()
-                || client.player.isUsingItem()
-                || client.gameMode.isDestroying()
+                || currentPlayer.isUsingItem()
+                || currentGameMode.isDestroying()
                 || client.hitResult instanceof EntityHitResult
                 || SilentAura.hasLockedTarget(client)) {
             return false;
         }
 
-        return client.player.getMainHandItem().isEmpty()
-                || client.player.getMainHandItem().is(ItemTags.PICKAXES);
+        return currentPlayer.getMainHandItem().isEmpty()
+                || currentPlayer.getMainHandItem().is(ItemTags.PICKAXES);
     }
 
     private static boolean isStationary(Minecraft client) {

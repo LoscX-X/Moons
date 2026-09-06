@@ -6,7 +6,6 @@ import com.blanoir.moons.client.config.settings.IntSetting;
 import com.blanoir.moons.client.config.settings.ModeSetting;
 import com.blanoir.moons.client.config.settings.StringSetting;
 import com.blanoir.moons.client.management.targeting.Targeting;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
 
 import java.util.Collections;
@@ -41,17 +40,17 @@ public final class SilentAuraConfig {
     private static final DoubleSetting PREDICTION_LEAD = decimal("silentaura.predictionLead", 0.5D, 0.0D, 2.0D);
     private static final ModeSetting<AimMode> AIM_MODE = new ModeSetting.Builder<AimMode>()
             .name("silentaura.aimMode").defaultValue(AimMode.LOCK)
-            .option(AimMode.BALANCE, "balance", "balanced", "enhanced", "enhance")
+            .option(AimMode.BALANCE, "balance")
             .option(AimMode.LOCK, "lock")
-            .option(AimMode.FULL_LOCK, "full_lock", "full-lock", "fulllock").build();
+            .option(AimMode.FULL_LOCK, "full_lock").build();
     private static final BooleanSetting MATRIX_COMPATIBILITY =
             bool("silentaura.matrix", false);
     private static final BooleanSetting CRITICAL_INTEGRATION =
             bool("silentaura.critical", true);
     private static final ModeSetting<AimPoint> AIM_POINT = new ModeSetting.Builder<AimPoint>()
             .name("silentaura.aimPoint").defaultValue(AimPoint.CENTER)
-            .option(AimPoint.CENTER, "center", "centre")
-            .option(AimPoint.CLOSEST, "closest", "close").build();
+            .option(AimPoint.CENTER, "center")
+            .option(AimPoint.CLOSEST, "closest").build();
     private static final DoubleSetting PREDICTION = decimal("silentaura.predictionStrength", 1.0D, 0.0D, 3.0D);
     private static final DoubleSetting MIN_CHARGE = decimal("silentaura.minCharge", 0.7D, 0.7D, 1.3D);
     private static final DoubleSetting MAX_CHARGE = decimal("silentaura.maxCharge", 1.0D, 0.7D, 1.3D);
@@ -146,16 +145,6 @@ public final class SilentAuraConfig {
         if ("player".equalsIgnoreCase(category)) { TARGET_PLAYERS.set(value); return true; }
         if ("mob".equalsIgnoreCase(category)) { TARGET_MOBS.set(value); return true; }
         return false;
-    }
-
-    public static boolean targetEntityType(String raw, boolean add) {
-        Identifier id = Targeting.parseEntityTypeId(raw);
-        if (id == null || BuiltInRegistries.ENTITY_TYPE.getOptional(id).isEmpty()) return false;
-        Set<Identifier> updated = Targeting.parseEntityTypeIds(TARGET_ENTITIES.get());
-        if (add) updated.add(id); else updated.remove(id);
-        targetEntityTypes = updated;
-        TARGET_ENTITIES.set(Targeting.serializeEntityTypeIds(updated));
-        return true;
     }
 
     public static String targetStatus() {

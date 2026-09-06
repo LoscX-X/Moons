@@ -2,7 +2,6 @@ package com.blanoir.moons.client.module.impl.network;
 
 import com.blanoir.moons.client.access.MinecraftClientAccess;
 
-import com.blanoir.moons.client.config.Settings;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.DoubleSetting;
 import com.blanoir.moons.client.config.settings.IntSetting;
@@ -11,7 +10,6 @@ import com.blanoir.moons.client.config.settings.StringSetting;
 import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.event.frame.FrameEvent;
 import com.blanoir.moons.client.event.frame.WorldRenderEvent;
-import com.blanoir.moons.client.event.tick.TickEvent;
 import com.blanoir.moons.client.module.impl.network.backtrack.BacktrackRenderer;
 import com.blanoir.moons.client.module.impl.network.backtrack.BacktrackWireframePlayer;
 import com.blanoir.moons.client.management.network.TrackedEntityPosition;
@@ -61,8 +59,6 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  * so the LiquidBounce {@code VelocityReduce} coordination checks are constant no-ops.
  */
 public final class Backtrack {
-    private static final String RESTORE_REAL_LOCATION_ESP_MIGRATION =
-            "backtrack.migration.restoreRealLocationWireframe";
     private static final double MIN_SUPPORTED_RANGE = 0.0D;
     private static final double MAX_SUPPORTED_RANGE = 10.0D;
 
@@ -206,8 +202,8 @@ public final class Backtrack {
                     .name("backtrack.esp")
                     .defaultValue(EspMode.WIREFRAME)
                     .option(EspMode.BOX, "box").option(EspMode.MODEL, "model")
-                    .option(EspMode.WIREFRAME, "wireframe", "wire_frame")
-                    .option(EspMode.NONE, "none", "off")
+                    .option(EspMode.WIREFRAME, "wireframe")
+                    .option(EspMode.NONE, "none")
                     .build();
 
     private static final StringSetting BOX_COLOR =
@@ -281,7 +277,6 @@ public final class Backtrack {
     }
 
     public static void init() {
-        restoreRealLocationEspDefault();
         EventBus.TICK.register("Backtrack.tick", event -> {
             Minecraft client = event.client();
             tick(client);
@@ -289,12 +284,6 @@ public final class Backtrack {
         EventBus.FRAME.register("Backtrack.frame", Backtrack::frame);
 
         EventBus.WORLD_RENDER.register("Backtrack.worldRender", Backtrack::renderEsp);
-    }
-
-    private static void restoreRealLocationEspDefault() {
-        if (Settings.getBoolean(RESTORE_REAL_LOCATION_ESP_MIGRATION, false)) return;
-        if (ESP_MODE.get() == EspMode.BOX) ESP_MODE.set(EspMode.WIREFRAME);
-        Settings.setBoolean(RESTORE_REAL_LOCATION_ESP_MIGRATION, true);
     }
 
     public static boolean isEnabled() {
@@ -516,12 +505,13 @@ public final class Backtrack {
     }
 
     private static void updateTargetForCurrentMode(Minecraft client) {
+        var currentPlayer = client == null ? null : client.player;
         // When the enemy runs too far away, holding its old position is useless:
         // release the whole queue at once so the client shows its real position.
         Entity currentTarget = target;
-        if (currentTarget != null && currentTarget.isAlive() && client.player != null) {
+        if (currentTarget != null && currentTarget.isAlive() && currentPlayer != null) {
             double maxRange = Math.max(RANGE_MIN.get(), RANGE_MAX.get());
-            if (realDistanceTo(currentTarget, client.player) > maxRange) {
+            if (realDistanceTo(currentTarget, currentPlayer) > maxRange) {
                 clear();
             }
         }
@@ -868,11 +858,13 @@ public final class Backtrack {
 
     private static Integer currentPing() {
         Minecraft client = Minecraft.getInstance();
-        if (client == null || client.getConnection() == null || client.player == null) {
+        var currentPlayer = client == null ? null : client.player;
+        var connectionSnapshot = client == null ? null : client.getConnection();
+        if (client == null || connectionSnapshot == null || currentPlayer == null) {
             return null;
         }
 
-        PlayerInfo info = client.getConnection().getPlayerInfo(client.player.getUUID());
+        PlayerInfo info = connectionSnapshot.getPlayerInfo(currentPlayer.getUUID());
         return info == null ? null : info.getLatency();
     }
 
@@ -1179,8 +1171,7 @@ public final class Backtrack {
         }
 
         Entity entity = data.entity();
-        @SuppressWarnings("rawtypes")
-        EntityRenderer renderer = client.getEntityRenderDispatcher().getRenderer(entity);
+        EntityRenderer<? super Entity, ?> renderer = client.getEntityRenderDispatcher().getRenderer(entity);
         EntityRenderState state = renderer.createRenderState(entity, 0.0F);
 
         int outlineColor = parseColor(MODEL_OUTLINE_COLOR.get());
@@ -1277,8 +1268,8 @@ public final class Backtrack {
     }
 
     private static int scaleLightCoords(int lightCoords, float scale) {
-        int block = (int) Math.max(0, Math.min(15, Math.round(LightCoordsUtil.block(lightCoords) * scale)));
-        int sky = (int) Math.max(0, Math.min(15, Math.round(LightCoordsUtil.sky(lightCoords) * scale)));
+        int block = Math.max(0, Math.min(15, Math.round(LightCoordsUtil.block(lightCoords) * scale)));
+        int sky = Math.max(0, Math.min(15, Math.round(LightCoordsUtil.sky(lightCoords) * scale)));
         return LightCoordsUtil.pack(block, sky);
     }
 
@@ -1296,34 +1287,6 @@ public final class Backtrack {
 
     private static int alpha(int argb) {
         return argb >>> 24 & 0xFF;
-    }
-
-    private static int showStatus(Minecraft client) {
-        ClientChat.send(
-                client,
-                "Backtrack: " + statusText()
-                        + ", range: " + formatRange(RANGE_MIN.get(), RANGE_MAX.get())
-                        + ", delay: " + formatIntRange(DELAY_MIN.get(), DELAY_MAX.get()) + " ms"
-                        + ", nextBacktrackDelay: " + formatIntRange(NEXT_BACKTRACK_DELAY_MIN.get(), NEXT_BACKTRACK_DELAY_MAX.get()) + " ms"
-                        + ", trackingBuffer: " + TRACKING_BUFFER.get() + " ms"
-                        + ", chance: " + format(CHANCE.get()) + "%"
-                        + ", targetMode: " + TARGET_MODE.serialized()
-                        + ", pauseOnHurtTime: " + (PAUSE_ON_HURT_TIME.get() ? "enabled" : "disabled")
-                        + " (" + PAUSE_ON_HURT_TIME_VALUE.get() + ")"
-                        + ", lastAttackTimeToWork: " + LAST_ATTACK_TIME.get() + " ms"
-                        + ", armWindowTicks: " + ARM_WINDOW_TICKS.get()
-                        + ", maxPacketsPerTick: " + MAX_PACKETS_PER_TICK.get()
-                        + ", jitter: " + JITTER_MS.get() + " ms"
-                        + ", speedFactor: " + format(SPEED_FACTOR.get())
-                        + ", pingRatio: " + format(PING_RATIO.get())
-                        + ", actionbar: " + (ACTION_BAR.get() ? "enabled" : "disabled")
-                        + ", esp: " + ESP_MODE.serialized()
-                        + ". Usage: .moons backtrack <enable|disable|range x-x|delay x-x|nextbacktrackdelay x-x"
-                        + "|trackingbuffer x|chance x|targetmode attack|range|intent|hurt|lastattacktime x"
-                        + "|armticks 1-5|maxpackets 1-10|jitter 0-50|speedfactor 0-30|pingratio 0-3|actionbar enable|disable"
-                        + "|esp box|model|wireframe|none|color rrggbb|aarrggbb|outlinecolor rrggbb|aarrggbb|lightpercent x>"
-        );
-        return 1;
     }
 
     public static int setEnabled(Minecraft client, boolean newEnabled) {
@@ -1406,16 +1369,6 @@ public final class Backtrack {
     public static int setTargetMode(Minecraft client, String value) {
         TARGET_MODE.deserialize(value);
         ClientChat.send(client, "Backtrack targetMode set to " + TARGET_MODE.serialized() + ".");
-        return 1;
-    }
-
-    private static int showHurtStatus(Minecraft client) {
-        ClientChat.send(
-                client,
-                "Backtrack pauseOnHurtTime: " + (PAUSE_ON_HURT_TIME.get() ? "enabled" : "disabled")
-                        + ", hurtTime: " + PAUSE_ON_HURT_TIME_VALUE.get()
-                        + ". Usage: .moons backtrack hurt <enable|disable|time 0-10>"
-        );
         return 1;
     }
 
@@ -1524,27 +1477,9 @@ public final class Backtrack {
         return 1;
     }
 
-    private static int showActionBarStatus(Minecraft client) {
-        ClientChat.send(
-                client,
-                "Backtrack actionbar: " + (ACTION_BAR.get() ? "enabled" : "disabled")
-                        + ". Usage: .moons backtrack actionbar <enable|disable>"
-        );
-        return 1;
-    }
-
     public static int setActionBarEnabled(Minecraft client, boolean value) {
         ACTION_BAR.set(value);
         ClientChat.send(client, "Backtrack actionbar " + (ACTION_BAR.get() ? "enabled" : "disabled") + ".");
-        return 1;
-    }
-
-    private static int showEspStatus(Minecraft client) {
-        ClientChat.send(
-                client,
-                "Backtrack esp: " + ESP_MODE.serialized()
-                        + ". Usage: .moons backtrack esp <box|model|wireframe|none>"
-        );
         return 1;
     }
 

@@ -46,7 +46,7 @@ final class World {
                         choice("telly_rotation", "Telly rotation", "scaffold.tellyRotation", "instant",
                                 Scaffold.tellyRotationOptions(), Scaffold::setTellyRotation)
                                 .visibleWhen(Scaffold::tellySelected),
-                        choice("face_sampling", "Face sampling", "scaffold.faceSampling", "legacy",
+                        choice("face_sampling", "Face sampling", "scaffold.faceSampling", "standard",
                                 Scaffold.faceSamplingOptions(), Scaffold::setFaceSampling)
                                 .visibleWhen(Scaffold::tellySelected),
                         number("telly_start_speed", "Start turn limit", "scaffold.tellyStartSpeed",

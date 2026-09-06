@@ -4,7 +4,6 @@ import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.IntSetting;
 import com.blanoir.moons.client.config.settings.ModeSetting;
 import com.blanoir.moons.client.event.EventBus;
-import com.blanoir.moons.client.event.tick.TickEvent;
 import com.blanoir.moons.client.chat.ClientChat;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.effect.MobEffectInstance;
@@ -36,7 +35,7 @@ public final class FullBright {
                     .name("fullbright.mode")
                     .defaultValue(Mode.GAMMA)
                     .option(Mode.GAMMA, "gamma")
-                    .option(Mode.NIGHT_VISION, "nightvision", "night_vision")
+                    .option(Mode.NIGHT_VISION, "nightvision")
                     .build();
     private static final IntSetting BRIGHTNESS =
             new IntSetting.Builder()
@@ -59,15 +58,16 @@ public final class FullBright {
     }
 
     private static void tick(Minecraft client) {
-        if (!ENABLED.get() || client.player == null) {
+        var currentPlayer = client == null ? null : client.player;
+        if (!ENABLED.get() || client == null || currentPlayer == null) {
             return;
         }
 
         if (isNightVisionMode()) {
-            client.player.addEffect(new MobEffectInstance(MobEffects.NIGHT_VISION, NIGHT_VISION_DURATION));
+            currentPlayer.addEffect(new MobEffectInstance(MobEffects.NIGHT_VISION, NIGHT_VISION_DURATION));
         } else if (gamma < BRIGHTNESS.get()) {
             if (gamma == 0.0F) {
-                gamma = client.options.gamma().get().floatValue();
+                gamma = client == null ? 0.0F : client.options.gamma().get().floatValue();
             }
             gamma = Math.min(gamma + GAMMA_STEP, BRIGHTNESS.get());
         }
@@ -114,19 +114,20 @@ public final class FullBright {
     }
 
     public static int setEnabled(Minecraft client, boolean newEnabled) {
+        var currentPlayer = client == null ? null : client.player;
         ENABLED.set(newEnabled);
 
         if (ENABLED.get()) {
             if (isNightVisionMode()) {
-                if (client.player != null) {
-                    client.player.addEffect(new MobEffectInstance(MobEffects.NIGHT_VISION, NIGHT_VISION_DURATION));
+                if (currentPlayer != null) {
+                    currentPlayer.addEffect(new MobEffectInstance(MobEffects.NIGHT_VISION, NIGHT_VISION_DURATION));
                 }
             } else {
-                gamma = client.options.gamma().get().floatValue();
+                gamma = client == null ? 0.0F : client.options.gamma().get().floatValue();
             }
         } else {
-            if (isNightVisionMode() && client.player != null) {
-                client.player.removeEffect(MobEffects.NIGHT_VISION);
+            if (isNightVisionMode() && currentPlayer != null) {
+                currentPlayer.removeEffect(MobEffects.NIGHT_VISION);
             }
             gamma = 0.0F;
         }
@@ -135,19 +136,20 @@ public final class FullBright {
     }
 
     public static int setMode(Minecraft client, String newMode) {
+        var currentPlayer = client == null ? null : client.player;
         MODE.deserialize(newMode);
         boolean nightVision = isNightVisionMode();
 
         if (ENABLED.get()) {
             if (nightVision) {
-                if (client.player != null) {
-                    client.player.addEffect(new MobEffectInstance(MobEffects.NIGHT_VISION, NIGHT_VISION_DURATION));
+                if (currentPlayer != null) {
+                    currentPlayer.addEffect(new MobEffectInstance(MobEffects.NIGHT_VISION, NIGHT_VISION_DURATION));
                 }
             } else {
-                if (client.player != null) {
-                    client.player.removeEffect(MobEffects.NIGHT_VISION);
+                if (currentPlayer != null) {
+                    currentPlayer.removeEffect(MobEffects.NIGHT_VISION);
                 }
-                gamma = client.options.gamma().get().floatValue();
+                gamma = client == null ? 0.0F : client.options.gamma().get().floatValue();
             }
         }
 

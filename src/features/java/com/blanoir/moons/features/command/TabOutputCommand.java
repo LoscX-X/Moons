@@ -26,16 +26,17 @@ final class TabOutputCommand {
 
     static boolean handle(String tail) {
         Minecraft client = Minecraft.getInstance();
+        var connectionSnapshot = client == null ? null : client.getConnection();
         if (!tail.isBlank()) {
             ClientChat.send(client, "Usage: .taboutput");
             return true;
         }
-        if (client.getConnection() == null || client.gui == null) {
+        if (connectionSnapshot == null || client.gui == null) {
             ClientChat.send(client, "Tab output requires an active server connection.");
             return true;
         }
         PlayerTabOverlay overlay = MinecraftClientAccess.tabList(client);
-        var entries = client.getConnection().getListedOnlinePlayers().stream()
+        var entries = connectionSnapshot.getListedOnlinePlayers().stream()
                 .sorted(Comparator.comparing(info -> info.getProfile().name(),
                         String.CASE_INSENSITIVE_ORDER)).toList();
         StringBuilder report = new StringBuilder(4096);

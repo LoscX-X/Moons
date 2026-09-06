@@ -47,9 +47,9 @@ public final class ScoreboardChanger {
             new ModeSetting.Builder<Mode>()
                     .name("scoreboardchanger.mode")
                     .defaultValue(Mode.LAST_LINE)
-                    .option(Mode.LAST_LINE, "last_line", "lastline")
-                    .option(Mode.ADD_LAST_LINE, "add_last_line", "addlastline", "append")
-                    .option(Mode.CUSTOM, "custom", "all")
+                    .option(Mode.LAST_LINE, "last_line")
+                    .option(Mode.ADD_LAST_LINE, "add_last_line")
+                    .option(Mode.CUSTOM, "custom")
                     .build();
 
     private static final StringSetting LAST_LINE =
@@ -160,9 +160,11 @@ public final class ScoreboardChanger {
 
     private static Objective currentObjective() {
         Minecraft client = Minecraft.getInstance();
-        if (client.level == null || client.player == null) return null;
-        Scoreboard scoreboard = client.level.getScoreboard();
-        PlayerTeam team = scoreboard.getPlayersTeam(client.player.getScoreboardName());
+        var currentPlayer = client == null ? null : client.player;
+        var currentLevel = client == null ? null : client.level;
+        if (currentLevel == null || currentPlayer == null) return null;
+        Scoreboard scoreboard = currentLevel.getScoreboard();
+        PlayerTeam team = scoreboard.getPlayersTeam(currentPlayer.getScoreboardName());
         if (team != null) {
             DisplaySlot teamSlot = DisplaySlot.teamColorToSlot(team.getColor());
             if (teamSlot != null) {
@@ -491,7 +493,7 @@ public final class ScoreboardChanger {
         return ENABLED.get();
     }
 
-    public static int setEnabled(Minecraft client, boolean value) {
+    public static int setEnabled(Minecraft ignoredClient, boolean value) {
         ENABLED.set(value);
         syncClientData();
         return 1;
@@ -505,7 +507,7 @@ public final class ScoreboardChanger {
         return MODE.serialized();
     }
 
-    public static int setMode(Minecraft client, String value) {
+    public static int setMode(Minecraft ignoredClient, String value) {
         MODE.deserialize(value);
         syncClientData();
         return 1;
@@ -515,30 +517,30 @@ public final class ScoreboardChanger {
         return MODE.get() == Mode.CUSTOM;
     }
 
-    public static int setLastLine(Minecraft client, String value) {
+    public static int setLastLine(Minecraft ignoredClient, String value) {
         LAST_LINE.set(sanitize(value, 256));
         syncClientData();
         return 1;
     }
 
-    public static int setCustomLines(Minecraft client, String value) {
+    public static int setCustomLines(Minecraft ignoredClient, String value) {
         CUSTOM_LINES.set(sanitize(value, 2048));
         return 1;
     }
 
-    public static int setReplaceTitle(Minecraft client, boolean value) {
+    public static int setReplaceTitle(Minecraft ignoredClient, boolean value) {
         REPLACE_TITLE.set(value);
         syncClientData();
         return 1;
     }
 
-    public static int setTitle(Minecraft client, String value) {
+    public static int setTitle(Minecraft ignoredClient, String value) {
         TITLE.set(sanitize(value, 256));
         syncClientData();
         return 1;
     }
 
-    public static int setShowScores(Minecraft client, boolean value) {
+    public static int setShowScores(Minecraft ignoredClient, boolean value) {
         SHOW_SCORES.set(value);
         return 1;
     }

@@ -78,12 +78,13 @@ public final class ChatFilter {
     }
 
     static boolean looksLikePlayerChat(Minecraft client, String rawText) {
-        if (client == null || client.getConnection() == null || rawText == null) return false;
+        var connectionSnapshot = client == null ? null : client.getConnection();
+        if (client == null || connectionSnapshot == null || rawText == null) return false;
         String text = normalizeText(rawText);
         if (text.isEmpty()) return false;
         String lower = text.toLowerCase(Locale.ROOT);
 
-        for (PlayerInfo info : client.getConnection().getOnlinePlayers()) {
+        for (PlayerInfo info : connectionSnapshot.getOnlinePlayers()) {
             String name = info.getProfile().name();
             if (name == null || name.isBlank()) continue;
             String loweredName = name.toLowerCase(Locale.ROOT);

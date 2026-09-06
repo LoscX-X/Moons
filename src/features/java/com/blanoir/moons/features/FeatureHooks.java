@@ -29,7 +29,7 @@ import com.blanoir.moons.client.module.impl.render.FullBright;
 import com.blanoir.moons.client.module.impl.render.Nametags;
 import com.blanoir.moons.client.module.impl.render.Nickname;
 import com.blanoir.moons.client.module.impl.render.ScoreboardChanger;
-import com.blanoir.moons.client.module.impl.render.TrimChanger;
+import com.blanoir.moons.client.module.impl.render.Trim;
 import com.blanoir.moons.client.module.impl.render.xray.XrayTerrain;
 import com.blanoir.moons.client.module.impl.world.Scaffold;
 import com.blanoir.moons.client.ui.compose.ComposeRenderBridge;
@@ -52,6 +52,7 @@ import net.minecraft.client.renderer.chunk.ChunkSectionLayerGroup;
 import net.minecraft.client.renderer.entity.state.AvatarRenderState;
 import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
 import net.minecraft.client.renderer.rendertype.RenderType;
+import net.minecraft.client.resources.model.EquipmentClientInfo;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
 import net.minecraft.network.chat.Component;
@@ -173,16 +174,16 @@ public final class FeatureHooks {
                 if (hook.argument() instanceof AvatarRenderState state) {
                     Chams.beginPlayerChams(state);
                     ArmorHide.beginAvatar(state);
-                    TrimChanger.beginAvatar(state);
+                    Trim.beginAvatar(state);
                 } else {
                     ArmorHide.endAvatar();
-                    TrimChanger.endAvatar();
+                    Trim.endAvatar();
                 }
             }
             case "render.chams-submit.end" -> {
                 Chams.endPlayerChams();
                 ArmorHide.endAvatar();
-                TrimChanger.endAvatar();
+                Trim.endAvatar();
                 if (hook.argument() instanceof LivingEntityRenderState state) {
                     EventBus.LIVING_RENDER_POST.post(new LivingRenderEvent.Post(state));
                 }
@@ -221,9 +222,16 @@ public final class FeatureHooks {
             case "render.player-nametag" -> {
                 if (Nametags.isEnabled()) hook.value(false);
             }
-            case "render.trim-changer" -> {
-                if (hook.value() instanceof ItemStack item) {
-                    hook.value(TrimChanger.apply(item));
+            case "render.trim" -> {
+                if (hook.value() instanceof ItemStack item
+                        && (hook.argument() == EquipmentClientInfo.LayerType.HUMANOID
+                        || hook.argument() == EquipmentClientInfo.LayerType.HUMANOID_LEGGINGS)) {
+                    hook.value(Trim.apply(item));
+                }
+            }
+            case "render.trim.direct" -> {
+                if (hook.argument() instanceof Object[] values && Trim.render(values)) {
+                    hook.value(false);
                 }
             }
             case "render.camera-zoom" -> {
@@ -335,20 +343,22 @@ public final class FeatureHooks {
 
     private static void livingAiStep(Object owner) {
         Minecraft client = Minecraft.getInstance();
+        var currentPlayer = client == null ? null : client.player;
         if (NoJumpDelay.isEnabled() && owner instanceof LivingEntity entity
-                && client.player == entity) {
+                && currentPlayer == entity) {
             GameAccess.clearJumpDelay(entity);
         }
-        if (owner == client.player && client.player != null) {
+        if (owner == currentPlayer && currentPlayer != null) {
             EventBus.LOCAL_PLAYER_LIVING_TICK.post(
-                    new LocalPlayerLivingTickEvent(client.player));
+                    new LocalPlayerLivingTickEvent(currentPlayer));
         }
     }
 
     private static void keyboardInput(Object owner) {
         if (!(owner instanceof KeyboardInput keyboard)) return;
         Minecraft client = Minecraft.getInstance();
-        if (client.player == null) {
+        var player = client.player;
+        if (player == null) {
             publishMovementInputUpdated(keyboard);
             return;
         }
@@ -374,7 +384,7 @@ public final class FeatureHooks {
         float forward = impulse(original.forward(), original.backward());
         float sideways = impulse(original.left(), original.right());
         float movementYaw = movementFix.yaw();
-        float radians = Mth.wrapDegrees(client.player.getYRot() - movementYaw) * Mth.DEG_TO_RAD;
+        float radians = Mth.wrapDegrees(player.getYRot() - movementYaw) * Mth.DEG_TO_RAD;
         float correctedSideways = sideways * Mth.cos(radians) - forward * Mth.sin(radians);
         float correctedForward = forward * Mth.cos(radians) + sideways * Mth.sin(radians);
         int side = Math.round(correctedSideways);
@@ -425,10 +435,11 @@ public final class FeatureHooks {
     private static void frustumVisible(RuntimeEvents.MethodHook hook) {
         if (!Clip.isEnabled() || !(hook.argument() instanceof AABB box)) return;
         Minecraft client = Minecraft.getInstance();
-        if (client.player == null || client.level == null
+        var player = client.player;
+        if (player == null || client.level == null
                 || client.options.getCameraType().isFirstPerson()) return;
-        int dx = SectionPos.blockToSectionCoord(box.minX) - client.player.chunkPosition().x();
-        int dz = SectionPos.blockToSectionCoord(box.minZ) - client.player.chunkPosition().z();
+        int dx = SectionPos.blockToSectionCoord(box.minX) - player.chunkPosition().x();
+        int dz = SectionPos.blockToSectionCoord(box.minZ) - player.chunkPosition().z();
         int radius = Clip.visibleRadiusChunks();
         if (Math.abs(dx) <= radius && Math.abs(dz) <= radius) hook.value(true);
     }

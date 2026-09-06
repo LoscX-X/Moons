@@ -22,7 +22,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 /**
- * Stable JNI boundary used by the optional JVMTI startup agent.
+ * JNI boundary used by the production bridge and the JVMTI verification transport.
  * Minecraft-specific transformation remains entirely in Java/ASM.
  */
 public final class NativeTransformerBridge {
@@ -226,11 +226,8 @@ public final class NativeTransformerBridge {
             return null;
         }
         return TRANSFORMER.transform(
-                null,
                 loader,
                 className,
-                null,
-                null,
                 classBytes
         );
     }

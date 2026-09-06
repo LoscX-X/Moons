@@ -24,7 +24,6 @@ public final class VisibleAimPoints {
     private VisibleAimPoints() {
     }
 
-
     public static Vec3 findVisibleAimPoint(
             Minecraft client,
             LivingEntity entity,
@@ -32,15 +31,18 @@ public final class VisibleAimPoints {
             double range,
             double hysteresis
     ) {
+        var currentPlayer = client == null ? null : client.player;
+        if (client == null || currentPlayer == null || client.level == null || entity == null) {
+            return null;
+        }
         Vec3 eyePos =
-                client.player.getEyePosition();
+                currentPlayer.getEyePosition();
 
         Vec3 look =
-                client.player.getLookAngle();
+                currentPlayer.getLookAngle();
 
         AABB box =
                 entity.getBoundingBox();
-
 
         Optional<Vec3> onBody =
                 box.clip(
@@ -64,7 +66,6 @@ public final class VisibleAimPoints {
             }
         }
 
-
         Vec3 steerPoint =
                 AimPointUtils.closest(
                         box,
@@ -82,7 +83,6 @@ public final class VisibleAimPoints {
             return steerPoint;
         }
 
-
         Vec3 bestPoint =
                 bestVisibleSample(
                         client,
@@ -94,7 +94,6 @@ public final class VisibleAimPoints {
         if (bestPoint == null) {
             return null;
         }
-
 
         if (preferredAimPoint != null
                 && isUsableAimPoint(
@@ -122,10 +121,8 @@ public final class VisibleAimPoints {
             }
         }
 
-
         return bestPoint;
     }
-
 
     public static boolean hasVisiblePoint(
             Minecraft client,
@@ -153,16 +150,17 @@ public final class VisibleAimPoints {
             double preferredHeight,
             boolean precise
     ) {
-        if (client == null || client.player == null || client.level == null
+        var currentPlayer = client == null ? null : client.player;
+        if (client == null || currentPlayer == null || client.level == null
                 || box == null || !Double.isFinite(range) || range <= 0.0D) {
             return null;
         }
-        Vec3 eye = client.player.getEyePosition();
+        Vec3 eye = currentPlayer.getEyePosition();
         if (box.contains(eye)) {
             return box.getCenter();
         }
         Vec3 look = referenceLook != null && referenceLook.lengthSqr() > 1.0E-9D
-                ? referenceLook.normalize() : client.player.getViewVector(1.0F);
+                ? referenceLook.normalize() : currentPlayer.getViewVector(1.0F);
         List<Vec3> points = new ArrayList<>(156);
         box.clip(eye, eye.add(look.scale(range))).ifPresent(points::add);
 
@@ -218,7 +216,6 @@ public final class VisibleAimPoints {
                 : box.clip(eye, eye.add(difference.scale(2.0D)));
     }
 
-
     private static Vec3 bestVisibleSample(
             Minecraft client,
             LivingEntity entity,
@@ -257,7 +254,6 @@ public final class VisibleAimPoints {
         return bestPoint;
     }
 
-
     private static boolean isUsableAimPoint(
             Minecraft client,
             Vec3 eyePos,
@@ -272,7 +268,6 @@ public final class VisibleAimPoints {
                 point
         );
     }
-
 
     public static List<Vec3> aimPoints(
             AABB box
@@ -309,7 +304,6 @@ public final class VisibleAimPoints {
                 )
         );
 
-
         double insetX =
                 Math.min(
                         (box.maxX - box.minX) * 0.15D,
@@ -328,7 +322,6 @@ public final class VisibleAimPoints {
                         0.1D
                 );
 
-
         double minX = box.minX + insetX;
         double maxX = box.maxX - insetX;
 
@@ -337,7 +330,6 @@ public final class VisibleAimPoints {
 
         double minZ = box.minZ + insetZ;
         double maxZ = box.maxZ - insetZ;
-
 
         for (double x :
                 new double[]{

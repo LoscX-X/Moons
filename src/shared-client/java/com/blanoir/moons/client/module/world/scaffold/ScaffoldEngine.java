@@ -10,12 +10,13 @@ import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.event.frame.FrameEvent;
 import com.blanoir.moons.client.event.frame.HudRenderEvent;
 import com.blanoir.moons.client.event.frame.WorldRenderEvent;
-import com.blanoir.moons.client.event.movement.StrafeEvent;
 import com.blanoir.moons.client.event.movement.MoveInputEvent;
 import com.blanoir.moons.client.event.movement.PlayerUpdateEvent;
 import com.blanoir.moons.client.event.network.PacketSendEvent;
 import com.blanoir.moons.client.management.inventory.HotbarLease;
 import com.blanoir.moons.client.management.rotation.RotationLease;
+import com.blanoir.moons.client.management.rotation.RotationHistory;
+import com.blanoir.moons.client.utils.rotation.Rotation;
 import com.blanoir.moons.client.management.rotation.RotationRequest;
 import com.blanoir.moons.client.management.rotation.SilentPacketRotation;
 import com.blanoir.moons.client.render.WorldOverlayRenderer;
@@ -68,7 +69,7 @@ public final class ScaffoldEngine {
             0.5D, 0.375D, 0.625D, 0.25D, 0.75D,
             0.125D, 0.875D, 0.0625D, 0.9375D
     };
-    private static final double[] LEGACY_FACE_OFFSETS = {
+    private static final double[] STANDARD_FACE_OFFSETS = {
             0.03125D, 0.09375D, 0.15625D, 0.21875D,
             0.28125D, 0.34375D, 0.40625D, 0.46875D,
             0.53125D, 0.59375D, 0.65625D, 0.71875D,
@@ -87,7 +88,7 @@ public final class ScaffoldEngine {
             .name("scaffold.mode").defaultValue(ScaffoldMode.LEGIT)
             .option(ScaffoldMode.LEGIT, "legit")
             .option(ScaffoldMode.TELLY, "telly")
-            .option(ScaffoldMode.INTAVE_TELLY, "intave-telly", "intave").build();
+            .option(ScaffoldMode.INTAVE_TELLY, "intave-telly").build();
     private static final ModeSetting<MoveFix> MOVE_FIX = new ModeSetting.Builder<MoveFix>()
             .name("scaffold.moveFix").defaultValue(MoveFix.SILENT)
             .option(MoveFix.NONE, "none").option(MoveFix.SILENT, "silent").build();
@@ -103,10 +104,10 @@ public final class ScaffoldEngine {
                     .option(TellyDelay.ADAPTIVE, "adaptive").build();
     private static final ModeSetting<FaceSampling> FACE_SAMPLING =
             new ModeSetting.Builder<FaceSampling>()
-                    .name("scaffold.faceSampling").defaultValue(FaceSampling.LEGACY)
-                    .option(FaceSampling.LEGACY, "legacy")
+                    .name("scaffold.faceSampling").defaultValue(FaceSampling.STANDARD)
+                    .option(FaceSampling.STANDARD, "standard")
                     .option(FaceSampling.CENTER, "center")
-                    .option(FaceSampling.DENSE, "dense", "fine")
+                    .option(FaceSampling.DENSE, "dense")
                     .option(FaceSampling.ADAPTIVE, "adaptive").build();
     private static final ModeSetting<SprintMode> SPRINT_MODE = new ModeSetting.Builder<SprintMode>()
             .name("scaffold.sprintMode").defaultValue(SprintMode.VANILLA)
@@ -125,16 +126,11 @@ public final class ScaffoldEngine {
     private static final DoubleSetting RENDER_RESPONSE = decimal("scaffold.renderRotationResponse", 18.0D, 2.0D, 40.0D);
     private static final DoubleSetting LEGIT_EDGE_OFFSET = decimal(
             "scaffold.legitEdgeOffset", 0.0D, 0.0D, 0.3D);
-    private static final DoubleSetting ANGLE_STEP = decimal(
-            "scaffold.angleStep", 90.0D, 1.0D, 180.0D);
-    private static final DoubleSetting ROTATION_SMOOTHING = decimal(
-            "scaffold.rotationSmoothing", 0.0D, 0.0D, 100.0D);
 
     private static final BooleanSetting KEEP_Y_ON_PRESS = bool("scaffold.keepYOnPress", false);
     private static final BooleanSetting SWING = bool("scaffold.swing", true);
     private static final BooleanSetting ITEM_SPOOF = bool("scaffold.itemSpoof", false);
     private static final BooleanSetting BLOCK_COUNTER = bool("scaffold.blockCounter", true);
-    private static final BooleanSetting CAN_DIFF_PLACE = bool("scaffold.canDiffPlace", true);
     private static final BooleanSetting RENDER = bool("scaffold.render", true);
     private static final BooleanSetting SHOW_SHADE = bool("scaffold.showTargetShade", false);
     private static final BooleanSetting OUTLINE_FADE = bool("scaffold.outlineFadeOut", true);
@@ -144,7 +140,6 @@ public final class ScaffoldEngine {
     private static final BooleanSetting TELLY_FALL_RESCUE = bool(
             "scaffold.tellyFallRescue", false);
 
-    private static final IntSetting ANGLE_DIFF = integer("scaffold.angleDiff", 50, 0, 180);
     private static final IntSetting TOWER_FLAT_TICKS = integer("scaffold.towerFlatTicks", 4, 0, 20);
     private static final IntSetting LEGIT_DELAY_MIN = integer(
             "scaffold.legitDelayMin", 2, 0, 10);
@@ -166,23 +161,17 @@ public final class ScaffoldEngine {
     private static final RotationLease ROTATION = new RotationLease("Scaffold", 20);
     private static int blockCount = -1;
     private static int rotationTick;
-    private static int towerTick;
-    private static int towerDelay;
     private static int stage;
     private static int startY = 256;
     private static int snapCooldown;
     private static int currentFlatTick;
     private static int rotationZeroCount;
     private static boolean shouldKeepY;
-    private static boolean towering;
-    private static boolean snapping;
     private static boolean wasInAir;
     private static boolean placedThisJump;
     private static boolean rotationInitialized;
     private static boolean canRotate;
-    private static boolean canPlaceAngle;
     private static boolean onAirPlace;
-    private static Direction targetFacing;
     private static boolean legitSneaking;
     private static int legitUnsneakStartTick = -1;
     private static int legitUnsneakTicks = -1;
@@ -190,23 +179,17 @@ public final class ScaffoldEngine {
     private static int tellyAirTicks;
     private static BlockPos lastTellyPlacePos;
     private static int lastTellyPlaceTick = Integer.MIN_VALUE;
-    private static float rotationYaw = -180.0F;
-    private static float rotationPitch;
     private static float outgoingYaw;
     private static float outgoingPitch;
     private static float renderYaw;
     private static float renderPitch;
-    private static float lastPacketYaw;
     private static final PlacementRotationHistory PLACEMENT_ROTATIONS = new PlacementRotationHistory();
     private static Object placementRotationConnection;
-    private static float lastPacketPitch;
-    private static boolean packetRotationValid;
     private static boolean silentInputAllowsSprint = true;
     private static double lastServerX;
     private static double lastServerY;
     private static double lastServerZ;
     private static boolean serverPositionValid;
-    private static int lastMovementPacketTick = Integer.MIN_VALUE;
     private static final Deque<HorizontalTravel> TELLY_HORIZONTAL_TRAVEL = new ArrayDeque<>();
     private static boolean tellyTravelPositionKnown;
     private static double lastTellyTravelX;
@@ -231,10 +214,15 @@ public final class ScaffoldEngine {
     public static void init() {
         if (initialized) return;
         initialized = true;
+        EventBus.CLIENT_CONTEXT_CHANGED.register("ScaffoldEngine.context", event -> {
+            rotationInitialized = towerRotationInitialized = false;
+            serverPositionValid = false;
+            placementRotationConnection = null;
+            PLACEMENT_ROTATIONS.reset();
+        });
         EventBus.PLAYER_UPDATE.register(
                 "ScaffoldEngine.playerUpdate", ScaffoldEngine::playerUpdate);
         EventBus.MOVE_INPUT.register("ScaffoldEngine.moveInput", ScaffoldEngine::moveInput);
-        EventBus.STRAFE.register("ScaffoldEngine.strafe", ScaffoldEngine::strafe);
         EventBus.FRAME.register("ScaffoldEngine.frame", ScaffoldEngine::frame);
         EventBus.HUD_RENDER.register("ScaffoldEngine.hud", ScaffoldEngine::hud);
         EventBus.WORLD_RENDER.register("ScaffoldEngine.render", ScaffoldEngine::render);
@@ -250,6 +238,7 @@ public final class ScaffoldEngine {
         return enabled() && tellyMode()
                 && (intaveTellyMode() || canRotate)
                 && rotationInitialized
+                && ROTATION.active()
                 && ready(client) && !SilentPacketRotation.shouldApplyRotation()
                 && !RotationLease.busyFor(ROTATION)
                 ;
@@ -261,14 +250,36 @@ public final class ScaffoldEngine {
     public static float pitch() { return outgoingPitch; }
     public static float renderYaw() { return rotationInitialized ? renderYaw : outgoingYaw; }
     public static float renderPitch() { return rotationInitialized ? renderPitch : outgoingPitch; }
-    public static float movementYaw() { return outgoingYaw; }
+    public static float movementYaw() { return packetRotation().yaw(); }
+
+    public static Rotation packetRotation() {
+        Rotation result = ROTATION.commit(new Rotation(outgoingYaw, outgoingPitch), true,
+                moveFix() == MoveFix.SILENT);
+        return result != null ? result : RotationHistory.start(Minecraft.getInstance());
+    }
+
+    private static float sentYaw() { return RotationHistory.start(Minecraft.getInstance()).yaw(); }
+    private static float sentPitch() { return RotationHistory.start(Minecraft.getInstance()).pitch(); }
+
+    /** Acquire before any trajectory/face search can reuse the previous tenure's state. */
+    private static boolean acquireRotation(Minecraft client) {
+        if (ROTATION.active()) return true;
+        Rotation camera = new Rotation(client.player.getYRot(), client.player.getXRot());
+        return ROTATION.acquire(new RotationRequest(camera.yaw(), camera.pitch(), 1, .35F, null),
+                camera, start -> {
+                    outgoingYaw = renderYaw = start.yaw();
+                    outgoingPitch = renderPitch = start.pitch();
+                    rotationInitialized = towerRotationInitialized = false;
+                    canRotate = false;
+                });
+    }
     public static boolean cancelManualActions() {
         return enabled() && tellyMode();
     }
     public static boolean cancelUseAction() { return cancelManualActions(); }
     public static boolean shouldSuppressSprint(Minecraft client) {
         return enabled() && tellyMode()
-                && ready(client) && shouldStopSprint(client);
+                && ready(client) && shouldStopSprint();
     }
 
     /**
@@ -291,16 +302,12 @@ public final class ScaffoldEngine {
         return HOTBAR.userStack(client, original);
     }
 
-    public static void markOutgoingRotation(float yaw, float pitch) {
-        // Kept as a compatibility entry point for older runtime adapters.
-        // Actual server rotation is recorded from PACKET_SEND_POST only.
-    }
-
     private static void onPacketSendPost(PacketSendEvent.Post event) {
         Minecraft client = Minecraft.getInstance();
-        if (client.player == null) return;
-        if (placementRotationConnection != client.player.connection) {
-            placementRotationConnection = client.player.connection;
+        var currentPlayer = client == null ? null : client.player;
+        if (currentPlayer == null) return;
+        if (placementRotationConnection != currentPlayer.connection) {
+            placementRotationConnection = currentPlayer.connection;
             PLACEMENT_ROTATIONS.reset();
         }
         if (event.packet() instanceof ServerboundUseItemOnPacket) {
@@ -309,38 +316,16 @@ public final class ScaffoldEngine {
             return;
         }
         if (!(event.packet() instanceof ServerboundMovePlayerPacket movement)) return;
+        if (!RotationHistory.observed(event.packet())) return;
 
-        double fallbackX = serverPositionValid ? lastServerX : client.player.getX();
-        double fallbackY = serverPositionValid ? lastServerY : client.player.getY();
-        double fallbackZ = serverPositionValid ? lastServerZ : client.player.getZ();
-        float fallbackYaw = packetRotationValid ? lastPacketYaw : client.player.getYRot();
-        float fallbackPitch = packetRotationValid ? lastPacketPitch : client.player.getXRot();
+        double fallbackX = serverPositionValid ? lastServerX : currentPlayer.getX();
+        double fallbackY = serverPositionValid ? lastServerY : currentPlayer.getY();
+        double fallbackZ = serverPositionValid ? lastServerZ : currentPlayer.getZ();
         lastServerX = movement.getX(fallbackX);
         lastServerY = movement.getY(fallbackY);
         lastServerZ = movement.getZ(fallbackZ);
-        lastPacketYaw = movement.getYRot(fallbackYaw);
-        lastPacketPitch = movement.getXRot(fallbackPitch);
-        if (movement.hasRotation()) PLACEMENT_ROTATIONS.rotationSent(lastPacketYaw);
+        if (movement.hasRotation()) PLACEMENT_ROTATIONS.rotationSent(sentYaw());
         serverPositionValid = true;
-        packetRotationValid = true;
-        lastMovementPacketTick = client.player.tickCount;
-        if (enabled() && tellyMode()) {
-            ROTATION.confirm(lastPacketYaw, lastPacketPitch);
-        }
-    }
-
-    /** Compatibility hook retained for both runtime mappings. */
-    public static void preMotionPlace() {
-        // Placement is performed at LocalPlayer tick HEAD. Vanilla
-        // sendPosition publishes the selected rotation later in the same tick.
-    }
-
-    public static Vec3 adjustMovement(Minecraft client, Vec3 movement) {
-        // Modern movement speed is predicted from attributes and Input by the
-        // server. Legacy motion multipliers cannot be carried across versions:
-        // scaling this vector changes local physics without a matching 26.x
-        // input state and causes Grim Simulation after a Telly jump.
-        return movement;
     }
 
     public static int setEnabled(Minecraft client, boolean value) {
@@ -393,8 +378,6 @@ public final class ScaffoldEngine {
     public static boolean smoothTellySelected() {
         return tellySelected() && TELLY_ROTATION.get() == TellyRotation.SMOOTH;
     }
-    public static boolean towerSelected() { return towerMode() != TowerMode.NONE; }
-    public static boolean canDiffPlaceSelected() { return CAN_DIFF_PLACE.get(); }
     public static boolean tellyBpsLimitSelected() { return TELLY_BPS_LIMIT.get(); }
     public static int setTellyStartSpeed(Minecraft c, double v) { TELLY_START_SPEED.set(v); normalizeRanges(); return 1; }
     public static int setTellyTrackSpeed(Minecraft c, double v) { TELLY_TRACK_SPEED.set(v); normalizeRanges(); return 1; }
@@ -519,7 +502,7 @@ public final class ScaffoldEngine {
         } else if (scaffoldPath == ScaffoldPath.TOWER) {
             if (!holdTowerRotation(client)) return;
             // Enter Tower with an emitted downward angle before the first use.
-            if (!packetRotationValid || Math.abs(lastPacketPitch - 90.0F) > 0.01F) {
+            if (!RotationHistory.latest().valid() || Math.abs(sentPitch() - 90.0F) > 0.01F) {
                 tellyDebugReason = "waiting for downward rotation packet";
                 return;
             }
@@ -530,15 +513,16 @@ public final class ScaffoldEngine {
 
     /** Tower owns one downward angle across takeoff, landing and empty searches. */
     private static boolean holdTowerRotation(Minecraft client) {
+        if (!acquireRotation(client)) return false;
         if (!towerRotationInitialized) {
-            float cameraYaw = client.player.getYRot();
+            float cameraYaw = sentYaw();
             towerRotationYaw = SilentPacketRotation.quantizePacketYaw(
                     cameraYaw, cameraYaw + SilentPacketRotation.packetRotationJitter());
             towerRotationInitialized = true;
         }
         Float variedYaw = PLACEMENT_ROTATIONS.variedYaw(
                 towerRotationYaw, SilentPacketRotation.packetRotationJitter(),
-                yaw -> SilentPacketRotation.quantizePacketYaw(lastPacketYaw, yaw), yaw -> true);
+                yaw -> SilentPacketRotation.quantizePacketYaw(sentYaw(), yaw), yaw -> true);
         if (variedYaw != null) towerRotationYaw = variedYaw;
         if (!ROTATION.acquire(new RotationRequest(
                 towerRotationYaw, 90.0F, 1, 0.35F, null))) return false;
@@ -571,6 +555,10 @@ public final class ScaffoldEngine {
     /** One tick owns the complete selection, rotation and placement attempt. */
     private static void attemptTellyPlacement(
             Minecraft client, PlacementIntent requestedIntent, boolean verticalTower) {
+        if (!acquireRotation(client)) {
+            tellyDebugReason = "rotation lease busy";
+            return;
+        }
         Vec3 planningPosition = client.player.position();
         Vec3 planningEye = client.player.getEyePosition();
         PlacementIntent intent = requestedIntent;
@@ -623,6 +611,11 @@ public final class ScaffoldEngine {
         }
 
         transitionTelly(TellyPhase.PLACE, "rotation ready");
+        Rotation finalRotation = packetRotation();
+        if (!RotationHistory.same(finalRotation, published.rotation())) {
+            tellyDebugReason = "earlier movement owns this angle; retry next tick";
+            return;
+        }
         if (place(client, published.target(), published.hit().getLocation())) {
             if (!verticalTower) {
                 lastTellyPlacePos = target.placePos();
@@ -671,7 +664,7 @@ public final class ScaffoldEngine {
         final boolean requireHit = hit != null;
         Float variedYaw = PLACEMENT_ROTATIONS.variedYaw(
                 pubYaw, SilentPacketRotation.packetRotationJitter(),
-                yaw -> SilentPacketRotation.quantizePacketYaw(lastPacketYaw, yaw),
+                yaw -> SilentPacketRotation.quantizePacketYaw(sentYaw(), yaw),
                 yaw -> !requireHit || BlockPlacementUtils.traceFace(
                         client, client.player.getEyePosition(), yaw, checkedPitch,
                         client.player.blockInteractionRange(),
@@ -698,18 +691,18 @@ public final class ScaffoldEngine {
     private static boolean publishSettlingRotation(Minecraft client, boolean verticalTower) {
         float settledYaw = PLACEMENT_ROTATIONS.settlingYaw(
                 SilentPacketRotation.packetRotationJitter());
-        publishTellyRotation(client, settledYaw, verticalTower ? 90.0F : lastPacketPitch);
+        publishTellyRotation(client, settledYaw, verticalTower ? 90.0F : sentPitch());
         return ROTATION.acquire(new RotationRequest(outgoingYaw, outgoingPitch, 1, 0.35F, null));
     }
 
     private static void publishTellyRotation(
             Minecraft client, float yaw, float pitch) {
-        rotationYaw = outgoingYaw = yaw;
-        rotationPitch = outgoingPitch = pitch;
+        outgoingYaw = yaw;
+        outgoingPitch = pitch;
         canRotate = true;
         if (!rotationInitialized) {
-            renderYaw = packetRotationValid ? lastPacketYaw : client.player.getYRot();
-            renderPitch = packetRotationValid ? lastPacketPitch : client.player.getXRot();
+            renderYaw = RotationHistory.latest().valid() ? sentYaw() : client.player.getYRot();
+            renderPitch = RotationHistory.latest().valid() ? sentPitch() : client.player.getXRot();
         }
         rotationInitialized = true;
     }
@@ -892,9 +885,11 @@ public final class ScaffoldEngine {
     }
 
     private static double tellyForwardSpeedScale(Minecraft client) {
+        var currentPlayer = client == null ? null : client.player;
+        if (currentPlayer == null) return 1.0D;
         long now = System.currentTimeMillis();
-        double x = client.player.getX();
-        double z = client.player.getZ();
+        double x = currentPlayer.getX();
+        double z = currentPlayer.getZ();
         if (tellyTravelPositionKnown) {
             double travelled = Math.hypot(x - lastTellyTravelX, z - lastTellyTravelZ);
             if (travelled > 0.0D && travelled < 4.0D) {
@@ -932,16 +927,17 @@ public final class ScaffoldEngine {
     }
 
     private static void resetTellyBpsState(Minecraft client) {
+        var currentPlayer = client == null ? null : client.player;
         TELLY_HORIZONTAL_TRAVEL.clear();
         tellyTravelInLastSecond = 0.0D;
         tellyTargetBlocksPerSecond = 0;
         tellyBpsInputScale = 1.0D;
         tellyBpsKeyAccumulator = 1.0D;
         tellyTakeoffInputGraceTicks = 0;
-        tellyTravelPositionKnown = client != null && client.player != null;
-        if (tellyTravelPositionKnown) {
-            lastTellyTravelX = client.player.getX();
-            lastTellyTravelZ = client.player.getZ();
+        tellyTravelPositionKnown = client != null && currentPlayer != null;
+        if (client != null && currentPlayer != null) {
+            lastTellyTravelX = currentPlayer.getX();
+            lastTellyTravelZ = currentPlayer.getZ();
         }
     }
 
@@ -1123,7 +1119,6 @@ public final class ScaffoldEngine {
             startY = Mth.floor(client.player.getY());
         }
         shouldKeepY = false;
-        towering = false;
     }
 
     private static void updateBlockSlot(Minecraft client) {
@@ -1227,13 +1222,14 @@ public final class ScaffoldEngine {
     }
 
     private static int countBlocks(Minecraft client) {
-        if (client == null || client.player == null || client.level == null) return 0;
+        var currentPlayer = client == null ? null : client.player;
+        if (client == null || currentPlayer == null || client.level == null) return 0;
         int result = 0;
         for (int slot = 0; slot < 9; slot++) {
-            ItemStack stack = client.player.getInventory().getItem(slot);
+            ItemStack stack = currentPlayer.getInventory().getItem(slot);
             if (validBlock(client, stack)) result += stack.getCount();
         }
-        ItemStack offhand = client.player.getOffhandItem();
+        ItemStack offhand = currentPlayer.getOffhandItem();
         if (validBlock(client, offhand)) result += offhand.getCount();
         return result;
     }
@@ -1251,9 +1247,10 @@ public final class ScaffoldEngine {
     }
 
     private static InteractionHand placementHand(Minecraft client) {
-        if (client == null || client.player == null) return null;
-        if (validBlock(client, client.player.getMainHandItem())) return InteractionHand.MAIN_HAND;
-        if (validBlock(client, client.player.getOffhandItem())) return InteractionHand.OFF_HAND;
+        var currentPlayer = client == null ? null : client.player;
+        if (client == null || currentPlayer == null) return null;
+        if (validBlock(client, currentPlayer.getMainHandItem())) return InteractionHand.MAIN_HAND;
+        if (validBlock(client, currentPlayer.getOffhandItem())) return InteractionHand.OFF_HAND;
         return null;
     }
 
@@ -1286,22 +1283,6 @@ public final class ScaffoldEngine {
     private static boolean verticalTowerActive(Minecraft client) {
         return scaffoldPath == ScaffoldPath.TOWER
                 && verticalTowerRequested(client);
-    }
-
-    private static float currentYaw(Minecraft client) {
-        return adjustedYaw(client.player.getYRot(), forwardValue(client), leftValue(client));
-    }
-
-    private static int forwardValue(Minecraft client) {
-        int forward = (CombatInputController.isPhysicallyDown(client, client.options.keyUp) ? 1 : 0)
-                - (CombatInputController.isPhysicallyDown(client, client.options.keyDown) ? 1 : 0);
-        return forward;
-    }
-
-    private static int leftValue(Minecraft client) {
-        int strafe = (CombatInputController.isPhysicallyDown(client, client.options.keyLeft) ? 1 : 0)
-                - (CombatInputController.isPhysicallyDown(client, client.options.keyRight) ? 1 : 0);
-        return strafe;
     }
 
     private static float adjustedYaw(float yaw, float forward, float strafe) {
@@ -1427,8 +1408,8 @@ public final class ScaffoldEngine {
         float baseYaw = placementBaseYaw(client);
         float basePitch = placementBasePitch(client);
         return switch (FACE_SAMPLING.get()) {
-            case LEGACY -> scanFaceAim(
-                    client, target, eye, baseYaw, basePitch, LEGACY_FACE_OFFSETS);
+            case STANDARD -> scanFaceAim(
+                    client, target, eye, baseYaw, basePitch, STANDARD_FACE_OFFSETS);
             case CENTER -> scanFaceAim(
                     client, target, eye, baseYaw, basePitch, PRIMARY_FACE_OFFSETS);
             case DENSE -> scanFaceAim(
@@ -1521,50 +1502,15 @@ public final class ScaffoldEngine {
 
     private static float placementBaseYaw(Minecraft client) {
         return rotationInitialized ? outgoingYaw
-                : packetRotationValid ? lastPacketYaw : client.player.getYRot();
+                : RotationHistory.latest().valid() ? sentYaw() : client.player.getYRot();
     }
 
     private static float placementBasePitch(Minecraft client) {
         return rotationInitialized ? outgoingPitch
-                : packetRotationValid ? lastPacketPitch : client.player.getXRot();
+                : RotationHistory.latest().valid() ? sentPitch() : client.player.getXRot();
     }
 
-    private static void strafe(StrafeEvent event) {
-        Minecraft client = Minecraft.getInstance();
-        if (!enabled() || !tellyMode() || !ready(client)) return;
-        updateTower(client, event);
-    }
-
-    private static void updateTower(Minecraft client, StrafeEvent event) {
-        if (currentFlatTick > 0) {
-            towerTick = towerDelay = 0;
-            return;
-        }
-        boolean jump = CombatInputController.isPhysicallyDown(client, client.options.keyJump);
-        if (client.player.horizontalCollision || client.player.hurtTime > 5
-                || client.player.hasEffect(net.minecraft.world.effect.MobEffects.JUMP_BOOST)
-                || !jump || placementHand(client) == null) {
-            towerTick = towerDelay = 0;
-            return;
-        }
-        switch (towerMode()) {
-            case VANILLA -> {
-                // "Vanilla" means leaving jump physics to Minecraft.  The old
-                // four-stage sequence wrote non-vanilla Y velocities (including
-                // 0.75/fraction snaps), which is enough to trip Grim Simulation.
-                towerTick = towerDelay = 0;
-            }
-            case NONE -> towerTick = towerDelay = 0;
-        }
-    }
-
-    private static boolean isTowering(Minecraft client) {
-        if (currentFlatTick > 0) return false;
-        if (!client.player.onGround() || !moving(client) || hasCollisionAbove(client)) return false;
-        return keepYMode() == KeepYMode.TELLY && stage > 0;
-    }
-
-    private static boolean shouldStopSprint(Minecraft client) {
+    private static boolean shouldStopSprint() {
         // This helper returns false during Telly/Tower and Snap
         // even when the visible option was "None".  ACA remembers sprinting
         // for 400 ms before a scaffold placement, so that exception produces
@@ -1582,28 +1528,6 @@ public final class ScaffoldEngine {
     private static boolean hasCollisionAbove(Minecraft client) {
         return !client.level.noCollision(client.player,
                 client.player.getBoundingBox().move(0.0D, 1.0D, 0.0D));
-    }
-
-    private static boolean isNearEdge(Minecraft client, double lookAhead) {
-        // SafeWalk follows the physical input direction; outgoingYaw is only
-        // the silent server-facing placement rotation.
-        float yaw = currentYaw(client);
-        double directionX = -Math.sin(yaw * Mth.DEG_TO_RAD);
-        double directionZ = Math.cos(yaw * Mth.DEG_TO_RAD);
-        int y = Mth.floor(client.player.getY() - 1.0D);
-        for (double distance = 0.2D; distance <= lookAhead; distance += 0.3D) {
-            BlockPos below = new BlockPos(
-                    Mth.floor(client.player.getX() + directionX * distance), y,
-                    Mth.floor(client.player.getZ() + directionZ * distance));
-            BlockState state = client.level.getBlockState(below);
-            if (!isSolid(client, state, below) && !isInteractable(state)) return true;
-        }
-        return false;
-    }
-
-    private static double horizontalSpeed(Minecraft client) {
-        Vec3 velocity = client.player.getDeltaMovement();
-        return Math.hypot(velocity.x, velocity.z);
     }
 
     private static boolean replaceable(Minecraft client, BlockPos pos) {
@@ -1641,29 +1565,25 @@ public final class ScaffoldEngine {
     }
 
     private static void enableState(Minecraft client) {
-        if (client != null && client.player != null) {
-            HOTBAR.userSelected(client.player.getInventory().getSelectedSlot());
-            startY = Mth.floor(client.player.getY());
-            wasInAir = !client.player.onGround();
+        var currentPlayer = client == null ? null : client.player;
+        if (client != null && currentPlayer != null) {
+            HOTBAR.userSelected(currentPlayer.getInventory().getSelectedSlot());
+            startY = Mth.floor(currentPlayer.getY());
+            wasInAir = !currentPlayer.onGround();
         }
         blockCount = -1;
-        rotationTick = towerTick = towerDelay = snapCooldown = currentFlatTick = rotationZeroCount = 0;
+        rotationTick = snapCooldown = currentFlatTick = rotationZeroCount = 0;
         canRotate = false;
-        rotationYaw = -180.0F;
-        rotationPitch = 0.0F;
-        towering = snapping = canPlaceAngle = placedThisJump = false;
-        targetFacing = null;
+        placedThisJump = false;
         resetLegitSneakState();
-        onAirPlace = client != null && client.player != null && client.player.onGround();
+        onAirPlace = client != null && currentPlayer != null && currentPlayer.onGround();
         rotationInitialized = false;
         silentInputAllowsSprint = true;
-        float cameraYaw = client != null && client.player != null ? client.player.getYRot() : 0.0F;
-        float cameraPitch = client != null && client.player != null ? client.player.getXRot() : 0.0F;
-        outgoingYaw = renderYaw = lastPacketYaw = cameraYaw;
-        outgoingPitch = renderPitch = lastPacketPitch = cameraPitch;
-        packetRotationValid = false;
+        float cameraYaw = client != null && currentPlayer != null ? currentPlayer.getYRot() : 0.0F;
+        float cameraPitch = client != null && currentPlayer != null ? currentPlayer.getXRot() : 0.0F;
+        outgoingYaw = renderYaw = cameraYaw;
+        outgoingPitch = renderPitch = cameraPitch;
         serverPositionValid = false;
-        lastMovementPacketTick = Integer.MIN_VALUE;
         renderTarget = null;
         tellyBlocksThisJump = 0;
         tellyAirTicks = 0;
@@ -1707,8 +1627,6 @@ public final class ScaffoldEngine {
         PLACEMENT_TIMES.clear();
     }
 
-
-
     private static void normalizeRanges() {
         if (TELLY_TRACK_SPEED.get() > TELLY_START_SPEED.get()) {
             TELLY_TRACK_SPEED.set(TELLY_START_SPEED.get());
@@ -1720,7 +1638,6 @@ public final class ScaffoldEngine {
             TELLY_BLOCKS_PER_SECOND_MAX.set(TELLY_BLOCKS_PER_SECOND_MIN.get());
         }
     }
-
 
     private static ScaffoldMode scaffoldMode() { return MODE.get(); }
     private static boolean tellyMode() {
@@ -1740,10 +1657,6 @@ public final class ScaffoldEngine {
 
     private static boolean ready(Minecraft client) {
         return ClientReady.gameplay(client);
-    }
-
-    private static double random(double min, double max) {
-        return min >= max ? min : ThreadLocalRandom.current().nextDouble(min, max);
     }
 
     private static WorldOverlayRenderer.ColoredBox box(BlockPos pos, float alpha) {
@@ -1774,7 +1687,6 @@ public final class ScaffoldEngine {
             return new PlacementStep(aim.target(), aim.rotation(), aim.hit());
         }
     }
-    private record Rotation(float yaw, float pitch) { }
     private record PlacedMark(BlockPos pos, long time) { }
     private record HorizontalTravel(long time, double distance) { }
     private enum ScaffoldPath {
@@ -1801,7 +1713,6 @@ public final class ScaffoldEngine {
 
     private enum MoveFix {
         NONE, SILENT;
-        String configName() { return name().toLowerCase(Locale.ROOT); }
     }
 
     private enum TellyRotation {
@@ -1811,17 +1722,14 @@ public final class ScaffoldEngine {
 
     private enum TellyDelay {
         FIXED, ADAPTIVE;
-        String configName() { return name().toLowerCase(Locale.ROOT); }
     }
 
     private enum FaceSampling {
-        LEGACY, CENTER, DENSE, ADAPTIVE;
-        String configName() { return name().toLowerCase(Locale.ROOT); }
+        STANDARD, CENTER, DENSE, ADAPTIVE;
     }
 
     private enum SprintMode {
         NONE, VANILLA;
-        String configName() { return name().toLowerCase(Locale.ROOT); }
     }
 
     private enum KeepYMode {

@@ -4,7 +4,6 @@ import com.blanoir.moons.client.access.MinecraftClientAccess;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.chat.ClientChat;
 import net.minecraft.client.Minecraft;
-import net.minecraft.world.entity.EntityType;
 import net.minecraft.network.protocol.game.ClientboundAddEntityPacket;
 
 public final class LightningTracker {
@@ -17,9 +16,6 @@ public final class LightningTracker {
     private static int count = 0;
 
     private LightningTracker() {
-    }
-
-    public static void init() {
     }
 
     public static int setEnabled(Minecraft client, boolean newEnabled) {
@@ -43,7 +39,8 @@ public final class LightningTracker {
         }
 
         Minecraft client = Minecraft.getInstance();
-        if (client == null || client.player == null || client.level == null) {
+        var currentPlayer = client == null ? null : client.player;
+        if (client == null || currentPlayer == null || client.level == null) {
             return;
         }
 
@@ -54,7 +51,7 @@ public final class LightningTracker {
         double x = packet.getX();
         double y = packet.getY();
         double z = packet.getZ();
-        double distance = Math.sqrt(client.player.distanceToSqr(x, y, z));
+        double distance = Math.sqrt(currentPlayer.distanceToSqr(x, y, z));
 
         count++;
 

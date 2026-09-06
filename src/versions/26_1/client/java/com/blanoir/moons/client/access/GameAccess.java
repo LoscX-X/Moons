@@ -191,9 +191,9 @@ public final class GameAccess {
         }
     }
 
-    public static boolean invokeStartAttack(Minecraft client) {
+    public static void invokeStartAttack(Minecraft client) {
         try {
-            return (boolean) START_ATTACK.invokeExact(client);
+            START_ATTACK.invoke(client);
         } catch (Throwable failure) {
             throw new IllegalStateException("Unable to invoke Minecraft attack", failure);
         }

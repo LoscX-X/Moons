@@ -41,8 +41,8 @@ final class Render {
                                 0, -180, 180, 1, Animations::setItemRotationX),
                         number("item_rotation_y", "Item rotation Y", "blockanimation.itemRotationY",
                                 0, -180, 180, 1, Animations::setItemRotationY),
-                        number("item_rotation", "Item rotation Z", "blockanimation.itemRotation",
-                                0, -180, 180, 1, Animations::setItemRotation));
+                        number("ITEM_ROTATION_Z", "Item rotation Z", "blockanimation.itemRotationZ",
+                                0, -180, 180, 1, Animations::setItemRotationZ));
     }
 
     static ModuleRegistry.Module hud() {
@@ -196,15 +196,16 @@ final class Render {
                         number("range", "Range", "uhcfinder.range", 256, 8, 1024, 8, UhcFinder::setRange));
     }
 
-    static ModuleRegistry.Module trimChanger() {
-        return module("trimchanger", "TrimChanger", ModuleCategories.EXPERIMENT,
-                        TrimChanger::isEnabled, TrimChanger::setEnabled, TrimChanger::hudTag,
-                        customChoice("trim", "Hoplite trim", TrimChanger::patternId,
-                                TrimChanger.patternOptions(), TrimChanger::setPattern),
-                        customChoice("material", "Trim material", TrimChanger::materialId,
-                                TrimChanger.materialOptions(), TrimChanger::setMaterial),
-                        customBool("override", "Override other trims", TrimChanger::overrideOtherTrims,
-                                TrimChanger::setOverrideOtherTrims));
+    static ModuleRegistry.Module trim() {
+        // Keep the persisted ID so existing settings and keybinds survive the display rename.
+        return module("trim", "Trim", ModuleCategories.EXPERIMENT,
+                        Trim::isEnabled, Trim::setEnabled, Trim::hudTag,
+                        customChoice("trim", "Hoplite trim", Trim::patternId,
+                                Trim.patternOptions(), Trim::setPattern),
+                        customChoice("material", "Trim material", Trim::materialId,
+                                Trim.materialOptions(), Trim::setMaterial),
+                        customBool("override", "Override other trims", Trim::overrideOtherTrims,
+                                Trim::setOverrideOtherTrims));
     }
 
     static ModuleRegistry.Module offlinePlayerDetect() {

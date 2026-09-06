@@ -84,7 +84,7 @@ public final class PlacementRotationVerification {
                 "quantization collapsing all alternatives cannot bypass repetition guard");
         require(history.wouldRepeatNext(90), "pending placement delta checked before placement is sent");
         history.placementSent();
-        history.rotationSent(varied);
+        history.rotationSent(java.util.Objects.requireNonNull(varied));
         require(!history.needsSettling(), "preemptive variation allows next placement without waiting");
 
         history.reset();
@@ -100,8 +100,8 @@ public final class PlacementRotationVerification {
             require(selected != null, "bounded valid face has an alternative");
             require(!history.needsSettling(), "continuous placement does not need a settling tick");
             history.placementSent();
-            history.rotationSent(selected);
-            emittedYaw = selected;
+            history.rotationSent(java.util.Objects.requireNonNull(selected));
+            emittedYaw = java.util.Objects.requireNonNull(selected);
         }
         System.out.println("SCAFFOLD_ROTATIONS_VERIFIED assertions=" + assertions);
     }

@@ -4,7 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.darkColorScheme
@@ -36,17 +35,25 @@ internal fun MoonsPanelClickGui(
     onBindingModuleChange: (String?) -> Unit,
     onMutated: () -> Unit,
     onEditHudLayout: () -> Unit,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    modulesOverride: List<ModuleRegistry.Module>? = null
 ) {
-    val allModules = ModuleRegistry.modules().filterNot { it.id() in CLIENT_SETTINGS_MODULE_IDS }
-    val preferred = ModuleCategories.ordered()
-    val available = allModules.map { it.category() }.distinct()
-    val categories = preferred.filter(available::contains) + available.filterNot(preferred::contains)
+    val allModules = remember(modulesOverride) {
+        (modulesOverride ?: ModuleRegistry.modules()).filterNot { it.id() in CLIENT_SETTINGS_MODULE_IDS }
+    }
+    val categories = remember(allModules) {
+        val preferred = ModuleCategories.ordered()
+        val available = allModules.map { it.category() }.distinct()
+        preferred.filter(available::contains) + available.filterNot(preferred::contains)
+    }
     val positions = remember { mutableStateMapOf<String, Offset>() }
     val collapsed = remember { mutableStateMapOf<String, Boolean>() }
     val expanded = remember { mutableStateMapOf<String, Boolean>() }
     var activePanel by remember { mutableStateOf<String?>(null) }
     var search by remember { mutableStateOf("") }
+    val filteredModules = remember(allModules, search) {
+        allModules.filter { matchesSearch(it, search) }.groupBy { it.category() }
+    }
     var openSections by remember { mutableStateOf(loadOpenSections()) }
     var settingsOpen by remember { mutableStateOf(false) }
     var styleRevision by remember { mutableIntStateOf(0) }
@@ -105,9 +112,7 @@ internal fun MoonsPanelClickGui(
                 val savedPosition = remember(category) { loadPanelPosition(category) }
                 val position = positions[category]
                     ?: clampPanelPosition(savedPosition ?: initial, logicalWidth, logicalHeight)
-                val modules = allModules.filter { module ->
-                    module.category() == category && matchesSearch(module, search)
-                }
+                val modules = filteredModules[category].orEmpty()
                 CategoryPanel(
                     category = category,
                     modules = modules,

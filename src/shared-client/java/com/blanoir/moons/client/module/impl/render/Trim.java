@@ -3,13 +3,21 @@ package com.blanoir.moons.client.module.impl.render;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.ModeSetting;
 import com.blanoir.moons.client.chat.ClientChat;
+import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.model.Model;
+import net.minecraft.client.renderer.SubmitNodeCollector;
+import net.minecraft.client.renderer.rendertype.RenderTypes;
+import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.client.renderer.entity.state.AvatarRenderState;
+import net.minecraft.client.resources.model.EquipmentClientInfo;
 import net.minecraft.core.Holder;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.equipment.EquipmentAsset;
 import net.minecraft.world.item.equipment.trim.ArmorTrim;
 import net.minecraft.world.item.equipment.trim.MaterialAssetGroup;
 import net.minecraft.world.item.equipment.trim.TrimMaterial;
@@ -21,13 +29,13 @@ import java.util.Locale;
 import java.util.Map;
 
 /** Applies Hoplite armor-trim cosmetics to render-only ItemStack copies. */
-public final class TrimChanger {
+public final class Trim {
     private static final BooleanSetting ENABLED = new BooleanSetting.Builder()
-            .name("trimchanger.enabled")
+            .name("trim.enabled")
             .defaultValue(false)
             .build();
     private static final BooleanSetting OVERRIDE = new BooleanSetting.Builder()
-            .name("trimchanger.override")
+            .name("trim.override")
             .defaultValue(false)
             .build();
     private static final ModeSetting<Pattern> PATTERN = buildPatternSetting();
@@ -36,11 +44,12 @@ public final class TrimChanger {
     private static final Map<Pattern, Holder<TrimPattern>> PATTERN_HOLDERS = buildPatternHolders();
     private static final Map<Material, Holder<TrimMaterial>> MATERIAL_HOLDERS = buildMaterialHolders();
 
-    private TrimChanger() {
+    private Trim() {
     }
 
-    public static void init() {
-        if (ENABLED.get()) TrimResourcePack.installAndLoad(Minecraft.getInstance());
+    public static void close() {
+        CURRENT_AVATAR.remove();
+        TrimTextures.close(Minecraft.getInstance());
     }
 
     public static boolean isEnabled() {
@@ -106,35 +115,61 @@ public final class TrimChanger {
 
     public static int setEnabled(Minecraft client, boolean enabled) {
         ENABLED.set(enabled);
-        if (enabled) TrimResourcePack.installAndLoad(client);
-        else CURRENT_AVATAR.remove();
-        ClientChat.send(client, "TrimChanger " + (enabled ? "enabled" : "disabled") + ".");
+        if (!enabled) CURRENT_AVATAR.remove();
+        ClientChat.send(client, "Trim " + (enabled ? "enabled" : "disabled") + ".");
         return 1;
     }
 
-    public static int setPattern(Minecraft client, String value) {
+    /** Called at the vanilla trim pass, preserving its model, pose and draw order. */
+    @SuppressWarnings("unchecked")
+    public static boolean render(Object[] args) {
+        if (!ENABLED.get() || args.length != 10) return false;
+        AvatarRenderState avatar = CURRENT_AVATAR.get();
+        if (avatar == null || !isLocalAvatar(avatar)) return false;
+        EquipmentClientInfo.LayerType layer = (EquipmentClientInfo.LayerType) args[0];
+        if (layer != EquipmentClientInfo.LayerType.HUMANOID
+                && layer != EquipmentClientInfo.LayerType.HUMANOID_LEGGINGS) return false;
+        ResourceKey<EquipmentAsset> asset = (ResourceKey<EquipmentAsset>) args[1];
+        ItemStack stack = (ItemStack) args[4];
+        ArmorTrim trim = stack.get(DataComponents.TRIM);
+        if (trim == null || trim.pattern() != PATTERN_HOLDERS.get(PATTERN.get())) return false;
+        String palette = trim.material().value().assets().assetId(asset).suffix();
+        Identifier texture = TrimTextures.texture(Minecraft.getInstance(),
+                PATTERN.serialized(), layer == EquipmentClientInfo.LayerType.HUMANOID_LEGGINGS, palette);
+        // A failed upload must not fall through to a missing custom atlas sprite.
+        if (texture == null) return true;
+        Model<Object> model = (Model<Object>) args[2];
+        SubmitNodeCollector collector = (SubmitNodeCollector) args[6];
+        collector.order((Integer) args[9]).submitModel(model, args[3], (PoseStack) args[5],
+                Chams.remapIfNeeded(RenderTypes.armorCutoutNoCull(texture)),
+                (Integer) args[7], OverlayTexture.NO_OVERLAY, -1, null, (Integer) args[8], null);
+        return true;
+    }
+
+    public static int setPattern(Minecraft ignoredClient, String value) {
         PATTERN.deserialize(value);
         return 1;
     }
 
-    public static int setMaterial(Minecraft client, String value) {
+    public static int setMaterial(Minecraft ignoredClient, String value) {
         MATERIAL.deserialize(value);
         return 1;
     }
 
-    public static int setOverrideOtherTrims(Minecraft client, boolean value) {
+    public static int setOverrideOtherTrims(Minecraft ignoredClient, boolean value) {
         OVERRIDE.set(value);
         return 1;
     }
 
     private static boolean isLocalAvatar(AvatarRenderState state) {
         Minecraft client = Minecraft.getInstance();
-        return client.player != null && state.id == client.player.getId();
+        var currentPlayer = client == null ? null : client.player;
+        return currentPlayer != null && state.id == currentPlayer.getId();
     }
 
     private static ModeSetting<Pattern> buildPatternSetting() {
         ModeSetting.Builder<Pattern> builder = new ModeSetting.Builder<Pattern>()
-                .name("trimchanger.pattern")
+                .name("trim.pattern")
                 .defaultValue(Pattern.FROST);
         for (Pattern pattern : Pattern.values()) builder.option(pattern, pattern.id);
         return builder.build();
@@ -142,7 +177,7 @@ public final class TrimChanger {
 
     private static ModeSetting<Material> buildMaterialSetting() {
         ModeSetting.Builder<Material> builder = new ModeSetting.Builder<Material>()
-                .name("trimchanger.material")
+                .name("trim.material")
                 .defaultValue(Material.DIAMOND);
         for (Material material : Material.values()) builder.option(material, material.id);
         return builder.build();

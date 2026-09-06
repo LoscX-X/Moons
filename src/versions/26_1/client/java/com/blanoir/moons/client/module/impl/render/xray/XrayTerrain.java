@@ -50,13 +50,6 @@ public final class XrayTerrain {
         return isRenderingBackground() ? ChunkSectionLayer.TRANSLUCENT : original;
     }
 
-    /**
-     * ARGB color used to multiply quad colors: alpha 64/255 (25% opacity), RGB unchanged.
-     */
-    public static int translucentColor() {
-        return 0x40FFFFFF;
-    }
-
     public static void applyAlpha(QuadInstance quadInstance) {
         if (!isRenderingBackground()) {
             return;

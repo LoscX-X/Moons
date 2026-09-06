@@ -4,7 +4,7 @@ import com.blanoir.moons.agent.PayloadCache;
 import com.blanoir.moons.api.AgentMode;
 import com.blanoir.moons.api.bridge.RuntimeBridge;
 
-import java.lang.instrument.Instrumentation;
+import java.io.IOException;
 import java.lang.reflect.Method;
 import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
@@ -20,34 +20,6 @@ final class RuntimeLoader implements AutoCloseable {
     private RuntimeLoader(URLClassLoader classLoader, RuntimeBridge bridge) {
         this.classLoader = classLoader;
         this.bridge = bridge;
-    }
-
-    static RuntimeLoader start(
-            Instrumentation instrumentation,
-            Path outerJar,
-            Path home,
-            AgentMode mode
-    ) throws Exception {
-        return start(instrumentation, outerJar, home, mode, VersionMappings.version());
-    }
-
-    static RuntimeLoader start(
-            Instrumentation instrumentation,
-            Path outerJar,
-            Path home,
-            AgentMode mode,
-            String minecraftVersion
-    ) throws Exception {
-        return load(outerJar, home, mode, minecraftVersion, findGameClassLoader(instrumentation));
-    }
-
-    static RuntimeLoader startNative(
-            Path outerJar,
-            Path home,
-            AgentMode mode,
-            ClassLoader gameLoader
-    ) throws Exception {
-        return startNative(outerJar, home, mode, gameLoader, VersionMappings.version());
     }
 
     static RuntimeLoader startNative(
@@ -124,20 +96,10 @@ final class RuntimeLoader implements AutoCloseable {
     }
 
     @Override
-    public void close() throws Exception {
-        bridge.close();
-        classLoader.close();
-    }
-
-    private static ClassLoader findGameClassLoader(Instrumentation instrumentation) {
-        for (Class<?> loadedClass : instrumentation.getAllLoadedClasses()) {
-            if (loadedClass.getName().equals("net.minecraft.client.Minecraft")) {
-                ClassLoader loader = loadedClass.getClassLoader();
-                if (loader != null) return loader;
-            }
+    public void close() throws IOException {
+        try (classLoader) {
+            bridge.close();
         }
-        ClassLoader context = Thread.currentThread().getContextClassLoader();
-        return context == null ? ClassLoader.getSystemClassLoader() : context;
     }
 
     /**

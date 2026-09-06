@@ -1,7 +1,6 @@
 package com.blanoir.moons.client.module.impl.render.xray;
 
 import com.blanoir.moons.client.config.MoonsConfig;
-import net.minecraft.world.level.block.Block;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.ChunkPos;
@@ -122,10 +121,6 @@ public final class OreCache {
         synchronized (XRAY_POSITIONS) {
             XRAY_POSITIONS.remove(pos);
         }
-    }
-
-    public static boolean isDiamondOre(Block block) {
-        return XrayBlockTarget.DIAMOND.matches(block);
     }
 
     public record CachedXrayBlock(BlockPos pos, XrayTarget target) {

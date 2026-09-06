@@ -29,8 +29,8 @@ these test artifacts below `build/moons-test/<version>/native-agent`:
 - `moons-native.dll`
 - `moons-api.jar`
 
-The transformer JAR remains the separately classified Legacy Agent artifact at
-`build/dist/legacy/<version>/moons.jar`; verification consumes it as test input.
+The Java payload consumed by the bridge is built at
+`build/dist/agent/<version>/moons.jar`; verification consumes it as test input.
 
 `verifyNativeAgent` proves the generic JVMTI/JNI/ASM byte round trip.
 `verifyNativeMoonsTransformer` additionally proves that the production Moons

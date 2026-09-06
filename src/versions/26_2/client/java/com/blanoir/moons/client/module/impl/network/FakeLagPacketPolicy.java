@@ -48,6 +48,7 @@ final class FakeLagPacketPolicy {
     }
 
     static boolean mustFlushOnIncoming(Minecraft client, Packet<?> packet) {
+        var currentPlayer = client == null ? null : client.player;
         if (packet instanceof ClientboundPlayerPositionPacket
                 || packet instanceof ClientboundSetHealthPacket
                 || packet instanceof ClientboundRespawnPacket
@@ -58,8 +59,8 @@ final class FakeLagPacketPolicy {
 
         if (packet instanceof ClientboundSetEntityMotionPacket(int id, Vec3 movement)) {
             return client != null
-                    && client.player != null
-                    && id == client.player.getId()
+                    && currentPlayer != null
+                    && id == currentPlayer.getId()
                     && !movement.equals(Vec3.ZERO);
         }
 

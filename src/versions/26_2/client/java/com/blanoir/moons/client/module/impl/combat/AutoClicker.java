@@ -104,12 +104,12 @@ public final class AutoClicker {
         return 1;
     }
     public static String hudTag() { return format(MIN_CPS.get()) + "-" + format(MAX_CPS.get()); }
-    public static int setMinCps(Minecraft client, double value) { MIN_CPS.set(value); return 1; }
-    public static int setMaxCps(Minecraft client, double value) { MAX_CPS.set(value); return 1; }
-    public static int setBreakBlocks(Minecraft client, boolean value) { BREAK_BLOCKS.set(value); return 1; }
-    public static int setSag(Minecraft client, boolean value) { SAG.set(value); return 1; }
-    public static int setSagBlockingTicks(Minecraft client, int value) { SAG_BLOCK_TICKS.set(value); return 1; }
-    public static int setSagUnblockTicks(Minecraft client, int value) { SAG_UNBLOCK_TICKS.set(value); return 1; }
+    public static int setMinCps(Minecraft ignoredClient, double value) { MIN_CPS.set(value); return 1; }
+    public static int setMaxCps(Minecraft ignoredClient, double value) { MAX_CPS.set(value); return 1; }
+    public static int setBreakBlocks(Minecraft ignoredClient, boolean value) { BREAK_BLOCKS.set(value); return 1; }
+    public static int setSag(Minecraft ignoredClient, boolean value) { SAG.set(value); return 1; }
+    public static int setSagBlockingTicks(Minecraft ignoredClient, int value) { SAG_BLOCK_TICKS.set(value); return 1; }
+    public static int setSagUnblockTicks(Minecraft ignoredClient, int value) { SAG_UNBLOCK_TICKS.set(value); return 1; }
 
     private static String format(double value) {
         return value == Math.rint(value) ? Integer.toString((int) value) : String.format("%.1f", value);

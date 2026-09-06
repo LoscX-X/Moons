@@ -6,13 +6,11 @@ import com.blanoir.moons.runtime.RuntimeEvents;
 
 /** Loads and owns the built-in client feature lifecycle. */
 public final class CoreFeaturesModule implements MoonsModule {
-    private ModuleContext context;
     private RuntimeEventAdapter adapter;
     private boolean enabled;
 
     @Override
     public void load(ModuleContext context) {
-        this.context = context;
         RuntimeEvents events = context.service(RuntimeEvents.class);
         if (Boolean.getBoolean("moons.fixture")) {
             context.resources().own(events.clientTick().subscribe(event -> { }));
@@ -42,6 +40,5 @@ public final class CoreFeaturesModule implements MoonsModule {
             FeatureBootstrap.shutdown();
         }
         adapter = null;
-        context = null;
     }
 }

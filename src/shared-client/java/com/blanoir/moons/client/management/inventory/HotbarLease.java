@@ -20,14 +20,15 @@ public final class HotbarLease {
     }
 
     public synchronized boolean acquire(Minecraft client, int slot) {
-        if (client == null || client.player == null || slot < 0 || slot > 8) return false;
+        var currentPlayer = client == null ? null : client.player;
+        if (client == null || currentPlayer == null || slot < 0 || slot > 8) return false;
         synchronized (HotbarLease.class) {
             if (holder != null && holder != this && holder.priority >= priority) return false;
             if (holder != null && holder != this) previous = holder;
             holder = this;
         }
         cancelled = false;
-        if (restoreSlot < 0) restoreSlot = client.player.getInventory().getSelectedSlot();
+        if (restoreSlot < 0) restoreSlot = currentPlayer.getInventory().getSelectedSlot();
         leasedSlot = slot;
         select(client, slot);
         return true;
@@ -43,8 +44,9 @@ public final class HotbarLease {
     }
 
     public synchronized ItemStack userStack(Minecraft client, ItemStack fallback) {
-        return client != null && client.player != null && restoreSlot >= 0 && restoreSlot <= 8
-                ? client.player.getInventory().getItem(restoreSlot) : fallback;
+        var currentPlayer = client == null ? null : client.player;
+        return client != null && currentPlayer != null && restoreSlot >= 0 && restoreSlot <= 8
+                ? currentPlayer.getInventory().getItem(restoreSlot) : fallback;
     }
 
     public synchronized boolean active() { return holder == this; }
@@ -52,8 +54,9 @@ public final class HotbarLease {
     public synchronized String owner() { return owner; }
 
     public synchronized void release(Minecraft client) {
-        if (holder == this && client != null && client.player != null && restoreSlot >= 0) {
-            int current = client.player.getInventory().getSelectedSlot();
+        var currentPlayer = client == null ? null : client.player;
+        if (holder == this && client != null && currentPlayer != null && restoreSlot >= 0) {
+            int current = currentPlayer.getInventory().getSelectedSlot();
             if (current == leasedSlot) select(client, restoreSlot);
         }
         finish();

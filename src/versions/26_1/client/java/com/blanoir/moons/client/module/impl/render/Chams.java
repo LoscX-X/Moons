@@ -31,7 +31,6 @@ public final class Chams {
     public static final float CHAMS_GREEN = 0.56f;
     public static final float CHAMS_BLUE = 0.84f;
     public static final float HIGHLIGHTER_ALPHA = 0.46f;
-    public static final float ENTITY_CHAMS_ALPHA = 0.85f;
 
     private static final BooleanSetting HIGHLIGHTER_ENABLED =
             new BooleanSetting.Builder()
@@ -54,9 +53,6 @@ public final class Chams {
     private static BiPredicate<Minecraft, Player> playerFilter = (client, player) -> false;
 
     private Chams() {
-    }
-
-    public static void init() {
     }
 
     public static void bindPlayerFilter(BiPredicate<Minecraft, Player> filter) {
@@ -103,8 +99,10 @@ public final class Chams {
      */
     public static boolean shouldRenderEntityChamsFor(AvatarRenderState state) {
         Minecraft client = Minecraft.getInstance();
+        var currentPlayer = client == null ? null : client.player;
+        var currentLevel = client == null ? null : client.level;
 
-        if (!CHAMS_ENABLED.get() || client.level == null || client.player == null) {
+        if (!CHAMS_ENABLED.get() || currentLevel == null || currentPlayer == null) {
             return false;
         }
 
@@ -116,8 +114,8 @@ public final class Chams {
             return false;
         }
 
-        Entity entity = client.level.getEntity(state.id);
-        if (entity == client.player) {
+        Entity entity = currentLevel.getEntity(state.id);
+        if (entity == currentPlayer) {
             return false;
         }
 

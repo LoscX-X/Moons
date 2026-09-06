@@ -4,8 +4,6 @@ public final class MoonsConfig {
     public static final String MOD_ID = "moons";
     public static final int SCAN_RADIUS_CHUNKS = 10;
     public static final int CHUNKS_PER_TICK = 2;
-    public static final int RESCAN_INTERVAL_TICKS = 600;
-    public static final int RESCAN_FORCE_RADIUS_CHUNKS = 3;
     public static final int CHAT_REPORT_INTERVAL_TICKS = 20;
     public static final int INVALID_CACHE_CLEAN_INTERVAL_TICKS = 40;
     public static final int DIAMOND_SCAN_MAX_Y_EXCLUSIVE = 128;

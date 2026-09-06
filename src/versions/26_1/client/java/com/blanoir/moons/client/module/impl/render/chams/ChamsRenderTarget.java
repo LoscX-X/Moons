@@ -84,31 +84,36 @@ public final class ChamsRenderTarget implements AutoCloseable {
         if (target == null) {
             return;
         }
-
+        var color = target.getColorTexture();
+        var depth = target.getDepthTexture();
+        if (color == null || depth == null) return;
         RenderSystem.getDevice()
                 .createCommandEncoder()
-                .clearColorAndDepthTextures(target.getColorTexture(), 0, target.getDepthTexture(), 1.0);
+                .clearColorAndDepthTextures(color, 0, depth, 1.0);
     }
 
     /**
      * Blits the accumulated chams color texture into the main render target.
      */
     public void composite(RenderTarget mainTarget) {
-        if (target == null || mainTarget == null || target.getColorTextureView() == null) {
+        if (target == null || mainTarget == null) {
             return;
         }
+        var sourceColor = target.getColorTextureView();
+        var destinationColor = mainTarget.getColorTextureView();
+        if (sourceColor == null || destinationColor == null) return;
 
         GpuSampler sampler = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST);
         try (RenderPass pass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(
                 () -> ClientBranding.name() + " Chams composite",
-                mainTarget.getColorTextureView(),
+                destinationColor,
                 OptionalInt.empty(),
                 null,
                 OptionalDouble.empty()
         )) {
             pass.setPipeline(BLIT_PIPELINE);
             RenderSystem.bindDefaultUniforms(pass);
-            pass.bindTexture("InSampler", target.getColorTextureView(), sampler);
+            pass.bindTexture("InSampler", sourceColor, sampler);
             // 26.1.2 RenderPass.draw(firstVertex, vertexCount): a fullscreen triangle
             // with an empty vertex format is generated from gl_VertexID, so first=0/count=3.
             pass.draw(0, 3);

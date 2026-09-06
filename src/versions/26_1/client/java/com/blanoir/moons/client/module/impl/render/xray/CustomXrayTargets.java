@@ -47,14 +47,13 @@ public final class CustomXrayTargets {
         }
 
         CustomTarget removedTarget = TARGETS.remove(id);
-        boolean removed = removedTarget != null;
 
-        if (removed) {
+        if (removedTarget != null) {
             removedTarget.setEnabled(false);
             saveTargets();
         }
 
-        return removed;
+        return removedTarget != null;
     }
 
     public static synchronized AddResult setColor(String blockName, ColorValue color) {
@@ -101,16 +100,6 @@ public final class CustomXrayTargets {
         }
 
         saveTargets();
-    }
-
-    public static synchronized String listText() {
-        if (TARGETS.isEmpty()) {
-            return "none";
-        }
-
-        return TARGETS.values().stream()
-                .map(target -> target.commandName() + "=" + target.rgbString())
-                .collect(Collectors.joining(", "));
     }
 
     private static Map<Identifier, CustomTarget> loadTargets() {

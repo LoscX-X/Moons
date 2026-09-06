@@ -2,10 +2,8 @@ package com.blanoir.moons.client.module.impl.render.xray;
 
 import com.blanoir.moons.client.config.ClientBranding;
 import com.blanoir.moons.client.config.MoonsConfig;
-import com.blanoir.moons.client.config.Settings;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.event.EventBus;
-import com.blanoir.moons.client.event.tick.TickEndEvent;
 import com.blanoir.moons.client.module.framework.ModuleKeybinds;
 import com.blanoir.moons.client.utils.world.ChunkKey;
 import com.blanoir.moons.client.utils.world.BlockDistance;
@@ -13,6 +11,7 @@ import com.blanoir.moons.client.chat.ClientChat;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.ChunkPos;
@@ -29,6 +28,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 public final class OreScanner {
     private static final Queue<ChunkPos> SCAN_QUEUE = new ArrayDeque<>();
@@ -38,6 +38,10 @@ public final class OreScanner {
         return thread;
     });
     private static final AtomicInteger IN_FLIGHT = new AtomicInteger();
+    private static final AtomicInteger SCAN_GENERATION = new AtomicInteger();
+    private static final Queue<ScanBatch> COMPLETED_SCANS = new ConcurrentLinkedQueue<>();
+    private static ScanBatch currentScan;
+    private static int currentScanIndex;
     private static final AtomicInteger FOUND_TARGETS = new AtomicInteger();
     private static final int MAX_QUEUED_UPDATES = 8192;
     private static final int MAX_UPDATES_PER_TICK = 64;
@@ -57,8 +61,7 @@ public final class OreScanner {
     private static final BooleanSetting AUTO_SCAN =
             new BooleanSetting.Builder()
                     .name("xray.enabled")
-                    .defaultValue(Settings.getBoolean("xray.autoscan.enabled", false)
-                            || Settings.getBoolean("xray.destroyPacket.enabled", false))
+                    .defaultValue(false)
                     .build();
 
     private static int tickCounter = 0;
@@ -68,16 +71,18 @@ public final class OreScanner {
     }
 
     public static void init() {
-        // Persist the merged master once; an old packet preference must not
-        // re-enable Xray on the next launch after the user turns it off.
-        AUTO_SCAN.set(AUTO_SCAN.get());
-        Settings.remove("xray.autoscan.enabled");
         ModuleKeybinds.registerAction("clearscan", () -> clearAll(Minecraft.getInstance()));
+        EventBus.CLIENT_CONTEXT_CHANGED.register("OreScanner.context", event -> {
+            resetScannerState();
+            OreCache.clear();
+        });
 
         EventBus.TICK_END.register("OreScanner.tickEnd", event -> {
             Minecraft client = event.client();
             if (AUTO_SCAN.get()) {
                 tickAutoScan(client);
+            } else {
+                COMPLETED_SCANS.clear();
             }
         });
     }
@@ -93,9 +98,7 @@ public final class OreScanner {
             enqueueNearbyChunks(client, true);
             ClientChat.send(client, "Xray enabled. Queue=" + SCAN_QUEUE.size());
         } else {
-            SCAN_QUEUE.clear();
-            QUEUED_CHUNKS.clear();
-            clearPendingUpdates();
+            resetScannerState();
             ClientChat.send(client, "Xray disabled. Cached=" + OreCache.size());
         }
     }
@@ -118,15 +121,16 @@ public final class OreScanner {
         if (movedToAnotherChunk) {
             lastCenterChunk = currentCenter;
             enqueueNearbyChunks(client, false);
-            submitCleanup(() -> OreCache.removeFarPositions(client));
+            OreCache.removeFarPositions(client);
             removeFarScannedChunkKeys(client);
         }
 
+        processCompletedScans(client);
         processBlockUpdates(client);
 
         if (tickCounter % MoonsConfig.INVALID_CACHE_CLEAN_INTERVAL_TICKS == 0) {
-            submitCleanup(() -> OreCache.removeInvalidPositions(client));
-            submitCleanup(() -> OreCache.removeFarPositions(client));
+            OreCache.removeInvalidPositions(client);
+            OreCache.removeFarPositions(client);
             removeFarScannedChunkKeys(client);
         }
 
@@ -183,21 +187,27 @@ public final class OreScanner {
     }
 
     private static void processScanQueue(Minecraft client, int maxChunks) {
-        if (!isClientWorldReady(client)) return;
+        ClientLevel level = client.level;
+        if (level == null || client.player == null) return;
+        int generation = SCAN_GENERATION.get();
         int submitted = 0;
-        while (submitted < maxChunks && IN_FLIGHT.get() < maxChunks && !SCAN_QUEUE.isEmpty()) {
+        while (submitted < maxChunks && IN_FLIGHT.get() + COMPLETED_SCANS.size()
+                + (currentScan == null ? 0 : 1) < maxChunks) {
             ChunkPos chunkPos = SCAN_QUEUE.poll();
+            if (chunkPos == null) break;
             long key = ChunkKey.pack(chunkPos.x(), chunkPos.z());
             QUEUED_CHUNKS.remove(key);
-            LevelChunk chunk = client.level.getChunkSource().getChunk(chunkPos.x(), chunkPos.z(), false);
+            LevelChunk chunk = level.getChunkSource().getChunk(chunkPos.x(), chunkPos.z(), false);
             if (chunk == null) continue;
             IN_FLIGHT.incrementAndGet();
             submitted++;
             // The expensive column walk is kept off the render/client tick thread.
             SCAN_EXECUTOR.execute(() -> {
                 try {
-                    scanChunk(client, chunk, chunkPos.x(), chunkPos.z());
-                    client.execute(() -> SCANNED_CHUNKS.add(key));
+                    List<BlockPos> positions = scanChunk(chunk, chunkPos.x(), chunkPos.z(), generation);
+                    if (positions != null && generation == SCAN_GENERATION.get()) {
+                        COMPLETED_SCANS.add(new ScanBatch(level, generation, key, positions));
+                    }
                 } finally {
                     IN_FLIGHT.decrementAndGet();
                 }
@@ -205,24 +215,24 @@ public final class OreScanner {
         }
     }
 
-    private static int scanChunk(
-            Minecraft client,
+    private static List<BlockPos> scanChunk(
             LevelChunk chunk,
             int chunkX,
-            int chunkZ
+            int chunkZ,
+            int generation
     ) {
-        int newFound = 0;
+        List<BlockPos> positions = new ArrayList<>();
 
         int startX = chunkX << 4;
         int startZ = chunkZ << 4;
 
-        int bottomY = client.level.getMinY();
-        int topYExclusive = bottomY + client.level.getHeight();
+        int bottomY = chunk.getMinY();
+        int topYExclusive = bottomY + chunk.getHeight();
 
         BlockPos.MutableBlockPos mutablePos = new BlockPos.MutableBlockPos();
 
         for (int localX = 0; localX < 16; localX++) {
-            if (Thread.currentThread().isInterrupted()) return newFound;
+            if (Thread.currentThread().isInterrupted() || generation != SCAN_GENERATION.get()) return null;
             int worldX = startX + localX;
 
             for (int localZ = 0; localZ < 16; localZ++) {
@@ -234,51 +244,70 @@ public final class OreScanner {
                     BlockState state = chunk.getBlockState(mutablePos);
                     Block block = state.getBlock();
 
-                    if (recordTargetIfPresent(client, mutablePos, block)) {
-                        newFound++;
+                    if (XrayBlockTarget.findEnabledTarget(block) != null) {
+                        positions.add(mutablePos.immutable());
                     }
                 }
             }
         }
 
-        return newFound;
+        return positions;
     }
 
-    public static boolean recordDiamondIfPresent(Minecraft client, BlockPos pos, Block block) {
-        if (!OreCache.isDiamondOre(block)) {
-            return false;
+    /** Apply a bounded amount of work on the client thread, after checking the world identity. */
+    private static void processCompletedScans(Minecraft client) {
+        ClientLevel level = client.level;
+        if (level == null) return;
+        int processed = 0;
+        while (processed < MAX_UPDATES_PER_TICK) {
+            if (currentScan == null) {
+                currentScan = COMPLETED_SCANS.poll();
+                currentScanIndex = 0;
+            }
+            if (currentScan == null) return;
+            if (currentScan.level() != level || currentScan.generation() != SCAN_GENERATION.get()) {
+                currentScan = null;
+                continue;
+            }
+            if (currentScanIndex == currentScan.positions().size()) {
+                SCANNED_CHUNKS.add(currentScan.chunkKey());
+                currentScan = null;
+                continue;
+            }
+            BlockPos pos = currentScan.positions().get(currentScanIndex++);
+            recordTargetIfPresent(client, pos, level.getBlockState(pos).getBlock());
+            processed++;
         }
-
-        return recordTarget(client, pos, XrayBlockTarget.DIAMOND);
     }
 
-    public static boolean recordTargetIfPresent(Minecraft client, BlockPos pos, Block block) {
+    private record ScanBatch(ClientLevel level, int generation, long chunkKey, List<BlockPos> positions) { }
+
+    private static void recordTargetIfPresent(Minecraft client, BlockPos pos, Block block) {
         XrayTarget target = XrayBlockTarget.findEnabledTarget(block);
 
         if (target == null) {
-            return false;
+            return;
         }
 
         if (target == XrayBlockTarget.DIAMOND && pos.getY() >= MoonsConfig.DIAMOND_SCAN_MAX_Y_EXCLUSIVE) {
-            return false;
+            return;
         }
 
-        return recordTarget(client, pos, target);
+        recordTarget(client, pos, target);
     }
 
-    private static boolean recordTarget(Minecraft client, BlockPos pos, XrayTarget target) {
+    private static void recordTarget(Minecraft client, BlockPos pos, XrayTarget target) {
         BlockPos foundPos = pos.immutable();
 
         if (target == XrayBlockTarget.DIAMOND && !XrayCoverMode.shouldRecordDiamond(client, foundPos)) {
-            return false;
+            return;
         }
 
         if (!OreCache.add(foundPos, target)) {
-            return false;
+            return;
         }
 
         printNewTarget(client, foundPos, target);
-        return true;
     }
 
     private static void printNewTarget(Minecraft client, BlockPos pos, XrayTarget target) {
@@ -322,10 +351,6 @@ public final class OreScanner {
         );
     }
 
-    private static void submitCleanup(Runnable task) {
-        SCAN_EXECUTOR.execute(task);
-    }
-
     /**
      * Called by the block-update hook whenever a block changes on the client.
      */
@@ -357,12 +382,9 @@ public final class OreScanner {
             return;
         }
 
-        SCAN_EXECUTOR.execute(() -> {
-            for (BlockPos pos : batch) {
-                if (Thread.currentThread().isInterrupted()) return;
-                scanUpdatedPosition(client, pos);
-            }
-        });
+        for (BlockPos pos : batch) {
+            scanUpdatedPosition(client, pos);
+        }
     }
 
     private static void scanUpdatedPosition(Minecraft client, BlockPos pos) {
@@ -401,15 +423,16 @@ public final class OreScanner {
         int oldSize = OreCache.size();
 
         OreCache.clear();
-        SCAN_QUEUE.clear();
-        QUEUED_CHUNKS.clear();
-        SCANNED_CHUNKS.clear();
-        clearPendingUpdates();
+        resetScannerState();
 
         ClientChat.send(client, "Cleared cache=" + oldSize + ", queue=0.");
     }
 
     private static void resetScannerState() {
+        SCAN_GENERATION.incrementAndGet();
+        COMPLETED_SCANS.clear();
+        currentScan = null;
+        currentScanIndex = 0;
         tickCounter = 0;
         lastCenterChunk = null;
         SCAN_QUEUE.clear();
@@ -453,10 +476,6 @@ public final class OreScanner {
 
     private static double distanceToPlayer(Minecraft client, BlockPos pos) {
         return BlockDistance.toBlock(client, pos);
-    }
-
-    private static double squaredDistanceToPlayer(Minecraft client, BlockPos pos) {
-        return BlockDistance.squaredToBlock(client, pos);
     }
 
     public static boolean isClientWorldReady(Minecraft client) {

@@ -642,42 +642,6 @@ public final class AntiWeb {
         return best;
     }
 
-    private static BlockPos findCobwebInBox(
-            Minecraft client,
-            AABB box,
-            BlockPos excludedPos,
-            Vec3 referencePoint
-    ) {
-        int minX = Mth.floor(box.minX + BOX_EPSILON);
-        int minY = Mth.floor(box.minY + BOX_EPSILON);
-        int minZ = Mth.floor(box.minZ + BOX_EPSILON);
-        int maxX = Mth.floor(box.maxX - BOX_EPSILON);
-        int maxY = Mth.floor(box.maxY - BOX_EPSILON);
-        int maxZ = Mth.floor(box.maxZ - BOX_EPSILON);
-
-        BlockPos best = null;
-        double bestDistance = Double.MAX_VALUE;
-        for (int y = minY; y <= maxY; y++) {
-            for (int x = minX; x <= maxX; x++) {
-                for (int z = minZ; z <= maxZ; z++) {
-                    BlockPos pos = new BlockPos(x, y, z);
-                    if (pos.equals(excludedPos)) {
-                        continue;
-                    }
-                    if (!client.level.getBlockState(pos).is(Blocks.COBWEB)) {
-                        continue;
-                    }
-                    double distance = referencePoint.distanceToSqr(Vec3.atCenterOf(pos));
-                    if (distance < bestDistance) {
-                        best = pos;
-                        bestDistance = distance;
-                    }
-                }
-            }
-        }
-        return best;
-    }
-
     private static boolean isWaterSource(Minecraft client, BlockPos pos) {
         return client.level.getFluidState(pos).is(FluidTags.WATER)
                 && client.level.getFluidState(pos).isSource();
@@ -931,12 +895,13 @@ public final class AntiWeb {
     }
 
     private static boolean ready(Minecraft client) {
+        var currentPlayer = client == null ? null : client.player;
         return client != null
-                && client.player != null
+                && currentPlayer != null
                 && client.level != null
                 && client.gameMode != null
                 && MinecraftClientAccess.screen(client) == null
-                && !client.player.isDeadOrDying();
+                && !currentPlayer.isDeadOrDying();
     }
 
     public static boolean isBusy() {
@@ -959,21 +924,23 @@ public final class AntiWeb {
     }
 
     private static void selectSlot(Minecraft client, int slot) {
-        if (client == null || client.player == null || slot < 0 || slot > 8) {
+        var currentPlayer = client == null ? null : client.player;
+        if (client == null || currentPlayer == null || slot < 0 || slot > 8) {
             return;
         }
-        if (client.player.getInventory().getSelectedSlot() == slot) {
+        if (currentPlayer.getInventory().getSelectedSlot() == slot) {
             return;
         }
-        client.player.getInventory().setSelectedSlot(slot);
+        currentPlayer.getInventory().setSelectedSlot(slot);
     }
 
     private static void restoreSlot(Minecraft client) {
+        var currentPlayer = client == null ? null : client.player;
         if (client != null
-                && client.player != null
+                && currentPlayer != null
                 && activeWaterSlot >= 0
                 && originalSlot >= 0
-                && client.player.getInventory().getSelectedSlot() == activeWaterSlot) {
+                && currentPlayer.getInventory().getSelectedSlot() == activeWaterSlot) {
             selectSlot(client, originalSlot);
         }
         activeWebPos = null;

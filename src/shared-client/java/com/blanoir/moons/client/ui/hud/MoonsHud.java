@@ -2,7 +2,6 @@ package com.blanoir.moons.client.ui.hud;
 
 import com.blanoir.moons.client.ui.layout.Bounds;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
 
 import java.util.List;
 
@@ -28,28 +27,24 @@ public final class MoonsHud {
         return HudConfig.isTextShadowEnabled();
     }
 
-    public static int setTextShadowEnabled(Minecraft client, boolean value) {
-        return HudConfig.setTextShadowEnabled(client, value);
+    public static int setTextShadowEnabled(boolean value) {
+        return HudConfig.setTextShadowEnabled(value);
     }
 
-    public static int setPanelOpacity(Minecraft client, int value) {
-        return HudConfig.setPanelOpacity(client, value);
+    public static int setPanelOpacity(int value) {
+        return HudConfig.setPanelOpacity(value);
     }
 
-    public static int setUseThemeBackground(Minecraft client, boolean value) {
-        return HudConfig.setUseThemeBackground(client, value);
+    public static int setUseThemeBackground(boolean value) {
+        return HudConfig.setUseThemeBackground(value);
     }
 
-    public static int setBackgroundColor(Minecraft client, String value) {
-        return HudConfig.setBackgroundColor(client, value);
+    public static int setBackgroundColor(String value) {
+        return HudConfig.setBackgroundColor(value);
     }
 
     public static Bounds currentBounds() {
         return INSTANCE.lastBounds;
-    }
-
-    public static void renderForEditor(GuiGraphicsExtractor graphics) {
-        // TextGUI is drawn later by TextGuiSkiaOverlay into the final framebuffer.
     }
 
     public static void updateExternalBounds(Bounds bounds, double renderedScale) {
@@ -61,28 +56,28 @@ public final class MoonsHud {
         return HudConfig.scale();
     }
 
-    public static int setScale(Minecraft client, double value) {
-        return HudConfig.setScale(client, value);
+    public static int setScale(double value) {
+        return HudConfig.setScale(value);
     }
 
-    public static int setShowTitle(Minecraft client, boolean value) {
-        return HudConfig.setShowTitle(client, value);
+    public static int setShowTitle(boolean value) {
+        return HudConfig.setShowTitle(value);
     }
 
-    public static int setShowFps(Minecraft client, boolean value) {
-        return HudConfig.setShowFps(client, value);
+    public static int setShowFps(boolean value) {
+        return HudConfig.setShowFps(value);
     }
 
-    public static int setTitleColor(Minecraft client, String value) {
-        return HudConfig.setTitleColor(client, value);
+    public static int setTitleColor(String value) {
+        return HudConfig.setTitleColor(value);
     }
 
     public static List<String> fontModeOptions() {
         return HudConfig.fontModeOptions();
     }
 
-    public static int setFontMode(Minecraft client, String value) {
-        return HudConfig.setFontMode(client, value);
+    public static int setFontMode(String value) {
+        return HudConfig.setFontMode(value);
     }
 
     public static void resizeForEditor(double value, double left, double top,
@@ -99,60 +94,60 @@ public final class MoonsHud {
         HudConfig.POSITION_Y.set((int) Math.round(clampedTop / nextScale));
     }
 
-    public static int setUseThemeColor(Minecraft client, boolean value) {
-        return HudConfig.setUseThemeColor(client, value);
+    public static int setUseThemeColor(boolean value) {
+        return HudConfig.setUseThemeColor(value);
     }
 
-    public static int setColor(Minecraft client, String value) {
-        return HudConfig.setColor(client, value);
+    public static int setColor(String value) {
+        return HudConfig.setColor(value);
     }
 
     public static List<String> nameColorModeOptions() {
         return HudConfig.nameColorModeOptions();
     }
 
-    public static int setNameColorMode(Minecraft client, String value) {
-        return HudConfig.setNameColorMode(client, value);
+    public static int setNameColorMode(String value) {
+        return HudConfig.setNameColorMode(value);
     }
 
     public static List<String> gradientDirectionOptions() {
         return HudConfig.gradientDirectionOptions();
     }
 
-    public static int setGradientDirection(Minecraft client, String value) {
-        return HudConfig.setGradientDirection(client, value);
+    public static int setGradientDirection(String value) {
+        return HudConfig.setGradientDirection(value);
     }
 
-    public static int setGradientColor(Minecraft client, String value) {
-        return HudConfig.setGradientColor(client, value);
+    public static int setGradientColor(String value) {
+        return HudConfig.setGradientColor(value);
     }
 
-    public static int setParameterColor(Minecraft client, String value) {
-        return HudConfig.setParameterColor(client, value);
+    public static int setParameterColor(String value) {
+        return HudConfig.setParameterColor(value);
     }
 
-    public static int setColorSpeed(Minecraft client, double value) {
-        return HudConfig.setColorSpeed(client, value);
+    public static int setColorSpeed(double value) {
+        return HudConfig.setColorSpeed(value);
     }
 
-    public static int setColorSpread(Minecraft client, double value) {
-        return HudConfig.setColorSpread(client, value);
+    public static int setColorSpread(double value) {
+        return HudConfig.setColorSpread(value);
     }
 
-    public static int setCharacterColorSpread(Minecraft client, double value) {
-        return HudConfig.setCharacterColorSpread(client, value);
+    public static int setCharacterColorSpread(double value) {
+        return HudConfig.setCharacterColorSpread(value);
     }
 
-    public static int setAlpha(Minecraft client, int value) {
-        return HudConfig.setAlpha(client, value);
+    public static int setAlpha(int value) {
+        return HudConfig.setAlpha(value);
     }
 
-    public static int setPositionX(Minecraft client, int value) {
-        return HudConfig.setPositionX(client, value);
+    public static int setPositionX(int value) {
+        return HudConfig.setPositionX(value);
     }
 
-    public static int setPositionY(Minecraft client, int value) {
-        return HudConfig.setPositionY(client, value);
+    public static int setPositionY(int value) {
+        return HudConfig.setPositionY(value);
     }
 
     public static void setEditorPosition(double left, double top, int screenWidth, int screenHeight) {

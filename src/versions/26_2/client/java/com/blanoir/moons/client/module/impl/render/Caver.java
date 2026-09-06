@@ -21,9 +21,6 @@ public final class Caver {
     private Caver() {
     }
 
-    public static void init() {
-    }
-
     public static boolean isEnabled() {
         return ENABLED.get();
     }

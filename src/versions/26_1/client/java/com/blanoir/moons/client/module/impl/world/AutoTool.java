@@ -6,12 +6,10 @@
  */
 package com.blanoir.moons.client.module.impl.world;
 
-import com.blanoir.moons.client.config.Settings;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.IntSetting;
 import com.blanoir.moons.client.config.settings.ModeSetting;
 import com.blanoir.moons.client.event.EventBus;
-import com.blanoir.moons.client.event.tick.TickEvent;
 import com.blanoir.moons.client.module.impl.player.AntiWeb;
 import com.blanoir.moons.client.management.inventory.HotbarLease;
 import com.blanoir.moons.client.chat.ClientChat;
@@ -57,8 +55,8 @@ public final class AutoTool {
             new ModeSetting.Builder<Mode>()
                     .name("autotool.mode")
                     .defaultValue(Mode.DYNAMIC)
-                    .option(Mode.DYNAMIC, "dynamic", "auto")
-                    .option(Mode.STATIC, "static", "slot")
+                    .option(Mode.DYNAMIC, "dynamic")
+                    .option(Mode.STATIC, "static")
                     .build();
 
     private static final IntSetting STATIC_SLOT =
@@ -108,7 +106,6 @@ public final class AutoTool {
     }
 
     public static void init() {
-        Settings.remove("autotool.swapback");
 
         EventBus.TICK.register("AutoTool.tick", event -> {
             Minecraft client = event.client();
@@ -256,11 +253,12 @@ public final class AutoTool {
             ItemStack stack,
             ResourceKey<Enchantment> enchantment
     ) {
-        if (client.level == null) {
+        var currentLevel = client == null ? null : client.level;
+        if (currentLevel == null) {
             return 0;
         }
 
-        Holder<Enchantment> holder = client.level.registryAccess()
+        Holder<Enchantment> holder = currentLevel.registryAccess()
                 .lookupOrThrow(Registries.ENCHANTMENT)
                 .get(enchantment)
                 .orElse(null);

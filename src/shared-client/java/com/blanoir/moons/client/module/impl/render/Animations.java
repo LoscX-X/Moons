@@ -25,7 +25,7 @@ public final class Animations {
     /**
      * Minecraft 1.8 scaled the item model by 0.4 inside
      * transformFirstPersonItem. Modern FIRST_PERSON_* model submission owns
-     * that model scale instead. Undo the legacy scale after the complete Myau
+     * that model scale instead. Undo the preset scale after the complete Myau
      * matrix so the result matches the native modern BLOCK branch.
      */
     private static final float MODERN_BLOCK_MODEL_SCALE = 2.5F;
@@ -44,8 +44,7 @@ public final class Animations {
     private static final DoubleSetting ITEM_SIZE = number("blockanimation.itemSize", 0, -.5, .5);
     private static final DoubleSetting ITEM_ROTATION_X = number("blockanimation.itemRotationX", 0, -180, 180);
     private static final DoubleSetting ITEM_ROTATION_Y = number("blockanimation.itemRotationY", 0, -180, 180);
-    /** Legacy key retained as the Z-axis rotation so existing configs keep working. */
-    private static final DoubleSetting ITEM_ROTATION = number("blockanimation.itemRotation", 0, -180, 180);
+    private static final DoubleSetting ITEM_ROTATION_Z = number("blockanimation.itemRotationZ", 0, -180, 180);
 
     private static float astolfoSpin;
     private static float spin;
@@ -453,11 +452,11 @@ public final class Animations {
         // User rotation is deliberately applied after the selected preset so
         // it rotates the rendered item itself instead of changing the preset's
         // translation axes. X tilts vertically, Y turns it sideways and the
-        // legacy Item rotation setting remains the screen-plane Z roll. This
+        // Z rotation provides the screen-plane Z roll. This
         // is render-only and never changes combat yaw.
         rotate(pose, (float) ITEM_ROTATION_X.get(), 1.0F, 0.0F, 0.0F);
         rotate(pose, (float) ITEM_ROTATION_Y.get(), 0.0F, 1.0F, 0.0F);
-        rotate(pose, (float) ITEM_ROTATION.get(), 0.0F, 0.0F, 1.0F);
+        rotate(pose, (float) ITEM_ROTATION_Z.get(), 0.0F, 0.0F, 1.0F);
     }
 
     public static boolean shouldReplaceVanilla(Object renderedHand) {
@@ -468,8 +467,9 @@ public final class Animations {
     /** Applies the visual-only block arm pose to the local third-person model. */
     public static void applyThirdPerson(Avatar avatar, AvatarRenderState state) {
         Minecraft client = Minecraft.getInstance();
-        if (!ENABLED.get() || client.player == null || avatar == null || state == null
-                || avatar.getId() != client.player.getId()
+        var currentPlayer = client == null ? null : client.player;
+        if (!ENABLED.get() || currentPlayer == null || avatar == null || state == null
+                || avatar.getId() != currentPlayer.getId()
                 || state.getMainHandItemStack().isEmpty()
                 || !state.getMainHandItemStack().is(ItemTags.SWORDS)) {
             return;
@@ -517,15 +517,16 @@ public final class Animations {
 
     private static boolean shouldAnimate(Object renderedHand, float swingProgress) {
         Minecraft client = Minecraft.getInstance();
-        boolean mainHandSword = client.player != null
-                && client.player.getMainHandItem().is(ItemTags.SWORDS);
+        var currentPlayer = client == null ? null : client.player;
+        boolean mainHandSword = currentPlayer != null
+                && currentPlayer.getMainHandItem().is(ItemTags.SWORDS);
         boolean auraOwnsAnimation = auraEnabled.getAsBoolean()
                 && (auraBlocking
                 || auraRenderCheck.test(client)
                 || auraAttackAnimationActive());
         return ENABLED.get()
                 && renderedHand == InteractionHand.MAIN_HAND
-                && client.player != null
+                && currentPlayer != null
                 // In-range Aura holds the visual block pose. A real attack
                 // supplies swingProgress and turns it into a block-hit motion.
                 // Neither state requires or synthesizes item use.
@@ -606,22 +607,18 @@ public final class Animations {
         return ENABLED.get();
     }
 
-    public static boolean isSilentAuraOnly() {
-        return SILENT_AURA_ONLY.get();
-    }
-
     public static int setEnabled(Minecraft client, boolean value) {
         ENABLED.set(value);
         ClientChat.send(client, "BlockAnimation " + (value ? "enabled" : "disabled") + ".");
         return 1;
     }
 
-    public static int setSilentAuraOnly(Minecraft client, boolean value) {
+    public static int setSilentAuraOnly(Minecraft ignoredClient, boolean value) {
         SILENT_AURA_ONLY.set(value);
         return 1;
     }
 
-    public static int setMode(Minecraft client, String value) {
+    public static int setMode(Minecraft ignoredClient, String value) {
         MODE.deserialize(value);
         return 1;
     }
@@ -630,48 +627,48 @@ public final class Animations {
         return MODE.optionIds();
     }
 
-    public static int setSwingSpeed(Minecraft client, double value) {
+    public static int setSwingSpeed(Minecraft ignoredClient, double value) {
         SWING_SPEED.set(value);
         return 1;
     }
 
-    public static int setOffsetX(Minecraft client, double value) {
+    public static int setOffsetX(Minecraft ignoredClient, double value) {
         OFFSET_X.set(value);
         return 1;
     }
 
-    public static int setOffsetY(Minecraft client, double value) {
+    public static int setOffsetY(Minecraft ignoredClient, double value) {
         OFFSET_Y.set(value);
         return 1;
     }
 
-    public static int setOffsetZ(Minecraft client, double value) {
+    public static int setOffsetZ(Minecraft ignoredClient, double value) {
         OFFSET_Z.set(value);
         return 1;
     }
 
-    public static int setScale(Minecraft client, double value) {
+    public static int setScale(Minecraft ignoredClient, double value) {
         SCALE.set(value);
         return 1;
     }
 
-    public static int setItemSize(Minecraft client, double value) {
+    public static int setItemSize(Minecraft ignoredClient, double value) {
         ITEM_SIZE.set(value);
         return 1;
     }
 
-    public static int setItemRotationX(Minecraft client, double value) {
+    public static int setItemRotationX(Minecraft ignoredClient, double value) {
         ITEM_ROTATION_X.set(value);
         return 1;
     }
 
-    public static int setItemRotationY(Minecraft client, double value) {
+    public static int setItemRotationY(Minecraft ignoredClient, double value) {
         ITEM_ROTATION_Y.set(value);
         return 1;
     }
 
-    public static int setItemRotation(Minecraft client, double value) {
-        ITEM_ROTATION.set(value);
+    public static int setItemRotationZ(Minecraft ignoredClient, double value) {
+        ITEM_ROTATION_Z.set(value);
         return 1;
     }
 
@@ -681,11 +678,7 @@ public final class Animations {
                 .defaultValue(Mode.MYAU_1_8);
         for (Mode mode : Mode.values()) {
             if (mode == Mode.MYAU_1_8) {
-                modes.option(mode, "1.8", "myau-1-8");
-            } else if (mode.name().startsWith("MYAU_")) {
-                // Older builds accidentally skipped the first character after
-                // MYAU_; retain that malformed spelling only as a read alias.
-                modes.option(mode, mode.configName(), mode.legacyMyauConfigName());
+                modes.option(mode, "1.8");
             } else {
                 modes.option(mode, mode.configName());
             }
@@ -762,8 +755,5 @@ public final class Animations {
             return name().toLowerCase(Locale.ROOT).replace('_', '-');
         }
 
-        String legacyMyauConfigName() {
-            return "myau-" + name().substring(6).toLowerCase(Locale.ROOT).replace('_', '-');
-        }
     }
 }

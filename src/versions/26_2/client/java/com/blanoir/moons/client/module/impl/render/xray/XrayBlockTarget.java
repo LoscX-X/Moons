@@ -6,7 +6,6 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 
 import java.util.Arrays;
-import java.util.Locale;
 
 public enum XrayBlockTarget implements XrayTarget {
     DIAMOND("diamond", true, 0, 220, 255, Blocks.DIAMOND_ORE, Blocks.DEEPSLATE_DIAMOND_ORE),
@@ -25,7 +24,6 @@ public enum XrayBlockTarget implements XrayTarget {
     CHEST("chest", true, 255, 215, 0, Blocks.CHEST, Blocks.TRAPPED_CHEST);
 
     private final String commandName;
-    private final boolean defaultEnabled;
     private final Block[] blocks;
     private boolean enabled;
     private int red;
@@ -34,7 +32,6 @@ public enum XrayBlockTarget implements XrayTarget {
 
     XrayBlockTarget(String commandName, boolean defaultEnabled, int red, int green, int blue, Block... blocks) {
         this.commandName = commandName;
-        this.defaultEnabled = defaultEnabled;
         this.enabled = Settings.getBoolean(configKey(commandName, "enabled"), defaultEnabled);
         this.red = Settings.getInt(configKey(commandName, "red"), red);
         this.green = Settings.getInt(configKey(commandName, "green"), green);
@@ -53,10 +50,6 @@ public enum XrayBlockTarget implements XrayTarget {
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
         Settings.setBoolean(configKey("enabled"), enabled);
-    }
-
-    public boolean isDefaultEnabled() {
-        return defaultEnabled;
     }
 
     public int red() {
@@ -98,30 +91,6 @@ public enum XrayBlockTarget implements XrayTarget {
 
     public String statusText() {
         return enabled ? "enabled" : "disabled";
-    }
-
-    public static XrayBlockTarget fromCommandName(String name) {
-        String normalized = name.toLowerCase(Locale.ROOT);
-
-        for (XrayBlockTarget target : values()) {
-            if (target.commandName.equals(normalized)) {
-                return target;
-            }
-        }
-
-        if ("bookshelf".equals(normalized)) {
-            return BOOK_SHELF;
-        }
-
-        if ("gold_ore".equals(normalized) || "moons_gold".equals(normalized)) {
-            return GOLD;
-        }
-
-        if ("lapis_ore".equals(normalized) || "lapis_lazuli".equals(normalized) || "qingxinshi".equals(normalized)) {
-            return LAPIS;
-        }
-
-        return null;
     }
 
     public static XrayTarget findEnabledTarget(Block block) {

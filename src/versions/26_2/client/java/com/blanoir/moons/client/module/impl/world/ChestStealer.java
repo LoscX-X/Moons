@@ -6,7 +6,6 @@ import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.IntSetting;
 import com.blanoir.moons.client.config.settings.StringSetting;
 import com.blanoir.moons.client.event.EventBus;
-import com.blanoir.moons.client.event.tick.TickEvent;
 import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.utils.math.RandomMath;
 import net.minecraft.IdentifierException;
@@ -69,7 +68,9 @@ public final class ChestStealer {
     }
 
     private static void tick(Minecraft client) {
-        if (!ENABLED.get() || client == null || client.player == null || client.gameMode == null) {
+        var currentPlayer = client == null ? null : client.player;
+        var currentGameMode = client == null ? null : client.gameMode;
+        if (!ENABLED.get() || client == null || currentPlayer == null || currentGameMode == null) {
             resetScreenState();
             return;
         }
@@ -100,12 +101,12 @@ public final class ChestStealer {
             return;
         }
 
-        client.gameMode.handleContainerInput(
+        currentGameMode.handleContainerInput(
                 handler.containerId,
                 slotIndex.getAsInt(),
                 0,
                 ContainerInput.QUICK_MOVE,
-                client.player
+                currentPlayer
         );
 
         nextStealAtMs = now + randomMissMs();
@@ -151,25 +152,6 @@ public final class ChestStealer {
         ENABLED.set(newEnabled);
         resetScreenState();
         ClientChat.send(client, "ChestStealer " + statusText() + ". Miss: " + missText() + ".");
-        return 1;
-    }
-
-    public static int addLockedItem(Minecraft client, String itemName) {
-        Identifier id = normalizeItemId(itemName);
-
-        if (id == null) {
-            ClientChat.send(client, "Invalid item id: " + itemName + ". Use ids like minecraft:diamond or diamond.");
-            return 0;
-        }
-
-        if (!itemExists(id)) {
-            ClientChat.send(client, "Unknown item: " + itemName + ". Use ids like minecraft:diamond or diamond.");
-            return 0;
-        }
-
-        lockedItems.add(id);
-        saveLockedItems();
-        ClientChat.send(client, "ChestStealer locked item added: " + id + ". Locked items: " + lockedItemsText() + ".");
         return 1;
     }
 
@@ -219,14 +201,6 @@ public final class ChestStealer {
                 .filter(id -> id != null)
                 .filter(ChestStealer::itemExists)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
-    }
-
-    private static void saveLockedItems() {
-        ITEMS.set(
-                lockedItems.stream()
-                        .map(Identifier::toString)
-                        .collect(Collectors.joining(","))
-        );
     }
 
     private static Identifier normalizeItemId(String itemName) {

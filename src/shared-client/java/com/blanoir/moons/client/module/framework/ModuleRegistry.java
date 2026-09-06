@@ -345,10 +345,6 @@ public final class ModuleRegistry {
         return Math.rint(value) == value ? Long.toString(Math.round(value)) : String.format(Locale.ROOT, "%.2f", value).replaceAll("0+$", "").replaceAll("\\.$", "");
     }
 
-    private static String percent(double value) {
-        return Math.round(value * 100) + "%";
-    }
-
     public static String title(String id) {
         StringBuilder out = new StringBuilder();
         for (String part : id.split("_")) {
@@ -443,14 +439,14 @@ public final class ModuleRegistry {
         }
     }
 
-    @FunctionalInterface public interface Toggle { int apply(Minecraft client, boolean value); }
-    @FunctionalInterface public interface BoolSetter { int apply(Minecraft client, boolean value); }
-    @FunctionalInterface public interface DoubleSetter { int apply(Minecraft client, double value); }
-    @FunctionalInterface public interface IntSetter { int apply(Minecraft client, int value); }
-    @FunctionalInterface public interface TextSetter { int apply(Minecraft client, String value); }
-    @FunctionalInterface public interface NumericSetter { void apply(Minecraft client, double value); }
-    @FunctionalInterface public interface IntRangeSetter { int apply(Minecraft client, int min, int max); }
-    @FunctionalInterface public interface DoubleRangeSetter { int apply(Minecraft client, double min, double max); }
-    @FunctionalInterface public interface ColorSetter { void apply(Minecraft client, int[] rgb); }
-    @FunctionalInterface public interface SettingApply { void apply(Minecraft client, JsonElement value); }
+    @FunctionalInterface public interface Toggle { int apply(Minecraft ignoredClient, boolean value); }
+    @FunctionalInterface public interface BoolSetter { int apply(Minecraft ignoredClient, boolean value); }
+    @FunctionalInterface public interface DoubleSetter { int apply(Minecraft ignoredClient, double value); }
+    @FunctionalInterface public interface IntSetter { int apply(Minecraft ignoredClient, int value); }
+    @FunctionalInterface public interface TextSetter { int apply(Minecraft ignoredClient, String value); }
+    @FunctionalInterface public interface NumericSetter { void apply(Minecraft ignoredClient, double value); }
+    @FunctionalInterface public interface IntRangeSetter { int apply(Minecraft ignoredClient, int min, int max); }
+    @FunctionalInterface public interface DoubleRangeSetter { int apply(Minecraft ignoredClient, double min, double max); }
+    @FunctionalInterface public interface ColorSetter { void apply(Minecraft ignoredClient, int[] rgb); }
+    @FunctionalInterface public interface SettingApply { void apply(Minecraft ignoredClient, JsonElement value); }
 }

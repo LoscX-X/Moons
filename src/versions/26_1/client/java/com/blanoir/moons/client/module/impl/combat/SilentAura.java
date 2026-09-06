@@ -47,10 +47,6 @@ public final class SilentAura {
     public static boolean isCrossingTarget() { return SilentAuraRuntime.crossingTarget(); }
     public static float getBodyYaw() { return SilentAuraRuntime.bodyYaw(); }
     public static float getMovementYaw() { return SilentAuraRuntime.movementYaw(); }
-    public static void markOutgoingRotation(float yaw, float pitch, int tick) {
-        SilentAuraRuntime.markOutgoingRotation(yaw, pitch, tick);
-    }
-    public static Vec3 getSentLookVector() { return SilentAuraRuntime.sentLookVector(); }
     public static LivingEntity currentTarget(Minecraft client) { return SilentAuraRuntime.currentTarget(client); }
     public static boolean isEnabled() { return SilentAuraConfig.enabled(); }
 
@@ -91,26 +87,26 @@ public final class SilentAura {
         return 1;
     }
 
-    public static int setRange(Minecraft client, double value) {
-        SilentAuraConfig.range(value); SilentAuraRuntime.resetTargeting(client); return 1;
+    public static int setRange(Minecraft ignoredClient, double value) {
+        SilentAuraConfig.range(value); SilentAuraRuntime.resetTargeting(); return 1;
     }
-    public static int setScanExtra(Minecraft client, double value) {
-        SilentAuraConfig.scanExtra(value); SilentAuraRuntime.resetTargeting(client); return 1;
+    public static int setScanExtra(Minecraft ignoredClient, double value) {
+        SilentAuraConfig.scanExtra(value); SilentAuraRuntime.resetTargeting(); return 1;
     }
-    public static int setFov(Minecraft client, double value) {
-        SilentAuraConfig.fov(value); SilentAuraRuntime.resetTargeting(client); return 1;
+    public static int setFov(Minecraft ignoredClient, double value) {
+        SilentAuraConfig.fov(value); SilentAuraRuntime.resetTargeting(); return 1;
     }
-    public static int setHurtTime(Minecraft client, int value) {
-        SilentAuraConfig.hurtTime(value); SilentAuraRuntime.resetTargeting(client); return 1;
+    public static int setHurtTime(Minecraft ignoredClient, int value) {
+        SilentAuraConfig.hurtTime(value); SilentAuraRuntime.resetTargeting(); return 1;
     }
-    public static int setSmooth(Minecraft client, double value) { SilentAuraConfig.smooth(value); return 1; }
-    public static int setFullLockAngleStep(Minecraft client, int value) {
+    public static int setSmooth(Minecraft ignoredClient, double value) { SilentAuraConfig.smooth(value); return 1; }
+    public static int setFullLockAngleStep(Minecraft ignoredClient, int value) {
         SilentAuraConfig.fullLockAngleStep(value); return 1;
     }
-    public static int setFullLockSmoothing(Minecraft client, double value) {
+    public static int setFullLockSmoothing(Minecraft ignoredClient, double value) {
         SilentAuraConfig.fullLockSmoothing(value); return 1;
     }
-    public static int setFullLockPrediction(Minecraft client, double value) {
+    public static int setFullLockPrediction(Minecraft ignoredClient, double value) {
         SilentAuraConfig.fullLockPrediction(value); return 1;
     }
     public static int setReturnRotation(Minecraft client, boolean value) {
@@ -118,38 +114,38 @@ public final class SilentAura {
         if (!value) SilentAuraRuntime.finishReturn(client);
         return 1;
     }
-    public static int setReturnSmooth(Minecraft client, double value) {
+    public static int setReturnSmooth(Minecraft ignoredClient, double value) {
         SilentAuraConfig.returnSmooth(value);
         return 1;
     }
-    public static int setJitter(Minecraft client, double value) { SilentAuraConfig.jitter(value); return 1; }
-    public static int setJitterSpeed(Minecraft client, double value) {
+    public static int setJitter(Minecraft ignoredClient, double value) { SilentAuraConfig.jitter(value); return 1; }
+    public static int setJitterSpeed(Minecraft ignoredClient, double value) {
         SilentAuraConfig.jitterSpeed(value); return 1;
     }
-    public static int setSettledJitter(Minecraft client, double value) {
+    public static int setSettledJitter(Minecraft ignoredClient, double value) {
         SilentAuraConfig.settledJitter(value); return 1;
     }
-    public static int setAimWander(Minecraft client, double value) {
-        SilentAuraConfig.aimWander(value); SilentAuraRuntime.resetTargeting(client); return 1;
+    public static int setAimWander(Minecraft ignoredClient, double value) {
+        SilentAuraConfig.aimWander(value); SilentAuraRuntime.resetTargeting(); return 1;
     }
-    public static int setAimWanderTicks(Minecraft client, int value) {
-        SilentAuraConfig.aimWanderTicks(value); SilentAuraRuntime.resetTargeting(client); return 1;
+    public static int setAimWanderTicks(Minecraft ignoredClient, int value) {
+        SilentAuraConfig.aimWanderTicks(value); SilentAuraRuntime.resetTargeting(); return 1;
     }
-    public static int setPredictionLead(Minecraft client, double value) {
+    public static int setPredictionLead(Minecraft ignoredClient, double value) {
         SilentAuraConfig.predictionLead(value); return 1;
     }
-    public static int setPredictionStrength(Minecraft client, double value) {
+    public static int setPredictionStrength(Minecraft ignoredClient, double value) {
         SilentAuraConfig.prediction(value); return 1;
     }
-    public static int setBlock(Minecraft client, boolean value) {
+    public static int setBlock(Minecraft ignoredClient, boolean value) {
         SilentAuraConfig.block(value);
         if (!value) SilentAuraRuntime.clearVisualBlock();
         return 1;
     }
 
-    public static int setMatrixCompatibility(Minecraft client, boolean value) {
+    public static int setMatrixCompatibility(Minecraft ignoredClient, boolean value) {
         SilentAuraConfig.matrixCompatibility(value);
-        SilentAuraRuntime.resetTargeting(client);
+        SilentAuraRuntime.resetTargeting();
         return 1;
     }
     public static int setCriticalIntegration(Minecraft client, boolean value) {
@@ -171,7 +167,7 @@ public final class SilentAura {
         if (!SilentAuraConfig.aimPoint(value)) {
             ClientChat.send(client, "Aim point must be center or closest."); return 0;
         }
-        SilentAuraRuntime.resetTargeting(client);
+        SilentAuraRuntime.resetTargeting();
         return 1;
     }
 
@@ -179,7 +175,7 @@ public final class SilentAura {
         if (!SilentAuraConfig.targetMode(value)) {
             ClientChat.send(client, "Target mode must be switch or single."); return 0;
         }
-        SilentAuraRuntime.resetTargeting(client); return 1;
+        SilentAuraRuntime.resetTargeting(); return 1;
     }
 
     public static int setCharge(Minecraft client, String raw) {
@@ -189,7 +185,7 @@ public final class SilentAura {
             double min = Double.parseDouble(parts[0].trim());
             double max = parts.length == 1 ? min : Double.parseDouble(parts[1].trim());
             SilentAuraConfig.charge(min, max);
-            SilentAuraRuntime.resetTargeting(client);
+            SilentAuraRuntime.resetTargeting();
             return 1;
         } catch (NumberFormatException exception) {
             ClientChat.send(client, "Attack charge must be a number or min-max."); return 0;
@@ -204,14 +200,7 @@ public final class SilentAura {
         if (!SilentAuraConfig.targetCategory(category, add)) {
             ClientChat.send(client, "Target category must be player or mob."); return 0;
         }
-        SilentAuraRuntime.resetTargeting(client); return 1;
-    }
-
-    public static int setTargetEntityType(Minecraft client, String raw, boolean add) {
-        if (!SilentAuraConfig.targetEntityType(raw, add)) {
-            ClientChat.send(client, "Unknown entity type: " + raw + "."); return 0;
-        }
-        SilentAuraRuntime.resetTargeting(client); return 1;
+        SilentAuraRuntime.resetTargeting(); return 1;
     }
 
     public static String hudTag() {
@@ -219,7 +208,7 @@ public final class SilentAura {
     }
 
     // Debug
-    public static int setDebugger(Minecraft client, boolean value) {
+    public static int setDebugger(Minecraft ignoredClient, boolean value) {
         SilentAuraConfig.debugger(value);
         return 1;
     }

@@ -127,18 +127,18 @@ final class HudConfig {
             new ModeSetting.Builder<HudFontMode>()
                     .name("featurehud.fontMode")
                     .defaultValue(HudFontMode.SMOOTH)
-                    .option(HudFontMode.ORIGINAL, "original", "resource_pack")
-                    .option(HudFontMode.MINECRAFT, "minecraft", "pixel")
-                    .option(HudFontMode.SMOOTH, "smooth", "inter")
+                    .option(HudFontMode.ORIGINAL, "original")
+                    .option(HudFontMode.MINECRAFT, "minecraft")
+                    .option(HudFontMode.SMOOTH, "smooth")
                     .build();
 
     static final ModeSetting<NameColorMode> NAME_COLOR_MODE =
             new ModeSetting.Builder<NameColorMode>()
                     .name("featurehud.nameColorMode")
                     .defaultValue(NameColorMode.GRADIENT)
-                    .option(NameColorMode.FIXED, "fixed", "solid")
-                    .option(NameColorMode.GRADIENT, "gradient", "fade")
-                    .option(NameColorMode.RAINBOW, "rainbow", "dynamic")
+                    .option(NameColorMode.FIXED, "fixed")
+                    .option(NameColorMode.GRADIENT, "gradient")
+                    .option(NameColorMode.RAINBOW, "rainbow")
                     .build();
 
     static final ModeSetting<GradientDirection> GRADIENT_DIRECTION =
@@ -146,8 +146,8 @@ final class HudConfig {
                     .name("featurehud.gradientDirection")
                     .defaultValue(GradientDirection.HORIZONTAL)
                     .option(GradientDirection.HORIZONTAL, "horizontal")
-                    .option(GradientDirection.TOP_TO_BOTTOM, "top_to_bottom", "down")
-                    .option(GradientDirection.BOTTOM_TO_TOP, "bottom_to_top", "up")
+                    .option(GradientDirection.TOP_TO_BOTTOM, "top_to_bottom")
+                    .option(GradientDirection.BOTTOM_TO_TOP, "bottom_to_top")
                     .build();
 
     static final StringSetting GRADIENT_COLOR =
@@ -203,22 +203,22 @@ final class HudConfig {
         return TEXT_SHADOW.get();
     }
 
-    static int setTextShadowEnabled(Minecraft client, boolean value) {
+    static int setTextShadowEnabled(boolean value) {
         TEXT_SHADOW.set(value);
         return 1;
     }
 
-    static int setPanelOpacity(Minecraft client, int value) {
+    static int setPanelOpacity(int value) {
         PANEL_OPACITY.set(value);
         return 1;
     }
 
-    static int setUseThemeBackground(Minecraft client, boolean value) {
+    static int setUseThemeBackground(boolean value) {
         USE_THEME_BACKGROUND.set(value);
         return 1;
     }
 
-    static int setBackgroundColor(Minecraft client, String value) {
+    static int setBackgroundColor(String value) {
         if (parseColor(value) == null) return 0;
         BACKGROUND_COLOR.set(normalizeColor(value));
         USE_THEME_BACKGROUND.set(false);
@@ -229,22 +229,22 @@ final class HudConfig {
         return SCALE.get();
     }
 
-    static int setScale(Minecraft client, double value) {
+    static int setScale(double value) {
         SCALE.set(value);
         return 1;
     }
 
-    static int setShowTitle(Minecraft client, boolean value) {
+    static int setShowTitle(boolean value) {
         SHOW_TITLE.set(value);
         return 1;
     }
 
-    static int setShowFps(Minecraft client, boolean value) {
+    static int setShowFps(boolean value) {
         SHOW_FPS.set(value);
         return 1;
     }
 
-    static int setTitleColor(Minecraft client, String value) {
+    static int setTitleColor(String value) {
         if (parseColor(value) == null) return 0;
         TITLE_COLOR.set(normalizeColor(value));
         return 1;
@@ -254,17 +254,17 @@ final class HudConfig {
         return FONT_MODE.optionIds();
     }
 
-    static int setFontMode(Minecraft client, String value) {
+    static int setFontMode(String value) {
         FONT_MODE.deserialize(value);
         return 1;
     }
 
-    static int setUseThemeColor(Minecraft client, boolean value) {
+    static int setUseThemeColor(boolean value) {
         USE_THEME_COLOR.set(value);
         return 1;
     }
 
-    static int setColor(Minecraft client, String value) {
+    static int setColor(String value) {
         if (parseColor(value) == null) return 0;
         COLOR.set(normalizeColor(value));
         USE_THEME_COLOR.set(false);
@@ -275,7 +275,7 @@ final class HudConfig {
         return NAME_COLOR_MODE.optionIds();
     }
 
-    static int setNameColorMode(Minecraft client, String value) {
+    static int setNameColorMode(String value) {
         NAME_COLOR_MODE.deserialize(value);
         return 1;
     }
@@ -284,49 +284,49 @@ final class HudConfig {
         return GRADIENT_DIRECTION.optionIds();
     }
 
-    static int setGradientDirection(Minecraft client, String value) {
+    static int setGradientDirection(String value) {
         GRADIENT_DIRECTION.deserialize(value);
         return 1;
     }
 
-    static int setGradientColor(Minecraft client, String value) {
+    static int setGradientColor(String value) {
         if (parseColor(value) == null) return 0;
         GRADIENT_COLOR.set(normalizeColor(value));
         return 1;
     }
 
-    static int setParameterColor(Minecraft client, String value) {
+    static int setParameterColor(String value) {
         if (parseColor(value) == null) return 0;
         PARAMETER_COLOR.set(normalizeColor(value));
         return 1;
     }
 
-    static int setColorSpeed(Minecraft client, double value) {
+    static int setColorSpeed(double value) {
         COLOR_SPEED.set(value);
         return 1;
     }
 
-    static int setColorSpread(Minecraft client, double value) {
+    static int setColorSpread(double value) {
         COLOR_SPREAD.set(value);
         return 1;
     }
 
-    static int setCharacterColorSpread(Minecraft client, double value) {
+    static int setCharacterColorSpread(double value) {
         CHARACTER_COLOR_SPREAD.set(value);
         return 1;
     }
 
-    static int setAlpha(Minecraft client, int value) {
+    static int setAlpha(int value) {
         ALPHA.set(value);
         return 1;
     }
 
-    static int setPositionX(Minecraft client, int value) {
+    static int setPositionX(int value) {
         POSITION_X.set(value);
         return 1;
     }
 
-    static int setPositionY(Minecraft client, int value) {
+    static int setPositionY(int value) {
         POSITION_Y.set(value);
         return 1;
     }

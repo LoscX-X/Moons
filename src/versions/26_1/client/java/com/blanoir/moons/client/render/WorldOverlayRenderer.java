@@ -100,13 +100,12 @@ public final class WorldOverlayRenderer {
     }
 
     private static void drawBuiltBuffer(Minecraft client, BufferBuilder buffer, String label) {
-        MeshData builtBuffer = buffer.buildOrThrow();
-        MeshData.DrawState drawParameters = builtBuffer.drawState();
-        VertexFormat format = drawParameters.format();
-
-        GpuBuffer vertices = upload(drawParameters, format, builtBuffer, label);
-
-        draw(client, builtBuffer, drawParameters, vertices, format, label);
+        try (MeshData builtBuffer = buffer.buildOrThrow()) {
+            MeshData.DrawState drawParameters = builtBuffer.drawState();
+            VertexFormat format = drawParameters.format();
+            GpuBuffer vertices = upload(drawParameters, format, builtBuffer, label);
+            draw(client, builtBuffer, drawParameters, vertices, format, label);
+        }
 
         if (vertexBuffer != null) {
             vertexBuffer.rotate();
@@ -121,7 +120,6 @@ public final class WorldOverlayRenderer {
             vertexBuffer = null;
         }
     }
-
 
     private static void renderPin(Matrix4fc positionMatrix, BufferBuilder buffer, ColoredPin pin) {
         float halfWidth = pin.width() / 2.0f;
@@ -236,6 +234,9 @@ public final class WorldOverlayRenderer {
     ) {
         GpuBuffer indices;
         VertexFormat.IndexType indexType;
+        var mainTarget = MinecraftClientAccess.mainRenderTarget(client);
+        var colorView = mainTarget.getColorTextureView();
+        if (colorView == null) return;
 
         if (THROUGH_WALLS.getVertexFormatMode() == VertexFormat.Mode.QUADS) {
             builtBuffer.sortQuads(ALLOCATOR, RenderSystem.getProjectionType().vertexSorting());
@@ -261,9 +262,9 @@ public final class WorldOverlayRenderer {
                 .createCommandEncoder()
                 .createRenderPass(
                         () -> MoonsConfig.MOD_ID + " " + label + " rendering",
-                        MinecraftClientAccess.mainRenderTarget(client).getColorTextureView(),
+                        colorView,
                         OptionalInt.empty(),
-                        MinecraftClientAccess.mainRenderTarget(client).getDepthTextureView(),
+                        mainTarget.getDepthTextureView(),
                         OptionalDouble.empty()
                 )) {
             renderPass.setPipeline(THROUGH_WALLS);
@@ -274,7 +275,6 @@ public final class WorldOverlayRenderer {
             renderPass.drawIndexed(0 / format.getVertexSize(), 0, drawParameters.indexCount(), 1);
         }
 
-        builtBuffer.close();
     }
 
     public record ColoredBox(

@@ -4,7 +4,6 @@ import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.DoubleSetting;
 import com.blanoir.moons.client.config.settings.IntSetting;
 import com.blanoir.moons.client.event.EventBus;
-import com.blanoir.moons.client.event.tick.TickEndEvent;
 import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.management.combat.AttackSlowdownTracker;
 import com.blanoir.moons.client.utils.math.RandomMath;
@@ -92,7 +91,8 @@ public final class KeepSprint {
         }
 
         Minecraft client = Minecraft.getInstance();
-        int hurtTime = client.player == null ? 0 : client.player.hurtTime;
+        var currentPlayer = client == null ? null : client.player;
+        int hurtTime = currentPlayer == null ? 0 : currentPlayer.hurtTime;
         boolean hurt = hurtTime >= HURT_TIME_MIN.get() && hurtTime <= HURT_TIME_MAX.get();
         double min = hurt ? HURT_MOTION_MIN.get() : MOTION_MIN.get();
         double max = hurt ? HURT_MOTION_MAX.get() : MOTION_MAX.get();
@@ -129,25 +129,25 @@ public final class KeepSprint {
         return 1;
     }
 
-    public static int setMotion(Minecraft client, double min, double max) {
+    public static int setMotion(Minecraft ignoredClient, double min, double max) {
         MOTION_MIN.set(Math.min(min, max));
         MOTION_MAX.set(Math.max(min, max));
         return 1;
     }
 
-    public static int setHurtMotion(Minecraft client, double min, double max) {
+    public static int setHurtMotion(Minecraft ignoredClient, double min, double max) {
         HURT_MOTION_MIN.set(Math.min(min, max));
         HURT_MOTION_MAX.set(Math.max(min, max));
         return 1;
     }
 
-    public static int setHurtTime(Minecraft client, int min, int max) {
+    public static int setHurtTime(Minecraft ignoredClient, int min, int max) {
         HURT_TIME_MIN.set(Math.min(min, max));
         HURT_TIME_MAX.set(Math.max(min, max));
         return 1;
     }
 
-    public static int setChance(Minecraft client, double value) {
+    public static int setChance(Minecraft ignoredClient, double value) {
         CHANCE.set(value);
         return 1;
     }

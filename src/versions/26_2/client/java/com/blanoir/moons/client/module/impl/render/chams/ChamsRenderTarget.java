@@ -43,17 +43,20 @@ public final class ChamsRenderTarget implements AutoCloseable {
     }
 
     private void clear() {
-        if (target != null) {
-            RenderSystem.getDevice().createCommandEncoder().clearColorAndDepthTextures(
-                    target.getColorTexture(), TRANSPARENT, target.getDepthTexture(), 1.0
-            );
-        }
+        if (target == null) return;
+        var color = target.getColorTexture();
+        var depth = target.getDepthTexture();
+        if (color == null || depth == null) return;
+        RenderSystem.getDevice().createCommandEncoder().clearColorAndDepthTextures(
+                color, TRANSPARENT, depth, 1.0);
     }
 
     public void composite(RenderTarget mainTarget) {
-        if (target != null && mainTarget != null && target.getColorTextureView() != null) {
-            target.blitAndBlendToTexture(mainTarget.getColorTextureView(), mainTarget.getDepthTextureView());
-        }
+        if (target == null || mainTarget == null || target.getColorTextureView() == null) return;
+        var destinationColor = mainTarget.getColorTextureView();
+        var destinationDepth = mainTarget.getDepthTextureView();
+        if (destinationColor == null || destinationDepth == null) return;
+        target.blitAndBlendToTexture(destinationColor, destinationDepth);
     }
 
     @Override

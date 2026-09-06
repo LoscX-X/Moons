@@ -3,6 +3,7 @@ package com.blanoir.moons.client.utils.rotation.aim;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 import com.blanoir.moons.client.utils.math.MathUtils;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.phys.Vec3;
 
 /** Stateless Minecraft yaw/pitch and angular-distance calculations. */
@@ -15,8 +16,10 @@ public final class RotationUtils {
     }
 
     public static double angleFromView(Minecraft client, Vec3 point) {
-        Rotation rotation = rotationTo(client.player.getEyePosition(), point);
-        return angleBetween(client.player.getYRot(), client.player.getXRot(), rotation);
+        LocalPlayer player = client == null ? null : client.player;
+        if (player == null) return Double.POSITIVE_INFINITY;
+        Rotation rotation = rotationTo(player.getEyePosition(), point);
+        return angleBetween(player.getYRot(), player.getXRot(), rotation);
     }
 
     public static double angleBetween(float yaw, float pitch, Rotation target) {

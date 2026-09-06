@@ -139,7 +139,7 @@ public final class LowHealthFakeLag {
             if (remainingCycles > 0
                     && now >= nextCycleAtMs
                     && hasEnemyInActivationRange(client)) {
-                startCycleLocked(client, now);
+                startCycleLocked(now);
             }
         }
     }
@@ -197,7 +197,7 @@ public final class LowHealthFakeLag {
         }
     }
 
-    private static void startCycleLocked(Minecraft client, long now) {
+    private static void startCycleLocked(long now) {
         queueing = true;
         episodeStarted = true;
         cycleStartedAtMs = now;
@@ -289,12 +289,12 @@ public final class LowHealthFakeLag {
         return 1;
     }
 
-    public static int setEnabled(Minecraft client, boolean value) {
+    public static void setEnabled(Minecraft client, boolean value) {
         synchronized (LOCK) {
             ENABLED.set(value);
             resetAllLocked();
         }
-        return showStatus(client);
+        showStatus(client);
     }
 
     public static int setCycles(Minecraft client, int min, int max) {

@@ -53,11 +53,12 @@ public final class PlayerHealthResolver {
     }
 
     private static Float tabScoreboardHealth(Minecraft client, Player player) {
-        if (client == null || client.level == null) {
+        var currentLevel = client == null ? null : client.level;
+        if (client == null || currentLevel == null) {
             return null;
         }
 
-        Scoreboard scoreboard = client.level.getScoreboard();
+        Scoreboard scoreboard = currentLevel.getScoreboard();
         Objective objective = scoreboard.getDisplayObjective(DisplaySlot.LIST);
         if (objective == null || !isHealthObjective(client, objective)) {
             return null;
@@ -77,19 +78,20 @@ public final class PlayerHealthResolver {
     }
 
     private static boolean isHoplite(Minecraft client) {
-        if (client == null || client.getCurrentServer() == null
-                || client.getCurrentServer().ip == null) {
+        var server = client == null ? null : client.getCurrentServer();
+        if (server == null || server.ip == null) {
             return false;
         }
-        return client.getCurrentServer().ip.toLowerCase(Locale.ROOT).contains("hoplite");
+        return server.ip.toLowerCase(Locale.ROOT).contains("hoplite");
     }
 
     private static Float tabSuffixHealth(Minecraft client, Player player) {
-        if (client == null || client.getConnection() == null) {
+        var connectionSnapshot = client == null ? null : client.getConnection();
+        if (client == null || connectionSnapshot == null) {
             return null;
         }
 
-        PlayerInfo info = client.getConnection().getPlayerInfo(player.getUUID());
+        PlayerInfo info = connectionSnapshot.getPlayerInfo(player.getUUID());
         if (info == null) {
             return null;
         }
@@ -106,9 +108,10 @@ public final class PlayerHealthResolver {
             return health;
         }
 
-        return info.getTeam() == null
+        var team = info.getTeam();
+        return team == null
                 ? null
-                : firstValidNumber(info.getTeam().getPlayerSuffix().getString(), player);
+                : firstValidNumber(team.getPlayerSuffix().getString(), player);
     }
 
     private static Float numberAfterName(Component component, String profileName, Player player) {

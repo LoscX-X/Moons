@@ -8,17 +8,17 @@ import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.Shapes;
 import java.nio.file.Files;
 
-/** Checks migration and master/packet preference behavior without a game session. */
+/** Checks defaults and master/packet preference behavior without a game session. */
 public final class XrayMergeVerification {
     public static void main(String[] args) throws Exception {
         Settings.configure(Files.createTempDirectory("moons-xray-verify-"));
-        Settings.setBoolean("xray.autoscan.enabled", false);
+        check(!OreScanner.isAutoScanEnabled(), "Xray starts disabled");
         Settings.setBoolean("xray.destroyPacket.enabled", true);
-        check(OreScanner.isAutoScanEnabled(), "old packet-only profile enables merged Xray");
-        check(XrayDestroyPacketMode.isEnabled(), "old packet preference survives");
+        check(!OreScanner.isAutoScanEnabled(), "packet preference does not enable the master");
+        check(!XrayDestroyPacketMode.isEnabled(), "packet probes require the master");
         OreScanner.init();
-        check(Settings.getBoolean("xray.enabled", false), "merged state persisted");
-        check(Settings.getString("xray.autoscan.enabled", "missing").equals("missing"), "obsolete master removed");
+        OreScanner.setAutoScanEnabled(null, true);
+        check(XrayDestroyPacketMode.isEnabled(), "master on permits packet probes");
         OreScanner.setAutoScanEnabled(null, false);
         check(!XrayDestroyPacketMode.isEnabled(), "master off stops packet probes");
         check(XrayDestroyPacketMode.isPacketScanEnabled(), "master off preserves packet preference");

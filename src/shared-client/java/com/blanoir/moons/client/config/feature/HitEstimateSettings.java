@@ -14,15 +14,15 @@ public final class HitEstimateSettings {
             new ModeSetting.Builder<EstimateMode>()
                     .name("hitestimate.mode")
                     .defaultValue(EstimateMode.NORMAL)
-                    .option(EstimateMode.NORMAL, "normal_estimate", "normal")
-                    .option(EstimateMode.CRITICAL, "critical_estimate", "critical")
+                    .option(EstimateMode.NORMAL, "normal_estimate")
+                    .option(EstimateMode.CRITICAL, "critical_estimate")
                     .build();
     private static final ModeSetting<CriticalPercentSource> CRITICAL_SOURCE =
             new ModeSetting.Builder<CriticalPercentSource>()
                     .name("hitestimate.criticalPercentSource")
                     .defaultValue(CriticalPercentSource.RECORDED)
-                    .option(CriticalPercentSource.RECORDED, "recorded", "record")
-                    .option(CriticalPercentSource.CUSTOM, "custom", "manual")
+                    .option(CriticalPercentSource.RECORDED, "recorded")
+                    .option(CriticalPercentSource.CUSTOM, "custom")
                     .build();
     private static final DoubleSetting CUSTOM_CRITICAL_PERCENT =
             new DoubleSetting.Builder()
@@ -82,17 +82,17 @@ public final class HitEstimateSettings {
                 CriticalHitTracker.samples());
     }
 
-    public static int setMode(Minecraft client, String mode) {
+    public static int setMode(Minecraft ignoredClient, String mode) {
         MODE.deserialize(mode);
         return 1;
     }
 
-    public static int setCriticalSource(Minecraft client, String source) {
+    public static int setCriticalSource(Minecraft ignoredClient, String source) {
         CRITICAL_SOURCE.deserialize(source);
         return 1;
     }
 
-    public static int setCustomCriticalPercent(Minecraft client, double percent) {
+    public static int setCustomCriticalPercent(Minecraft ignoredClient, double percent) {
         CUSTOM_CRITICAL_PERCENT.set(percent);
         return 1;
     }

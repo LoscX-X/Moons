@@ -5,7 +5,6 @@ import com.blanoir.moons.client.access.MinecraftClientAccess;
 import com.blanoir.moons.client.module.impl.misc.antibot.AntiBot;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.DoubleSetting;
-import com.blanoir.moons.client.ui.render.MoonsFonts;
 import com.blanoir.moons.client.render.WorldOverlayRenderer;
 import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.utils.player.PlayerHealthResolver;
@@ -30,11 +29,6 @@ import java.util.List;
 import java.util.Locale;
 
 public final class Nametags {
-    private static final double MIN_RANGE = 8.0D;
-    private static final double MAX_RANGE = 256.0D;
-
-    private static final double MIN_SCALE = 0.5D;
-    private static final double MAX_SCALE = 4.0D;
 
     private static final float VANILLA_TEXT_SCALE = 0.025F;
     private static final double DISTANCE_SCALE_START = 8.0D;
@@ -97,7 +91,9 @@ public final class Nametags {
         }
 
         Minecraft client = Minecraft.getInstance();
-        if (client.player == null || client.level == null || MinecraftClientAccess.isHudHidden(client)) {
+        var currentPlayer = client == null ? null : client.player;
+        var currentLevel = client == null ? null : client.level;
+        if (currentPlayer == null || currentLevel == null || MinecraftClientAccess.isHudHidden(client)) {
             return;
         }
 
@@ -114,13 +110,13 @@ public final class Nametags {
 
         List<WorldOverlayRenderer.ColoredPin> pins = new ArrayList<>();
 
-        for (Player player : client.level.players()) {
+        for (Player player : currentLevel.players()) {
             if (!shouldRenderPlayer(client, player)) {
                 continue;
             }
 
             Vec3 playerPos = interpolatedPosition(player, tickDelta);
-            Vec3 selfPos = interpolatedPosition(client.player, tickDelta);
+            Vec3 selfPos = interpolatedPosition(currentPlayer, tickDelta);
 
             Vec3 renderPos = playerPos.subtract(cameraPos);
             double distance = selfPos.distanceTo(playerPos);
@@ -146,18 +142,19 @@ public final class Nametags {
     }
 
     public static boolean shouldRenderPlayer(Minecraft client, Player player) {
-        if (client == null || client.player == null || player == null) {
+        var currentPlayer = client == null ? null : client.player;
+        if (client == null || currentPlayer == null || player == null) {
             return false;
         }
 
         double range = RANGE.get();
-        boolean validTarget = player != client.player
+        boolean validTarget = player != currentPlayer
                 && !player.isRemoved()
                 && player.isAlive()
                 && player.isAttackable()
                 && !player.isSpectator()
                 && !AntiBot.isBot(player)
-                && client.player.distanceToSqr(player) <= range * range;
+                && currentPlayer.distanceToSqr(player) <= range * range;
         return validTarget && (!SAFE_MODE.get() || (!player.isShiftKeyDown() && !player.getName().getString().isBlank()));
     }
 
@@ -186,10 +183,10 @@ public final class Nametags {
     }
 
     private static Component formatNametag(Player player, double distance) {
-        MutableComponent nametag = MoonsFonts.clickGuiText(player.getName().getString(), NAME_COLOR);
+        MutableComponent nametag = Component.literal(player.getName().getString()).withColor(NAME_COLOR);
         if (SHOW_DISTANCE.get()) {
-            nametag.append(MoonsFonts.clickGuiText(
-                    "  " + String.format(Locale.ROOT, "%.1fm", distance), DISTANCE_COLOR));
+            nametag.append(Component.literal(
+                    "  " + String.format(Locale.ROOT, "%.1fm", distance)).withColor(DISTANCE_COLOR));
         }
         if (SAFE_MODE.get()) {
             return nametag;
@@ -199,10 +196,10 @@ public final class Nametags {
         float maxHealth = PlayerHealthResolver.max(player);
         int healthColor = health > maxHealth * 0.6F ? HEALTH_GOOD
                 : health > maxHealth * 0.3F ? HEALTH_WARNING : HEALTH_LOW;
-        nametag.append(MoonsFonts.clickGuiText(
-                "  " + String.format(Locale.ROOT, "%.1f HP", health), healthColor));
-        return nametag.append(MoonsFonts.clickGuiText(
-                "  " + PlayerHitEstimator.text(Minecraft.getInstance(), player, health), HIT_COLOR));
+        nametag.append(Component.literal(
+                "  " + String.format(Locale.ROOT, "%.1f HP", health)).withColor(healthColor));
+        return nametag.append(Component.literal(
+                "  " + PlayerHitEstimator.text(Minecraft.getInstance(), player, health)).withColor(HIT_COLOR));
     }
 
     private static void drawNametag(
@@ -252,20 +249,6 @@ public final class Nametags {
         matrices.popPose();
     }
 
-    private static int showStatus(Minecraft client) {
-        ClientChat.send(
-                client,
-                "Nametags: " + statusText()
-                        + ", range: " + format(RANGE.get())
-                        + ", scale: " + format(SCALE.get())
-                        + ", safe mode: " + safeModeStatusText()
-                        + ", highlighter: " + Chams.highlighterStatusText()
-                        + ", chams: " + Chams.chamsStatusText()
-                        + ". Usage: .moons nametag <enable|disable|range 8-256|scale 0.5-4|safe enable|disable|hlighter enable|disable|chams enable|disable>"
-        );
-        return 1;
-    }
-
     public static int setEnabled(Minecraft client, boolean newEnabled) {
         ENABLED.set(newEnabled);
         ClientChat.send(
@@ -281,31 +264,15 @@ public final class Nametags {
         return 1;
     }
 
-    private static int showHighlighterStatus(Minecraft client) {
-        ClientChat.send(client, "Nametag highlighter: " + Chams.highlighterStatusText() + ". Usage: .moons nametag hlighter <enable|disable>");
-        return 1;
-    }
-
     public static int setHighlighterEnabled(Minecraft client, boolean newEnabled) {
         Chams.setHighlighterEnabled(newEnabled);
         ClientChat.send(client, "Nametag highlighter " + Chams.highlighterStatusText() + ".");
         return 1;
     }
 
-    private static int showChamsStatus(Minecraft client) {
-        ClientChat.send(client, "Nametag chams: " + Chams.chamsStatusText() + ". Usage: .moons nametag chams <enable|disable>");
-        return 1;
-    }
-
     public static int setChamsEnabled(Minecraft client, boolean newEnabled) {
         Chams.setChamsEnabled(newEnabled);
         ClientChat.send(client, "Nametag chams " + Chams.chamsStatusText() + ".");
-        return 1;
-    }
-
-    private static int showSafeModeStatus(Minecraft client) {
-        ClientChat.send(client, "Nametag safe mode: " + safeModeStatusText()
-                + ". Usage: .moons nametag safe <enable|disable>");
         return 1;
     }
 
@@ -353,7 +320,4 @@ public final class Nametags {
         return ENABLED.get();
     }
 
-    public static boolean isSafeMode() {
-        return SAFE_MODE.get();
-    }
 }

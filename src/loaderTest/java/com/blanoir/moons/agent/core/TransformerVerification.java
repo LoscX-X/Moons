@@ -58,7 +58,7 @@ public final class TransformerVerification {
                 try (InputStream input = minecraft.getInputStream(entry)) {
                     original = input.readAllBytes();
                 }
-                byte[] transformed = transformer.transform(null, null, className, null, null, original);
+                byte[] transformed = transformer.transform(null, className, original);
                 if (transformed == null) {
                     unchangedTargets.add(className);
                     continue;

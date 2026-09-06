@@ -14,7 +14,6 @@ import com.blanoir.moons.client.access.MinecraftClientAccess;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.IntSetting;
 import com.blanoir.moons.client.event.EventBus;
-import com.blanoir.moons.client.event.tick.TickEvent;
 import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.management.targeting.Targeting;
 import net.minecraft.client.Minecraft;
@@ -156,11 +155,12 @@ public final class AutoSword {
     }
 
     private static void restore(Minecraft client) {
+        var currentPlayer = client == null ? null : client.player;
         if (originalSlot != -1
                 && client != null
-                && client.player != null
-                && client.player.getInventory().getSelectedSlot() == activeSwordSlot) {
-            client.player.getInventory().setSelectedSlot(originalSlot);
+                && currentPlayer != null
+                && currentPlayer.getInventory().getSelectedSlot() == activeSwordSlot) {
+            currentPlayer.getInventory().setSelectedSlot(originalSlot);
         }
         resetTracking();
     }

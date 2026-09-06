@@ -80,7 +80,7 @@ public final class PremiumCheckCommand {
         return 1;
     }
 
-    public static int setIntervalSeconds(Minecraft client, int seconds) {
+    public static int setIntervalSeconds(Minecraft ignoredClient, int seconds) {
         INTERVAL_SECONDS.set(seconds);
         nextLookupAtMillis = 0L;
         return 1;
@@ -96,37 +96,38 @@ public final class PremiumCheckCommand {
         return decorate(status(player.getUUID(), player.getGameProfile().name()), original);
     }
 
-    public static int checkAllTabPlayers(Minecraft client) {
+    public static void checkAllTabPlayers(Minecraft client) {
         if (!ENABLED.get()) {
             ClientChat.send(client, "§cPremiumCheck: 已禁用，请先执行 .moons premiumcheck enable");
-            return 0;
+            return;
         }
 
-        if (client.getConnection() == null) {
+        if (client == null || client.getConnection() == null) {
             ClientChat.send(client, "§cPremiumCheck: 当前没有连接到服务器");
-            return 0;
+            return;
         }
 
         long now = System.currentTimeMillis();
         if (lookupRunning) {
             ClientChat.send(client, "§ePremiumCheck: 上一次查询仍在进行，请稍候");
-            return 0;
+            return;
         }
         if (now < nextLookupAtMillis) {
             long seconds = Math.max(1L, (nextLookupAtMillis - now + 999L) / 1000L);
             ClientChat.send(client, "§ePremiumCheck: 请求频率受限，请在 " + seconds + " 秒后重试");
-            return 0;
+            return;
         }
 
-        return beginLookup(client, true);
+        beginLookup(client, true);
     }
 
-    private static int beginLookup(Minecraft client, boolean announce) {
-        if (client == null || client.getConnection() == null) return 0;
+    private static void beginLookup(Minecraft client, boolean announce) {
+        var connection = client == null ? null : client.getConnection();
+        if (client == null || connection == null) return;
         long now = System.currentTimeMillis();
-        if (lookupRunning || now < nextLookupAtMillis) return 0;
+        if (lookupRunning || now < nextLookupAtMillis) return;
 
-        Collection<PlayerInfo> entries = client.getConnection().getListedOnlinePlayers();
+        Collection<PlayerInfo> entries = connection.getListedOnlinePlayers();
         List<String> names = new ArrayList<>();
         Map<String, UUID> serverUuids = new LinkedHashMap<>();
 
@@ -141,7 +142,7 @@ public final class PremiumCheckCommand {
 
         if (names.isEmpty()) {
             if (announce) ClientChat.send(client, "§cPremiumCheck: Tab 列表为空");
-            return 0;
+            return;
         }
 
         List<String> lookupNames = names.stream()
@@ -160,7 +161,7 @@ public final class PremiumCheckCommand {
                 INTERVAL_SECONDS.get() * 1000L);
         LOOKUP.lookupAsyncBatched(lookupNames).thenAccept(result -> client.execute(() -> {
                     lookupRunning = false;
-                    showAllResults(client, names, serverUuids, result, announce);
+                    if (client.getConnection() == connection) showAllResults(client, names, serverUuids, result, announce);
                 }))
                 .exceptionally(ex -> {
                     client.execute(() -> {
@@ -170,7 +171,6 @@ public final class PremiumCheckCommand {
                     return null;
                 });
 
-        return 1;
     }
 
     private static void showAllResults(Minecraft client, List<String> names,

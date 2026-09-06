@@ -11,6 +11,8 @@ import net.minecraft.client.Minecraft;
  * so no vanilla {@code KeyMapping} is registered here.
  */
 public final class ModuleGui {
+    private static MoonsComposeScreen cachedScreen;
+
     private ModuleGui() {
     }
 
@@ -21,7 +23,17 @@ public final class ModuleGui {
         if (MinecraftClientAccess.screen(client) instanceof MoonsComposeScreen) {
             return;
         }
-        MinecraftClientAccess.setScreen(client, new MoonsComposeScreen());
+        ClickGuiWarmup.cancel();
+        if (cachedScreen == null) cachedScreen = new MoonsComposeScreen();
+        MinecraftClientAccess.setScreen(client, cachedScreen);
+    }
+
+    /** Releases the retained scene and GPU caches when the feature payload unloads. */
+    public static void close() {
+        ClickGuiWarmup.cancel();
+        if (cachedScreen == null) return;
+        cachedScreen.dispose();
+        cachedScreen = null;
     }
 
     public static void toggle(Minecraft client) {

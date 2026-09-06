@@ -28,18 +28,20 @@ public final class NbtParserCommand {
 
     public static boolean handle(String arguments) {
         Minecraft client = Minecraft.getInstance();
+        var currentPlayer = client == null ? null : client.player;
+        var currentLevel = client == null ? null : client.level;
         if (arguments != null && !arguments.isBlank()) {
             ClientChat.send(client, Component.literal("用法: .nbtparser")
                     .withStyle(ChatFormatting.RED));
             return true;
         }
-        if (client.player == null || client.level == null) {
+        if (currentPlayer == null || currentLevel == null) {
             ClientChat.send(client, Component.literal("NBT Parser: 当前没有进入世界。")
                     .withStyle(ChatFormatting.RED));
             return true;
         }
 
-        ItemStack stack = client.player.getMainHandItem();
+        ItemStack stack = currentPlayer.getMainHandItem();
         if (stack.isEmpty()) {
             ClientChat.send(client, Component.literal("NBT Parser: 请先在主手拿着一个物品。")
                     .withStyle(ChatFormatting.YELLOW));
@@ -47,7 +49,7 @@ public final class NbtParserCommand {
         }
 
         DataResult<Tag> encoded = ItemStack.CODEC.encodeStart(
-                client.level.registryAccess().createSerializationContext(NbtOps.INSTANCE), stack);
+                currentLevel.registryAccess().createSerializationContext(NbtOps.INSTANCE), stack);
         Tag root = encoded.result().orElse(null);
         if (root == null) {
             String reason = encoded.error().map(error -> error.message()).orElse("未知编码错误");

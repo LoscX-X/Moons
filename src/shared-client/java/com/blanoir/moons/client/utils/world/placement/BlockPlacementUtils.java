@@ -27,7 +27,6 @@ public final class BlockPlacementUtils {
         }
         double x = support.getX() + Mth.lerp(u, bounds.minX, bounds.maxX);
         double y = support.getY() + Mth.lerp(v, bounds.minY, bounds.maxY);
-        double z = support.getZ() + Mth.lerp(u, bounds.minZ, bounds.maxZ);
         return switch (face) {
             case DOWN -> new Vec3(x, support.getY() + bounds.minY,
                     support.getZ() + Mth.lerp(v, bounds.minZ, bounds.maxZ));

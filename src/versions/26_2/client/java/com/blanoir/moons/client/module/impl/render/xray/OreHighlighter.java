@@ -26,9 +26,6 @@ import java.util.Optional;
 
 /** 26.2 ore overlay using Minecraft's staged GPU buffer model. */
 public final class OreHighlighter {
-    private static final int DEFAULT_RED = 0;
-    private static final int DEFAULT_GREEN = 220;
-    private static final int DEFAULT_BLUE = 255;
     private static final float BOX_ALPHA = 0.35f;
     private static final double MAX_RENDER_DISTANCE_SQ = 196.0 * 196.0;
     private static final int MAX_RENDER_BLOCKS = 12_900;
@@ -51,10 +48,6 @@ public final class OreHighlighter {
             .defaultValue(true)
             .build();
 
-    private static int red = DEFAULT_RED;
-    private static int green = DEFAULT_GREEN;
-    private static int blue = DEFAULT_BLUE;
-
     private OreHighlighter() {
     }
 
@@ -63,18 +56,11 @@ public final class OreHighlighter {
     }
 
     public static void setColor(int newRed, int newGreen, int newBlue) {
-        red = newRed;
-        green = newGreen;
-        blue = newBlue;
         XrayBlockTarget.DIAMOND.setColor(newRed, newGreen, newBlue);
     }
 
     public static String getRgbString() {
         return XrayBlockTarget.DIAMOND.rgbString();
-    }
-
-    public static void toggleDisplay(Minecraft client) {
-        setDisplayEnabled(client, !DISPLAY_ENABLED.get());
     }
 
     public static void setDisplayEnabled(Minecraft client, boolean enabled) {

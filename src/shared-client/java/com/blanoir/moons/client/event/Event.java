@@ -40,19 +40,20 @@ public class Event<T> {
         return listeners.size();
     }
 
-    public Subscription register(Consumer<T> listener) {
-        return register(null, EventPriority.NORMAL, listener);
+    public void register(Consumer<T> listener) {
+        register(null, EventPriority.NORMAL, listener);
     }
 
-    public Subscription register(EventPriority priority, Consumer<T> listener) {
-        return register(null, priority, listener);
+    public void register(EventPriority priority, Consumer<T> listener) {
+        register(null, priority, listener);
     }
 
-    public Subscription register(String listenerName, Consumer<T> listener) {
-        return register(listenerName, EventPriority.NORMAL, listener);
+    public void register(String listenerName, Consumer<T> listener) {
+        register(listenerName, EventPriority.NORMAL, listener);
     }
 
-    public Subscription register(
+    /** Registers a listener for the lifetime of the loading module's resource scope. */
+    public void register(
             String listenerName,
             EventPriority priority,
             Consumer<T> listener
@@ -71,7 +72,7 @@ public class Event<T> {
         }
 
         AtomicBoolean closed = new AtomicBoolean();
-        return ScopedResources.own(() -> {
+        ScopedResources.<Subscription>own(() -> {
             if (!closed.compareAndSet(false, true)) {
                 return;
             }

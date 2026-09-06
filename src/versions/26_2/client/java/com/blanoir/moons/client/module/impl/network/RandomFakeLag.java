@@ -134,7 +134,7 @@ public final class RandomFakeLag {
                 encounterMissTicks = 0;
                 if (now >= cooldownUntilMs
                         && RandomMath.chance(CHANCE.get())) {
-                    startLocked(client, target, now);
+                    startLocked(target, now);
                 }
             } else if (headOnNow) {
                 encounterMissTicks = 0;
@@ -159,9 +159,6 @@ public final class RandomFakeLag {
             }
 
             Minecraft client = Minecraft.getInstance();
-            Player target = ready(client)
-                    && client.level.getEntity(targetId) instanceof Player player
-                    ? player : null;
             long now = System.currentTimeMillis();
             if (!ready(client)
                     || now - startedAtMs >= durationMs
@@ -200,7 +197,7 @@ public final class RandomFakeLag {
         return PACKETS.isReplaying();
     }
 
-    private static void startLocked(Minecraft client, Player target, long now) {
+    private static void startLocked(Player target, long now) {
         queueing = true;
         targetId = target.getId();
         startedAtMs = now;
@@ -310,12 +307,12 @@ public final class RandomFakeLag {
         return 1;
     }
 
-    public static int setEnabled(Minecraft client, boolean value) {
+    public static void setEnabled(Minecraft client, boolean value) {
         synchronized (LOCK) {
             ENABLED.set(value);
             resetAllLocked();
         }
-        return showStatus(client);
+        showStatus(client);
     }
 
     public static int setChance(Minecraft client, double value) {

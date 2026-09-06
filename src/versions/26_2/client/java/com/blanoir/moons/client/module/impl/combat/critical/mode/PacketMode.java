@@ -36,7 +36,7 @@ public final class PacketMode implements CriticalMode {
         return PacketCritical.gateSilentAuraAttack(client, target, earliestAttackTick);
     }
 
-    @Override public void cancelSilentAuraPrediction(Minecraft client) { }
+    @Override public void cancelSilentAuraPrediction(Minecraft ignoredClient) { }
     @Override public boolean isAimingWindowActive() { return false; }
     @Override public CombatDecisionEngine.Decision plannedDecision() {
         return PacketCritical.plannedDecision();

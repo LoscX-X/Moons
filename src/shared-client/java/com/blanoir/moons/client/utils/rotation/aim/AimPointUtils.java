@@ -67,43 +67,6 @@ public final class AimPointUtils {
         return box.move(smoothedVelocity.scale(ticks));
     }
 
-    public static boolean rayIntersects(AABB box, Vec3 eye, Vec3 look, double maxDistance) {
-        Vec3 end = eye.add(normalizedLook(look).scale(Math.max(0.0D, maxDistance)));
-        return box.contains(eye) || box.clip(eye, end).isPresent();
-    }
-
-    /**
-     * Continuous correction demand for a predicted box. Zero means the current
-     * ray is still safely usable; one means it has moved well outside the box.
-     */
-    public static double correctionWeight(
-            AABB predictedBox,
-            Vec3 eye,
-            Vec3 look,
-            double maxDistance
-    ) {
-        if (rayIntersects(predictedBox, eye, look, maxDistance)) {
-            return 0.0D;
-        }
-        Vec3 nearest = closest(predictedBox, eye, look, maxDistance);
-        Vec3 direction = normalizedLook(look);
-        double alongRay = Mth.clamp(nearest.subtract(eye).dot(direction), 0.0D, maxDistance);
-        double missDistance = nearest.distanceTo(eye.add(direction.scale(alongRay)));
-        double bodyScale = Math.max(0.12D, Math.min(
-                predictedBox.maxY - predictedBox.minY,
-                Math.max(predictedBox.maxX - predictedBox.minX,
-                        predictedBox.maxZ - predictedBox.minZ)));
-        return smoothstep(0.0D, bodyScale * 0.42D, missDistance);
-    }
-
-    public static double smoothstep(double edge0, double edge1, double value) {
-        if (edge1 <= edge0) {
-            return value >= edge1 ? 1.0D : 0.0D;
-        }
-        double x = Mth.clamp((value - edge0) / (edge1 - edge0), 0.0D, 1.0D);
-        return x * x * (3.0D - 2.0D * x);
-    }
-
     private static Vec3 normalizedLook(Vec3 look) {
         return look != null && look.lengthSqr() > 1.0E-9D
                 ? look.normalize()

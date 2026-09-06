@@ -19,7 +19,6 @@ final class WebCommand {
                 } else {
                     try {
                         RemoteConfigClient.bind(parts[1]);
-                        ClientChat.send(client, "Web HWID: " + RemoteConfigClient.hardwareId());
                         ClientChat.send(client, "Bound to " + RemoteConfigClient.uiUrl()
                                 + ". Future launches will connect automatically.");
                     } catch (IllegalArgumentException failure) {
@@ -56,7 +55,6 @@ final class WebCommand {
         if (!requireBinding(client)) return;
         ClientChat.send(client, "Web remote control: "
                 + (RemoteConfigClient.isConnected() ? "connected" : "disconnected")
-                + ", HWID: " + RemoteConfigClient.hardwareId()
                 + ", UI: " + RemoteConfigClient.uiUrl());
     }
 

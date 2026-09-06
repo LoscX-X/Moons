@@ -12,11 +12,9 @@ package com.blanoir.moons.client.module.impl.player;
 
 import com.blanoir.moons.client.access.MinecraftClientAccess;
 
-import com.blanoir.moons.client.config.Settings;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.IntSetting;
 import com.blanoir.moons.client.event.EventBus;
-import com.blanoir.moons.client.event.tick.TickEvent;
 import com.blanoir.moons.client.chat.ClientChat;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
@@ -43,7 +41,6 @@ import net.minecraft.world.level.ServerExplosion;
 import net.minecraft.world.level.block.BedBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.HorizontalDirectionalBlock;
 import net.minecraft.world.level.block.RespawnAnchorBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.damagesource.DamageSource;
@@ -162,8 +159,6 @@ public final class AutoTotem {
 
     public static void init() {
         // AutoTotem is edge-triggered and never restores the previous offhand.
-        Settings.remove("autototem.switchback");
-        Settings.remove("autototem.cooldown.ms");
 
         EventBus.TICK.register("AutoTotem.tick", event -> {
             Minecraft client = event.client();
@@ -377,13 +372,14 @@ public final class AutoTotem {
     }
 
     private static boolean coreReady(Minecraft client) {
+        var currentPlayer = client == null ? null : client.player;
         return client != null
-                && client.player != null
+                && currentPlayer != null
                 && client.level != null
                 && client.gameMode != null
-                && !client.player.isCreative()
-                && !client.player.isSpectator()
-                && !client.player.isDeadOrDying();
+                && !currentPlayer.isCreative()
+                && !currentPlayer.isSpectator()
+                && !currentPlayer.isDeadOrDying();
     }
 
     private static boolean inventoryScreenAvailable(Minecraft client) {
@@ -541,7 +537,7 @@ public final class AutoTotem {
             DamageSource source
     ) {
         Player player = client.player;
-        if (player.distanceToSqr(pos) > damageDistance) {
+        if (player == null || player.distanceToSqr(pos) > damageDistance) {
             return 0.0F;
         }
 
@@ -579,9 +575,6 @@ public final class AutoTotem {
             }
 
             Vec3 center = center(pos);
-            List<BlockPos> exclude = bed
-                    ? List.of(pos, secondBedBlock(state, pos))
-                    : List.of(pos);
             float damage = explosionDamage(
                     client,
                     center,
@@ -601,7 +594,7 @@ public final class AutoTotem {
 
     private static float fallDamage(Minecraft client) {
         Player player = client.player;
-        if (!PREDICT_FALL_DAMAGE.get() || player.fallDistance <= 3.0F) {
+        if (player == null || !PREDICT_FALL_DAMAGE.get() || player.fallDistance <= 3.0F) {
             return 0.0F;
         }
 
@@ -731,10 +724,6 @@ public final class AutoTotem {
 
     private static boolean isCharged(BlockState state) {
         return state.getValue(RespawnAnchorBlock.CHARGE) > 0;
-    }
-
-    private static BlockPos secondBedBlock(BlockState state, BlockPos pos) {
-        return pos.relative(state.getValue(HorizontalDirectionalBlock.FACING).getOpposite());
     }
 
     private static void resetState() {

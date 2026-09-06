@@ -147,11 +147,12 @@ public final class SilentAuraTargetSelector {
 
     /** High-version switch mode re-ranks only after a real cooldown-gated hit. */
     public void onAttack(Minecraft client, LivingEntity attacked) {
+        var currentPlayer = client == null ? null : client.player;
         if (!SilentAuraConfig.switchTargetMode() || attacked == null
                 || attacked.getId() != targetId) return;
         reevaluateAfterAttack = true;
-        reevaluateTick = client != null && client.player != null
-                ? client.player.tickCount + 1 : Integer.MIN_VALUE;
+        reevaluateTick = client != null && currentPlayer != null
+                ? currentPlayer.tickCount + 1 : Integer.MIN_VALUE;
         selectionTick = Integer.MIN_VALUE;
     }
 

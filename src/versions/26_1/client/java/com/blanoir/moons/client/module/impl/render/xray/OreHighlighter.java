@@ -16,7 +16,6 @@ import com.mojang.blaze3d.systems.RenderPass;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
 import net.minecraft.client.renderer.MappableRingBuffer;
-import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.Identifier;
 import net.minecraft.core.BlockPos;
@@ -33,9 +32,6 @@ import java.util.OptionalDouble;
 import java.util.OptionalInt;
 
 public final class OreHighlighter {
-    private static final int DEFAULT_RED = 0;
-    private static final int DEFAULT_GREEN = 220;
-    private static final int DEFAULT_BLUE = 255;
     private static final float BOX_ALPHA = 0.35f;
     private static final int SMALL_BUFFER_SIZE = 2097152;
     private static final double MAX_RENDER_DISTANCE_SQ = 196.0 * 196.0;
@@ -67,10 +63,6 @@ public final class OreHighlighter {
                     .defaultValue(true)
                     .build();
 
-    private static int red = DEFAULT_RED;
-    private static int green = DEFAULT_GREEN;
-    private static int blue = DEFAULT_BLUE;
-
     private static BufferBuilder buffer;
     private static MappableRingBuffer vertexBuffer;
 
@@ -82,18 +74,11 @@ public final class OreHighlighter {
     }
 
     public static void setColor(int newRed, int newGreen, int newBlue) {
-        red = newRed;
-        green = newGreen;
-        blue = newBlue;
         XrayBlockTarget.DIAMOND.setColor(newRed, newGreen, newBlue);
     }
 
     public static String getRgbString() {
         return XrayBlockTarget.DIAMOND.rgbString();
-    }
-
-    public static void toggleDisplay(Minecraft client) {
-        setDisplayEnabled(client, !DISPLAY_ENABLED.get());
     }
 
     public static void setDisplayEnabled(Minecraft client, boolean newEnabled) {
@@ -286,6 +271,9 @@ public final class OreHighlighter {
     ) {
         GpuBuffer indices;
         VertexFormat.IndexType indexType;
+        var mainTarget = MinecraftClientAccess.mainRenderTarget(client);
+        var colorView = mainTarget.getColorTextureView();
+        if (colorView == null) return;
 
         if (pipeline.getVertexFormatMode() == VertexFormat.Mode.QUADS) {
             builtBuffer.sortQuads(ALLOCATOR, RenderSystem.getProjectionType().vertexSorting());
@@ -311,9 +299,9 @@ public final class OreHighlighter {
                 .createCommandEncoder()
                 .createRenderPass(
                         () -> MoonsConfig.MOD_ID + " ore highlighter rendering",
-                        MinecraftClientAccess.mainRenderTarget(client).getColorTextureView(),
+                        colorView,
                         OptionalInt.empty(),
-                        MinecraftClientAccess.mainRenderTarget(client).getDepthTextureView(),
+                        mainTarget.getDepthTextureView(),
                         OptionalDouble.empty()
                 )) {
             renderPass.setPipeline(pipeline);

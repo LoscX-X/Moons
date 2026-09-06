@@ -38,8 +38,9 @@ public final class ArmorHide {
         }
 
         Minecraft client = Minecraft.getInstance();
+        var currentPlayer = client == null ? null : client.player;
         AvatarRenderState state = CURRENT_AVATAR.get();
-        return client.player == null || state == null || state.id != client.player.getId();
+        return currentPlayer == null || state == null || state.id != currentPlayer.getId();
     }
 
     public static int setEnabled(Minecraft client, boolean enabled) {

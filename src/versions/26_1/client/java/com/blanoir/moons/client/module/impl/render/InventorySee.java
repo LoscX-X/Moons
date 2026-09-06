@@ -53,7 +53,8 @@ public final class InventorySee {
 
     private static void render(HudRenderEvent event) {
         Minecraft client = Minecraft.getInstance();
-        if (client.player == null || client.level == null) return;
+        var currentPlayer = client == null ? null : client.player;
+        if (currentPlayer == null || client.level == null) return;
 
         Object currentScreen = MinecraftScreenAccess.current(client);
         boolean editing = currentScreen instanceof MoonsComposeScreen screen
@@ -77,7 +78,7 @@ public final class InventorySee {
                     SmoothGui.roundedRect(graphics, slotX, slotY,
                             slotX + 18, slotY + 18, 3, 0x761F2025);
 
-                    ItemStack stack = client.player.getInventory()
+                    ItemStack stack = currentPlayer.getInventory()
                             .getItem(9 + row * 9 + column);
                     if (stack.isEmpty()) continue;
                     graphics.item(stack, slotX + 1, slotY + 1);
@@ -122,7 +123,7 @@ public final class InventorySee {
         return crispScale(SCALE.get());
     }
 
-    public static int setScale(Minecraft client, double value) {
+    public static int setScale(Minecraft ignoredClient, double value) {
         SCALE.set(crispScale(value));
         return 1;
     }

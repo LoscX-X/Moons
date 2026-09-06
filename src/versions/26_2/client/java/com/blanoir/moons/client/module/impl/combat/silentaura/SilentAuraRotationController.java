@@ -84,14 +84,15 @@ public final class SilentAuraRotationController {
     }
 
     public void track(Minecraft client, LivingEntity target, Vec3 point, double deltaSeconds) {
-        if (client == null || client.player == null || target == null || point == null) {
+        var currentPlayer = client == null ? null : client.player;
+        if (client == null || currentPlayer == null || target == null || point == null) {
             returnToCamera(client, deltaSeconds);
             return;
         }
         if (!Double.isFinite(deltaSeconds) || deltaSeconds <= 0.0D) return;
         if (!active) {
-            yaw = client.player.getYRot();
-            pitch = client.player.getXRot();
+            yaw = currentPlayer.getYRot();
+            pitch = currentPlayer.getXRot();
             yawVelocity = pitchVelocity = 0.0F;
         }
         boolean targetChanged = targetId != target.getId();
@@ -109,13 +110,13 @@ public final class SilentAuraRotationController {
             aimType.reset();
             motionSeed = System.nanoTime()
                     ^ Integer.toUnsignedLong(target.getId()) * 0xD1B54A32D192ED03L
-                    ^ Integer.toUnsignedLong(client.player.tickCount) * 0x9E3779B97F4A7C15L;
+                    ^ Integer.toUnsignedLong(currentPlayer.tickCount) * 0x9E3779B97F4A7C15L;
             stickyAimY = point.y;
         }
         active = true;
         returning = false;
         targetId = target.getId();
-        prediction.observe(client.player.tickCount, target.position(), target.getDeltaMovement());
+        prediction.observe(currentPlayer.tickCount, target.position(), target.getDeltaMovement());
         double frameDelta = Math.max(0.0D, Math.min(0.05D, deltaSeconds));
         double parameterBlend = 1.0D - Math.exp(-frameDelta * 12.0D);
         noiseStrength += (SilentAuraConfig.jitter() - noiseStrength) * parameterBlend;
@@ -128,7 +129,7 @@ public final class SilentAuraRotationController {
         }
 
         double time = noiseTime;
-        Vec3 eye = client.player.getEyePosition();
+        Vec3 eye = currentPlayer.getEyePosition();
         AABB targetBox = target.getBoundingBox();
         double bodyFloorFraction = bodyFloorFraction(point, targetBox);
         boolean lowerBodyFallback = bodyFloorFraction < UPPER_BODY_FLOOR;
@@ -151,7 +152,7 @@ public final class SilentAuraRotationController {
             // have crossed out of that body it must release immediately;
             // otherwise a long landing keeps the pre-crossing pitch and the
             // attack gate appears to stall for several ticks.
-            crossingRecoveryUntilTick = client.player.tickCount + 2;
+            crossingRecoveryUntilTick = currentPlayer.tickCount + 2;
             pathJitterBlend = 0.0F;
             heldOrbitOffset = null;
         }
@@ -165,7 +166,7 @@ public final class SilentAuraRotationController {
             // that exact pair are what ACA EqualRotation checks directly.
             Vec3 centre = targetBox.getCenter();
             double lookahead = crossingLookaheadTicks(client, prediction.velocity(), eye, targetBox);
-            Vec3 localVelocity = client.player.getDeltaMovement();
+            Vec3 localVelocity = currentPlayer.getDeltaMovement();
             Vec3 targetVelocity = prediction.velocity();
             Vec3 yawEye = lookahead <= 0.0D ? eye
                     : eye.add(localVelocity.x * lookahead, 0.0D,
@@ -312,8 +313,8 @@ public final class SilentAuraRotationController {
                 : Math.min(aimBox.getZsize() * 0.12D, 0.08D);
         double bodyFloor = Mth.lerp(bodyFloorFraction, aimBox.minY, aimBox.maxY);
         double upperBodyCeiling = Mth.lerp(UPPER_BODY_CEILING, aimBox.minY, aimBox.maxY);
-        boolean localAirborne = !client.player.onGround()
-                && Math.abs(client.player.getDeltaMovement().y) > 0.012D;
+        boolean localAirborne = !currentPlayer.onGround()
+                && Math.abs(currentPlayer.getDeltaMovement().y) > 0.012D;
         double desiredY = desiredPoint.y;
         if (localAirborne && !lowerBodyFallback) {
             // Stay inside the same valid hitbox while choosing a height closer
@@ -397,9 +398,10 @@ public final class SilentAuraRotationController {
     }
 
     public void returnToCamera(Minecraft client, double deltaSeconds) {
+        var currentPlayer = client == null ? null : client.player;
         targetId = -1;
         crossingTarget = false;
-        if (!active || client == null || client.player == null) { clear(); return; }
+        if (!active || client == null || currentPlayer == null) { clear(); return; }
         if (!SilentAuraConfig.returnRotation()) {
             clearAtCamera(client);
             return;
@@ -410,7 +412,7 @@ public final class SilentAuraRotationController {
             pathJitterBlend = 0.0F;
             heldOrbitOffset = null;
             returnMotionSeed = System.nanoTime()
-                    ^ Integer.toUnsignedLong(client.player.tickCount)
+                    ^ Integer.toUnsignedLong(currentPlayer.tickCount)
                     * 0x94D049BB133111EBL;
             nextReturnMotionSample = 0.0D;
             aimType.reset();
@@ -419,8 +421,8 @@ public final class SilentAuraRotationController {
         // Keep the target yaw in the same continuous 360-degree domain as the
         // last silent yaw. This prevents the return path from crossing the
         // +/-180 boundary as a synthetic full turn.
-        returnYaw = yaw + MathUtils.wrappedAngleDifference(yaw, client.player.getYRot());
-        returnPitch = client.player.getXRot();
+        returnYaw = yaw + MathUtils.wrappedAngleDifference(yaw, currentPlayer.getYRot());
+        returnPitch = currentPlayer.getXRot();
         double time = System.nanoTime() * 1.0E-9D;
         if (time >= nextReturnMotionSample) {
             // Return corrections happen in short hand-like bursts instead of
@@ -530,7 +532,7 @@ public final class SilentAuraRotationController {
      * ahead of the target's current position, so tracking a strafing player
      * curves toward where the body is heading instead of chasing it in a line.
      */
-    private Vec3 leadAimPoint(Minecraft client, LivingEntity target, Vec3 point,
+    private Vec3 leadAimPoint(Minecraft ignoredClient, LivingEntity target, Vec3 point,
                               double deltaSeconds, SilentAimType aimType,
                               boolean lowerBodyFallback) {
         double leadTicks = SilentAuraConfig.predictionLead() * SilentAuraConfig.prediction()

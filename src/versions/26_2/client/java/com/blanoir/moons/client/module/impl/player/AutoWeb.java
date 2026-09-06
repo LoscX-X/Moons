@@ -16,7 +16,6 @@ import com.blanoir.moons.client.access.MinecraftClientAccess;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.DoubleSetting;
 import com.blanoir.moons.client.config.settings.IntSetting;
-import com.blanoir.moons.client.config.Settings;
 import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.management.input.CombatInputController;
 import com.blanoir.moons.client.management.targeting.PostHitLandingWindow;
@@ -41,7 +40,6 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.level.ClipContext;
-
 
 public final class AutoWeb {
     private static final int MIN_WALL_PREDICTION_TICKS = 3;
@@ -71,8 +69,6 @@ public final class AutoWeb {
     private static final double HORIZONTAL_DRAG = 0.91D;
     private static final double GRAVITY = 0.08D;
     private static final double VERTICAL_DRAG = 0.98D;
-    private static final double MIN_WALL_ALIGNMENT = 0.25D;
-    private static final double CORNER_WALL_GAP = 0.35D;
     private static final double RAY_EPSILON = 1.0E-4D;
     private static final double MAX_GROUND_TARGET_SPEED = 0.18D;
     private static final double MAX_GROUND_RELATIVE_SPEED = 0.28D;
@@ -149,8 +145,6 @@ public final class AutoWeb {
     private static int heldWebSlot = -1;
     private static int originalSlot = -1;
     private static WebActionPhase phase = WebActionPhase.IDLE;
-    private static String pendingPlanKey;
-    private static int pendingDelayTicks;
     private static BlockPos lastPlacedPos;
     private static int pendingAttackTargetId = -1;
     private static int pendingAttackTicks;
@@ -166,23 +160,10 @@ public final class AutoWeb {
     }
 
     public static void init() {
-        migrateReliableDefaults();
         EventBus.PLAYER_UPDATE.register("AutoWeb.playerUpdate", event -> {
             Minecraft client = event.client();
             tick(client);
         });
-    }
-
-    private static void migrateReliableDefaults() {
-        if (Settings.getBoolean("autoweb.reliableDefaultsMigrated", false)) return;
-        Settings.beginBatch();
-        try {
-            if (DELAY_TICKS.get() == 2) DELAY_TICKS.set(0);
-            if (Math.abs(CHANCE.get() - 0.65D) < 1.0E-9D) CHANCE.set(1.0D);
-            Settings.setBoolean("autoweb.reliableDefaultsMigrated", true);
-        } finally {
-            Settings.endBatch();
-        }
     }
 
     private static void tick(Minecraft client) {
@@ -553,47 +534,6 @@ public final class AutoWeb {
                 () -> phase = WebActionPhase.WAITING_FOR_RETURN);
     }
 
-    private static PlacementPlan findBestPlan(Minecraft client) {
-        PlacementPlan best = null;
-        for (Player target : client.level.players()) {
-            if (!Targeting.isValidTargetPlayer(client, target)) {
-                continue;
-            }
-            if (isTrappedInWeb(client, target)) {
-                continue;
-            }
-            if (client.player.distanceToSqr(target) > RANGE.get() * RANGE.get()) {
-                continue;
-            }
-            PlacementPlan candidate = planForTarget(client, target);
-            if (candidate != null && (best == null || candidate.score() < best.score())) {
-                best = candidate;
-            }
-        }
-        return best;
-    }
-
-    private static PlacementPlan planForTarget(Minecraft client, Player target) {
-        PlacementPlan predicted = findGroundPlan(client, target);
-        return predicted != null
-                ? predicted : findImmediateFeetPlan(client, target, false);
-    }
-
-    /** Flat-ground PredictWeb: future feet voxel with floor support only. */
-    private static PlacementPlan findGroundPlan(Minecraft client, Player target) {
-        if (!GROUND_ENABLED.get() || !target.onGround()) {
-            return null;
-        }
-        return findTrajectoryPlan(
-                client,
-                target,
-                observedTargetVelocity(target),
-                PREDICTION_TICKS.get(),
-                false,
-                false,
-                true);
-    }
-
     /**
      * Searches one coherent trajectory instead of treating the player as a
      * single BlockPos. Every sample scores feet/body overlap, the swept eye
@@ -775,14 +715,6 @@ public final class AutoWeb {
         return findWallPlan(client, target, false);
     }
 
-    /** Strict first pass: only a wall-supported upper-body/eye voxel is legal. */
-    private static PlacementPlan findUpperBodyWallPlan(
-            Minecraft client,
-            Player target
-    ) {
-        return findWallPlan(client, target, true);
-    }
-
     private static PlacementPlan findWallPlan(
             Minecraft client,
             Player target,
@@ -795,84 +727,6 @@ public final class AutoWeb {
                 MAX_WALL_PREDICTION_TICKS);
         return findTrajectoryPlan(
                 client, target, velocity, horizon, true, upperBodyOnly, false);
-    }
-
-    /** Immediate CurrentWeb used by attack callbacks, optionally only at a wall. */
-    private static PlacementPlan findImmediateFeetPlan(
-            Minecraft client,
-            Player target,
-            boolean requireCornerWall
-    ) {
-        AABB box = target.getBoundingBox();
-        int minX = Mth.floor(box.minX + 1.0E-4D);
-        int maxX = Mth.floor(box.maxX - 1.0E-4D);
-        int minZ = Mth.floor(box.minZ + 1.0E-4D);
-        int maxZ = Mth.floor(box.maxZ - 1.0E-4D);
-        int feetY = Mth.floor(box.minY + 0.05D);
-        PlacementPlan best = null;
-
-        for (int x = minX; x <= maxX; x++) {
-            for (int z = minZ; z <= maxZ; z++) {
-                BlockPos placePos = new BlockPos(x, feetY, z);
-                if (!new AABB(placePos).intersects(box)
-                        || !isReplaceableForWeb(client, placePos)
-                        || !isSafeForPlayer(client, placePos, 0)) {
-                    continue;
-                }
-                Direction wallDirection = requireCornerWall
-                        ? findCornerWallDirection(client, placePos, box)
-                        : null;
-                if (requireCornerWall && wallDirection == null) {
-                    continue;
-                }
-                BlockHitResult hit = requireCornerWall
-                        ? findSupportHit(client, placePos, wallDirection)
-                        : supportHit(client, placePos, Direction.DOWN);
-                if (hit == null || !withinPlacementRange(client, hit.getLocation())) {
-                    continue;
-                }
-                double score = client.player.getEyePosition()
-                        .distanceTo(hit.getLocation()) * 0.08D
-                        - (wallDirection == null ? 0.0D : 3.0D);
-                PlacementPlan candidate = new PlacementPlan(
-                        target.getId(), placePos, hit, 0, score, !requireCornerWall);
-                if (best == null || candidate.score() < best.score()) {
-                    best = candidate;
-                }
-            }
-        }
-        return best;
-    }
-
-    private static Direction findCornerWallDirection(
-            Minecraft client,
-            BlockPos placePos,
-            AABB targetBox
-    ) {
-        Direction best = null;
-        double bestGap = Double.POSITIVE_INFINITY;
-        Vec3 expectedTravel = horizontalDirectionFromPlayer(
-                client, targetBox.getCenter());
-        if (expectedTravel.lengthSqr() < 1.0E-8D) {
-            return null;
-        }
-        for (Direction direction : HORIZONTAL_DIRECTIONS) {
-            double alignment = expectedTravel.x * direction.getStepX()
-                    + expectedTravel.z * direction.getStepZ();
-            if (alignment < MIN_WALL_ALIGNMENT) {
-                continue;
-            }
-            if (supportHit(client, placePos, direction) == null) {
-                continue;
-            }
-            double gap = wallGap(
-                    client, targetBox, placePos.relative(direction), direction);
-            if (Double.isFinite(gap) && gap <= CORNER_WALL_GAP && gap < bestGap) {
-                best = direction;
-                bestGap = gap;
-            }
-        }
-        return best;
     }
 
     private static TrajectoryStep advanceTrajectory(
@@ -1118,28 +972,10 @@ public final class AutoWeb {
                 ? observed : Vec3.ZERO;
     }
 
-    private static Vec3 horizontalDirectionFromPlayer(
-            Minecraft client,
-            Vec3 point
-    ) {
-        double dx = point.x - client.player.getX();
-        double dz = point.z - client.player.getZ();
-        double length = Math.sqrt(dx * dx + dz * dz);
-        return length < 1.0E-8D
-                ? Vec3.ZERO : new Vec3(dx / length, 0.0D, dz / length);
-    }
-
     private static Vec3 horizontalDirection(Vec3 vector) {
         double length = Math.sqrt(vector.x * vector.x + vector.z * vector.z);
         return length < 1.0E-8D
                 ? Vec3.ZERO : new Vec3(vector.x / length, 0.0D, vector.z / length);
-    }
-
-    private static BlockHitResult findSupportHit(
-            Minecraft client,
-            BlockPos placePos
-    ) {
-        return findSupportHit(client, placePos, null);
     }
 
     private static BlockHitResult findSupportHit(
@@ -1254,7 +1090,7 @@ public final class AutoWeb {
     ) {
         Player target = client.level.getEntity(plan.targetId()) instanceof Player player
                 ? player : null;
-        if (!Targeting.isValidTargetPlayer(client, target)) {
+        if (target == null || !Targeting.isValidTargetPlayer(client, target)) {
             return null;
         }
         if (isTrappedInWeb(client, target)) {
@@ -1439,8 +1275,9 @@ public final class AutoWeb {
     }
 
     private static void restoreWebSlotSelection(Minecraft client) {
-        if (client != null && client.player != null && heldWebSlot != -1) {
-            Inventory inventory = client.player.getInventory();
+        var currentPlayer = client == null ? null : client.player;
+        if (client != null && currentPlayer != null && heldWebSlot != -1) {
+            Inventory inventory = currentPlayer.getInventory();
             if (inventory.getSelectedSlot() == heldWebSlot && originalSlot >= 0) {
                 inventory.setSelectedSlot(originalSlot);
             }
@@ -1449,8 +1286,6 @@ public final class AutoWeb {
     }
 
     private static void clearPendingPlan() {
-        pendingPlanKey = null;
-        pendingDelayTicks = 0;
     }
 
     private static void clearPlacementConfirmation() {
@@ -1579,9 +1414,11 @@ public final class AutoWeb {
     }
 
     private static int requiredServerSettleTicks(Minecraft client) {
+        var currentPlayer = client == null ? null : client.player;
+        var connectionSnapshot = client == null ? null : client.getConnection();
         int latencyMs = 0;
-        if (client.getConnection() != null && client.player != null) {
-            var info = client.getConnection().getPlayerInfo(client.player.getUUID());
+        if (connectionSnapshot != null && currentPlayer != null) {
+            var info = connectionSnapshot.getPlayerInfo(currentPlayer.getUUID());
             if (info != null) {
                 latencyMs = Math.max(0, info.getLatency());
             }

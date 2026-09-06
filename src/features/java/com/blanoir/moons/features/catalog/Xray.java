@@ -1,6 +1,5 @@
 package com.blanoir.moons.features.catalog;
 
-import com.blanoir.moons.client.config.Settings;
 import com.blanoir.moons.client.config.MoonsConfig;
 import com.blanoir.moons.client.module.framework.ModuleCategories;
 import com.blanoir.moons.client.module.framework.ModuleRegistry;
@@ -40,7 +39,6 @@ final class Xray {
 
     static ModuleRegistry.Module targets() {
         List<Setting> targetSettings = new ArrayList<>();
-        Settings.remove("xray.mode");
         for (XrayBlockTarget target : XrayBlockTarget.values()) {
             String id = target.commandName();
             targetSettings.add(customBool(id + "_enabled", title(id), target::isEnabled,

@@ -20,7 +20,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
@@ -30,7 +29,6 @@ import java.util.Comparator;
 import java.util.List;
 
 public final class AimAssist {
-
 
     private static final double MIN_CORRECTION_ANGLE_DEGREES = 0.6D;
     private static final double TARGET_SWITCH_HYSTERESIS_DEGREES = 3.0D;
@@ -86,7 +84,6 @@ public final class AimAssist {
         );
     }
 
-
     /**
      * Entire assist loop runs at render frequency.
      */
@@ -96,6 +93,7 @@ public final class AimAssist {
         boolean enabled = ENABLED.get();
         Minecraft client =
                 event.client();
+        var currentPlayer = client == null ? null : client.player;
 
         if (!enabled) {
             clearLock();
@@ -103,7 +101,7 @@ public final class AimAssist {
         }
 
         if (client == null
-                || client.player == null
+                || currentPlayer == null
                 || client.level == null
                 || MinecraftClientAccess.screen(client) != null) {
             clearLock();
@@ -153,23 +151,23 @@ public final class AimAssist {
 
         float nextYaw =
                 RotationUtils.smoothRotation(
-                        client.player.getYRot(),
+                        currentPlayer.getYRot(),
                         target.rotation().yaw(),
                         frameSmooth
                 );
 
         float nextPitch =
                 RotationUtils.smoothRotation(
-                        client.player.getXRot(),
+                        currentPlayer.getXRot(),
                         target.rotation().pitch(),
                         frameSmooth
                 );
 
-        client.player.setYRot(
+        currentPlayer.setYRot(
                 nextYaw
         );
 
-        client.player.setXRot(
+        currentPlayer.setXRot(
                 Mth.clamp(
                         nextPitch,
                         -90.0F,
@@ -178,17 +176,16 @@ public final class AimAssist {
         );
     }
 
-
-
     public static AimForecast forecastAttack(
             Minecraft client,
             Entity target,
             int ticksAhead
     ) {
+        var currentPlayer = client == null ? null : client.player;
         Vec3 futureEye =
-                client != null && client.player != null
-                        ? client.player.getEyePosition().add(
-                        client.player.getDeltaMovement()
+                client != null && currentPlayer != null
+                        ? currentPlayer.getEyePosition().add(
+                        currentPlayer.getDeltaMovement()
                                 .scale(Math.max(0, ticksAhead)))
                         : Vec3.ZERO;
 
@@ -206,11 +203,12 @@ public final class AimAssist {
             int ticksAhead,
             Vec3 futureEye
     ) {
+        var currentPlayer = client == null ? null : client.player;
         boolean enabled = ENABLED.get();
         double smooth = SMOOTH.get();
         double range = RANGE.get();
         if (client == null
-                || client.player == null
+                || currentPlayer == null
                 || client.level == null
                 || !(target instanceof LivingEntity living)
                 || !isValidTarget(client, living)) {
@@ -229,7 +227,7 @@ public final class AimAssist {
                 AimPointUtils.closest(
                         futureBox,
                         futureEye,
-                        client.player.getLookAngle(),
+                        currentPlayer.getLookAngle(),
                         range
                 );
 
@@ -252,17 +250,16 @@ public final class AimAssist {
         Rotation rotation =
                 RotationUtils.rotationTo(futureEye, futureAimPoint);
 
-
         double yawError =
                 Math.abs(Mth.wrapDegrees(
                         rotation.yaw()
-                                - client.player.getYRot()
+                                - currentPlayer.getYRot()
                 ));
 
         double pitchError =
                 Math.abs(
                         rotation.pitch()
-                                - client.player.getXRot()
+                                - currentPlayer.getXRot()
                 );
 
         double angularError =
@@ -673,7 +670,6 @@ public final class AimAssist {
         lockedAimPoint = null;
     }
 
-
     private static boolean isValidTarget(
             Minecraft client,
             LivingEntity entity
@@ -818,7 +814,6 @@ public final class AimAssist {
 
         return Double.toString(value);
     }
-
 
     public record AimForecast(
             boolean visible,

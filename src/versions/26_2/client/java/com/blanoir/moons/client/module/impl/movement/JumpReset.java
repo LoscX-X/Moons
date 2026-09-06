@@ -2,7 +2,6 @@ package com.blanoir.moons.client.module.impl.movement;
 
 import com.blanoir.moons.client.access.MinecraftClientAccess;
 
-import com.blanoir.moons.client.config.Settings;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.DoubleSetting;
 import com.blanoir.moons.client.event.EventBus;
@@ -14,7 +13,6 @@ import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.entity.player.Player;
 
 import java.util.function.BooleanSupplier;
-
 
 public final class JumpReset {
     private static final int RESET_COOLDOWN_TICKS = 2;
@@ -44,7 +42,6 @@ public final class JumpReset {
     }
 
     public static void init() {
-        Settings.remove("jumpreset.critical.enabled");
         EventBus.TICK.register("JumpReset.tick",
                 JumpReset::tick
         );
@@ -57,7 +54,7 @@ public final class JumpReset {
     public static boolean isEnabled() {
         return ENABLED.get();
     }
-    public static int setEnabled(Minecraft client, boolean value) {
+    public static int setEnabled(boolean value) {
         ENABLED.set(value);
         return 1;
     }
@@ -65,18 +62,16 @@ public final class JumpReset {
         return ENABLED.get() ? "enabled" : "disabled";
     }
 
-
-
-
-    public static int setChance(Minecraft client, double newChance) {
+    public static int setChance(Minecraft ignoredClient, double newChance) {
         CHANCE.set(newChance);
         return 1;
     }
 
     public static void handleEntityVelocity(int entityId, Vec3 velocity) {
         Minecraft client = Minecraft.getInstance();
+        var currentPlayer = client == null ? null : client.player;
 
-        if (client.player == null || entityId != client.player.getId()) {
+        if (currentPlayer == null || entityId != currentPlayer.getId()) {
             return;
         }
 
@@ -86,7 +81,8 @@ public final class JumpReset {
 
     private static void tick(TickEvent event) {
         Minecraft client = event.client();
-        if (client == null || client.player == null || client.level == null) {
+        var currentPlayer = client == null ? null : client.player;
+        if (client == null || currentPlayer == null || client.level == null) {
             resetCooldownTicks = 0;
             fallDamageVelocity = false;
             fallDamageVelocityTicks = 0;
@@ -112,13 +108,13 @@ public final class JumpReset {
             return;
         }
 
-        int hurtTime = client.player.hurtTime;
+        int hurtTime = currentPlayer.hurtTime;
         boolean newKnockbackTick = hurtTime == HURT_TIME_TRIGGER && lastHurtTime != HURT_TIME_TRIGGER;
         lastHurtTime = hurtTime;
 
         if (newKnockbackTick) {
             // Ignore environmental hurt (fall, fire, etc.); jump-reset only PvP knockback.
-            if (client.player.getLastHurtByMob() instanceof Player
+            if (currentPlayer.getLastHurtByMob() instanceof Player
                     && canStartJumpReset(client) && chancePassed()) {
                 // The reset must be present in the movement input generated for
                 // the knockback tick. Waiting after hurtTime 9 misses the useful
@@ -130,9 +126,10 @@ public final class JumpReset {
     }
 
     private static boolean canStartJumpReset(Minecraft client) {
-        if (client.player != null) {
-            return client.player.onGround()
-                    && client.player.isSprinting()
+        var currentPlayer = client == null ? null : client.player;
+        if (currentPlayer != null) {
+            return currentPlayer.onGround()
+                    && currentPlayer.isSprinting()
                     && resetCooldownTicks <= 0
                     && !fallDamageVelocity;
         }

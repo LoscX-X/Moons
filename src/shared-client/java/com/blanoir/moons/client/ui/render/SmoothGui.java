@@ -61,21 +61,4 @@ public final class SmoothGui {
                 Math.max(0, radius - safeThickness), fillColor);
     }
 
-    public static void shadow(GuiGraphicsExtractor graphics, int left, int top,
-                              int right, int bottom, int radius, int color, int spread) {
-        int baseAlpha = color >>> 24;
-        int rgb = color & 0xFFFFFF;
-        int safeSpread = Math.max(1, spread);
-        for (int layer = safeSpread; layer >= 1; layer--) {
-            double progress = 1.0D - (layer - 1) / (double) safeSpread;
-            int alpha = (int) Math.round(baseAlpha * progress * progress * 0.38D);
-            roundedRect(graphics, left - layer, top - layer,
-                    right + layer, bottom + layer, radius + layer,
-                    (alpha << 24) | rgb);
-        }
-    }
-
-    /** Kept as a lifecycle hook for callers compiled against the old renderer. */
-    public static void close() {
-    }
 }

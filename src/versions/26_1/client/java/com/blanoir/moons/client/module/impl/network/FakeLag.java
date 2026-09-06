@@ -37,9 +37,9 @@ public final class FakeLag {
             new ModeSetting.Builder<Mode>()
                     .name("fakelag.mode")
                     .defaultValue(Mode.CONSTANT)
-                    .option(Mode.CONSTANT, "constant", "normal")
-                    .option(Mode.LOW_HEALTH, "low_health", "lowhealth", "health")
-                    .option(Mode.RANDOM, "random", "encounter")
+                    .option(Mode.CONSTANT, "constant")
+                    .option(Mode.LOW_HEALTH, "low_health")
+                    .option(Mode.RANDOM, "random")
                     .build();
 
     private static final BooleanSetting CONSTANT_ENABLED =
@@ -79,7 +79,6 @@ public final class FakeLag {
 
     public static void init() {
         normalizeSettings();
-        normalizeMode();
         applyModeSelection(Minecraft.getInstance());
         EventBus.TICK.register("FakeLag.tick", FakeLag::tick);
     }
@@ -194,7 +193,7 @@ public final class FakeLag {
         return showStatus(client);
     }
 
-    public static int setDelay(Minecraft client, int min, int max) {
+    public static int setDelay(Minecraft ignoredClient, int min, int max) {
         synchronized (LOCK) {
             DELAY_MIN.set(Math.min(min, max));
             DELAY_MAX.set(Math.max(min, max));
@@ -203,7 +202,7 @@ public final class FakeLag {
         return 1;
     }
 
-    public static int setRecoil(Minecraft client, int value) {
+    public static int setRecoil(Minecraft ignoredClient, int value) {
         RECOIL_MS.set(value);
         return 1;
     }
@@ -232,16 +231,7 @@ public final class FakeLag {
         });
     }
 
-    private static void normalizeMode() {
-        MODE.deserialize(MODE.serialized());
-    }
-
     private static String normalizedMode() {
-        return MODE.serialized();
-    }
-
-    private static String normalizeMode(String value) {
-        MODE.deserialize(value);
         return MODE.serialized();
     }
 

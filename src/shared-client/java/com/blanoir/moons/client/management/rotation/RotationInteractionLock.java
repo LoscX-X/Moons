@@ -15,7 +15,7 @@ public final class RotationInteractionLock {
     private float yaw;
     private float pitch;
 
-    public RotationPair begin(float requestedYaw, float requestedPitch) {
+    public void begin(float requestedYaw, float requestedPitch) {
         if (!locked) {
             yaw = requestedYaw;
             pitch = requestedPitch;
@@ -23,7 +23,6 @@ public final class RotationInteractionLock {
             interactionPacketSent = false;
             invocationCompleted = false;
         }
-        return pair();
     }
 
     public boolean markInteractionPacket(float packetYaw, float packetPitch) {

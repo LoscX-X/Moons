@@ -9,6 +9,7 @@ import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.FrameNode;
 import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.InsnList;
+import org.objectweb.asm.tree.IincInsnNode;
 import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LabelNode;
@@ -20,14 +21,12 @@ import org.objectweb.asm.tree.TypeInsnNode;
 import org.objectweb.asm.tree.IntInsnNode;
 import org.objectweb.asm.tree.VarInsnNode;
 
-import java.lang.instrument.ClassFileTransformer;
-import java.security.ProtectionDomain;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /** Retransformation-safe method-body hooks. No fields, methods or interfaces are added. */
-final class MoonsTransformer implements ClassFileTransformer {
+final class MoonsTransformer {
     private static final String BRIDGE = "com/blanoir/moons/api/bridge/AgentBridge";
 
     private final MappingService mappings;
@@ -43,13 +42,9 @@ final class MoonsTransformer implements ClassFileTransformer {
     Set<String> installedHooks() { return Set.copyOf(installedHooks); }
     Set<String> failedHooks() { return Set.copyOf(failedHooks); }
 
-    @Override
-    public byte[] transform(
-            Module module,
+    byte[] transform(
             ClassLoader loader,
             String className,
-            Class<?> classBeingRedefined,
-            ProtectionDomain protectionDomain,
             byte[] classfileBuffer
     ) {
         if (className == null || !mappings.targetsClass(className)) return null;
@@ -132,6 +127,7 @@ final class MoonsTransformer implements ClassFileTransformer {
             case OBJECT_RETURN -> loadObjectReturn(method, target.id());
             case OBJECT_ARGUMENT -> loadObjectArgument(method, target.id());
             case ITEM_STACK_ARGUMENT_5 -> loadItemStackArgument5(method, target.id());
+            case TRIM_RENDER -> loadTrimRender(method, target.id());
             case OBJECT_INVOKE_RETURN -> loadObjectInvocationReturn(method, target.id());
             case NAMED_FLOAT_LOCAL -> loadNamedFloatLocal(method, target.id(), "brightnessOption");
             case SPRINT_DECISIONS -> loadSprintDecisions(method);
@@ -745,7 +741,7 @@ final class MoonsTransformer implements ClassFileTransformer {
         start.add(new InsnNode(Opcodes.AASTORE));
         start.add(call("onVoidHook", "(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;)V"));
 
-        // Submit the completed legacy item pose directly to avoid composing a
+        // Submit the completed item pose directly to avoid composing a
         // second modern arm/use-animation transform over it.
         LabelNode continueVanilla = new LabelNode();
         start.add(new LdcInsnNode(id + ".replace-vanilla"));
@@ -803,6 +799,51 @@ final class MoonsTransformer implements ClassFileTransformer {
                     "com/mojang/blaze3d/vertex/PoseStack", "popPose", "()V", false));
             return end;
         });
+        return true;
+    }
+
+    /** Draws bundled trims after the armor layers, before the vanilla atlas lookup. */
+    private static boolean loadTrimRender(MethodNode method, String id) {
+        AbstractInsnNode lookup = null;
+        int orderSlot = -1;
+        for (AbstractInsnNode instruction : method.instructions) {
+            if (instruction instanceof FieldInsnNode field
+                    && field.name.equals("trimSpriteLookup")
+                    && field.getOpcode() == Opcodes.GETFIELD
+                    && field.getPrevious() instanceof VarInsnNode owner
+                    && owner.getOpcode() == Opcodes.ALOAD && owner.var == 0) {
+                lookup = owner;
+            }
+            if (lookup != null && instruction instanceof MethodInsnNode invocation
+                    && invocation.owner.equals("net/minecraft/client/renderer/SubmitNodeCollector")
+                    && invocation.name.equals("order")
+                    && invocation.getPrevious() instanceof IincInsnNode increment) {
+                orderSlot = increment.var;
+                break;
+            }
+        }
+        if (lookup == null || orderSlot < 0) return false;
+
+        InsnList hook = new InsnList();
+        hook.add(new LdcInsnNode(id));
+        hook.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        hook.add(new IntInsnNode(Opcodes.BIPUSH, 10));
+        hook.add(new TypeInsnNode(Opcodes.ANEWARRAY, "java/lang/Object"));
+        int[] slots = {1, 2, 3, 4, 5, 6, 7, 8, 10, orderSlot};
+        for (int index = 0; index < slots.length; index++) {
+            hook.add(new InsnNode(Opcodes.DUP));
+            hook.add(new IntInsnNode(Opcodes.BIPUSH, index));
+            hook.add(new VarInsnNode(index < 7 ? Opcodes.ALOAD : Opcodes.ILOAD, slots[index]));
+            if (index >= 7) {
+                hook.add(new MethodInsnNode(Opcodes.INVOKESTATIC, "java/lang/Integer", "valueOf",
+                        "(I)Ljava/lang/Integer;", false));
+            }
+            hook.add(new InsnNode(Opcodes.AASTORE));
+        }
+        hook.add(new InsnNode(Opcodes.ICONST_1));
+        hook.add(call("onBooleanValue", "(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;Z)Z"));
+        appendVoidCancellation(hook);
+        method.instructions.insertBefore(lookup, hook);
         return true;
     }
 
@@ -1290,6 +1331,9 @@ final class MoonsTransformer implements ClassFileTransformer {
         if (target.hook() == TargetMethod.HookKind.ITEM_STACK_ARGUMENT_5) {
             return containsIdentifiedHook(method, target.id(), "onObjectValue");
         }
+        if (target.hook() == TargetMethod.HookKind.TRIM_RENDER) {
+            return containsIdentifiedHook(method, target.id(), "onBooleanValue");
+        }
         String hookName = switch (target.hook()) {
             case CLIENT_TICK -> "onClientTickStart";
             case FRAME -> "onFrame";
@@ -1320,7 +1364,7 @@ final class MoonsTransformer implements ClassFileTransformer {
             case NAMED_FLOAT_LOCAL -> "onFloatValue";
             case SPRINT_DECISIONS -> "onBooleanValue";
             case YAW_RESULT -> "onFloatValue";
-            case BOOLEAN_GATE, STATIC_BOOLEAN_RETURN_ARG1, XRAY_TESSELLATE -> "onBooleanValue";
+            case BOOLEAN_GATE, STATIC_BOOLEAN_RETURN_ARG1, XRAY_TESSELLATE, TRIM_RENDER -> "onBooleanValue";
             case XRAY_QUAD, XRAY_SECTION_QUAD_26_2 -> "onVoidHook";
             case VOID_START_END_ARG0 -> "onVoidHook";
             case CHAMS_FRAME -> "onVoidHook";

@@ -19,7 +19,6 @@ import com.blanoir.moons.client.utils.entity.EntityDistance;
 import com.blanoir.moons.client.utils.math.RandomMath;
 import com.blanoir.moons.client.utils.raytrace.RaytraceUtils;
 import net.minecraft.client.Minecraft;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
@@ -144,7 +143,7 @@ public final class TriggerBot {
         // Cooldown/overcharge is a property of the held weapon, not of target
         // visibility. Advancing it only after acquiring a ray made a fully
         // charged player wait again after jumping into melee range.
-        double attackCharge = attackCharge(client);
+        attackCharge(client);
 
         Entity target = getAttackableCrosshairTarget(client);
         if (target == null || isWithinSafeAttackRange(client, target)) {
@@ -466,7 +465,6 @@ public final class TriggerBot {
                 (int) Math.ceil((requiredCharge - currentCharge) * attackDelay));
     }
 
-
     private static Entity getAttackableCrosshairTarget(Minecraft client) {
         HitResult hitResult = client.hitResult;
         if (hitResult instanceof EntityHitResult entityHitResult
@@ -503,25 +501,15 @@ public final class TriggerBot {
 
     /** Vanilla weapon cooldown shown by SilentAura's compact HUD suffix. */
     public static int attackChargePercent(Minecraft client) {
-        if (client == null || client.player == null) return 0;
-        double charge = client.player.getAttackStrengthScale(0.0F);
+        var currentPlayer = client == null ? null : client.player;
+        if (client == null || currentPlayer == null) return 0;
+        double charge = currentPlayer.getAttackStrengthScale(0.0F);
         return (int) Math.round(Math.max(0.0D, Math.min(1.0D, charge)) * 100.0D);
     }
 
     private static double safeInteractionRange(Minecraft client) {
         return Math.max(0.0D,
                 client.player.getAttributeValue(Attributes.ENTITY_INTERACTION_RANGE));
-    }
-
-    private static int showStatus(Minecraft client) {
-        ClientChat.send(client, "TriggerBot: " + statusText()
-                + ", charge range: " + formatChargeRange()
-                + ", miss delay: " + formatMissDelayRange()
-                + "s, through block: " + (THROUGH_BLOCK_ENABLED.get() ? "enabled" : "disabled")
-                + ", targets: " + Targeting.configuredTargetStatus(
-                        TARGET_PLAYERS.get(), TARGET_MOBS.get(), targetEntityTypes)
-                + ". Usage: .moons triggerbot <enable|disable|0.7-1.3|miss 0-2|throughblock enable|disable|target add|remove player|mob|all>");
-        return 1;
     }
 
     public static int setEnabled(Minecraft client, boolean newEnabled) {
@@ -540,11 +528,6 @@ public final class TriggerBot {
                 + ". Charge range: " + formatChargeRange()
                 + ", miss delay: " + formatMissDelayRange()
                 + "s, through block: " + (THROUGH_BLOCK_ENABLED.get() ? "enabled" : "disabled") + ".");
-        return 1;
-    }
-
-    private static int showMissStatus(Minecraft client) {
-        ClientChat.send(client, "TriggerBot miss delay range is " + formatMissDelayRange() + "s. Usage: .moons triggerbot miss x-x, seconds between 0 and 2.");
         return 1;
     }
 
@@ -591,31 +574,6 @@ public final class TriggerBot {
             TARGET_ENTITIES.set(Targeting.serializeEntityTypeIds(targetEntityTypes));
         }
         markMissedCrosshair();
-        return showTargetStatus(client);
-    }
-
-    public static int setTargetEntityType(Minecraft client, String rawId, boolean add) {
-        Identifier id = Targeting.parseEntityTypeId(rawId);
-        if (id == null) {
-            ClientChat.send(client, "Invalid entity id: " + rawId
-                    + ". Use ids like villager or minecraft:zombie.");
-            return 0;
-        }
-        if (BuiltInRegistries.ENTITY_TYPE.getOptional(id).isEmpty()) {
-            ClientChat.send(client, "Unknown entity type: " + id + ".");
-            return 0;
-        }
-
-        boolean changed = add ? targetEntityTypes.add(id) : targetEntityTypes.remove(id);
-        if (!changed) {
-            ClientChat.send(client, "TriggerBot target " + id + " is already "
-                    + (add ? "added" : "removed") + ".");
-            return showTargetStatus(client);
-        }
-        TARGET_ENTITIES.set(Targeting.serializeEntityTypeIds(targetEntityTypes));
-        markMissedCrosshair();
-        ClientChat.send(client, "TriggerBot target " + id + " "
-                + (add ? "added" : "removed") + ".");
         return showTargetStatus(client);
     }
 

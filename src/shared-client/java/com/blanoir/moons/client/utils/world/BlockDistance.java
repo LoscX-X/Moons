@@ -21,10 +21,11 @@ public final class BlockDistance {
     }
 
     public static double squaredToBlock(Minecraft client, BlockPos pos) {
-        if (client == null || client.player == null || pos == null) {
+        var currentPlayer = client == null ? null : client.player;
+        if (client == null || currentPlayer == null || pos == null) {
             return Double.MAX_VALUE;
         }
-        return squaredToBlock(client.player.getEyePosition(), pos);
+        return squaredToBlock(currentPlayer.getEyePosition(), pos);
     }
 
     public static double squaredToBlock(Vec3 point, BlockPos pos) {

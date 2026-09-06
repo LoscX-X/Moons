@@ -20,8 +20,9 @@ public final class PlayerListUtils {
     }
 
     public static boolean isListed(Minecraft client, UUID profileId) {
-        if (client == null || client.getConnection() == null || profileId == null) return false;
-        return client.getConnection().getListedOnlinePlayers().stream()
+        var connectionSnapshot = client == null ? null : client.getConnection();
+        if (client == null || connectionSnapshot == null || profileId == null) return false;
+        return connectionSnapshot.getListedOnlinePlayers().stream()
                 .anyMatch(info -> Objects.equals(info.getProfile().id(), profileId));
     }
 
@@ -44,13 +45,15 @@ public final class PlayerListUtils {
     }
 
     public static boolean missingGameMode(Minecraft client, Player player) {
-        if (client == null || client.getConnection() == null || player == null) return true;
-        PlayerInfo info = client.getConnection().getPlayerInfo(player.getUUID());
+        var connectionSnapshot = client == null ? null : client.getConnection();
+        if (client == null || connectionSnapshot == null || player == null) return true;
+        PlayerInfo info = connectionSnapshot.getPlayerInfo(player.getUUID());
         return info == null || info.getGameMode() == null;
     }
 
     private static Collection<PlayerInfo> onlinePlayers(Minecraft client) {
-        return client == null || client.getConnection() == null
-                ? java.util.List.of() : client.getConnection().getOnlinePlayers();
+        var connectionSnapshot = client == null ? null : client.getConnection();
+        return client == null || connectionSnapshot == null
+                ? java.util.List.of() : connectionSnapshot.getOnlinePlayers();
     }
 }

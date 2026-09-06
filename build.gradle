@@ -36,7 +36,7 @@ def isolatedBuildDirectory = providers.gradleProperty("moons_build_directory").o
 if (isolatedBuildDirectory != null && !isolatedBuildDirectory.isBlank()) {
     layout.buildDirectory.set(file(isolatedBuildDirectory))
 }
-def legacyDistDirectory = "dist/legacy/${selectedVersionDirectory}"
+def agentDistDirectory = "dist/agent/${selectedVersionDirectory}"
 def loaderStagingDirectory = "loader-staging/${selectedVersionDirectory}"
 def versionedPayloadDirectory = "moons-payload/${selectedVersionDirectory}"
 def versionedTestDirectory = "moons-test/${selectedVersionDirectory}"
@@ -44,7 +44,7 @@ def versionedTestDirectory = "moons-test/${selectedVersionDirectory}"
 // builds may select an internal staging directory instead of requiring the user
 // to close Minecraft just so Gradle can overwrite the public artifact.
 def moonsJarOutputDirectory = providers.gradleProperty("moons_jar_output_directory")
-        .getOrElse(legacyDistDirectory)
+        .getOrElse(agentDistDirectory)
 
 sourceSets {
     main {
@@ -117,8 +117,8 @@ sourceSets {
     }
     combatVerification {
         java.setSrcDirs(["src/combatVerification/java"])
-        compileClasspath += sourceSets.client.output + sourceSets.client.compileClasspath
-        runtimeClasspath += sourceSets.api.output + sourceSets.client.output + sourceSets.client.runtimeClasspath
+        compileClasspath += sourceSets.api.output + sourceSets.client.output + sourceSets.client.compileClasspath + sourceSets.runtime.output
+        runtimeClasspath += sourceSets.api.output + sourceSets.client.output + sourceSets.client.runtimeClasspath + sourceSets.runtime.output
     }
 }
 
@@ -137,6 +137,14 @@ tasks.register("verifyPlacementTransactions", JavaExec) {
     mainClass = "com.blanoir.moons.client.management.rotation.PlacementTransactionVerification"
 }
 
+tasks.register("verifyRotationHandoff", JavaExec) {
+    group = "verification"
+    description = "Verifies shared silent rotation acquisition, commitment and real-send history."
+    dependsOn tasks.named("scaffoldVerificationClasses")
+    classpath = sourceSets.scaffoldVerification.runtimeClasspath
+    mainClass = "com.blanoir.moons.client.management.rotation.RotationHandoffVerification"
+}
+
 tasks.register("verifySilentAura", JavaExec) {
     group = "verification"
     description = "Verifies SilentAura prediction, noise, acquisition and packet motion invariants."
@@ -147,10 +155,27 @@ tasks.register("verifySilentAura", JavaExec) {
 
 tasks.register("verifyXrayMerge", JavaExec) {
     group = "verification"
-    description = "Verifies merged Xray settings migration and packet scan gating."
+    description = "Verifies Xray defaults, master settings and packet scan gating."
     dependsOn tasks.named("combatVerificationClasses")
     classpath = sourceSets.combatVerification.runtimeClasspath
     mainClass = "com.blanoir.moons.client.module.impl.render.xray.XrayMergeVerification"
+}
+
+tasks.register("verifyClickGuiWarmup", JavaExec) {
+    group = "verification"
+    description = "Renders ClickGUI on a worker CPU canvas without a game instance or config writes."
+    dependsOn tasks.named("combatVerificationClasses")
+    classpath = sourceSets.combatVerification.runtimeClasspath
+    mainClass = "com.blanoir.moons.client.ui.clickgui.ClickGuiWarmupVerification"
+    systemProperty "java.awt.headless", "true"
+}
+
+tasks.register("verifyClientEvents", JavaExec) {
+    group = "verification"
+    description = "Verifies client listener ownership and first-release mode settings."
+    dependsOn tasks.named("combatVerificationClasses")
+    classpath = sourceSets.combatVerification.runtimeClasspath
+    mainClass = "com.blanoir.moons.client.event.ClientEventVerification"
 }
 
 tasks.named("processFeaturesResources") {
@@ -339,6 +364,7 @@ tasks.register("verifyRuntimeLifecycle", JavaExec) {
 tasks.named("check").configure {
     dependsOn tasks.named("verifyScaffoldRotations")
     dependsOn tasks.named("verifyPlacementTransactions")
+    dependsOn tasks.named("verifyRotationHandoff")
     dependsOn tasks.named("verifySilentAura")
     dependsOn tasks.named("clientClasses")
     dependsOn tasks.named("featuresClasses")
@@ -349,7 +375,7 @@ tasks.named("check").configure {
 
 tasks.register("moonsJar", Jar) {
     group = "build"
-    description = "Builds the single-file executable Attach agent distribution."
+    description = "Builds the Java payload loaded by the JNI/JVMTI bridge."
     dependsOn apiJar, runtimeJar, featuresJar, tasks.named("agentClasses")
 
     archiveFileName = "moons.jar"
@@ -378,12 +404,7 @@ tasks.register("moonsJar", Jar) {
 
     manifest {
         attributes(
-                "Main-Class": "com.blanoir.moons.agent.launch.MoonsLauncher",
-                "Premain-Class": "com.blanoir.moons.agent.MoonsAgent",
-                "Agent-Class": "com.blanoir.moons.agent.MoonsAgent",
-                "Can-Redefine-Classes": "true",
-                "Can-Retransform-Classes": "true",
-                "Implementation-Title": "Moons single-file loader",
+                "Implementation-Title": "Moons JNI/JVMTI payload",
                 "Implementation-Version": project.version
         )
     }

@@ -15,15 +15,12 @@ public final class EntityDistance {
     private EntityDistance() {
     }
 
-    public static double toEntity(Minecraft client, Entity target) {
-        return Math.sqrt(squaredToEntity(client, target));
-    }
-
     public static double squaredToEntity(Minecraft client, Entity target) {
-        if (client == null || client.player == null || target == null) {
+        var currentPlayer = client == null ? null : client.player;
+        if (client == null || currentPlayer == null || target == null) {
             return Double.MAX_VALUE;
         }
-        return squaredToBox(client.player.getEyePosition(), target.getBoundingBox());
+        return squaredToBox(currentPlayer.getEyePosition(), target.getBoundingBox());
     }
 
     public static double squaredToBox(Vec3 point, AABB box) {

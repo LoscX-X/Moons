@@ -4,7 +4,6 @@ import com.blanoir.moons.client.access.MinecraftClientAccess;
 import com.blanoir.moons.client.config.Settings;
 import com.blanoir.moons.client.command.PremiumCheckCommand;
 import com.blanoir.moons.client.event.PacketEventRouter;
-import com.blanoir.moons.client.module.framework.ModuleKeybinds;
 import com.blanoir.moons.client.module.framework.ModuleRegistry;
 import com.blanoir.moons.client.management.input.CombatInputController;
 import com.blanoir.moons.client.module.impl.combat.CombatModuleCoordinator;
@@ -19,7 +18,6 @@ import com.blanoir.moons.client.module.impl.combat.critical.Critical;
 import com.blanoir.moons.client.module.impl.movement.JumpReset;
 import com.blanoir.moons.client.module.impl.movement.KeepSprint;
 import com.blanoir.moons.client.module.impl.movement.NoSlow;
-import com.blanoir.moons.client.module.impl.movement.Sprint;
 import com.blanoir.moons.client.module.impl.misc.antibot.AntiBot;
 import com.blanoir.moons.client.module.impl.misc.AntiNick;
 import com.blanoir.moons.client.module.impl.network.Backtrack;
@@ -35,30 +33,28 @@ import com.blanoir.moons.client.module.impl.player.AutoWeb;
 import com.blanoir.moons.client.module.impl.player.NoFall;
 import com.blanoir.moons.client.module.impl.render.Caver;
 import com.blanoir.moons.client.module.impl.render.Chams;
-import com.blanoir.moons.client.module.impl.render.Clip;
 import com.blanoir.moons.client.module.impl.render.FullBright;
 import com.blanoir.moons.client.module.impl.render.InventorySee;
 import com.blanoir.moons.client.module.impl.render.Nametags;
 import com.blanoir.moons.client.module.impl.render.Nickname;
 import com.blanoir.moons.client.module.impl.render.ScoreboardChanger;
 import com.blanoir.moons.client.module.impl.render.TargetInfoHud;
-import com.blanoir.moons.client.module.impl.render.TrimChanger;
+import com.blanoir.moons.client.module.impl.render.Trim;
 import com.blanoir.moons.client.module.impl.render.UhcFinder;
 import com.blanoir.moons.client.module.impl.render.xray.OreHighlighter;
 import com.blanoir.moons.client.module.impl.render.xray.OreScanner;
 import com.blanoir.moons.client.module.impl.render.xray.XrayDestroyPacketMode;
 import com.blanoir.moons.client.management.rotation.SilentPacketRotation;
+import com.blanoir.moons.client.management.rotation.RotationHistory;
 import com.blanoir.moons.client.module.impl.world.AutoTool;
 import com.blanoir.moons.client.module.impl.world.ChestStealer;
-import com.blanoir.moons.client.module.impl.world.FastBreak;
 import com.blanoir.moons.client.module.world.FastPlace;
-import com.blanoir.moons.client.module.impl.world.LightningTracker;
 import com.blanoir.moons.client.module.impl.world.Scaffold;
 import com.blanoir.moons.client.render.WorldOverlayRenderer;
 import com.blanoir.moons.client.web.RemoteConfigClient;
 import com.blanoir.moons.client.ui.clickgui.MoonsComposeScreen;
+import com.blanoir.moons.client.ui.clickgui.ClickGuiWarmup;
 import com.blanoir.moons.client.ui.compose.ComposeRenderBridge;
-import com.blanoir.moons.client.ui.render.SmoothGui;
 import com.blanoir.moons.features.catalog.ModuleCatalog;
 import net.minecraft.client.Minecraft;
 
@@ -69,9 +65,9 @@ final class FeatureBootstrap {
     static void initialize() {
         Settings.load();
         ModuleRegistry.installCatalog(ModuleCatalog::register);
+        RotationHistory.init();
 
         NoFall.init();
-        ModuleKeybinds.init();
         OreScanner.init();
         OreHighlighter.init();
         XrayDestroyPacketMode.init();
@@ -93,23 +89,16 @@ final class FeatureBootstrap {
         ScoreboardChanger.init();
         InventorySee.init();
         TargetInfoHud.init();
-        Sprint.init();
         NoSlow.init();
         Nametags.init();
-        Chams.init();
-        Caver.init();
         Minecraft client = Minecraft.getInstance();
         if (Caver.isEnabled() && client.level != null) {
             MinecraftClientAccess.rebuildLevelRenderer(client);
         }
         FullBright.init();
-        Clip.init();
         UhcFinder.init();
-        LightningTracker.init();
-        TrimChanger.init();
         ChestStealer.init();
         Scaffold.init();
-        FastBreak.init();
         FastPlace.init();
         Backtrack.init();
         KeepSprint.init();
@@ -128,9 +117,11 @@ final class FeatureBootstrap {
         FakeLag.init();
         RemoteConfigClient.init();
         RemoteConfigClient.autoConnect();
+        ClickGuiWarmup.start();
     }
 
     static void shutdown() {
+        RotationHistory.reset();
         Minecraft client = Minecraft.getInstance();
         NoSlow.shutdown();
         Velocity.shutdown();
@@ -144,8 +135,8 @@ final class FeatureBootstrap {
         OreScanner.shutdown();
         OreHighlighter.close();
         Chams.close();
+        Trim.close();
         com.blanoir.moons.client.module.impl.network.backtrack.BacktrackRenderer.close();
         WorldOverlayRenderer.close();
-        SmoothGui.close();
     }
 }

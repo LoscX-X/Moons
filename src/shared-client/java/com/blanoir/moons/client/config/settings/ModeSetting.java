@@ -22,12 +22,13 @@ public final class ModeSetting<T> {
         options = List.copyOf(builder.options);
         if (options.isEmpty()) throw new IllegalStateException("A mode setting needs at least one option.");
 
-        Map<String, Option<T>> aliases = new LinkedHashMap<>();
+        Map<String, Option<T>> modes = new LinkedHashMap<>();
         for (Option<T> option : options) {
-            putAlias(aliases, option.id(), option);
-            for (String alias : option.aliases()) putAlias(aliases, alias, option);
+            if (option.id().isEmpty() || modes.putIfAbsent(option.id(), option) != null) {
+                throw new IllegalStateException("Duplicate or empty mode id: " + option.id());
+            }
         }
-        lookup = Map.copyOf(aliases);
+        lookup = Map.copyOf(modes);
         Option<T> fallback = optionForValue(defaultValue);
         if (fallback == null) throw new IllegalStateException("Default mode is not a legal option.");
 
@@ -37,7 +38,6 @@ public final class ModeSetting<T> {
                 .build();
         visibleWhen = builder.visibleWhen;
         enabledWhen = builder.enabledWhen;
-        storage.set(option(storage.get()).id());
     }
 
     public T get() {
@@ -87,14 +87,6 @@ public final class ModeSetting<T> {
         return null;
     }
 
-    private static <T> void putAlias(Map<String, Option<T>> lookup, String alias, Option<T> option) {
-        String normalized = normalize(alias);
-        Option<T> existing = normalized.isEmpty() ? option : lookup.putIfAbsent(normalized, option);
-        if (normalized.isEmpty() || existing != null && existing != option) {
-            throw new IllegalStateException("Duplicate or empty mode alias: " + alias);
-        }
-    }
-
     private static String normalize(String value) {
         return value == null ? "" : value.trim().toLowerCase(Locale.ROOT)
                 .replace('-', '_').replace(' ', '_');
@@ -105,11 +97,10 @@ public final class ModeSetting<T> {
         catch (RuntimeException ignored) { return false; }
     }
 
-    public record Option<T>(T value, String id, List<String> aliases) {
+    public record Option<T>(T value, String id) {
         public Option {
             Objects.requireNonNull(value, "value");
             id = normalize(id);
-            aliases = List.copyOf(aliases);
         }
     }
 
@@ -122,8 +113,8 @@ public final class ModeSetting<T> {
 
         public Builder<T> name(String key) { this.key = key; return this; }
         public Builder<T> defaultValue(T value) { defaultValue = value; return this; }
-        public Builder<T> option(T value, String id, String... aliases) {
-            options.add(new Option<>(value, id, List.of(aliases)));
+        public Builder<T> option(T value, String id) {
+            options.add(new Option<>(value, id));
             return this;
         }
         public Builder<T> visibleWhen(BooleanSupplier condition) {

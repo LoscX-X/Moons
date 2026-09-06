@@ -67,16 +67,17 @@ public final class CombatDecisionEngine {
 
     /** Exact movement/target portion of Player.canCriticalAttack in MC 26.1.2. */
     public static boolean hasVanillaCriticalMovement(Minecraft client, Entity target) {
-        if (client.player != null) {
+        var currentPlayer = client == null ? null : client.player;
+        if (currentPlayer != null) {
             return valid(client, target)
                     && target instanceof LivingEntity
-                    && client.player.fallDistance > 0.0D
-                    && !client.player.onGround()
-                    && !client.player.onClimbable()
-                    && !client.player.isInWater()
-                    && !client.player.isMobilityRestricted()
-                    && !client.player.isPassenger()
-                    && !client.player.isSprinting();
+                    && currentPlayer.fallDistance > 0.0D
+                    && !currentPlayer.onGround()
+                    && !currentPlayer.onClimbable()
+                    && !currentPlayer.isInWater()
+                    && !currentPlayer.isMobilityRestricted()
+                    && !currentPlayer.isPassenger()
+                    && !currentPlayer.isSprinting();
         }
         return false;
     }
@@ -99,11 +100,12 @@ public final class CombatDecisionEngine {
      * TriggerBot repeatedly even when no critical was actually reachable.
      */
     public static boolean isUnsafeLandingPhase(Minecraft client) {
+        var currentPlayer = client == null ? null : client.player;
         return client != null
-                && client.player != null
+                && currentPlayer != null
                 && client.level != null
-                && !client.player.onGround()
-                && client.player.fallDistance > 0.0F
+                && !currentPlayer.onGround()
+                && currentPlayer.fallDistance > 0.0F
                 && !hasCriticalLandingMargin(client);
     }
 
@@ -409,8 +411,9 @@ public final class CombatDecisionEngine {
             }
 
             if (!onGround) {
-                if (client.player.hasEffect(MobEffects.LEVITATION)) {
-                    int amplifier = client.player.getEffect(MobEffects.LEVITATION).getAmplifier();
+                var levitation = client.player.getEffect(MobEffects.LEVITATION);
+                if (levitation != null) {
+                    int amplifier = levitation.getAmplifier();
                     velocityY += (0.05D * (amplifier + 1) - velocityY) * 0.2D;
                     fallDistance = 0.0D;
                 } else {
@@ -472,8 +475,9 @@ public final class CombatDecisionEngine {
                 Math.max(armor / 5.0D,
                         armor - rawDamage / (2.0D + toughness / 4.0D)));
         double damage = rawDamage * (1.0D - armorPoints / 25.0D);
-        if (target.hasEffect(MobEffects.RESISTANCE)) {
-            int amplifier = target.getEffect(MobEffects.RESISTANCE).getAmplifier() + 1;
+        var resistance = target.getEffect(MobEffects.RESISTANCE);
+        if (resistance != null) {
+            int amplifier = resistance.getAmplifier() + 1;
             damage *= Math.max(0.0D, 1.0D - amplifier * 0.2D);
         }
         return Math.max(0.0D, damage);

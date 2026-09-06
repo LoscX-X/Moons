@@ -37,7 +37,7 @@ public final class ClientCommands {
             case "xray" -> XrayCommand.handle(tail);
             case "web" -> WebCommand.handle(tail);
             case "taboutput" -> TabOutputCommand.handle(tail);
-            case "nbtpaser", "nbtparser" -> NbtParserCommand.handle(tail);
+            case "nbtparser" -> NbtParserCommand.handle(tail);
             case "nickname", "nick" -> handleNickname(tail);
             default -> {
                 ClientChat.send(Minecraft.getInstance(), "未知指令: ." + root[0]);

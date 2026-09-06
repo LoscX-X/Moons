@@ -86,7 +86,9 @@ public final class UhcFinder {
         }
 
         Minecraft client = Minecraft.getInstance();
-        if (client.level == null || client.player == null || MinecraftClientAccess.isHudHidden(client)) {
+        var currentPlayer = client == null ? null : client.player;
+        var currentLevel = client == null ? null : client.level;
+        if (currentLevel == null || currentPlayer == null || MinecraftClientAccess.isHudHidden(client)) {
             return;
         }
 
@@ -97,7 +99,7 @@ public final class UhcFinder {
         double maxDistanceSquared = RANGE.get() * RANGE.get();
         List<LivingEntity> targets = new ArrayList<>();
 
-        for (Entity entity : client.level.entitiesForRendering()) {
+        for (Entity entity : currentLevel.entitiesForRendering()) {
             if (entity instanceof LivingEntity livingEntity
                     && shouldRenderTarget(client, livingEntity, maxDistanceSquared)) {
                 OfflinePlayerDetect.notifyIfNeeded(client, livingEntity);
@@ -109,7 +111,7 @@ public final class UhcFinder {
             return;
         }
 
-        targets.sort(Comparator.comparingDouble(target -> client.player.distanceToSqr(target)));
+        targets.sort(Comparator.comparingDouble(target -> currentPlayer.distanceToSqr(target)));
 
         List<WorldOverlayRenderer.ColoredBox> boxes = new ArrayList<>(targets.size());
         for (LivingEntity target : targets) {

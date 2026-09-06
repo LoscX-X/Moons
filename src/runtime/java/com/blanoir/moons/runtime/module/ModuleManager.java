@@ -43,12 +43,7 @@ public final class ModuleManager implements AutoCloseable {
     private Path builtinModule;
     private volatile boolean closed;
 
-    /** Retained for callers built against the original 26.1 runtime API. */
-    public ModuleManager(Path home, Path outerJar, RuntimeEvents events) {
-        this(home, outerJar, events, "26.1.2");
-    }
-
-    public ModuleManager(
+public ModuleManager(
             Path home,
             Path outerJar,
             RuntimeEvents events,

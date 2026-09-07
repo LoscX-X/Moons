@@ -1,0 +1,143 @@
+/* Source-set boundaries, dependency declarations, and compiler configuration. */
+def selectedVersionDirectory = moonsBuild.versionDirectory
+def selectedMinecraftVersion = moonsBuild.minecraftVersion
+def targetJavaVersion = moonsBuild.targetJavaVersion
+
+repositories {
+    mavenCentral()
+    google()
+    maven { url = uri("https://maven.pkg.jetbrains.space/public/p/compose/dev") }
+}
+
+configurations {
+    composeEmbedded
+}
+
+sourceSets {
+    main {
+        java.setSrcDirs([])
+        resources.setSrcDirs([])
+    }
+    api {
+        java.setSrcDirs(["src/bootstrap/api/java"])
+        resources.setSrcDirs(["src/bootstrap/api/resources"])
+    }
+    agent {
+        java.setSrcDirs([
+                "src/bootstrap/agent/java",
+                "src/minecraft/versions/${selectedVersionDirectory}/agent"
+        ])
+        resources.setSrcDirs(["src/bootstrap/agent/resources"])
+        compileClasspath += sourceSets.api.output
+    }
+    runtime {
+        java.setSrcDirs(["src/bootstrap/runtime/java"])
+        resources.setSrcDirs(["src/bootstrap/runtime/resources"])
+        compileClasspath += sourceSets.api.output
+    }
+    features {
+        java.setSrcDirs(["src/minecraft/features/java"])
+        resources.setSrcDirs(["src/minecraft/features/resources"])
+        compileClasspath += sourceSets.api.output + sourceSets.runtime.output
+    }
+    loaderTest {
+        // Keep the fake Minecraft fixture off the real client's test classpath.
+        java.setSrcDirs(["src/test/loader/java"])
+        resources.setSrcDirs(["src/test/loader/resources"])
+        compileClasspath += sourceSets.agent.output + sourceSets.runtime.output + sourceSets.api.output + configurations.agentRuntimeClasspath
+        runtimeClasspath += sourceSets.agent.output + sourceSets.runtime.output + sourceSets.api.output + configurations.agentRuntimeClasspath
+    }
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+    archivesName = project.archives_base_name
+}
+
+loom {
+    splitEnvironmentSourceSets()
+}
+
+configurations.named("clientImplementation") {
+    extendsFrom configurations.composeEmbedded
+}
+
+sourceSets.client.java.setSrcDirs([
+        "src/minecraft/shared/java",
+        "src/minecraft/versions/${selectedVersionDirectory}/client/java"
+])
+sourceSets.client.kotlin.setSrcDirs([
+        "src/minecraft/shared/kotlin",
+        "src/minecraft/versions/${selectedVersionDirectory}/client/kotlin"
+])
+sourceSets.client.resources.setSrcDirs([
+        "src/minecraft/shared/resources",
+        "src/minecraft/versions/${selectedVersionDirectory}/client/resources"
+])
+
+sourceSets {
+    test {
+        java.setSrcDirs(["src/test/java"])
+        compileClasspath += sourceSets.api.output + sourceSets.client.output + sourceSets.client.compileClasspath + sourceSets.runtime.output + sourceSets.features.output
+        runtimeClasspath += sourceSets.api.output + sourceSets.client.output + sourceSets.client.runtimeClasspath + sourceSets.runtime.output + sourceSets.features.output
+    }
+}
+
+tasks.named("processFeaturesResources") {
+    inputs.property("minecraftVersion", selectedMinecraftVersion)
+    filesMatching("META-INF/moons-module.properties") {
+        expand(minecraftVersion: selectedMinecraftVersion)
+    }
+}
+
+// Loom creates the split client source set after the Kotlin plugin has applied.
+// Explicitly expose its Java roots to K2 so Kotlin can resolve the existing
+// module registry and Minecraft screen classes during joint compilation.
+tasks.named("compileClientKotlin", moonsPluginTypes.kotlinCompile) {
+    source(sourceSets.client.java)
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+
+    // Compose renders as an independent final-frame overlay in the GLFW framebuffer.
+    // These artifacts are shaded into the hot-loaded feature payload below.
+    composeEmbedded(compose.desktop.currentOs)
+    composeEmbedded(compose.material3)
+
+    // The standalone loader is deliberately isolated from Fabric/Minecraft.
+    // Its only non-JDK dependency is ASM, which is folded into moons.jar.
+    agentImplementation "org.ow2.asm:asm:9.10.1"
+    agentImplementation "org.ow2.asm:asm-tree:9.10.1"
+    agentImplementation "org.ow2.asm:asm-util:9.10.1"
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.encoding = "UTF-8"
+    if (targetJavaVersion >= 10 || JavaVersion.current().isJava10Compatible()) {
+        it.options.release.set(targetJavaVersion)
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = moonsPluginTypes.jvmTarget25
+    }
+}
+
+tasks.named("compileAgentJava", JavaCompile).configure {
+    options.compilerArgs.addAll(["--add-modules", "jdk.attach"])
+}
+
+java {
+    def javaVersion = JavaVersion.toVersion(targetJavaVersion)
+    if (JavaVersion.current() < javaVersion) {
+        toolchain.languageVersion = JavaLanguageVersion.of(targetJavaVersion)
+    }
+    withSourcesJar()
+}
+
+sourceSets.client.compileClasspath += sourceSets.api.output
+sourceSets.features.compileClasspath += sourceSets.client.output + sourceSets.client.compileClasspath

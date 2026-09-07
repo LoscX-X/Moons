@@ -1,3 +1,23 @@
+# Moons
+
+Minecraft Java Edition 运行时研究与测试项目，当前支持 26.1.2 和 26.2。项目使用共享客户端代码、版本访问桥、ASM 转换与 JVMTI/JNI 加载链路。
+
+开发使用 x64 JDK 25（通过本机 `JAVA_HOME` 配置）和仓库自带的 Gradle 9.5.1 Wrapper。常用入口为 `./gradlew.bat check`；共享或构建变更稳定后使用一次 `./gradlew.bat checkAllVersions`。Unix shell 使用 `./gradlew`。
+
+| 文档 | 内容 |
+|---|---|
+| [开发与维护](CONTRIBUTING.md) | 环境、格式、按影响范围验证、线程与资源约定 |
+| [整体架构](docs/ARCHITECTURE.md) | 加载链路、源码布局和执行边界 |
+| [客户端结构](docs/client-architecture.md) | 功能、状态、事件和工具代码归属 |
+| [Utils 提取审计与实施记录](docs/UTILS_EXTRACTION_AUDIT.md) | 33 项候选、30 项落地、保留项与语义边界 |
+| [Minecraft 版本边界](docs/MC_VERSION_BOUNDARIES.md) | 共享代码与版本 API、渲染、策略差异 |
+| [本次维护性整理](docs/MAINTAINABILITY_UPDATE_2026-09-07.md) | 实际变更、验证范围和剩余限制 |
+| [原生加载与发行](docs/JNI_BRIDGE_LOAD.md) | Windows 加载器、桥接与打包说明 |
+
+以下为原有声明，内容保留。
+
+---
+
 安全协议及免责声明与使用须知
 
 一、项目性质

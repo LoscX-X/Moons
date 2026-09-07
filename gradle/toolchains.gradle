@@ -1,0 +1,92 @@
+import java.util.regex.Pattern
+
+/* Lazily resolve host tools only when a task needs them. */
+def windowsHost = moonsBuild.windowsHost
+
+def locateCmake = {
+    def executableName = windowsHost ? "cmake.exe" : "cmake"
+    def candidates = []
+    def pathValue = System.getenv("PATH")
+    if (pathValue != null) {
+        pathValue.split(Pattern.quote(File.pathSeparator)).each {
+            if (!it.isBlank()) candidates.add(file(it).toPath().resolve(executableName).toFile())
+        }
+    }
+    if (windowsHost) {
+        candidates.add(file("C:/Program Files/CMake/bin/cmake.exe"))
+        candidates.add(file("C:/Program Files (x86)/CMake/bin/cmake.exe"))
+
+        def vswhere = file("C:/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe")
+        if (vswhere.isFile()) {
+            def process = new ProcessBuilder(
+                    vswhere.absolutePath,
+                    "-latest",
+                    "-products", "*",
+                    "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+                    "-property", "installationPath"
+            ).redirectErrorStream(true).start()
+            def installation = process.inputStream.getText("UTF-8").trim()
+            if (process.waitFor() == 0 && !installation.isBlank()) {
+                candidates.add(file(installation).toPath().resolve(
+                        "Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe"
+                ).toFile())
+            }
+        }
+    }
+    def cmake = candidates.find { it.isFile() }
+    if (cmake == null) {
+        throw new GradleException("CMake was not found; install the Visual Studio C++ CMake tools")
+    }
+    return cmake
+}
+
+def locateJdkHome = {
+    def candidates = [
+            file(System.getProperty("java.home")),
+            project.hasProperty("org.gradle.java.home")
+                    ? file(project.property("org.gradle.java.home"))
+                    : null
+    ].findAll { it != null }
+    def jdk = candidates.find { new File(it, "include/jni.h").isFile() }
+    if (jdk == null) {
+        throw new GradleException("The Gradle JVM must be a JDK containing JNI/JVMTI headers")
+    }
+    return jdk
+}
+
+def locateCSharpCompiler = {
+    def compiler = [
+            file("C:/Windows/Microsoft.NET/Framework64/v4.0.30319/csc.exe"),
+            file("C:/Windows/Microsoft.NET/Framework/v4.0.30319/csc.exe")
+    ].find { it.isFile() }
+    if (compiler == null) {
+        throw new GradleException("Windows C# compiler was not found; install .NET Framework 4.x")
+    }
+    return compiler
+}
+
+def nestedGradleArguments = { List<String> arguments ->
+    def result = new ArrayList<String>(arguments)
+    result.addAll(["--console=plain", "--no-daemon"])
+    if (gradle.startParameter.offline) {
+        result.add("--offline")
+    }
+    // Preserve explicit JDK settings, including command-line -D overrides.
+    ["org.gradle.java.home", "org.gradle.java.installations.paths",
+     "org.gradle.java.installations.auto-detect", "org.gradle.java.installations.auto-download"].each { name ->
+        def value = gradle.startParameter.systemPropertiesArgs[name]
+                ?: providers.gradleProperty(name).orNull
+        if (value != null) {
+            result.add("-D${name}=${value}".toString())
+        }
+    }
+    return result
+}
+
+ext.moonsToolchains = [
+        locateCmake          : locateCmake,
+        locateJdkHome        : locateJdkHome,
+        locateCSharpCompiler : locateCSharpCompiler,
+        gradleExecutable     : new File(gradle.gradleHomeDir, windowsHost ? "bin/gradle.bat" : "bin/gradle"),
+        nestedGradleArguments: nestedGradleArguments
+].asImmutable()

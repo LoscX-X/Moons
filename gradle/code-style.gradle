@@ -1,0 +1,102 @@
+// Formatters run in isolated JVMs; they never enter the Minecraft payload.
+configurations {
+    javaFormatter { canBeConsumed = false }
+    kotlinFormatter { canBeConsumed = false }
+}
+
+dependencies {
+    javaFormatter 'com.google.googlejavaformat:google-java-format:1.34.0'
+    kotlinFormatter 'com.facebook:ktfmt:0.63'
+}
+
+def javaSources = files(fileTree('src') { include '**/*.java' },
+        fileTree('tools') { include '**/*.java' })
+def kotlinSources = fileTree('src') { include '**/*.kt', '**/*.kts' }
+
+def registerFormatter = { String taskName, boolean checkOnly, boolean javaLanguage ->
+    tasks.register(taskName, JavaExec) {
+        group = checkOnly ? 'verification' : 'formatting'
+        description = "${checkOnly ? 'Checks' : 'Formats'} all ${javaLanguage ? 'Java' : 'Kotlin'} sources, including both Minecraft versions."
+        def sources = javaLanguage ? javaSources : kotlinSources
+        classpath = javaLanguage ? configurations.javaFormatter : configurations.kotlinFormatter
+        mainClass = javaLanguage ? 'com.google.googlejavaformat.java.Main' : 'com.facebook.ktfmt.cli.Main'
+        workingDir = project.projectDir
+        inputs.files(sources).withPathSensitivity(PathSensitivity.RELATIVE)
+        // Check tasks deliberately have no outputs: each check must inspect the working tree.
+        if (javaLanguage) {
+            jvmArgs(['api', 'file', 'parser', 'tree', 'util', 'code'].collect {
+                "--add-exports=jdk.compiler/com.sun.tools.javac.${it}=ALL-UNNAMED"
+            })
+        }
+        doFirst {
+            // Use formatter argument files to avoid Windows' command-line length limit.
+            def argumentFile = layout.buildDirectory.file("formatting/${taskName}.args").get().asFile
+            argumentFile.parentFile.mkdirs()
+            def options = javaLanguage
+                    ? ['--aosp', '--skip-reflowing-long-strings', '--skip-javadoc-formatting']
+                    : ['--kotlinlang-style']
+            if (checkOnly) options += ['--dry-run', '--set-exit-if-changed']
+            else if (javaLanguage) options += ['--replace']
+            def paths = sources.files.collect { project.relativePath(it) }.sort()
+            argumentFile.setText((options + paths).join('\n') + '\n', 'UTF-8')
+            setArgs(["@${argumentFile.absolutePath}"])
+        }
+    }
+}
+
+registerFormatter('formatJava', false, true)
+registerFormatter('formatKotlin', false, false)
+registerFormatter('checkJavaFormat', true, true)
+registerFormatter('checkKotlinFormat', true, false)
+
+def textSources = files(
+        fileTree('src') { include '**/*.cs' },
+        fileTree('native-agent') { include '**/*.cpp', '**/*.h', 'CMakeLists.txt' },
+        fileTree('native-bridge') { include '**/*.cpp', '**/*.h', 'CMakeLists.txt' },
+        fileTree('gradle') { include '**/*.gradle' },
+        fileTree('scripts') { include '**/*.ps1' },
+        'build.gradle', 'settings.gradle', 'gradle.properties', '.editorconfig', '.gitattributes')
+
+def normalizedText = { File source ->
+    def text = source.getText('UTF-8').replace('\r\n', '\n').replace('\r', '\n')
+    text = text.replaceAll(/(?m)[\t ]+$/, '').replaceAll(/\n*\z/, '') + '\n'
+    source.name.endsWith('.ps1') ? text.replace('\n', '\r\n') : text
+}
+
+tasks.register('checkTextStyle') {
+    group = 'verification'
+    description = 'Checks trailing whitespace and final newlines in build, native, C# and script sources.'
+    inputs.files(textSources).withPathSensitivity(PathSensitivity.RELATIVE)
+    doLast {
+        def violations = textSources.files.findAll { it.getText('UTF-8') != normalizedText(it) }
+        if (!violations.isEmpty()) {
+            throw new GradleException('Text style differs; run formatCode:\n'
+                    + violations.collect { project.relativePath(it) }.sort().join('\n'))
+        }
+    }
+}
+
+tasks.register('formatText') {
+    group = 'formatting'
+    description = 'Normalizes trailing whitespace and final newlines without changing code tokens.'
+    doLast {
+        textSources.files.each { source ->
+            def formatted = normalizedText(source)
+            if (source.getText('UTF-8') != formatted) source.setText(formatted, 'UTF-8')
+        }
+    }
+}
+
+tasks.register('formatCode') {
+    group = 'formatting'
+    description = 'Applies the repository Java, Kotlin and text formatting conventions.'
+    dependsOn 'formatJava', 'formatKotlin', 'formatText'
+}
+
+tasks.register('checkCodeStyle') {
+    group = 'verification'
+    description = 'Checks source formatting without modifying files.'
+    dependsOn 'checkJavaFormat', 'checkKotlinFormat', 'checkTextStyle'
+}
+
+tasks.named('check') { dependsOn 'checkCodeStyle' }

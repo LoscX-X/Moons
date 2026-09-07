@@ -1,0 +1,107 @@
+/* Java payload and fixture archives. Public task names and archive paths are stable. */
+def versionedPayloadDirectory = moonsBuild.payloadDirectory
+def versionedTestDirectory = moonsBuild.testDirectory
+def moonsJarOutputDirectory = moonsBuild.jarOutputDirectory
+
+jar {
+    enabled = false
+}
+
+def apiJar = tasks.register("apiJar", Jar) {
+    archiveFileName = "moons-api.jar"
+    destinationDirectory = layout.buildDirectory.dir(versionedPayloadDirectory)
+    from sourceSets.api.output
+}
+
+def runtimeJar = tasks.register("runtimeJar", Jar) {
+    archiveFileName = "moons-runtime.jar"
+    destinationDirectory = layout.buildDirectory.dir(versionedPayloadDirectory)
+    from sourceSets.runtime.output
+}
+
+def uiDependenciesJar = tasks.register("uiDependenciesJar", moonsPluginTypes.shadowJar) {
+    archiveFileName = "moons-ui-runtime.jar"
+    destinationDirectory = layout.buildDirectory.dir("dist/dependencies")
+    configurations = [project.configurations.composeEmbedded]
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    mergeServiceFiles()
+    exclude "META-INF/INDEX.LIST"
+    exclude "META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA"
+    exclude "META-INF/versions/*/module-info.class", "module-info.class"
+}
+
+def featuresJar = tasks.register("featuresJar", Jar) {
+    archiveFileName = "moons-core-features.jar"
+    destinationDirectory = layout.buildDirectory.dir(versionedPayloadDirectory)
+    dependsOn tasks.named("clientClasses")
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from sourceSets.features.output
+    from sourceSets.client.output
+}
+
+tasks.register("loaderFixtureJar", Jar) {
+    archiveFileName = "moons-loader-fixture.jar"
+    destinationDirectory = layout.buildDirectory.dir(versionedTestDirectory)
+    dependsOn tasks.named("loaderTestClasses")
+    from sourceSets.loaderTest.output
+    manifest {
+        attributes("Main-Class": "com.blanoir.moons.fixture.AttachTarget")
+    }
+}
+
+def nativeAgentFixtureJar = tasks.register("nativeAgentFixtureJar", Jar) {
+    archiveFileName = "moons-native-agent-fixture.jar"
+    destinationDirectory = layout.buildDirectory.dir(versionedTestDirectory)
+    dependsOn tasks.named("loaderTestClasses")
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from sourceSets.loaderTest.output
+    from({
+        configurations.agentRuntimeClasspath
+                .findAll { it.isFile() }
+                .collect { zipTree(it) }
+    }) {
+        exclude "META-INF/MANIFEST.MF"
+        exclude "META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA"
+        exclude "module-info.class"
+    }
+    manifest {
+        attributes("Main-Class": "com.blanoir.moons.nativebridge.NativeAgentVerification")
+    }
+}
+
+tasks.register("moonsJar", Jar) {
+    group = "build"
+    description = "Builds the Java payload loaded by the JNI/JVMTI bridge."
+    dependsOn apiJar, runtimeJar, featuresJar, tasks.named("agentClasses")
+
+    archiveFileName = "moons.jar"
+    destinationDirectory = layout.buildDirectory.dir(moonsJarOutputDirectory)
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
+    from sourceSets.agent.output
+    from({
+        configurations.agentRuntimeClasspath
+                .findAll { it.isFile() }
+                .collect { zipTree(it) }
+    }) {
+        exclude "META-INF/MANIFEST.MF"
+        exclude "META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA"
+        exclude "module-info.class"
+    }
+    into("META-INF/moons/bootstrap") {
+        from(apiJar.flatMap { it.archiveFile })
+    }
+    into("META-INF/moons/runtime") {
+        from(runtimeJar.flatMap { it.archiveFile })
+    }
+    into("META-INF/moons/modules") {
+        from(featuresJar.flatMap { it.archiveFile })
+    }
+
+    manifest {
+        attributes(
+                "Implementation-Title": "Moons JNI/JVMTI payload",
+                "Implementation-Version": project.version
+        )
+    }
+}

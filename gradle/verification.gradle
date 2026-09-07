@@ -1,0 +1,207 @@
+/* Executable verification programs; every client verification runs under check. */
+def selectedMinecraftVersion = moonsBuild.minecraftVersion
+
+tasks.named("test", Test) {
+    // These sources are executable verification programs run by JavaExec tasks.
+    // Keep discovery available for future JUnit tests without requiring any today.
+    failOnNoDiscoveredTests = false
+}
+
+// Add client verification programs here. Each entry is registered and attached
+// to check together, so a new task cannot silently miss the default lifecycle.
+def clientVerifications = [
+        verifyScaffoldRotations: [
+                mainClass: "com.blanoir.moons.client.module.world.scaffold.PlacementRotationVerification",
+                description: "Verifies Scaffold placement rotation history and settling."],
+        verifyScaffoldTrace: [
+                mainClass: "com.blanoir.moons.client.module.world.scaffold.ScaffoldTraceVerification",
+                description: "Verifies bounded Scaffold trace history and immutable incident snapshots."],
+        verifyPlacementTransactions: [
+                mainClass: "com.blanoir.moons.client.management.rotation.PlacementTransactionVerification",
+                description: "Verifies placement transaction ownership and state transitions."],
+        verifyRotationHandoff: [
+                mainClass: "com.blanoir.moons.client.management.rotation.RotationHandoffVerification",
+                description: "Verifies shared silent rotation acquisition, commitment and real-send history."],
+        verifySilentAura: [
+                mainClass: "com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraVerification",
+                description: "Verifies SilentAura prediction, noise, acquisition and packet motion invariants."],
+        verifyXrayMerge: [
+                mainClass: "com.blanoir.moons.client.module.impl.render.xray.XrayMergeVerification",
+                description: "Verifies Xray defaults, master settings and packet scan gating."],
+        verifyAdvancedAntiBot: [
+                mainClass: "com.blanoir.moons.client.module.impl.misc.antibot.AdvancedBotVerification",
+                description: "Verifies unified AntiBot evidence, recovery and legacy mode compatibility."],
+        verifyBacktrack: [
+                mainClass: "com.blanoir.moons.client.module.impl.network.backtrack.BacktrackVerification",
+                description: "Verifies Backtrack burst deadlines and readable legacy ESP colors."],
+        verifyClickGuiWarmup: [
+                mainClass: "com.blanoir.moons.client.ui.clickgui.ClickGuiWarmupVerification",
+                description: "Renders ClickGUI on a worker CPU canvas without a game instance or config writes."],
+        verifyClientEvents: [
+                mainClass: "com.blanoir.moons.client.event.ClientEventVerification",
+                description: "Verifies client listener ownership and first-release mode settings."],
+        verifyRenderRotation: [
+                mainClass: "com.blanoir.moons.features.RenderRotationVerification",
+                description: "Verifies render rotation preview, ownership, and interpolation behavior."],
+        verifyCombatUtils: [
+                mainClass: "com.blanoir.moons.client.utils.CombatUtilsVerification",
+                description: "Verifies shared combat math and rotation boundary semantics."],
+        verifyPlacementUtils: [
+                mainClass: "com.blanoir.moons.client.utils.PlacementUtilsVerification",
+                description: "Verifies shared placement geometry and search ordering."],
+        verifyPresentationUtils: [
+                mainClass: "com.blanoir.moons.client.utils.PresentationUtilsVerification",
+                description: "Verifies shared presentation parsing, formatting and resource contracts."]
+]
+
+def clientVerificationTasks = clientVerifications.collect { taskName, verification ->
+    tasks.register(taskName, JavaExec) {
+        group = "verification"
+        description = verification.description
+        dependsOn tasks.named("testClasses")
+        classpath = sourceSets.test.runtimeClasspath
+        mainClass = verification.mainClass
+    }
+}
+
+tasks.named("verifyAdvancedAntiBot", JavaExec) {
+    if (providers.gradleProperty("antibot_legacy_mode").isPresent()) {
+        args providers.gradleProperty("antibot_legacy_mode").get()
+    }
+}
+
+tasks.named("verifyClickGuiWarmup", JavaExec) {
+    systemProperty "java.awt.headless", "true"
+}
+
+def featureMetadataFile = layout.buildDirectory.file(
+        "resources/features/META-INF/moons-module.properties")
+def verifyFeatureMetadata = tasks.register("verifyFeatureMetadata") {
+    group = "verification"
+    description = "Verifies the expanded feature module metadata."
+    dependsOn tasks.named("processFeaturesResources")
+    inputs.file(featureMetadataFile)
+
+    doLast {
+        def metadataFile = featureMetadataFile.get().asFile
+        if (!metadataFile.isFile()) {
+            throw new GradleException("Feature metadata was not produced: ${metadataFile}")
+        }
+
+        def metadataText = metadataFile.getText("UTF-8")
+        if (metadataText.contains('${')) {
+            throw new GradleException(
+                    "Feature metadata contains an unexpanded placeholder: ${metadataFile}")
+        }
+
+        def metadata = new Properties()
+        metadataFile.withInputStream { metadata.load(it) }
+        def metadataMinecraftVersion = metadata.getProperty("minecraft")
+        if (metadataMinecraftVersion != selectedMinecraftVersion) {
+            throw new GradleException(
+                    "Feature metadata minecraft version ${metadataMinecraftVersion} does not match "
+                            + "selected version ${selectedMinecraftVersion}")
+        }
+    }
+}
+
+tasks.register("verifyMinecraftTransformers", JavaExec) {
+    group = "verification"
+    description = "Transforms and bytecode-verifies every supported hook against the actual Minecraft JAR."
+    dependsOn tasks.named("loaderTestClasses")
+    classpath = sourceSets.loaderTest.runtimeClasspath
+    mainClass = "com.blanoir.moons.agent.core.TransformerVerification"
+    doFirst {
+        def minecraftJars = sourceSets.client.compileClasspath.files.findAll {
+            it.name.toLowerCase(Locale.ROOT).startsWith("minecraft-")
+                    && it.name.toLowerCase(Locale.ROOT).endsWith(".jar")
+        }
+        if (minecraftJars.isEmpty()) {
+            throw new GradleException("Unable to locate the Loom Minecraft JARs")
+        }
+        def sodiumJar = file("libs/sodium.jar")
+        if (sodiumJar.isFile()) minecraftJars.add(sodiumJar)
+        args = minecraftJars.collect { it.absolutePath }
+    }
+}
+
+tasks.register("verifyRuntimeLifecycle", JavaExec) {
+    group = "verification"
+    description = "Verifies deterministic subscription and module resource cleanup."
+    dependsOn tasks.named("loaderTestClasses")
+    classpath = sourceSets.loaderTest.runtimeClasspath
+    mainClass = "com.blanoir.moons.runtime.LifecycleVerification"
+}
+
+tasks.named("check").configure {
+    dependsOn "clientClasses", "featuresClasses", "verifyFeatureMetadata", "verifySourceLayout"
+    dependsOn clientVerificationTasks
+    dependsOn "verifyMinecraftTransformers", "verifyRuntimeLifecycle"
+    dependsOn "verifyNativeAgent", "verifyNativeMoonsTransformer"
+}
+
+// A Gradle invocation selects exactly one Minecraft version. Run each complete
+// check in its own output tree, sequentially, using this Gradle distribution.
+def versionChecks = []
+moonsBuild.supportedVersions.each { minecraftVersion, directory ->
+    def previousCheck = versionChecks.isEmpty() ? null : versionChecks.last()
+    def versionCheck = tasks.register("checkMinecraft${directory}", Exec) {
+        group = "verification"
+        description = "Runs the full check lifecycle for Minecraft ${minecraftVersion}."
+        if (previousCheck != null) {
+            mustRunAfter previousCheck
+        }
+        mustRunAfter tasks.named("check")
+        workingDir project.projectDir
+        executable moonsToolchains.gradleExecutable.absolutePath
+        def nestedBuild = layout.buildDirectory.dir("checks/${directory}").get().asFile.absolutePath
+        args moonsToolchains.nestedGradleArguments([
+                "check",
+                "-Pminecraft_version=${minecraftVersion}",
+                "-Pmoons_build_directory=${nestedBuild}",
+                "-Pmoons_jar_output_directory=verification/agent/${directory}"
+        ].collect { it.toString() })
+    }
+    versionChecks.add(versionCheck)
+}
+
+def hostVerificationExecutable = layout.buildDirectory.file("verification/host/HostUtilsVerification.exe")
+def compileHostUtilsVerification = tasks.register("compileHostUtilsVerification", Exec) {
+    group = "verification"
+    description = "Compiles the launcher with a utility-only verification entry point."
+    def sources = files(
+            fileTree("src/tools/launcher/csharp") { include "*.cs" },
+            fileTree("src/tools/shared") { include "*.cs" },
+            "src/test/host/csharp/HostUtilsVerification.cs")
+    inputs.files(sources)
+    outputs.file(hostVerificationExecutable)
+    doFirst {
+        def output = hostVerificationExecutable.get().asFile
+        output.parentFile.mkdirs()
+        executable moonsToolchains.locateCSharpCompiler().absolutePath
+        args "/nologo", "/target:exe", "/platform:x64",
+                "/main:Moons.Verification.HostUtilsVerification",
+                "/reference:System.Windows.Forms.dll", "/reference:System.Management.dll",
+                "/reference:System.IO.Compression.dll", "/reference:System.IO.Compression.FileSystem.dll",
+                "/out:${output.absolutePath}"
+        args sources.files.collect { it.absolutePath }.sort()
+    }
+}
+
+def verifyHostUtilities = tasks.register("verifyHostUtilities", Exec) {
+    group = "verification"
+    description = "Verifies launcher utility I/O and compiles both Windows entry points."
+    dependsOn compileHostUtilsVerification, tasks.named("moonsHwidExe")
+    doFirst {
+        executable hostVerificationExecutable.get().asFile.absolutePath
+    }
+}
+
+tasks.register("checkAllVersions") {
+    group = "verification"
+    description = "Runs all verification gates sequentially against every supported Minecraft version."
+    dependsOn versionChecks
+    if (moonsBuild.windowsHost) {
+        dependsOn verifyHostUtilities
+    }
+}

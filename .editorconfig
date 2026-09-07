@@ -6,9 +6,16 @@ end_of_line = lf
 insert_final_newline = true
 trim_trailing_whitespace = true
 
-[*.{java,kt,kts,gradle,groovy}]
+[*.{java,kt,kts,gradle,groovy,cs,cpp,h,ps1}]
 indent_style = space
 indent_size = 4
+
+[*.java]
+max_line_length = 100
+
+[*.{kt,kts}]
+max_line_length = 100
+ij_kotlin_code_style_defaults = KOTLIN_OFFICIAL
 
 [*.{json,properties,yml,yaml}]
 indent_style = space

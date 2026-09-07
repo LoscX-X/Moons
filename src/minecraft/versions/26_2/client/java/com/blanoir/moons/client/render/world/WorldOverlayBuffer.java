@@ -1,0 +1,73 @@
+package com.blanoir.moons.client.render.world;
+
+import com.blanoir.moons.client.access.MinecraftClientAccess;
+import com.blanoir.moons.client.config.MoonsConfig;
+import com.mojang.blaze3d.PrimitiveTopology;
+import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.blaze3d.systems.RenderPass;
+import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.mojang.blaze3d.vertex.VertexSorting;
+
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.StagedVertexBuffer;
+
+import java.util.Optional;
+import java.util.OptionalDouble;
+import java.util.function.Consumer;
+
+public final class WorldOverlayBuffer {
+    private static final StagedVertexBuffer BUFFER =
+            new StagedVertexBuffer(() -> MoonsConfig.MOD_ID + " world overlay", 262_144);
+
+    private WorldOverlayBuffer() {}
+
+    public static synchronized void draw(
+            Minecraft client,
+            RenderPipeline pipeline,
+            String label,
+            Consumer<VertexConsumer> writer) {
+        var mainTarget = MinecraftClientAccess.mainRenderTarget(client);
+        var colorView = mainTarget.getColorTextureView();
+        var format = pipeline.getVertexFormatBinding(0);
+        if (colorView == null || format == null) return;
+        PrimitiveTopology topology = pipeline.getPrimitiveTopology();
+        VertexSorting sorting =
+                topology == PrimitiveTopology.QUADS
+                        ? RenderSystem.getProjectionType().vertexSorting()
+                        : null;
+        StagedVertexBuffer.Draw draw = BUFFER.appendDraw(format, topology, sorting);
+        writer.accept(BUFFER.getVertexBuilder(draw));
+        BUFFER.upload();
+
+        StagedVertexBuffer.ExecuteInfo info = BUFFER.getExecuteInfo(draw);
+        if (info != null) {
+            GpuBufferSlice transforms =
+                    RenderSystem.getDynamicUniforms()
+                            .writeTransform(RenderSystem.getModelViewMatrixCopy());
+            try (RenderPass pass =
+                    RenderSystem.getDevice()
+                            .createCommandEncoder()
+                            .createRenderPass(
+                                    () -> MoonsConfig.MOD_ID + " " + label,
+                                    colorView,
+                                    Optional.empty(),
+                                    mainTarget.getDepthTextureView(),
+                                    OptionalDouble.empty())) {
+                pass.setPipeline(pipeline);
+                RenderSystem.bindDefaultUniforms(pass);
+                pass.setUniform("DynamicTransforms", transforms);
+                pass.setVertexBuffer(0, info.vertexBuffer().slice());
+                pass.setIndexBuffer(info.indexBuffer(), info.indexType());
+                pass.drawIndexed(info.indexCount(), 1, info.firstIndex(), info.baseVertex(), 0);
+            }
+        }
+
+        BUFFER.endFrame();
+    }
+
+    public static synchronized void close() {
+        BUFFER.close();
+    }
+}

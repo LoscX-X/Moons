@@ -1,0 +1,238 @@
+/* Universal payload assembly and Windows distribution. */
+def locateJdkHome = moonsToolchains.locateJdkHome
+def locateCSharpCompiler = moonsToolchains.locateCSharpCompiler
+def apiJar = tasks.named("apiJar", Jar)
+def bridgeDll = tasks.named("bridgeDll")
+def uiDependenciesJar = tasks.named("uiDependenciesJar")
+def nestedGradleExecutable = moonsToolchains.gradleExecutable
+
+def nestedInvocation = ProcessHandle.current().pid().toString()
+def nestedPayloadBuildRoot = layout.buildDirectory.dir("universal-work/${nestedInvocation}").get().asFile
+
+def universalPayload26_1 = tasks.register("universalPayload26_1", Exec) {
+    group = "build"
+    description = "Builds the Minecraft 26.1 payload for the universal loader."
+    def nestedBuild = "${nestedPayloadBuildRoot}/26.1"
+    def nestedPayload = file("${nestedBuild}/universal/26.1/moons.jar")
+    def publishedPayload = layout.buildDirectory.file("universal/26.1/moons.jar")
+    workingDir project.projectDir
+    executable nestedGradleExecutable.absolutePath
+    args moonsToolchains.nestedGradleArguments([
+            "moonsJar",
+            "-Pminecraft_version=26.1.2",
+            "-Pmoons_build_directory=${nestedBuild}",
+            "-Pmoons_jar_output_directory=universal/26.1"
+    ].collect { it.toString() })
+    doLast {
+        if (!nestedPayload.isFile()) {
+            throw new GradleException("Nested 26.1 payload was not produced: ${nestedPayload}")
+        }
+        def destination = publishedPayload.get().asFile.toPath()
+        java.nio.file.Files.createDirectories(destination.parent)
+        java.nio.file.Files.copy(
+                nestedPayload.toPath(),
+                destination,
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING
+        )
+    }
+}
+universalPayload26_1.configure {
+    mustRunAfter apiJar, bridgeDll
+}
+
+def universalPayload26_2 = tasks.register("universalPayload26_2", Exec) {
+    group = "build"
+    description = "Builds the Minecraft 26.2 payload for the universal loader."
+    dependsOn universalPayload26_1
+    def nestedBuild = "${nestedPayloadBuildRoot}/26.2"
+    def nestedPayload = file("${nestedBuild}/universal/26.2/moons.jar")
+    def publishedPayload = layout.buildDirectory.file("universal/26.2/moons.jar")
+    workingDir project.projectDir
+    executable nestedGradleExecutable.absolutePath
+    args moonsToolchains.nestedGradleArguments([
+            "moonsJar",
+            "-Pminecraft_version=26.2",
+            "-Pmoons_build_directory=${nestedBuild}",
+            "-Pmoons_jar_output_directory=universal/26.2"
+    ].collect { it.toString() })
+    doLast {
+        if (!nestedPayload.isFile()) {
+            throw new GradleException("Nested 26.2 payload was not produced: ${nestedPayload}")
+        }
+        def destination = publishedPayload.get().asFile.toPath()
+        java.nio.file.Files.createDirectories(destination.parent)
+        java.nio.file.Files.copy(
+                nestedPayload.toPath(),
+                destination,
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING
+        )
+    }
+}
+
+def universalPayloadPatch = tasks.register("universalPayloadPatch", Exec) {
+    group = "build"
+    description = "Builds a compact entry-level 26.2 overlay over the 26.1 payload."
+    dependsOn universalPayload26_2
+
+    def source = layout.projectDirectory.file("tools/PayloadPatchBuilder.java")
+    def payload26_1 = layout.buildDirectory.file("universal/26.1/moons.jar")
+    def payload26_2 = layout.buildDirectory.file("universal/26.2/moons.jar")
+    def output = layout.buildDirectory.file("universal/moons-26.2.patch.zip")
+    inputs.file(source)
+    inputs.file(payload26_1)
+    inputs.file(payload26_2)
+    outputs.file(output)
+
+    doFirst {
+        output.get().asFile.parentFile.mkdirs()
+        def javaExecutable = new File(locateJdkHome(), "bin/java.exe")
+        executable javaExecutable.absolutePath
+        args(
+                source.asFile.absolutePath,
+                payload26_1.get().asFile.absolutePath,
+                payload26_2.get().asFile.absolutePath,
+                output.get().asFile.absolutePath
+        )
+    }
+}
+
+def moonsHwidExe = tasks.register("moonsHwidExe", Exec) {
+    group = "build"
+    description = "Builds the out-of-process Windows hardware ID helper."
+
+    def source = layout.projectDirectory.file("src/tools/hwid/csharp/MoonsHardwareId.cs")
+    def generator = layout.projectDirectory.file("src/tools/shared/HardwareIdGenerator.cs")
+    def hashing = layout.projectDirectory.file("src/tools/shared/Hashing.cs")
+    def output = layout.buildDirectory.file("dist/moons-hwid.exe")
+    inputs.file(source)
+    inputs.file(generator)
+    inputs.file(hashing)
+    outputs.file(output)
+
+    doFirst {
+        if (!System.getProperty("os.name").toLowerCase(java.util.Locale.ROOT).contains("windows")) {
+            throw new GradleException("moonsHwidExe currently requires Windows")
+        }
+        def compiler = locateCSharpCompiler()
+
+        output.get().asFile.parentFile.mkdirs()
+        executable compiler.absolutePath
+        args(
+                "/nologo",
+                "/target:winexe",
+                "/optimize+",
+                "/platform:x64",
+                "/reference:System.Management.dll",
+                "/reference:System.Windows.Forms.dll",
+                "/out:${output.get().asFile.absolutePath}",
+                generator.asFile.absolutePath,
+                hashing.asFile.absolutePath,
+                source.asFile.absolutePath
+        )
+    }
+}
+
+def moonsExe = tasks.register("moonsExe", Exec) {
+    group = "build"
+    description = "Builds one Windows loader with a separately downloaded UI runtime."
+    dependsOn universalPayloadPatch, apiJar, bridgeDll, moonsHwidExe, uiDependenciesJar
+
+    def source = layout.projectDirectory.file("src/tools/launcher/csharp/MoonsExeLauncher.cs")
+    def hardwareIdGenerator = layout.projectDirectory.file("src/tools/shared/HardwareIdGenerator.cs")
+    def processEvidenceCache = layout.projectDirectory.file("src/tools/launcher/csharp/ProcessEvidenceCache.cs")
+    def loadLease = layout.projectDirectory.file("src/tools/launcher/csharp/LoadLease.cs")
+    def bridgeAttemptMonitor = layout.projectDirectory.file("src/tools/launcher/csharp/BridgeAttemptMonitor.cs")
+    def utilitySources = files(
+            "src/tools/shared/Hashing.cs",
+            "src/tools/shared/StagedFile.cs",
+            "src/tools/launcher/csharp/RuntimeMetadata.cs",
+            "src/tools/launcher/csharp/ZipEntries.cs")
+    def payload26_1 = layout.buildDirectory.file("universal/26.1/moons.jar")
+    def payload26_2Patch = layout.buildDirectory.file("universal/moons-26.2.patch.zip")
+    def bootstrapApi = apiJar.flatMap { it.archiveFile }
+    def bridge = layout.buildDirectory.file("${moonsBuild.loaderStagingDirectory}/moons-bridge.dll")
+    def uiRuntime = uiDependenciesJar.flatMap { it.archiveFile }
+    def uiMetadata = layout.buildDirectory.file("generated/launcher/ui-runtime.properties")
+    def uiDownloadUrl = providers.gradleProperty("moons_ui_download_url").getOrElse("").trim()
+    def output = layout.buildDirectory.file("dist/moons.exe")
+    inputs.files(source, hardwareIdGenerator, processEvidenceCache, loadLease,
+            bridgeAttemptMonitor)
+    inputs.files(utilitySources)
+    inputs.file(payload26_1)
+    inputs.file(payload26_2Patch)
+    inputs.file(bootstrapApi)
+    inputs.file(bridge)
+    inputs.file(uiRuntime)
+    inputs.property("moonsUiDownloadUrl", uiDownloadUrl)
+    outputs.file(output)
+    outputs.file(uiMetadata)
+    outputs.file(uiRuntime.map { file("${it.asFile.absolutePath}.sha256") })
+
+    doFirst {
+        if (!System.getProperty("os.name").toLowerCase(java.util.Locale.ROOT).contains("windows")) {
+            throw new GradleException("moonsExe currently requires Windows")
+        }
+        def compiler = locateCSharpCompiler()
+
+        output.get().asFile.parentFile.mkdirs()
+        def uiRuntimeFile = uiRuntime.get().asFile
+        def sha = java.security.MessageDigest.getInstance("SHA-256")
+                .digest(java.nio.file.Files.readAllBytes(uiRuntimeFile.toPath()))
+                .collect { String.format("%02x", it & 0xff) }
+                .join()
+        if (uiDownloadUrl.contains("\r") || uiDownloadUrl.contains("\n")) {
+            throw new GradleException("moons_ui_download_url must be a single URL")
+        }
+        def metadataFile = uiMetadata.get().asFile
+        metadataFile.parentFile.mkdirs()
+        metadataFile.setText(
+                "format=1\n"
+                        + "url=${uiDownloadUrl}\n"
+                        + "sha256=${sha}\n"
+                        + "size=${uiRuntimeFile.length()}\n",
+                "UTF-8"
+        )
+        file("${uiRuntimeFile.absolutePath}.sha256").setText(sha + "\n", "US-ASCII")
+        executable compiler.absolutePath
+        args(
+                "/nologo",
+                "/target:winexe",
+                "/optimize+",
+                "/platform:x64",
+                "/reference:System.Windows.Forms.dll",
+                "/reference:System.Management.dll",
+                "/reference:System.IO.Compression.dll",
+                "/reference:System.IO.Compression.FileSystem.dll",
+                "/out:${output.get().asFile.absolutePath}",
+                "/resource:${metadataFile.absolutePath},Moons.UiRuntime.properties",
+                "/resource:${payload26_1.get().asFile.absolutePath},Moons.Payload.26_1.jar",
+                "/resource:${payload26_2Patch.get().asFile.absolutePath},Moons.Payload.26_2.patch",
+                "/resource:${bootstrapApi.get().asFile.absolutePath},Moons.Api.jar",
+                "/resource:${bridge.get().asFile.absolutePath},Moons.Bridge.dll",
+                hardwareIdGenerator.asFile.absolutePath,
+                processEvidenceCache.asFile.absolutePath,
+                loadLease.asFile.absolutePath,
+                bridgeAttemptMonitor.asFile.absolutePath,
+                source.asFile.absolutePath
+        )
+        args utilitySources.files.collect { it.absolutePath }.sort()
+    }
+}
+
+tasks.named("assemble").configure {
+    dependsOn tasks.named("moonsJar")
+    dependsOn moonsExe
+    dependsOn bridgeDll
+}
+
+publishing {
+    publications {
+        create("mavenJava", MavenPublication) {
+            artifactId = project.archives_base_name
+            from components.java
+        }
+    }
+
+    repositories {
+    }
+}

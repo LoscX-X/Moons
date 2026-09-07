@@ -14,11 +14,10 @@ import java.util.zip.ZipOutputStream;
 
 /** Builds the compact 26.2 payload overlay embedded by the universal launcher. */
 public final class PayloadPatchBuilder {
-    private static final String FEATURES_JAR =
-            "META-INF/moons/modules/moons-core-features.jar";
+    private static final String FEATURES_JAR = "META-INF/moons/modules/moons-core-features.jar";
     private static final String METADATA = "META-INF/moons-patch/";
 
-    private PayloadPatchBuilder() { }
+    private PayloadPatchBuilder() {}
 
     public static void main(String[] args) throws Exception {
         if (args.length == 3 && args[0].equals("--verify")) {
@@ -42,10 +41,9 @@ public final class PayloadPatchBuilder {
         TreeSet<String> outerDeletes = deletions(baseOuter, targetOuter, FEATURES_JAR);
         Map<String, byte[]> baseFeatureEntries = readZip(baseFeatures);
         Map<String, byte[]> targetFeatureEntries = readZip(targetFeatures);
-        Map<String, byte[]> featureChanges = changes(
-                baseFeatureEntries, targetFeatureEntries, null);
-        TreeSet<String> featureDeletes = deletions(
-                baseFeatureEntries, targetFeatureEntries, null);
+        Map<String, byte[]> featureChanges =
+                changes(baseFeatureEntries, targetFeatureEntries, null);
+        TreeSet<String> featureDeletes = deletions(baseFeatureEntries, targetFeatureEntries, null);
 
         Files.createDirectories(outputPath.toAbsolutePath().getParent());
         try (ZipOutputStream output = new ZipOutputStream(Files.newOutputStream(outputPath))) {
@@ -62,8 +60,11 @@ public final class PayloadPatchBuilder {
         System.out.printf(
                 "MOONS_PAYLOAD_PATCH outerChanged=%d outerDeleted=%d "
                         + "featuresChanged=%d featuresDeleted=%d bytes=%d%n",
-                outerChanges.size(), outerDeletes.size(),
-                featureChanges.size(), featureDeletes.size(), Files.size(outputPath));
+                outerChanges.size(),
+                outerDeletes.size(),
+                featureChanges.size(),
+                featureDeletes.size(),
+                Files.size(outputPath));
     }
 
     private static void verify(Path expectedPath, Path actualPath) throws IOException {
@@ -82,10 +83,7 @@ public final class PayloadPatchBuilder {
     }
 
     private static void assertSame(
-            String label,
-            Map<String, byte[]> expected,
-            Map<String, byte[]> actual
-    ) {
+            String label, Map<String, byte[]> expected, Map<String, byte[]> actual) {
         if (!expected.keySet().equals(actual.keySet())) {
             TreeSet<String> missing = new TreeSet<>(expected.keySet());
             missing.removeAll(actual.keySet());
@@ -96,8 +94,7 @@ public final class PayloadPatchBuilder {
         }
         for (Map.Entry<String, byte[]> entry : expected.entrySet()) {
             if (!Arrays.equals(entry.getValue(), actual.get(entry.getKey()))) {
-                throw new IllegalStateException(
-                        label + " content mismatch: " + entry.getKey());
+                throw new IllegalStateException(label + " content mismatch: " + entry.getKey());
             }
         }
     }
@@ -124,10 +121,7 @@ public final class PayloadPatchBuilder {
     }
 
     private static Map<String, byte[]> changes(
-            Map<String, byte[]> base,
-            Map<String, byte[]> target,
-            String excluded
-    ) {
+            Map<String, byte[]> base, Map<String, byte[]> target, String excluded) {
         Map<String, byte[]> result = new LinkedHashMap<>();
         for (Map.Entry<String, byte[]> entry : target.entrySet()) {
             if (entry.getKey().equals(excluded)) {
@@ -142,10 +136,7 @@ public final class PayloadPatchBuilder {
     }
 
     private static TreeSet<String> deletions(
-            Map<String, byte[]> base,
-            Map<String, byte[]> target,
-            String excluded
-    ) {
+            Map<String, byte[]> base, Map<String, byte[]> target, String excluded) {
         TreeSet<String> result = new TreeSet<>();
         for (String name : base.keySet()) {
             if (!name.equals(excluded) && !target.containsKey(name)) {

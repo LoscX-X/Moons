@@ -15,17 +15,20 @@ public final class PacketEventAdapter {
     private PacketEventAdapter() {}
 
     public static void initPacketListeners() {
-        EventBus.PACKET_RECEIVE_PRE.register("PacketEventAdapter.bundle", event -> {
-            if (!(event.packet() instanceof ClientboundBundlePacket)) return;
-            PacketReceiveEvent.Bundle bundle = new PacketReceiveEvent.Bundle();
-            EventBus.PACKET_RECEIVE_BUNDLE.post(bundle);
-            if (bundle.expansionRequested()) event.requestBundleExpansion();
-        });
+        EventBus.PACKET_RECEIVE_PRE.register(
+                "PacketEventAdapter.bundle",
+                event -> {
+                    if (!(event.packet() instanceof ClientboundBundlePacket)) return;
+                    PacketReceiveEvent.Bundle bundle = new PacketReceiveEvent.Bundle();
+                    EventBus.PACKET_RECEIVE_BUNDLE.post(bundle);
+                    if (bundle.expansionRequested()) event.requestBundleExpansion();
+                });
     }
 
     public static boolean send(Object connection, Object packet) {
-        PacketSendEvent.Pre event = new PacketSendEvent.Pre(
-                (Connection) connection, (Packet<?>) packet, packetThread());
+        PacketSendEvent.Pre event =
+                new PacketSendEvent.Pre(
+                        (Connection) connection, (Packet<?>) packet, packetThread());
         EventBus.PACKET_SEND_PRE.post(event);
         return !event.isCancelled();
     }
@@ -33,8 +36,9 @@ public final class PacketEventAdapter {
     public static void sent(Object connection, Object packet) {
         RotationLease.beginPacketObservation();
         try {
-            EventBus.PACKET_SEND_POST.post(new PacketSendEvent.Post(
-                    (Connection) connection, (Packet<?>) packet, packetThread()));
+            EventBus.PACKET_SEND_POST.post(
+                    new PacketSendEvent.Post(
+                            (Connection) connection, (Packet<?>) packet, packetThread()));
         } finally {
             RotationLease.endPacketObservation();
         }
@@ -42,12 +46,15 @@ public final class PacketEventAdapter {
 
     public static void receive(Object packet, Object listener, Runnable cancel) {
         if (packetThread() == PacketThread.CLIENT) return;
-        PacketReceiveEvent.Pre event = new PacketReceiveEvent.Pre(
-                (Packet<?>) packet, (PacketListener) listener, PacketThread.NETWORK);
+        PacketReceiveEvent.Pre event =
+                new PacketReceiveEvent.Pre(
+                        (Packet<?>) packet, (PacketListener) listener, PacketThread.NETWORK);
         EventBus.PACKET_RECEIVE_PRE.post(event);
         if (event.bundleExpansionRequested() && packet instanceof ClientboundBundlePacket bundle) {
             cancel.run();
-            bundle.subPackets().forEach(child -> GameAccess.dispatchIncoming(child, (PacketListener) listener));
+            bundle.subPackets()
+                    .forEach(
+                            child -> GameAccess.dispatchIncoming(child, (PacketListener) listener));
         } else if (event.isCancelled()) {
             cancel.run();
         }

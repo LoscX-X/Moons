@@ -1,11 +1,11 @@
 package com.blanoir.moons.client.module.impl.network;
 
+import com.blanoir.moons.client.access.PacketAccess;
 import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.IntSetting;
 import com.blanoir.moons.client.config.settings.ModeSetting;
 import com.blanoir.moons.client.event.EventBus;
-import com.blanoir.moons.client.access.PacketAccess;
 import com.blanoir.moons.client.event.tick.TickEvent;
 import com.blanoir.moons.client.management.network.PacketDelayQueue;
 import com.blanoir.moons.client.utils.client.ClientReady;
@@ -90,11 +90,13 @@ public final class FakeLag {
                 event -> {
                     // Expanded children re-enter PRE individually. Preserve per-child mode order.
                     if (event.bundleExpansionRequested()) return;
-                    PacketAccess.forEachPacket(event.packet(), packet -> {
-                        handleIncoming(packet);
-                        LowHealthFakeLag.handleIncoming(packet);
-                        RandomFakeLag.handleIncoming(packet);
-                    });
+                    PacketAccess.forEachPacket(
+                            event.packet(),
+                            packet -> {
+                                handleIncoming(packet);
+                                LowHealthFakeLag.handleIncoming(packet);
+                                RandomFakeLag.handleIncoming(packet);
+                            });
                 });
     }
 

@@ -4,7 +4,6 @@ import com.blanoir.moons.api.ResourceScope;
 import com.blanoir.moons.client.access.GameAccess;
 import com.blanoir.moons.client.access.MinecraftClientAccess;
 import com.blanoir.moons.client.event.EventBus;
-import com.blanoir.moons.client.event.network.PacketEventAdapter;
 import com.blanoir.moons.client.event.action.AttackInputEvent;
 import com.blanoir.moons.client.event.action.UseInputEvent;
 import com.blanoir.moons.client.event.frame.FrameEvent;
@@ -20,6 +19,7 @@ import com.blanoir.moons.client.event.movement.PlayerMotionEvent;
 import com.blanoir.moons.client.event.movement.PlayerMoveEndEvent;
 import com.blanoir.moons.client.event.movement.PlayerUpdateEvent;
 import com.blanoir.moons.client.event.movement.StrafeEvent;
+import com.blanoir.moons.client.event.network.PacketEventAdapter;
 import com.blanoir.moons.client.event.render.EntityRenderStateEvent;
 import com.blanoir.moons.client.event.render.RendererCloseEvent;
 import com.blanoir.moons.client.event.tick.TickEndEvent;
@@ -432,15 +432,18 @@ final class RuntimeEventAdapter {
     private void packet(RuntimeEvents.Packet event) {
         switch (event.phase()) {
             case SEND_PRE -> {
-                if (!PacketEventAdapter.send(event.connection(), event.packet())) event.control().cancel();
+                if (!PacketEventAdapter.send(event.connection(), event.packet()))
+                    event.control().cancel();
             }
             case SEND_POST -> PacketEventAdapter.sent(event.connection(), event.packet());
             case RECEIVE_NETWORK -> {
-                PacketEventAdapter.receive(event.packet(), event.connection(), event.control()::cancel);
+                PacketEventAdapter.receive(
+                        event.packet(), event.connection(), event.control()::cancel);
             }
             case RECEIVE_APPLY -> PacketEventAdapter.apply(event.packet(), event.connection());
         }
     }
+
     private void blockUpdate(RuntimeEvents.BlockUpdate event) {
         if (!(event.level() instanceof ClientLevel level)
                 || !(event.position() instanceof BlockPos position)

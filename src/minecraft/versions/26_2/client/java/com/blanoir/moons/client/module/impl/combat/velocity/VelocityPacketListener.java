@@ -25,15 +25,18 @@ public final class VelocityPacketListener {
     private VelocityPacketListener() {}
 
     public static void init() {
-        EventBus.PACKET_RECEIVE_PRE.register("Velocity.packetReceive", VelocityPacketListener::receive);
+        EventBus.PACKET_RECEIVE_PRE.register(
+                "Velocity.packetReceive", VelocityPacketListener::receive);
     }
 
     public static void initJumpReset() {
-        EventBus.PACKET_RECEIVE_APPLY.register("JumpReset.velocityApplied", event -> {
-        if (event.packet() instanceof ClientboundSetEntityMotionPacket motion) {
-            JumpReset.handleEntityVelocity(motion.id(), motion.movement());
-        }
-        });
+        EventBus.PACKET_RECEIVE_APPLY.register(
+                "JumpReset.velocityApplied",
+                event -> {
+                    if (event.packet() instanceof ClientboundSetEntityMotionPacket motion) {
+                        JumpReset.handleEntityVelocity(motion.id(), motion.movement());
+                    }
+                });
     }
 
     private static void receive(PacketReceiveEvent.Pre event) {

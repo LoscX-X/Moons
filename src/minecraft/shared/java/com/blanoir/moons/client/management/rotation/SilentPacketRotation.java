@@ -489,7 +489,7 @@ public final class SilentPacketRotation {
     /** Handles a real send attributed to this request by RotationHistory. */
     private static void markOutgoing(float yaw, float pitch) {
         if (active || holdingRotation) {
-            // Freeze on the exact float pair that Grim will compare with the
+            // Freeze on the exact float pair that the server will compare with the
             // following USE_ITEM packet; also marks the return packet as sent.
             packetYaw = yaw;
             packetPitch = pitch;
@@ -561,7 +561,7 @@ public final class SilentPacketRotation {
     /**
      * Random ±1..2 mouse-GCD steps. Applied to every scaffold-published
      * rotation to vary consecutive rotation deltas (repetition is still possible)
-     * (Grim DuplicateRotPlace) while every angle stays mouse-reachable.
+     * while every angle stays mouse-reachable.
      */
     public static float packetRotationJitter() {
         double gcd = mouseSensitivityGcd();
@@ -629,7 +629,7 @@ public final class SilentPacketRotation {
         if (!packetSent) {
             // startUseItem may have returned before using an item (busy hand,
             // cooldown, etc.). No USE_ITEM reached the wire, hence there is no
-            // Grim window to close and the module may confirm failure normally.
+            // interaction window to close and the module may confirm failure normally.
             ROTATION_LEASE.unpin();
             if (deferredReset) completeDeferredReset();
             RotationLease.resumePending();

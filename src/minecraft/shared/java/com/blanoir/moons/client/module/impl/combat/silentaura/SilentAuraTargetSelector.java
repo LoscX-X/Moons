@@ -24,7 +24,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
-/** LiquidBounce-style target tracking and box-surface aim-point resolution. */
+/** Target tracking and box-surface aim-point resolution. */
 public final class SilentAuraTargetSelector {
     /** Closest still aims near the eye-facing side, but never at a fragile box edge. */
     private static final double CLOSEST_INSET = 0.055D;

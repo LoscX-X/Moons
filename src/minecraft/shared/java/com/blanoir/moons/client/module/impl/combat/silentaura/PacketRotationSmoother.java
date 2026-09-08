@@ -20,7 +20,7 @@ public final class PacketRotationSmoother {
     private static final float PITCH_DEADZONE = 0.045F;
     private static final float MAX_YAW_STEP = 48.0F;
 
-    /** Matrix snap compares two consecutive yaw deltas above 20 degrees. */
+    /** Limits consecutive yaw deltas to avoid repeated steps above 20 degrees. */
     private static final float OVERLAP_MAX_YAW_STEP = 18.0F;
 
     private static final float MAX_PITCH_STEP = 32.0F;
@@ -102,8 +102,8 @@ public final class PacketRotationSmoother {
         double demand = Math.hypot(yawDemand, pitchDemand);
         double urgency = Mth.clamp(demand / 55.0D, 0.0D, 1.0D);
 
-        // MATRIX-SPECIFIC SWITCH -- the true branch is the established,
-        // documented profile. Do not tune it while making Generic faster.
+        // The compatibility profile retains stricter acceleration bounds;
+        // the generic profile can respond faster.
         HumanAimSimulator.PacketMotion motion =
                 matrixCompatibility
                         ? HumanAimSimulator.samplePacketMotion(lockMode, urgency)
@@ -135,7 +135,7 @@ public final class PacketRotationSmoother {
         // The look direction is geometrically unstable while the eye is in the
         // target box. Cap the final packet-domain delta as well as the render
         // controller: render sampling can otherwise preserve a >20-degree
-        // previous step for a second packet and match Matrix's snap pair.
+        // previous step for a second packet, causing consecutive large turns.
         if (matrixCompatibility && overlappingTarget) {
             yawStep = Mth.clamp(yawStep, -OVERLAP_MAX_YAW_STEP, OVERLAP_MAX_YAW_STEP);
         }

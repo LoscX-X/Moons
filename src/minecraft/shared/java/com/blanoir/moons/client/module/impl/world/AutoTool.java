@@ -1,8 +1,9 @@
 /*
  * AutoTool for Moons.
  *
- * Ported from LiquidBounce (GPL-3.0) ModuleAutoTool: while mining a block the
+ * While mining a block the
  * best hotbar tool is selected and kept selected after mining stops.
+ * Source attribution is recorded in THIRD_PARTY_NOTICES.md.
  */
 package com.blanoir.moons.client.module.impl.world;
 
@@ -122,10 +123,9 @@ public final class AutoTool {
             return;
         }
 
-        if (isMiningBlock(client)) {
+        BlockState state = miningBlockState(client);
+        if (state != null) {
             if (manualOverride) return;
-            BlockState state =
-                    client.level.getBlockState(((BlockHitResult) client.hitResult).getBlockPos());
             int best = findBestToolSlot(client, state);
             if (best == -1 || best == client.player.getInventory().getSelectedSlot()) {
                 return;
@@ -138,23 +138,25 @@ public final class AutoTool {
         }
     }
 
-    private static boolean isMiningBlock(Minecraft client) {
+    private static BlockState miningBlockState(Minecraft client) {
         if (!(client.hitResult instanceof BlockHitResult hit)
                 || !client.options.keyAttack.isDown()) {
-            return false;
+            return null;
         }
 
         if (REQUIRE_SNEAKING.get() && !client.player.isShiftKeyDown()) {
-            return false;
+            return null;
         }
 
         BlockState state = client.level.getBlockState(hit.getBlockPos());
         if (state.isAir() || state.getDestroySpeed(client.level, hit.getBlockPos()) < 0.0F) {
-            return false;
+            return null;
         }
 
         double range = client.player.blockInteractionRange();
-        return hit.getLocation().distanceToSqr(client.player.getEyePosition()) <= range * range;
+        return hit.getLocation().distanceToSqr(client.player.getEyePosition()) <= range * range
+                ? state
+                : null;
     }
 
     private static int findBestToolSlot(Minecraft client, BlockState state) {

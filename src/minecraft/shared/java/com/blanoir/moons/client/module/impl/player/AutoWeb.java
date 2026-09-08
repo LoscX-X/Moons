@@ -180,11 +180,7 @@ public final class AutoWeb {
 
         observePlacementConfirmation(client);
 
-        if (AutoLava.isBusy()
-                || AntiLava.isBusy()
-                || AntiWeb.isBusy()
-                || AutoBed.isBusy()
-                || AutoObsidian.isBusy()) {
+        if (AutoLava.isBusy() || AntiLava.isBusy() || AntiWeb.isBusy() || AutoBed.isBusy()) {
             return;
         }
 
@@ -341,7 +337,7 @@ public final class AutoWeb {
         }
         // A plan can become unreachable while the silent smooth RotationA is
         // still running. Abort before queuing the right-click instead of
-        // sending an interaction that vanilla/Grim must reject as out of
+        // sending an interaction that server-side checks reject as out of
         // reach. The failed action returns smoothly and never receives the
         // successful-placement cooldown.
         if ((phase == WebActionPhase.TURNING_TO_PLACE

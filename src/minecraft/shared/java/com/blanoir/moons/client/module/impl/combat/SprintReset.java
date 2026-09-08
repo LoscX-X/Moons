@@ -13,7 +13,7 @@ import net.minecraft.world.entity.LivingEntity;
 
 import java.util.List;
 
-/** OpenExpo SprintReset: Legit W-tap and NoStop sprint packet reset modes. */
+/** Sprint reset with Legit W-tap and NoStop packet modes. */
 public final class SprintReset {
     private static final BooleanSetting ENABLED = bool("sprintreset.enabled", false);
     private static final ModeSetting<Mode> MODE =

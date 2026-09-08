@@ -13,7 +13,7 @@ import net.minecraft.world.effect.MobEffects;
 import java.util.List;
 
 /**
- * LiquidBounce-style FullBright.
+ * Full-brightness rendering control.
  *
  * Gamma mode smoothly raises the lightmap brightness to the configured value by
  * overriding the brightness option in LightmapRenderStateExtractor; NightVision mode

@@ -28,7 +28,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * LiquidBounce Grim2371-style NoSlow.
+ * Item-use movement control with packet-order coordination.
  *
  * <p>The timing is deliberately split by the event boundary that owns it:</p>
  * <ol>
@@ -197,7 +197,7 @@ public final class NoSlow {
             if (isRelease(event.packet())) {
                 if (REPLAYED_RELEASE_PACKETS.remove(event.packet())) return;
                 if (syntheticUseBeforeMovement) {
-                    // Grim PacketOrderI keeps USE_ITEM/right-click state until
+                    // Server-side packet ordering keeps USE_ITEM/right-click state until
                     // the next movement tick packet. Preserve vanilla's exact
                     // packet object and replay it only after that boundary.
                     if (deferredRelease == null) deferredRelease = event.packet();

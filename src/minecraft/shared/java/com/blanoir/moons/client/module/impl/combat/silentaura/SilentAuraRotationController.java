@@ -204,7 +204,7 @@ public final class SilentAuraRotationController {
                                 .yaw();
             }
             double crossingDelta = Mth.clamp(deltaSeconds, 0.0D, 1.0D / 20.0D);
-            // Keep the 20 TPS target step below Matrix's consecutive >20
+            // Keep the 20 TPS target step below the consecutive >20
             // degree snap threshold. The packet smoother applies an 18-degree
             // backstop in case render sampling carries momentum into the box.
             boolean matrixProfile = SilentAuraConfig.matrixCompatibility();
@@ -599,7 +599,7 @@ public final class SilentAuraRotationController {
         }
         // Keep yaw continuous like vanilla instead of wrapping it to ±180:
         // a wrapped yaw snaps ~360° when crossing the boundary after a run of
-        // small steps, which Grim's AimModulo360 reads as a modulo artifact.
+        // small steps, which server-side checks interpret as a modulo artifact.
         // All internal differences already wrap, so tracking is unchanged.
         yaw += yawStep;
         pitch = Mth.clamp(pitch + pitchStep, -90.0F, 90.0F);
@@ -990,7 +990,7 @@ public final class SilentAuraRotationController {
     private void clearAtCamera(Minecraft client) {
         // Re-base onto the camera yaw without a modulo snap: pick the 360°
         // equivalent closest to the current continuous yaw, otherwise crossing
-        // the ±180 boundary emits a ~360° delta packet (Grim AimModulo360).
+        // the ±180 boundary emits a ~360° delta packet instead of a small turn.
         yaw += MathUtils.wrappedAngleDifference(yaw, client.player.getYRot());
         // The old implementation only rebased the controller and immediately
         // disabled it. The following vanilla packet therefore still used the

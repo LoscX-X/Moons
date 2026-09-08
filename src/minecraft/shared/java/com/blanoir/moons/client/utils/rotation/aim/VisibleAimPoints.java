@@ -17,7 +17,7 @@ import java.util.Optional;
 public final class VisibleAimPoints {
     private static final double[] FACE_SAMPLES = {0.1D, 0.3D, 0.5D, 0.7D, 0.9D};
 
-    /** LB-style dense outline scan with extra edge probes for narrow cover gaps. */
+    /** Dense outline scan with extra edge probes for narrow cover gaps. */
     private static final double[] PRECISE_FACE_SAMPLES = {
         0.015D, 0.05D, 0.15D, 0.25D, 0.35D, 0.45D,
         0.55D, 0.65D, 0.75D, 0.85D, 0.95D, 0.985D

@@ -36,7 +36,7 @@ import java.util.OptionalDouble;
 import java.util.OptionalInt;
 
 /**
- * Through-walls box renderer used by the LiquidBounce-style Backtrack ESP.
+ * Through-walls box renderer used by the Backtrack ESP.
  *
  * <p>Unlike {@link WorldOverlayRenderer}, boxes can be rotated by the current pose stack: the
  * eight AABB corners are transformed into world space before the faces and the

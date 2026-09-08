@@ -11,7 +11,7 @@ import com.blanoir.moons.client.utils.math.RandomMath;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.player.Player;
 
-/** LiquidBounce-style attack slowdown control. */
+/** Attack slowdown control. */
 public final class KeepSprint {
     private static final BooleanSetting ENABLED =
             new BooleanSetting.Builder().name("keepsprint.enabled").defaultValue(false).build();
@@ -113,7 +113,7 @@ public final class KeepSprint {
             AttackSlowdownTracker.discard(player);
             return;
         }
-        // LiquidBounce consumes the remembered sprint state after the first
+        // Consume the remembered sprint state after the first
         // slowdown in a tick. Later attack calls are restored with 1.0 so the
         // same vanilla 0.6 slowdown cannot be compounded.
         double multiplier = sprinting ? attackMotionMultiplier() : 1.0D;

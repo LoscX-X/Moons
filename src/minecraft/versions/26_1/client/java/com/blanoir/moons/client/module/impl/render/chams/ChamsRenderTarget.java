@@ -23,7 +23,7 @@ import java.util.OptionalDouble;
 import java.util.OptionalInt;
 
 /**
- * LiquidBounce-style offscreen render target used by Chams.
+ * Offscreen render target used by Chams.
  *
  * Eligible entity render types are remapped to {@link #outputTarget()} while the
  * level is submitted, then the accumulated color texture is blitted over the main

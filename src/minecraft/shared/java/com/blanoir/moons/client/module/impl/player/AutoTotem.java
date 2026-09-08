@@ -1,12 +1,13 @@
 /*
  * AutoTotem for Moons.
  *
- * Ported from LiquidBounce (GPL-3.0) ModuleOffhand / Totem.Health: switches a
+ * Switches a
  * totem of undying into the offhand once when a new danger episode begins.
  * The selected totem remains in the offhand after the player becomes safe.
  * Danger includes low health (+absorption), missing armor,
  * being burrowed/in a hole with a lower safety threshold, predicted explosion
  * damage from entities or beds/respawn anchors, and predicted fall damage.
+ * Source attribution is recorded in THIRD_PARTY_NOTICES.md.
  */
 package com.blanoir.moons.client.module.impl.player;
 
@@ -211,10 +212,10 @@ public final class AutoTotem {
 
     private static void equipTotem(Minecraft client) {
         int containerId = client.player.inventoryMenu.containerId;
-        int hotbarSlot = findTotemHotbarSlot(client);
+        int inventorySlot = findTotemSlot(client.player.getInventory());
 
-        if (hotbarSlot != -1) {
-            int menuSlot = Inventory.INVENTORY_SIZE + hotbarSlot;
+        if (inventorySlot >= 0 && inventorySlot < 9) {
+            int menuSlot = Inventory.INVENTORY_SIZE + inventorySlot;
             client.gameMode.handleContainerInput(
                     containerId, menuSlot, 40, ContainerInput.SWAP, client.player);
             dangerEpisodeHandled = true;
@@ -222,7 +223,6 @@ public final class AutoTotem {
             return;
         }
 
-        int inventorySlot = findTotemInventorySlot(client);
         if (inventorySlot == -1) {
             nextActionAtMs =
                     System.currentTimeMillis() + Math.max(SWITCH_DELAY_MS.get(), RETRY_DELAY_MS);
@@ -331,18 +331,10 @@ public final class AutoTotem {
         inventoryOpenedByModule = false;
     }
 
-    private static int findTotemHotbarSlot(Minecraft client) {
-        for (int slot = 0; slot < 9; slot++) {
-            if (client.player.getInventory().getItem(slot).getItem() == Items.TOTEM_OF_UNDYING) {
-                return slot;
-            }
-        }
-        return -1;
-    }
-
-    private static int findTotemInventorySlot(Minecraft client) {
-        for (int slot = 9; slot < 36; slot++) {
-            if (client.player.getInventory().getItem(slot).getItem() == Items.TOTEM_OF_UNDYING) {
+    /** Inventory order keeps hotbar totems ahead of main-inventory totems. */
+    private static int findTotemSlot(Inventory inventory) {
+        for (int slot = 0; slot < Inventory.INVENTORY_SIZE; slot++) {
+            if (inventory.getItem(slot).is(Items.TOTEM_OF_UNDYING)) {
                 return slot;
             }
         }
@@ -370,7 +362,7 @@ public final class AutoTotem {
     }
 
     /**
-     * LiquidBounce Totem.Health.healthBelowThreshold(): true when the player is
+     * Returns true when the player is
      * in enough danger to warrant a totem.
      */
     private static boolean healthBelowThreshold(Minecraft client) {

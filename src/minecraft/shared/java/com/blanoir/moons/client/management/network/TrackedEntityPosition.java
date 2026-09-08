@@ -12,18 +12,21 @@ import net.minecraft.world.phys.Vec3;
 /**
  * Tracks delayed entity positions from vanilla movement packets.
  *
- * <p>This is a direct port of LiquidBounce's
- * {@code net.ccbluex.liquidbounce.features.blink.TrackedEntityPosition}.
+ * <p>Source attribution is recorded in THIRD_PARTY_NOTICES.md.
  */
 public final class TrackedEntityPosition {
     private final VecDeltaCodec codec = new VecDeltaCodec();
 
     public TrackedEntityPosition() {
-        this.codec.setBase(Vec3.ZERO);
+        this(Vec3.ZERO);
     }
 
     public TrackedEntityPosition(Entity entity) {
-        this.codec.setBase(entity.getPositionCodec().getBase());
+        this(entity.getPositionCodec().getBase());
+    }
+
+    private TrackedEntityPosition(Vec3 initialPosition) {
+        codec.setBase(initialPosition);
     }
 
     public Vec3 base() {
@@ -43,21 +46,18 @@ public final class TrackedEntityPosition {
      * position, or {@code null} when the packet does not move the tracked entity.
      */
     public Vec3 handlePacket(Packet<?> packet, ClientLevel level, Entity target) {
-        Vec3 trackedPos;
-
-        if (packet instanceof ClientboundMoveEntityPacket movePacket
-                && movePacket.getEntity(level) == target) {
-            trackedPos =
-                    this.codec.decode(movePacket.getXa(), movePacket.getYa(), movePacket.getZa());
-        } else if (packet instanceof ClientboundTeleportEntityPacket teleportPacket
-                && teleportPacket.id() == target.getId()) {
-            trackedPos = teleportPacket.change().position();
-        } else if (packet instanceof ClientboundEntityPositionSyncPacket syncPacket
-                && syncPacket.id() == target.getId()) {
-            trackedPos = syncPacket.values().position();
-        } else {
-            return null;
-        }
+        Vec3 trackedPos =
+                switch (packet) {
+                    case ClientboundMoveEntityPacket move when move.getEntity(level) == target ->
+                            codec.decode(move.getXa(), move.getYa(), move.getZa());
+                    case ClientboundTeleportEntityPacket teleport
+                            when teleport.id() == target.getId() ->
+                            teleport.change().position();
+                    case ClientboundEntityPositionSyncPacket sync
+                            when sync.id() == target.getId() ->
+                            sync.values().position();
+                    case null, default -> null;
+                };
 
         if (trackedPos == null) {
             return null;

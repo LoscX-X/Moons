@@ -18,7 +18,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-/** Combined OpenExpo AntiNick marker and DeNick resolver. */
+/** Combined nickname marker and original-name resolver. */
 public final class AntiNick {
     private static final BooleanSetting ENABLED = bool("antinick.enabled", false);
     private static final BooleanSetting MARK_NICK_UUID = bool("antinick.markNickUuid", true);

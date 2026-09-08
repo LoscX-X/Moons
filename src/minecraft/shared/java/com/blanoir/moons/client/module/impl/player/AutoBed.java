@@ -1878,11 +1878,7 @@ public final class AutoBed {
     }
 
     private static boolean otherRotationOwnerBusy() {
-        return AutoLava.isBusy()
-                || AutoWeb.isBusy()
-                || AntiLava.isBusy()
-                || AntiWeb.isBusy()
-                || AutoObsidian.isBusy();
+        return AutoLava.isBusy() || AutoWeb.isBusy() || AntiLava.isBusy() || AntiWeb.isBusy();
     }
 
     private static boolean ready(Minecraft client) {

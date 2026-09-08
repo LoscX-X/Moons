@@ -182,7 +182,6 @@ public final class AntiWeb {
                 || AntiLava.isBusy()
                 || AutoWeb.isBusy()
                 || AutoBed.isBusy()
-                || AutoObsidian.isBusy()
                 || client.level.dimension() == Level.NETHER) {
             return;
         }
@@ -445,7 +444,7 @@ public final class AntiWeb {
     private static BlockHitResult waterSourceHit(BlockPos waterPos) {
         // The normal crosshair ray does not treat water as a block hit. Giving
         // startUseItem a BLOCK hit here makes it first send USE_ITEM_ON against
-        // liquid, which Grim's AirLiquidPlace correctly rejects. The empty
+        // liquid, which server-side placement checks reject. The empty
         // bucket's own use path performs its separate SOURCE_ONLY fluid ray.
         Minecraft client = Minecraft.getInstance();
         Vec3 nearest =

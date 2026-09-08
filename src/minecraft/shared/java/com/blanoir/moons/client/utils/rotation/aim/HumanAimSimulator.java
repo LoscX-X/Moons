@@ -23,8 +23,8 @@ public final class HumanAimSimulator {
                         ? RandomMath.between(11.0D + urgency * 4.0D, 16.0D + urgency * 7.0D)
                         : RandomMath.between(6.0D + urgency * 2.0D, 9.0D + urgency * 3.0D);
         // These are deliberately packet-domain limits. Do not compensate for a
-        // slow render-domain target tracker by increasing them; see the Matrix
-        // invariant above and adjust vertical prediction/stabilisation instead.
+        // slow render-domain target tracker by increasing them; adjust vertical
+        // prediction/stabilisation while preserving the acceleration limit.
         double pitchAcceleration =
                 lockMode
                         ? RandomMath.between(1.45D + urgency * 0.15D, 1.85D + urgency * 0.25D)
@@ -36,9 +36,9 @@ public final class HumanAimSimulator {
     }
 
     /**
-     * Generic profile used only when Matrix compatibility is explicitly off.
+     * Generic profile used only when the compatibility option is off.
      * Keep this separate so generic responsiveness can never silently weaken
-     * the documented Matrix packet-acceleration invariant above.
+     * the stricter packet-acceleration limit.
      */
     public static PacketMotion sampleResponsivePacketMotion(boolean lockMode, double urgency) {
         double yawAcceleration =

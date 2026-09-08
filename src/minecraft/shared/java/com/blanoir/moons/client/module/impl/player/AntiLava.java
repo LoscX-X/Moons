@@ -138,7 +138,7 @@ public final class AntiLava {
             return;
         }
 
-        if (AutoLava.isBusy() || AntiWeb.isBusy() || AutoBed.isBusy() || AutoObsidian.isBusy()) {
+        if (AutoLava.isBusy() || AntiWeb.isBusy() || AutoBed.isBusy()) {
             return;
         }
         processPending(client);

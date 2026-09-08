@@ -17,7 +17,7 @@ import net.minecraft.network.protocol.Packet;
 import net.minecraft.world.entity.player.Player;
 
 /**
- * A bounded, low-health variant of LiquidBounce's Dynamic FakeLag. Outgoing
+ * Bounded outgoing-packet delay while health is low. Outgoing
  * packets are retained in order for a small number of cycles, then silently
  * replayed through the normal Connection path.
  */

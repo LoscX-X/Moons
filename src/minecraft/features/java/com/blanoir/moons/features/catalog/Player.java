@@ -13,7 +13,6 @@ final class Player {
     static void initialize() {
         AutoHead.init();
         AutoBed.init();
-        AutoObsidian.init();
     }
 
     static ModuleRegistry.Module autoWeb() {
@@ -245,59 +244,6 @@ final class Player {
                         500,
                         5,
                         AutoBed::setClickDelayMs));
-    }
-
-    static ModuleRegistry.Module autoObsidian() {
-        return module(
-                "autoobsidian",
-                "AutoObsidian",
-                ModuleCategories.EXPERIMENT,
-                AutoObsidian::isEnabled,
-                AutoObsidian::setEnabled,
-                AutoObsidian::hudTag,
-                number(
-                        "range",
-                        "Scan range",
-                        "autoobsidian.range",
-                        4.5,
-                        1,
-                        8,
-                        .1,
-                        AutoObsidian::setRange),
-                number("fov", "FOV", "autoobsidian.fov", 100, 1, 360, 1, AutoObsidian::setFov),
-                integer(
-                        "min_walls",
-                        "Minimum walls",
-                        "autoobsidian.minWalls",
-                        2,
-                        2,
-                        3,
-                        1,
-                        AutoObsidian::setMinWalls),
-                integer(
-                        "smooth",
-                        "Smooth turn",
-                        "autoobsidian.smoothTicks",
-                        2,
-                        1,
-                        20,
-                        1,
-                        AutoObsidian::setSmoothTicks),
-                integer(
-                        "switch_delay",
-                        "Switch delay ms",
-                        "autoobsidian.switchDelayMs",
-                        50,
-                        0,
-                        500,
-                        5,
-                        AutoObsidian::setSwitchDelayMs),
-                bool(
-                        "collect_water",
-                        "Collect water",
-                        "autoobsidian.collectWater",
-                        true,
-                        AutoObsidian::setCollectWater));
     }
 
     static ModuleRegistry.Module antiLava() {

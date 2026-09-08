@@ -30,7 +30,6 @@ public final class CombatInputController {
         AUTO_WEB,
         AUTO_LAVA,
         AUTO_BED,
-        AUTO_OBSIDIAN,
         ANTI_LAVA,
         ANTI_WEB,
         SPRINT_RESET

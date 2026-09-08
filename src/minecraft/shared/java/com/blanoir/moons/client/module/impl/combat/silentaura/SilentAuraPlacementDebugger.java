@@ -32,7 +32,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
-/** Short packet-order flight recorder for reproducing Grim RotationPlace flags. */
+/** Short packet-order flight recorder for diagnosing placement rotation mismatches. */
 public final class SilentAuraPlacementDebugger {
     private static final int MAX_TICK_LINES = 10;
     private static final int CAPTURE_TICKS_AFTER_ACTION = 40;

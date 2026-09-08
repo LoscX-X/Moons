@@ -21,7 +21,7 @@ import net.minecraft.world.phys.Vec3;
 
 import java.util.concurrent.ThreadLocalRandom;
 
-/** OpenZen AutoMLG timing, placement and recovery state machine. */
+/** AutoMLG timing, placement and recovery state machine. */
 public final class AutoMlgNoFall {
     private float accumulatedFall;
     private double lastY;

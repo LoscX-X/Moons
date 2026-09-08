@@ -124,7 +124,7 @@ public final class Reach {
             clearPending();
             return false;
         }
-        // Myau Normal owns only the pick/ray distances. The vanilla attack
+        // Normal mode owns only the pick/ray distances. The vanilla attack
         // path consumes that extended hit result without packet substitution.
         if (!advancedMode()) {
             clearPending();
@@ -151,7 +151,7 @@ public final class Reach {
     }
 
     /**
-     * Myau Normal: on enabled chance ticks, use Range for entity picking and
+     * On enabled chance ticks, Normal mode uses Range for entity picking and
      * Range + 0.5 for the ray/block query that bounds that pick.
      */
     public static void applyNormalPick(Minecraft client) {

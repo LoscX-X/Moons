@@ -607,7 +607,7 @@ public final class ScaffoldEngine {
         tickTelly(client);
     }
 
-    /** LiquidBounce-style Telly: jump state only; target/rotate/place are rebuilt every tick. */
+    /** Telly jump state; target, rotation and placement are rebuilt every tick. */
     private static void tickTelly(Minecraft client) {
         if (tellyBelowRowRescue && client.player.onGround()) {
             finishBelowRowRescue();
@@ -1200,7 +1200,7 @@ public final class ScaffoldEngine {
         return positive ? 1.0F : -1.0F;
     }
 
-    /** OpenExpo Scaffold LEGIT edge-sneak state machine, ported to modern Input. */
+    /** Edge-sneak state machine for LEGIT mode using modern Input. */
     private static void updateLegitSneaking(Minecraft client) {
         boolean physicalSneak =
                 CombatInputController.isPhysicallyDown(client, client.options.keyShift);
@@ -1215,10 +1215,11 @@ public final class ScaffoldEngine {
 
         double edgeDistance = legitEdgeDistance(client, predictedLegitBox(client));
         boolean jumping = client.player.input.keyPresses.jump();
-        if (Double.isNaN(edgeDistance)) {
-            if (!jumping && client.player.onGround()) startLegitSneaking(client);
-            else if (legitSneaking) continueOrEndLegitSneaking(client);
-        } else if (edgeDistance > LEGIT_EDGE_OFFSET.get()) {
+        boolean needsSneak =
+                Double.isNaN(edgeDistance)
+                        ? !jumping && client.player.onGround()
+                        : edgeDistance > LEGIT_EDGE_OFFSET.get();
+        if (needsSneak) {
             startLegitSneaking(client);
         } else if (legitSneaking) {
             continueOrEndLegitSneaking(client);
@@ -1712,7 +1713,7 @@ public final class ScaffoldEngine {
             double[] offsets) {
         PlacementAim best = null;
         double bestScore = Double.MAX_VALUE;
-        // Grim's RotationPlace ray-traces with exactly BLOCK_INTERACTION_RANGE;
+        // Server-side placement ray tracing uses exactly BLOCK_INTERACTION_RANGE;
         // a face our own trace needs beyond that can never survive its check.
         double range = client.player.blockInteractionRange();
 

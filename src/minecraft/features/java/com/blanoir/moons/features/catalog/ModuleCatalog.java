@@ -21,7 +21,6 @@ public final class ModuleCatalog {
         ModuleRegistry.add(Player.autoWeb());
         ModuleRegistry.add(Player.autoLava());
         ModuleRegistry.add(Player.autoBed());
-        ModuleRegistry.add(Player.autoObsidian());
         ModuleRegistry.add(Player.antiLava());
         ModuleRegistry.add(Player.antiWeb());
         ModuleRegistry.add(Player.autoSword());

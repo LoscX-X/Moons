@@ -69,14 +69,7 @@ final class Movement {
                 "Movement",
                 Sprint::isEnabled,
                 Sprint::setEnabled,
-                Sprint::modeName,
-                choice(
-                        "mode",
-                        "Mode",
-                        "sprint.mode",
-                        "legit",
-                        Sprint.modeOptions(),
-                        Sprint::setMode));
+                Sprint::modeName);
     }
 
     static ModuleRegistry.Module noSlow() {

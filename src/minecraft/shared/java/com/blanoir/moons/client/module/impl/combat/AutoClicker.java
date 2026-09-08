@@ -1,12 +1,12 @@
 package com.blanoir.moons.client.module.impl.combat;
 
-import com.blanoir.moons.client.access.MinecraftClientAccess;
 import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.DoubleSetting;
 import com.blanoir.moons.client.config.settings.IntSetting;
 import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.management.input.CombatInputController;
+import com.blanoir.moons.client.utils.client.ClientReady;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.tags.ItemTags;
@@ -14,7 +14,7 @@ import net.minecraft.world.phys.BlockHitResult;
 
 import java.util.concurrent.ThreadLocalRandom;
 
-/** OpenExpo AutoClicker behavior adapted to the standalone input controller. */
+/** Automatic clicks routed through the shared input controller. */
 public final class AutoClicker {
     private static final BooleanSetting ENABLED = bool("autoclicker.enabled", false);
     private static final DoubleSetting MIN_CPS = number("autoclicker.minCps", 13.0D, 1.0D, 20.0D);
@@ -37,7 +37,7 @@ public final class AutoClicker {
     }
 
     private static void tick(Minecraft client) {
-        if (!isReady(client)
+        if (!ClientReady.gameplay(client)
                 || !ENABLED.get()
                 || !CombatInputController.isPhysicallyDown(client, client.options.keyAttack)) {
             resetCycle(client);
@@ -87,14 +87,6 @@ public final class AutoClicker {
         double high = Math.max(MIN_CPS.get(), MAX_CPS.get());
         double cps = low == high ? low : ThreadLocalRandom.current().nextDouble(low, high);
         nextClickAtNanos = now + (long) (1_000_000_000.0D / Math.max(1.0D, cps));
-    }
-
-    private static boolean isReady(Minecraft client) {
-        return client != null
-                && client.player != null
-                && client.level != null
-                && client.gameMode != null
-                && MinecraftClientAccess.screen(client) == null;
     }
 
     private static void resetCycle(Minecraft client) {

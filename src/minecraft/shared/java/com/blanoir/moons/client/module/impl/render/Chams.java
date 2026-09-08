@@ -19,7 +19,7 @@ import java.util.Set;
 import java.util.function.BiPredicate;
 
 /**
- * LiquidBounce-style Chams.
+ * Offscreen entity highlighting.
  *
  * Eligible player render types (body, equipment, cape and held items) are remapped
  * into a private offscreen render target while the level is submitted.  After the

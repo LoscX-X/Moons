@@ -10,8 +10,8 @@ import java.util.Set;
 import java.util.function.Function;
 
 /**
- * Remaps entity render types to the Chams offscreen target, mirroring LiquidBounce's
- * ModuleChams.  The original pipeline, textures, lighting and blend state are kept;
+ * Remaps entity render types to the Chams offscreen target.
+ * The original pipeline, textures, lighting and blend state are kept;
  * only the output target is replaced.
  */
 public final class ChamsRenderLayers {

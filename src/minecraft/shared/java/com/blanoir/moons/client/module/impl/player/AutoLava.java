@@ -207,7 +207,6 @@ public final class AutoLava {
                 || AntiLava.isBusy()
                 || AutoWeb.isBusy()
                 || AutoBed.isBusy()
-                || AutoObsidian.isBusy()
                 || !(entity instanceof Player target)
                 || !Targeting.isValidTargetPlayer(client, target)
                 || target.isOnFire()
@@ -312,11 +311,7 @@ public final class AutoLava {
         }
         int pending = pendingTargetId;
         clearPendingTrigger();
-        if (AntiWeb.isBusy()
-                || AntiLava.isBusy()
-                || AutoWeb.isBusy()
-                || AutoBed.isBusy()
-                || AutoObsidian.isBusy()) {
+        if (AntiWeb.isBusy() || AntiLava.isBusy() || AutoWeb.isBusy() || AutoBed.isBusy()) {
             clearMotionSampling();
             return;
         }
@@ -540,7 +535,7 @@ public final class AutoLava {
         }
 
         // A different USE_ITEM angle before a natural movement tick violates
-        // Grim BadPacketsJ. Keep moving normally and wait for that real packet;
+        // the interaction's angle lock. Wait for that movement packet;
         // the common placement path reuses the original ray and never waits.
         if (SilentPacketRotation.isUseRotationLocked()) {
             return;

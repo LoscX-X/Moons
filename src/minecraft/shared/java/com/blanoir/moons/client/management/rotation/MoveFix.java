@@ -12,7 +12,7 @@ import net.minecraft.client.player.LocalPlayer;
  * <p>Input remapping, moveRelative and jump impulse must use the same owner and
  * yaw. Resolving those independently allowed a higher-priority block action to
  * preempt SilentAura between hooks, producing a locally valid direction that
- * Grim simulated against a different packet yaw.
+ * the server simulated against a different packet yaw.
  */
 public final class MoveFix {
     public enum Source {

@@ -385,8 +385,7 @@ public final class Backtrack {
 
         // Delay only packets that move the tracked enemy. Ping requests, velocity,
         // effects and other entities keep flowing untouched; queueing them would
-        // make the server see out-of-order responses (Grim TransactionOrder) and
-        // delayed physics (Grim Simulation).
+        // make the server see out-of-order responses and delayed physics.
         return currentTarget != null && isTargetPositionPacket(packet, currentTarget, level);
     }
 
@@ -955,7 +954,7 @@ public final class Backtrack {
     }
 
     /**
-     * LiquidBounce default combat target filter: players, hostiles, angerable mobs
+     * Default combat target filter: players, hostiles, angerable mobs
      * and water creatures, including invisible entities, excluding dead/sleeping ones.
      */
     private static boolean shouldBeAttacked(Entity entity) {
@@ -1031,7 +1030,7 @@ public final class Backtrack {
     }
 
     private static boolean isVelocityReduceBlocking() {
-        // LiquidBounce: VelocityReduce.backtrackBlocked (not present in Moons).
+        // No velocity-reduction interlock is currently implemented.
         return false;
     }
 

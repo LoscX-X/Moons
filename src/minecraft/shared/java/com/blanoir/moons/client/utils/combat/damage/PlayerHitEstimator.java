@@ -109,8 +109,7 @@ public final class PlayerHitEstimator {
      * equipment-change tick; immediately after a hotbar switch the aggregate
      * player attribute can therefore still describe the previous weapon.
      *
-     * This follows ItemAttributeModifiers.compute (the same path used by
-     * LiquidBounce's ItemStack.attackDamage helper) and includes the two
+     * This follows ItemAttributeModifiers.compute and includes the two
      * vanilla attack-damage effects before applying the stack operations.
      */
     private static float currentWeaponAttackDamage(Player player, ItemStack weapon) {

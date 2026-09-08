@@ -10,9 +10,9 @@ import net.minecraft.world.phys.Vec3;
 import org.joml.Quaternionf;
 
 /**
- * LiquidBounce-style wireframe player model used by the Backtrack ESP.
+ * Wireframe player model used by the Backtrack ESP.
  *
- * <p>Direct port of {@code net.ccbluex.liquidbounce.utils.render.WireframePlayer}.
+ * <p>Source attribution is recorded in THIRD_PARTY_NOTICES.md.
  */
 public final class BacktrackWireframePlayer {
     private static final AABB LIMB = new AABB(0.0, 0.0, 0.0, 0.125, 0.375, 0.125);
@@ -50,7 +50,6 @@ public final class BacktrackWireframePlayer {
     private float xRot;
     private Pose pose = Pose.STANDING;
     private float swimAmount;
-    private BacktrackRenderer.BoxBatch activeBatch;
 
     public void setRotation(float xRot, float yRot) {
         this.xRot = xRot;
@@ -68,7 +67,6 @@ public final class BacktrackWireframePlayer {
     public void render(PoseStack matrices, int color, int outlineColor) {
         float bodyYaw = -Mth.wrapDegrees(this.yRot);
         BacktrackRenderer.BoxBatch batch = new BacktrackRenderer.BoxBatch();
-        activeBatch = batch;
 
         matrices.pushPose();
         try {
@@ -76,124 +74,56 @@ public final class BacktrackWireframePlayer {
             matrices.scale(MODEL_SCALE, MODEL_SCALE, MODEL_SCALE);
 
             switch (this.pose) {
-                case CROUCHING -> renderCrouching(matrices, color, outlineColor);
-                case SWIMMING -> renderSwimming(matrices, color, outlineColor);
-                default -> renderStanding(matrices, color, outlineColor);
+                case CROUCHING -> renderCrouching(matrices, batch);
+                case SWIMMING -> renderSwimming(matrices, batch);
+                default -> renderStanding(matrices, batch);
             }
         } finally {
             matrices.popPose();
-            activeBatch = null;
         }
         batch.render(color, outlineColor, "backtrack wireframe");
     }
 
-    private void renderStanding(PoseStack matrices, int color, int outlineColor) {
-        renderPart(
-                matrices,
-                RENDER_LEFT_LEG,
-                color,
-                outlineColor,
-                center(RENDER_LEFT_LEG),
-                0f,
-                0f,
-                0f);
-        renderPart(
-                matrices,
-                RENDER_RIGHT_LEG,
-                color,
-                outlineColor,
-                center(RENDER_RIGHT_LEG),
-                0f,
-                0f,
-                0f);
-        renderPart(matrices, RENDER_BODY, color, outlineColor, center(RENDER_BODY), 0f, 0f, 0f);
-        renderPart(
-                matrices,
-                RENDER_LEFT_ARM,
-                color,
-                outlineColor,
-                center(RENDER_LEFT_ARM),
-                0f,
-                0f,
-                0f);
-        renderPart(
-                matrices,
-                RENDER_RIGHT_ARM,
-                color,
-                outlineColor,
-                center(RENDER_RIGHT_ARM),
-                0f,
-                0f,
-                0f);
-        renderPart(
-                matrices,
-                RENDER_HEAD,
-                color,
-                outlineColor,
-                bottomCenter(RENDER_HEAD),
-                this.xRot,
-                0f,
-                0f);
+    private void renderStanding(PoseStack matrices, BacktrackRenderer.BoxBatch batch) {
+        renderPart(matrices, batch, RENDER_LEFT_LEG, center(RENDER_LEFT_LEG), 0f, 0f, 0f);
+        renderPart(matrices, batch, RENDER_RIGHT_LEG, center(RENDER_RIGHT_LEG), 0f, 0f, 0f);
+        renderPart(matrices, batch, RENDER_BODY, center(RENDER_BODY), 0f, 0f, 0f);
+        renderPart(matrices, batch, RENDER_LEFT_ARM, center(RENDER_LEFT_ARM), 0f, 0f, 0f);
+        renderPart(matrices, batch, RENDER_RIGHT_ARM, center(RENDER_RIGHT_ARM), 0f, 0f, 0f);
+        renderPart(matrices, batch, RENDER_HEAD, bottomCenter(RENDER_HEAD), this.xRot, 0f, 0f);
     }
 
-    private void renderCrouching(PoseStack matrices, int color, int outlineColor) {
+    private void renderCrouching(PoseStack matrices, BacktrackRenderer.BoxBatch batch) {
+        renderPart(matrices, batch, CROUCH_LEFT_LEG, center(CROUCH_LEFT_LEG), 0f, 0f, 0f);
+        renderPart(matrices, batch, CROUCH_RIGHT_LEG, center(CROUCH_RIGHT_LEG), 0f, 0f, 0f);
         renderPart(
                 matrices,
-                CROUCH_LEFT_LEG,
-                color,
-                outlineColor,
-                center(CROUCH_LEFT_LEG),
-                0f,
-                0f,
-                0f);
-        renderPart(
-                matrices,
-                CROUCH_RIGHT_LEG,
-                color,
-                outlineColor,
-                center(CROUCH_RIGHT_LEG),
-                0f,
-                0f,
-                0f);
-        renderPart(
-                matrices,
+                batch,
                 CROUCH_BODY,
-                color,
-                outlineColor,
                 bottomCenter(CROUCH_BODY),
                 CROUCH_BODY_ROTATION,
                 0f,
                 0f);
         renderPart(
                 matrices,
+                batch,
                 CROUCH_LEFT_ARM,
-                color,
-                outlineColor,
                 bottomCenter(CROUCH_LEFT_ARM),
                 CROUCH_ARM_ROTATION,
                 0f,
                 0f);
         renderPart(
                 matrices,
+                batch,
                 CROUCH_RIGHT_ARM,
-                color,
-                outlineColor,
                 bottomCenter(CROUCH_RIGHT_ARM),
                 CROUCH_ARM_ROTATION,
                 0f,
                 0f);
-        renderPart(
-                matrices,
-                CROUCH_HEAD,
-                color,
-                outlineColor,
-                bottomCenter(CROUCH_HEAD),
-                this.xRot,
-                0f,
-                0f);
+        renderPart(matrices, batch, CROUCH_HEAD, bottomCenter(CROUCH_HEAD), this.xRot, 0f, 0f);
     }
 
-    private void renderSwimming(PoseStack matrices, int color, int outlineColor) {
+    private void renderSwimming(PoseStack matrices, BacktrackRenderer.BoxBatch batch) {
         float swimProgress = this.swimAmount > 0f ? this.swimAmount : 1f;
         float swimHeadRotation = Mth.lerp(swimProgress, this.xRot, SWIM_HEAD_TARGET_ROTATION);
 
@@ -204,61 +134,49 @@ public final class BacktrackWireframePlayer {
         matrices.mulPose(new Quaternionf().rotationX((float) Math.toRadians(SWIM_PART_ROTATION)));
         matrices.translate(-bodyCenter.x, -bodyCenter.y, -bodyCenter.z);
 
-        renderPart(matrices, RENDER_BODY, color, outlineColor, center(RENDER_BODY), 0f, 0f, 0f);
+        renderPart(matrices, batch, RENDER_BODY, center(RENDER_BODY), 0f, 0f, 0f);
         renderPart(
                 matrices,
+                batch,
                 RENDER_LEFT_ARM,
-                color,
-                outlineColor,
                 center(RENDER_LEFT_ARM),
                 0f,
                 0f,
                 SWIM_LEFT_ARM_ROLL);
         renderPart(
                 matrices,
+                batch,
                 RENDER_RIGHT_ARM,
-                color,
-                outlineColor,
                 center(RENDER_RIGHT_ARM),
                 0f,
                 0f,
                 SWIM_RIGHT_ARM_ROLL);
         renderPart(
                 matrices,
+                batch,
                 RENDER_LEFT_LEG,
-                color,
-                outlineColor,
                 center(RENDER_LEFT_LEG),
                 0f,
                 0f,
                 SWIM_LEFT_LEG_ROLL);
         renderPart(
                 matrices,
+                batch,
                 RENDER_RIGHT_LEG,
-                color,
-                outlineColor,
                 center(RENDER_RIGHT_LEG),
                 0f,
                 0f,
                 SWIM_RIGHT_LEG_ROLL);
         renderPart(
-                matrices,
-                RENDER_HEAD,
-                color,
-                outlineColor,
-                bottomCenter(RENDER_HEAD),
-                swimHeadRotation,
-                0f,
-                0f);
+                matrices, batch, RENDER_HEAD, bottomCenter(RENDER_HEAD), swimHeadRotation, 0f, 0f);
 
         matrices.popPose();
     }
 
     private void renderPart(
             PoseStack matrices,
+            BacktrackRenderer.BoxBatch batch,
             AABB box,
-            int color,
-            int outlineColor,
             Vec3 pivot,
             float xRot,
             float yRot,
@@ -281,7 +199,7 @@ public final class BacktrackWireframePlayer {
             matrices.translate(-pivot.x, -pivot.y, -pivot.z);
         }
 
-        activeBatch.add(matrices, box);
+        batch.add(matrices, box);
 
         matrices.popPose();
     }

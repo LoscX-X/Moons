@@ -168,7 +168,7 @@ public final class Velocity {
                 OTHER_ATTACKS.get() || snapshot.playerEntityIds().contains(sourceCauseId);
     }
 
-    /** Mirrors Myau's S19 opcode-2 gate used by fake-check. */
+    /** Uses entity-status opcode 2 to gate fake-check. */
     public static synchronized void handleEntityStatus(int entityId, byte eventId) {
         if (active && normalMode() && eventId == 2 && entityId == playerSnapshot.entityId()) {
             // With fake-check enabled, only a matching accepted damage event arms
@@ -180,7 +180,7 @@ public final class Velocity {
 
     /**
      * Returns a replacement set-motion vector, or {@code null} when vanilla should receive
-     * the original packet. Myau's deterministic chance accumulator is intentionally preserved.
+     * the original packet. Chance is sampled through a deterministic accumulator.
      */
     public static synchronized Vec3 transformEntityVelocity(int entityId, Vec3 incoming) {
         PlayerSnapshot snapshot = playerSnapshot;
@@ -203,7 +203,7 @@ public final class Velocity {
     }
 
     /**
-     * Explosion motion is additive in modern vanilla. Myau scales the final setVelocity value,
+     * Explosion motion is additive in modern vanilla. This scales the final velocity,
      * so convert that final value back into an additive packet vector for an equivalent result.
      */
     public static synchronized Vec3 transformExplosionVelocity(Vec3 knockback) {

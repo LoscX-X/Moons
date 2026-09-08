@@ -2,7 +2,7 @@ package com.blanoir.moons.client.module.framework;
 
 import java.util.List;
 
-/** LiquidBounce-compatible top-level module taxonomy. */
+/** Top-level module categories. */
 public final class ModuleCategories {
     public static final String COMBAT = "Combat";
     public static final String PLAYER = "Player";

@@ -28,8 +28,8 @@ public final class Animations {
     /**
      * Minecraft 1.8 scaled the item model by 0.4 inside
      * transformFirstPersonItem. Modern FIRST_PERSON_* model submission owns
-     * that model scale instead. Undo the preset scale after the complete Myau
-     * matrix so the result matches the native modern BLOCK branch.
+     * that model scale instead. Undo the preset scale after all legacy transforms
+     * so the result matches the native modern BLOCK branch.
      */
     private static final float MODERN_BLOCK_MODEL_SCALE = 2.5F;
 
@@ -81,7 +81,7 @@ public final class Animations {
     }
 
     /**
-     * Replays Myau's visual-only old-renderer order: the selected preset owns
+     * Replays the legacy renderer's visual transform order: the selected preset owns
      * transformFirstPersonItem and its custom matrices, then the common 1.8
      * doBlockTransformations suffix is applied. No use state or packets exist.
      */
@@ -95,7 +95,7 @@ public final class Animations {
         }
 
         // ItemInHandRenderer raises equipProgress while its high-version hand
-        // state settles. Feeding that value into the old first-person matrix
+        // state settles. Feeding that value into the old first-person transform
         // lowers the sword instead of producing a block-hit. Aura blocking is
         // a held visual pose, so keep the item fully equipped and let only the
         // swing curve move it.
@@ -453,14 +453,13 @@ public final class Animations {
             }
         }
 
-        // The Myau load returns immediately before Minecraft 1.8's
-        // original doBlockTransformations invocation, which therefore runs for
-        // every enum value, including VANILLA and MYAU_1_8.
+        // Apply the shared blocking transform after every preset, matching
+        // the legacy renderer's final doBlockTransformations invocation.
         block(pose);
 
         // Coordinate-system bridge for modern ItemInHandRenderer. At zero
         // swing this converts firstPerson + doBlockTransformations exactly to
-        // the native BLOCK matrix used by 26.1/26.2 and by OpenZen:
+        // the native BLOCK transform used by 26.1/26.2:
         // X=-102.25, Y=side*13.365, Z=side*78.05. It is visual only.
         rotate(pose, -45.0F, 0.0F, 1.0F, 0.0F);
         pose.scale(MODERN_BLOCK_MODEL_SCALE, MODERN_BLOCK_MODEL_SCALE, MODERN_BLOCK_MODEL_SCALE);

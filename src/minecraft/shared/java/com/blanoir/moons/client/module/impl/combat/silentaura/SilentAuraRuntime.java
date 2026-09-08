@@ -285,8 +285,8 @@ public final class SilentAuraRuntime {
     }
 
     /**
-     * Rotation used by the attack path in the current player tick. Like
-     * LiquidBounce's Normal rotation timing, the ray is checked against the
+     * Rotation used by the attack path in the current player tick.
+     * The ray is checked against the
      * rotation candidate that the later sendPosition call will publish, not
      * against the movement packet from the previous tick. packetRotation() is
      * tick-cached, so the attack and movement hooks consume the same candidate.

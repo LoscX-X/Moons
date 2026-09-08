@@ -311,6 +311,14 @@ final class RuntimeEventAdapter {
         if (!(event.minecraft() instanceof Minecraft client)) return;
         var player = client.player;
         if (event.phase() == RuntimeEvents.Phase.START) {
+            boolean automated =
+                    event.kind() == RuntimeEvents.Kind.ATTACK
+                            ? CombatInputController.isInvokingTargetAttack()
+                            : SilentPacketRotation.isInvokingSimulatedUse();
+            if (!automated && RotationLease.hasSilentRotation()) {
+                event.control().cancel();
+                return;
+            }
             Rotation manualRotation = RotationLease.manualRotation();
             if (event.kind() == RuntimeEvents.Kind.USE
                     && manualRotation != null
@@ -325,6 +333,7 @@ final class RuntimeEventAdapter {
                 return;
             }
             if (event.kind() == RuntimeEvents.Kind.USE
+                    && !automated
                     && (Scaffold.cancelUseAction() || SilentAura.shouldSuppressUseAction(client))) {
                 event.control().cancel();
                 return;

@@ -44,6 +44,7 @@ public final class CombatInputController {
     private static boolean syntheticAttackDown;
     private static int syntheticAttackTicks;
     private static Entity pendingAttackTarget;
+    private static boolean invokingTargetAttack;
 
     private CombatInputController() {}
 
@@ -272,16 +273,24 @@ public final class CombatInputController {
         // sends ServerboundAttackPacket, so this is the authoritative outcome
         // for every charged combat caller of this entry point.
         float chargeBefore = client.player.getAttackStrengthScale(0.0F);
+        boolean previousInvocation = invokingTargetAttack;
+        invokingTargetAttack = true;
         try {
             GameAccess.invokeStartAttack(client);
             float chargeAfter = client.player.getAttackStrengthScale(0.0F);
             return chargeAfter + 1.0E-4F < chargeBefore;
         } finally {
+            invokingTargetAttack = previousInvocation;
             // The ATTACK action hook normally consumes this at method HEAD.
             // Never allow a failed/short-circuited invocation to leak the
             // forced entity into a later physical click.
             pendingAttackTarget = null;
         }
+    }
+
+    /** Only the synchronous, target-validated attack may bypass the manual input gate. */
+    public static boolean isInvokingTargetAttack() {
+        return invokingTargetAttack;
     }
 
     /** Consumed by Minecraft.startAttack; stale or cross-world targets are rejected. */

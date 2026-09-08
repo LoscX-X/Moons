@@ -12,6 +12,7 @@ import com.blanoir.moons.client.event.movement.MovementInputUpdatedEvent;
 import com.blanoir.moons.client.event.render.LivingRenderEvent;
 import com.blanoir.moons.client.management.input.CombatInputController;
 import com.blanoir.moons.client.management.rotation.MoveFix;
+import com.blanoir.moons.client.management.rotation.RotationLease;
 import com.blanoir.moons.client.module.impl.combat.Reach;
 import com.blanoir.moons.client.module.impl.combat.SilentAura;
 import com.blanoir.moons.client.module.impl.misc.AntiNick;
@@ -106,6 +107,13 @@ public final class FeatureHooks {
 
             case "combat.reach.pick" -> publishPickResult();
             case "combat.block-break-start" -> {
+                if (RotationLease.hasSilentRotation()) {
+                    if (hook.owner() instanceof MultiPlayerGameMode gameMode) {
+                        gameMode.stopDestroyBlock();
+                    }
+                    hook.value(false);
+                    break;
+                }
                 if (hook.owner() instanceof MultiPlayerGameMode gameMode
                         && hook.argument() instanceof BlockPos position) {
                     BlockBreakEvent event = new BlockBreakEvent(gameMode, position);

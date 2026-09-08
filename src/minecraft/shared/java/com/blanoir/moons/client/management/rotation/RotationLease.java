@@ -145,6 +145,13 @@ public final class RotationLease {
         }
     }
 
+    /** Covers acquisition, turning, interaction, return and deferred release. */
+    public static boolean hasSilentRotation() {
+        synchronized (RotationHistory.class) {
+            return holder != null || submission != null;
+        }
+    }
+
     /** sendPosition completed (possibly cancelled/no packet); history is updated separately. */
     public static void finishMotion() {
         synchronized (RotationHistory.class) {

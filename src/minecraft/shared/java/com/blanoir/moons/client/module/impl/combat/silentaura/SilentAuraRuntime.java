@@ -1,6 +1,5 @@
 package com.blanoir.moons.client.module.impl.combat.silentaura;
 
-import com.blanoir.moons.client.access.GameAccess;
 import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.event.network.PacketSendEvent;
 import com.blanoir.moons.client.management.input.CombatInputController;
@@ -27,9 +26,6 @@ public final class SilentAuraRuntime {
     private static String activeMode;
     private static boolean activeMatrix;
     private static SentRotation sent = SentRotation.invalid();
-    private static boolean deferredManualUse;
-    private static boolean replayingManualUse;
-    private static int deferredManualUseTick = Integer.MIN_VALUE;
     private static final SilentAuraPacketRotationRouter PACKET_ROTATION =
             new SilentAuraPacketRotationRouter();
     private static final RotationLease ROTATION_LEASE =
@@ -44,9 +40,6 @@ public final class SilentAuraRuntime {
                 "SilentAuraRuntime.context", event -> reset(event.client()));
         EventBus.FRAME.register(
                 "SilentAuraRuntime.frame", event -> frame(event.client(), event.deltaSeconds()));
-        EventBus.PLAYER_UPDATE.register(
-                "SilentAuraRuntime.manualUseReplay",
-                event -> replayDeferredManualUse(event.client()));
         EventBus.PACKET_SEND_POST.register(
                 "SilentAuraRuntime.rotationPacketTracker", SilentAuraRuntime::trackRotationPacket);
     }
@@ -163,46 +156,17 @@ public final class SilentAuraRuntime {
 
     /** Keeps manual USE_ITEM yaw/pitch in the same tick domain as movement. */
     public static boolean shouldSuppressUseAction(Minecraft client) {
-        if (!baseCanRun(client)
-                || replayingManualUse
-                || SilentPacketRotation.isUseRotationLocked()) {
+        if (!baseCanRun(client) || SilentPacketRotation.isInvokingSimulatedUse()) {
             return false;
         }
-        boolean triggerWeaponRotation =
-                Targeting.isHoldingTriggerWeapon(client)
-                        && ROTATION_LEASE.active()
-                        && ROTATION.active()
-                        && canApply(client);
-        if (triggerWeaponRotation) {
-            return true;
-        }
+        if (RotationLease.hasSilentRotation()) return true;
         RotationHistory.Sent previous = RotationHistory.latest();
-        RotationLease.Submission committed = RotationLease.submission();
-        boolean postMovementMismatch =
-                previous.valid()
-                        && previous.tick() == client.player.tickCount
-                        && (!sameAngle(previous.yaw(), client.player.getYRot())
-                                || !sameAngle(previous.pitch(), client.player.getXRot()));
-        postMovementMismatch |=
-                committed != null
-                        && !RotationHistory.same(
-                                committed.rotation(),
-                                new Rotation(client.player.getYRot(), client.player.getXRot()));
-        boolean utilityInterruptedAura =
-                !Targeting.isHoldingTriggerWeapon(client) && ROTATION.active();
-        if (!postMovementMismatch && !utilityInterruptedAura) {
-            return false;
-        }
-
-        // startUseItem is currently running after this tick's movement packet.
-        // Cancel it once, discard any remaining Aura return path, then replay
-        // at the next LocalPlayer.tick head. The replayed USE_ITEM is followed
-        // by a movement packet with the same camera yaw/pitch, satisfying
-        // Grim BadPacketsJ without delaying utility input for the full return.
-        deferredManualUse = true;
-        deferredManualUseTick = client.player.tickCount;
-        clearAuraRotationForManualUse();
-        return true;
+        // A release may follow this tick's movement. Discard mismatched input;
+        // never interrupt the return trajectory or replay a blocked click later.
+        return previous.valid()
+                && previous.tick() == client.player.tickCount
+                && (!sameAngle(previous.yaw(), client.player.getYRot())
+                        || !sameAngle(previous.pitch(), client.player.getXRot()));
     }
 
     private static void trackRotationPacket(PacketSendEvent.Post event) {
@@ -246,48 +210,13 @@ public final class SilentAuraRuntime {
         return rotation == null ? 0 : rotation.pitch();
     }
 
-    private static void replayDeferredManualUse(Minecraft client) {
-        var currentPlayer = client == null ? null : client.player;
-        if (!deferredManualUse
-                || client == null
-                || currentPlayer == null
-                || currentPlayer.tickCount == deferredManualUseTick) {
-            return;
-        }
-        if (!baseCanRun(client)) {
-            clearDeferredManualUse();
-            return;
-        }
-        if (SilentPacketRotation.shouldApplyRotation()
-                || SilentPacketRotation.isUseRotationLocked()) {
-            // Never fire an old physical click after an AutoWeb/AutoLava
-            // transaction has taken ownership in the following tick.
-            clearDeferredManualUse();
-            return;
-        }
-        deferredManualUse = false;
-        replayingManualUse = true;
-        try {
-            GameAccess.invokeStartUseItem(client);
-        } finally {
-            replayingManualUse = false;
-            deferredManualUseTick = Integer.MIN_VALUE;
-        }
-    }
-
-    private static void clearAuraRotationForManualUse() {
+    private static void clearRotation() {
         Animations.setAuraBlocking(false);
         SELECTOR.clear();
         ROTATION.clear();
         sent = SentRotation.invalid();
         PACKET_ROTATION.reset();
         ROTATION_LEASE.release();
-    }
-
-    private static void clearDeferredManualUse() {
-        deferredManualUse = false;
-        replayingManualUse = false;
-        deferredManualUseTick = Integer.MIN_VALUE;
     }
 
     private static boolean sameAngle(float first, float second) {
@@ -395,7 +324,7 @@ public final class SilentAuraRuntime {
     }
 
     public static void resetTargeting() {
-        clearAuraRotationForManualUse();
+        clearRotation();
     }
 
     public static void finishReturn(Minecraft client) {
@@ -413,7 +342,6 @@ public final class SilentAuraRuntime {
         sent = SentRotation.invalid();
         PACKET_ROTATION.reset();
         ROTATION_LEASE.release();
-        clearDeferredManualUse();
     }
 
     private static void syncLease() {
@@ -460,7 +388,7 @@ public final class SilentAuraRuntime {
 
     /** External rotations invalidate both the old trajectory and its packet history. */
     private static void pauseForExternalRotation() {
-        clearAuraRotationForManualUse();
+        clearRotation();
     }
 
     public record SentRotation(

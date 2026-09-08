@@ -70,6 +70,7 @@ public final class SilentPacketRotation {
     private static boolean simulatedUseQueued;
     private static boolean simulatedUseRunning;
     private static boolean simulatedUseCompleted;
+    private static boolean invokingSimulatedUse;
     private static boolean deferredReset;
     private static Runnable pendingRotation;
 
@@ -134,7 +135,7 @@ public final class SilentPacketRotation {
         }
         Minecraft client = Minecraft.getInstance();
         if (client != null && client.player != null) {
-            GameAccess.invokeStartUseItem(client);
+            invokeSimulatedUse(client);
         }
     }
 
@@ -415,8 +416,23 @@ public final class SilentPacketRotation {
         if ((requirePreviousRotation && !rotationPacketSent) || !prepareUse(client, hit)) {
             return false;
         }
-        GameAccess.invokeStartUseItem(client);
+        invokeSimulatedUse(client);
         return simulatedUseCompleted;
+    }
+
+    private static void invokeSimulatedUse(Minecraft client) {
+        boolean previousInvocation = invokingSimulatedUse;
+        invokingSimulatedUse = true;
+        try {
+            GameAccess.invokeStartUseItem(client);
+        } finally {
+            invokingSimulatedUse = previousInvocation;
+        }
+    }
+
+    /** A queued placement alone must never authorize a physical right-click. */
+    public static boolean isInvokingSimulatedUse() {
+        return invokingSimulatedUse;
     }
 
     private static boolean prepareUse(Minecraft client, BlockHitResult hit) {
@@ -577,7 +593,8 @@ public final class SilentPacketRotation {
 
     /** Called by the startUseItem hook for one queued vanilla right-click. */
     public static boolean beginSimulatedUse(Minecraft client) {
-        if (!simulatedUseQueued
+        if (!invokingSimulatedUse
+                || !simulatedUseQueued
                 || simulatedUseRunning
                 || client == null
                 || client.player == null

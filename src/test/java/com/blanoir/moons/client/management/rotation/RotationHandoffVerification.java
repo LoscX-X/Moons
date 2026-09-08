@@ -29,6 +29,7 @@ public final class RotationHandoffVerification {
 
     private static void acquisitionStartsFromRealHistory() {
         RotationHistory.reset();
+        require(!RotationLease.hasSilentRotation(), "idle leaves manual input available");
         var aura = new RotationLease("Aura", 50);
         var block = new RotationLease("Block", 100);
         Rotation[] start = {null};
@@ -43,6 +44,9 @@ public final class RotationHandoffVerification {
                         }),
                 "initial acquire");
         require(RotationHistory.same(start[0], CAMERA), "unknown history seeds from camera");
+        require(
+                RotationLease.hasSilentRotation(),
+                "input blocked before the first rotation commit");
         require(!RotationHistory.latest().valid(), "seed is never labelled sent");
         RotationHistory.record(new ServerboundMovePlayerPacket.StatusOnly(false, false), 0);
         require(
@@ -59,11 +63,13 @@ public final class RotationHandoffVerification {
                 RotationHistory.same(start[0], new Rotation(70, 10)),
                 "B starts at sent 70, not planned 80 or camera 5");
         require(!aura.active(), "old owner invalidated");
+        require(RotationLease.hasSilentRotation(), "preemption keeps manual input blocked");
         block.release();
         require(RotationHistory.latest().yaw() == 70, "feature release preserves shared history");
         require(aura.acquire(request(90, 30), CAMERA, value -> start[0] = value), "reacquire");
         require(start[0].yaw() == 70, "reacquire ignores its old private trajectory");
         RotationHistory.reset();
+        require(!RotationLease.hasSilentRotation(), "context reset restores manual input");
         require(
                 !aura.active() && !RotationHistory.latest().valid(),
                 "context reset invalidates owner and history");
@@ -81,12 +87,14 @@ public final class RotationHandoffVerification {
                 "all readers reuse the same result");
         require(!block.acquire(request(120, 40)), "cannot preempt an action/movement window");
         aura.release();
+        require(RotationLease.hasSilentRotation(), "pending release keeps input blocked");
         require(
                 aura.active() && RotationLease.submission().rotation() == committed,
                 "disable defers release and preserves output");
         var cancelled = look(80, 20);
         RotationHistory.capture(new PacketSendEvent.Pre(null, cancelled, null));
         RotationLease.finishMotion();
+        require(!RotationLease.hasSilentRotation(), "completed release restores input");
         require(
                 !aura.active() && RotationHistory.latest().yaw() == 70,
                 "method completion without POST cannot advance history");
@@ -117,10 +125,12 @@ public final class RotationHandoffVerification {
         require(block.pin(), "pin interaction");
         block.release();
         RotationLease.finishMotion();
+        require(RotationLease.hasSilentRotation(), "pinned use blocks input until closure");
         require(
                 block.active() && !next.acquire(request(0, 0)),
                 "pin survives disable and method completion");
         block.unpin();
+        require(!RotationLease.hasSilentRotation(), "unpin completes input suppression");
         require(
                 !block.active() && next.acquire(request(0, 0)),
                 "explicit interaction closure completes deferred release");
@@ -171,6 +181,7 @@ public final class RotationHandoffVerification {
         var next = new RotationLease("Next", 100);
         Rotation exact = new Rotation(Math.nextUp(42F), 76);
         require(RotationLease.holdManual(exact), "manual use records exact pair");
+        require(!RotationLease.hasSilentRotation(), "ordinary manual use is not a silent turn");
         require(!next.acquire(request(120, 30)), "new rotation waits for manual closing movement");
         RotationLease.finishMotion();
         require(

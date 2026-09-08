@@ -197,6 +197,18 @@ def verifyHostUtilities = tasks.register("verifyHostUtilities", Exec) {
     }
 }
 
+tasks.register("verifyLauncherPackages", Exec) {
+    group = "verification"
+    description = "Checks embedded and external UI preparation using the built launchers, without starting the game."
+    dependsOn tasks.named("moonsPackages"), compileHostUtilsVerification
+    doFirst {
+        executable hostVerificationExecutable.get().asFile.absolutePath
+        args layout.buildDirectory.file("dist/moons-full.exe").get().asFile.absolutePath,
+                layout.buildDirectory.file("dist/moons.exe").get().asFile.absolutePath,
+                tasks.named("uiDependenciesJar", Jar).get().archiveFile.get().asFile.absolutePath
+    }
+}
+
 tasks.register("checkAllVersions") {
     group = "verification"
     description = "Runs all verification gates sequentially against every supported Minecraft version."

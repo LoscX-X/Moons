@@ -1,9 +1,19 @@
-name: Project checks
+name: Project checks and packages
 
 on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      package:
+        description: Package to build
+        type: choice
+        default: all
+        options:
+          - all
+          - full
+          - download
+          - ui-runtime
 
 permissions:
   contents: read
@@ -15,14 +25,103 @@ concurrency:
 jobs:
   check:
     runs-on: windows-2022
-    timeout-minutes: 25
+    timeout-minutes: 30
+    outputs:
+      release_tag: ${{ steps.package.outputs.release_tag }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '25'
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v5
       - name: Check both supported Minecraft versions
+        if: github.event_name != 'workflow_dispatch' || inputs.package != 'ui-runtime'
         shell: pwsh
         run: .\gradlew.bat checkAllVersions --console=plain
+      - name: Build selected packages
+        id: package
+        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch')
+        shell: pwsh
+        env:
+          PACKAGE_KIND: ${{ inputs.package || 'all' }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tasks = switch ($env:PACKAGE_KIND) {
+            'all'        { @('moonsPackages', 'verifyLauncherPackages') }
+            'full'       { @('moonsFullExe') }
+            'download'   { @('moonsExe') }
+            'ui-runtime' { @('moonsUiRuntime') }
+            default     { throw "Unknown package: $env:PACKAGE_KIND" }
+          }
+          $tag = "build-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          $runtimeUrl = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$tag/moons-ui-runtime.jar"
+          "release_tag=$tag" >> $env:GITHUB_OUTPUT
+          "kind=$env:PACKAGE_KIND" >> $env:GITHUB_OUTPUT
+          .\gradlew.bat @tasks "-Pmoons_ui_download_url=$runtimeUrl" --console=plain
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Upload UI runtime
+        if: steps.package.outputs.kind != ''
+        uses: actions/upload-artifact@v6
+        with:
+          name: moons-ui-runtime
+          overwrite: true
+          path: |
+            build/dist/dependencies/moons-ui-runtime.jar
+            build/dist/dependencies/moons-ui-runtime.jar.sha256
+          if-no-files-found: error
+          compression-level: 0
+      - name: Upload full launcher
+        if: steps.package.outputs.kind == 'all' || steps.package.outputs.kind == 'full'
+        uses: actions/upload-artifact@v6
+        with:
+          name: moons-full
+          overwrite: true
+          path: build/dist/moons-full.exe
+          if-no-files-found: error
+          compression-level: 0
+      - name: Upload download launcher
+        if: steps.package.outputs.kind == 'all' || steps.package.outputs.kind == 'download'
+        uses: actions/upload-artifact@v6
+        with:
+          name: moons-download
+          overwrite: true
+          path: build/dist/moons.exe
+          if-no-files-found: error
+          compression-level: 0
+
+  publish:
+    needs: check
+    if: needs.check.outputs.release_tag != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: moons-*
+          merge-multiple: true
+          path: artifacts
+      - name: Publish matching launchers and UI runtime
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.check.outputs.release_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > release-notes.md <<'NOTES'
+          - `moons-full.exe`: includes the UI runtime; no separate UI dependency download.
+          - `moons.exe`: downloads and caches the matching UI runtime from this release.
+          - `moons-ui-runtime.jar`: standalone UI dependency, with a SHA-256 sidecar.
+
+          Only assets selected for this run are included. Both launchers support Minecraft 26.1.2 and 26.2.
+          NOTES
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" artifacts/* --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$RELEASE_TAG" artifacts/* \
+              --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+              --title "Build $GITHUB_RUN_NUMBER (${GITHUB_SHA:0:8})" \
+              --prerelease --latest=false --notes-file release-notes.md
+          fi

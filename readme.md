@@ -2,6 +2,21 @@
 
 Minecraft Java Edition 客户端项目，支持 **26.1.2 / 26.2**。通过 Windows 启动器和 JNI/JVMTI 桥接加载，使用共享客户端代码与独立版本适配。
 
+## Actions 打包
+
+打开 **Actions → Project checks and packages → Run workflow**，选择打包内容：
+
+| 选项 | 内容 |
+|---|---|
+| `all` | 完整版、轻量版和 UI 依赖，默认选项 |
+| `full` | `moons-full.exe`，内置 UI 依赖，可直接运行 |
+| `download` | `moons.exe`，首次运行自动下载并缓存匹配的 UI 依赖 |
+| `ui-runtime` | 仅生成 `moons-ui-runtime.jar` 和 SHA-256 文件 |
+
+主分支推送会在检查通过后自动打包全部产物；Pull Request 仅运行检查。手动选择 `ui-runtime` 时只构建依赖，不运行 Minecraft 检查。
+
+产物可在该次运行的 **Artifacts** 和对应的 **GitHub Releases 预发布版本**中下载。每次发布使用独立地址，轻量版始终下载同一次构建的 UI JAR。完整版只是不需要额外下载 UI 依赖，项目自身的联网功能仍按原设置运行。
+
 ## 构建环境
 
 - Windows x64、x64 JDK 25。
@@ -10,36 +25,35 @@ Minecraft Java Edition 客户端项目，支持 **26.1.2 / 26.2**。通过 Windo
 
 仓库自带 Gradle 9.5.1 Wrapper，无需另行安装 Gradle。
 
-## 构建启动器
+## 本地构建
 
 在仓库根目录打开 PowerShell，将 `JAVA_HOME` 改为本机 JDK 25 的安装路径：
 
 ```powershell
 $env:JAVA_HOME = 'C:\Program Files\Java\jdk-25'
-.\gradlew.bat moonsExe
+.\gradlew.bat moonsPackages
 ```
 
-`moonsExe` 自动构建并打包两个受支持版本，无需分别指定版本。首次构建需要联网下载依赖；依赖缓存完整后可追加 `--offline`。
-
-| 产物 | 路径 |
+| 任务 | 产物 |
 |---|---|
-| Windows 启动器 | `build/dist/moons.exe` |
-| UI 运行时依赖 | `build/dist/dependencies/moons-ui-runtime.jar` |
+| `moonsPackages` | 下列全部产物，一次构建两个 Minecraft 版本 |
+| `moonsFullExe` | `build/dist/moons-full.exe` |
+| `moonsExe` | `build/dist/moons.exe` |
+| `moonsUiRuntime` | `build/dist/dependencies/moons-ui-runtime.jar` 及 `.sha256` |
 
-UI 运行时独立于 EXE，必须与同一次构建的启动器配套。启动对应版本的 Minecraft 后，本地运行可直接指定刚构建的依赖文件：
+首次构建需要联网下载依赖；依赖缓存完整后可追加 `--offline`。本地构建轻量版时，可通过 `-Pmoons_ui_download_url` 指定匹配的 JAR 下载地址，或运行时直接使用本次构建的文件：
 
 ```powershell
 $uiRuntime = (Resolve-Path '.\build\dist\dependencies\moons-ui-runtime.jar').Path
 .\build\dist\moons.exe --ui-dependency-url $uiRuntime
 ```
 
+启动对应版本的 Minecraft 后，再运行启动器。
+
 ## 仅构建 Java Payload
 
 ```powershell
-# Minecraft 26.1.2
 .\gradlew.bat moonsJar '-Pminecraft_version=26.1.2'
-
-# Minecraft 26.2
 .\gradlew.bat moonsJar '-Pminecraft_version=26.2'
 ```
 

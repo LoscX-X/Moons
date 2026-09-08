@@ -42,6 +42,7 @@ namespace Moons.WindowsLauncher
         private const string BootstrapApiResource = "Moons.Api.jar";
         private const string BridgeResource = "Moons.Bridge.dll";
         private const string UiRuntimeMetadataResource = "Moons.UiRuntime.properties";
+        private const string UiRuntimeResource = "Moons.UiRuntime.jar";
 
         [DllImport("dwmapi.dll")]
         private static extern int DwmSetWindowAttribute(
@@ -1358,43 +1359,54 @@ namespace Moons.WindowsLauncher
             Directory.CreateDirectory(versionDirectory);
             if (!IsExpectedFile(target, expectedHash, expectedSize))
             {
-                string url = ResolveUiRuntimeUrl(home, arguments, metadata);
-                if (String.IsNullOrWhiteSpace(url))
+                if (progress != null) progress(6, "Preparing UI runtime dependencies");
+                StagedFile.Write(target, temporary =>
                 {
-                    throw new InvalidOperationException(
-                        "The UI runtime is not cached and no download URL is configured.\r\n\r\n"
-                        + "Set --ui-dependency-url, MOONS_UI_DOWNLOAD_URL, "
-                        + "ui.dependency-url in .moons\\config\\moons.properties, or build with "
-                        + "-Pmoons_ui_download_url=https://.../moons-ui-runtime.jar.");
-                }
-                Uri source = CreateDownloadUri(url);
-                string temporary = target + ".tmp-" + Process.GetCurrentProcess().Id;
-                try
-                {
-                    if (progress != null) progress(6, "Downloading UI runtime dependencies");
-                    DownloadFile(source, temporary, expectedSize,
-                        progress, downloadProgress, cancelled);
+                    if (!ExtractBundledUiRuntime(temporary, cancelled))
+                    {
+                        string url = ResolveUiRuntimeUrl(home, arguments, metadata);
+                        if (String.IsNullOrWhiteSpace(url))
+                        {
+                            throw new InvalidOperationException(
+                                "The UI runtime is not cached and no download URL is configured.\r\n\r\n"
+                                + "Set --ui-dependency-url, MOONS_UI_DOWNLOAD_URL, "
+                                + "ui.dependency-url in .moons\\config\\moons.properties, or build with "
+                                + "-Pmoons_ui_download_url=https://.../moons-ui-runtime.jar.");
+                        }
+                        if (progress != null) progress(6, "Downloading UI runtime dependencies");
+                        DownloadFile(CreateDownloadUri(url), temporary, expectedSize,
+                            progress, downloadProgress, cancelled);
+                    }
                     if (!IsExpectedFile(temporary, expectedHash, expectedSize))
                     {
                         throw new InvalidDataException(
-                            "The downloaded UI runtime failed its SHA-256 or size check.");
+                            "The UI runtime failed its SHA-256 or size check.");
                     }
-                    if (File.Exists(target)) File.Delete(target);
-                    File.Move(temporary, target);
-                    if (downloadProgress != null)
-                    {
-                        downloadProgress(100, "UI runtime download complete");
-                    }
-                }
-                finally
+                });
+                if (downloadProgress != null)
                 {
-                    if (File.Exists(temporary)) File.Delete(temporary);
+                    downloadProgress(100, "UI runtime dependencies ready");
                 }
             }
 
             WriteUiRuntimePointer(libraryRoot, expectedHash);
             if (progress != null) progress(17, "UI runtime dependencies are ready");
             return target;
+        }
+
+        private static bool ExtractBundledUiRuntime(string target, Func<bool> cancelled)
+        {
+            using (Stream source = Assembly.GetExecutingAssembly().GetManifestResourceStream(UiRuntimeResource))
+            {
+                if (source == null) return false;
+                if (cancelled()) throw new OperationCanceledException();
+                using (FileStream output = new FileStream(target, FileMode.Create, FileAccess.Write, FileShare.None))
+                {
+                    source.CopyTo(output);
+                }
+                if (cancelled()) throw new OperationCanceledException();
+                return true;
+            }
         }
 
         private static string ResolveUiRuntimeUrl(

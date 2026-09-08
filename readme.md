@@ -1,65 +1,70 @@
 # Moons
 
-Minecraft Java Edition 客户端项目，支持 **26.1.2 / 26.2**。通过 Windows 启动器和 JNI/JVMTI 桥接加载，使用共享客户端代码与独立版本适配。
+面向 Minecraft Java Edition 的 Windows 客户端项目，支持 **26.1.2 / 26.2**，通过 JNI/JVMTI 桥接加载。客户端逻辑集中维护，版本差异由独立适配层处理。
 
-## Actions 打包
+## 获取与运行
 
-打开 **Actions → Project checks and packages → Run workflow**，选择打包内容：
+构建产物发布在 [GitHub Releases](https://github.com/LoscX-X/Moons/releases)，也可从对应 Actions 运行的 Artifacts 下载。
 
-| 选项 | 内容 |
-|---|---|
-| `all` | 完整版、轻量版和 UI 依赖，默认选项 |
-| `full` | `moons-full.exe`，内置 UI 依赖，可直接运行 |
-| `download` | `moons.exe`，首次运行自动下载并缓存匹配的 UI 依赖 |
-| `ui-runtime` | 仅生成 `moons-ui-runtime.jar` 和 SHA-256 文件 |
+- **完整版** `moons-full.exe`：内置 UI 依赖。
+- **轻量版** `moons.exe`：首次运行下载并缓存同次发布的 UI 依赖。
 
-主分支推送会在检查通过后自动打包全部产物；Pull Request 仅运行检查。手动选择 `ui-runtime` 时只构建依赖，不运行 Minecraft 检查。
-
-产物可在该次运行的 **Artifacts** 和对应的 **GitHub Releases 预发布版本**中下载。每次发布使用独立地址，轻量版始终下载同一次构建的 UI JAR。完整版只是不需要额外下载 UI 依赖，项目自身的联网功能仍按原设置运行。
-
-## 构建环境
-
-- Windows x64、x64 JDK 25。
-- Visual Studio 2022 或 Build Tools 2022，安装“使用 C++ 的桌面开发”，包含 Windows SDK 和 CMake（3.20+）。
-- .NET Framework 4.x C# 编译器。
-
-仓库自带 Gradle 9.5.1 Wrapper，无需另行安装 Gradle。
+先启动受支持版本的 Minecraft，再运行启动器。
 
 ## 本地构建
 
-在仓库根目录打开 PowerShell，将 `JAVA_HOME` 改为本机 JDK 25 的安装路径：
+### 环境要求
+
+- Windows x64、x64 JDK 25。
+- Visual Studio 2022 或 Build Tools 2022，安装“使用 C++ 的桌面开发”，包含 Windows SDK 和 CMake 3.20+。
+- .NET Framework 4.x C# 编译器。
+
+仓库包含 Gradle Wrapper，无需单独安装 Gradle。
+
+### 构建命令
+
+在仓库根目录打开 PowerShell，按本机环境设置 JDK 路径：
 
 ```powershell
 $env:JAVA_HOME = 'C:\Program Files\Java\jdk-25'
 .\gradlew.bat moonsPackages
 ```
 
+产物位于 `build/dist/`，也可单独执行对应任务：
+
 | 任务 | 产物 |
 |---|---|
-| `moonsPackages` | 下列全部产物，一次构建两个 Minecraft 版本 |
-| `moonsFullExe` | `build/dist/moons-full.exe` |
-| `moonsExe` | `build/dist/moons.exe` |
-| `moonsUiRuntime` | `build/dist/dependencies/moons-ui-runtime.jar` 及 `.sha256` |
+| `moonsPackages` | 全部产物，包含两个 Minecraft 版本 |
+| `moonsFullExe` | `moons-full.exe` |
+| `moonsExe` | `moons.exe` |
+| `moonsUiRuntime` | `dependencies/moons-ui-runtime.jar` 及 SHA-256 校验文件 |
 
-首次构建需要联网下载依赖；依赖缓存完整后可追加 `--offline`。本地构建轻量版时，可通过 `-Pmoons_ui_download_url` 指定匹配的 JAR 下载地址，或运行时直接使用本次构建的文件：
+首次构建需要联网下载依赖。本地构建轻量版时，通过 `-Pmoons_ui_download_url=<URL>` 指定匹配的 UI JAR 下载地址。
 
-```powershell
-$uiRuntime = (Resolve-Path '.\build\dist\dependencies\moons-ui-runtime.jar').Path
-.\build\dist\moons.exe --ui-dependency-url $uiRuntime
-```
-
-启动对应版本的 Minecraft 后，再运行启动器。
-
-## 仅构建 Java Payload
+### 单独构建 Java 载荷
 
 ```powershell
 .\gradlew.bat moonsJar '-Pminecraft_version=26.1.2'
 .\gradlew.bat moonsJar '-Pminecraft_version=26.2'
 ```
 
-对应产物为 `build/dist/agent/26_1/moons.jar` 和 `build/dist/agent/26_2/moons.jar`，由原生桥接加载，不能通过 `java -jar` 启动。
+产物分别为 `build/dist/agent/26_1/moons.jar` 和 `build/dist/agent/26_2/moons.jar`，供桥接层加载，不支持 `java -jar` 启动。
 
-许可证见 [LICENSE.txt](LICENSE.txt)。
+## GitHub Actions
+
+在 **Actions → Project checks and packages → Run workflow** 中选择：
+
+- `all`：全部产物，默认选项。
+- `full` / `download`：完整版 / 轻量版，同时生成 UI 依赖。
+- `ui-runtime`：仅构建 UI 依赖。
+
+主分支推送在检查通过后自动打包并创建预发布版本；Pull Request 仅运行检查。手动选择 `ui-runtime` 时跳过 Minecraft 检查。轻量版的依赖下载地址由工作流自动配置。
+
+## 开发与许可
+
+开发约定见 [CONTRIBUTING.md](CONTRIBUTING.md)，原生启动代理测试见 [native-agent/README.md](native-agent/README.md)。
+
+许可证见 [LICENSE.txt](LICENSE.txt)，第三方来源记录见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
 ---
 

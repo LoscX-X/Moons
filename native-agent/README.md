@@ -1,58 +1,44 @@
-# Moons native startup-agent test transport
+# 原生启动代理测试
 
-This directory contains a test-only thin JVMTI transport. It is loaded through
-the standard `-agentpath` JVM option to verify startup-phase JVMTI/JNI/ASM
-integration. It is not a public load method, does not implement process
-load, and does not bypass Attach.
+此目录提供用于验证启动阶段字节码转换的 JVMTI 代理，通过 JVM 的 `-agentpath` 参数加载。正式启动器的运行时加载桥接位于 [native-bridge](../native-bridge/)。
 
-The native side owns only four responsibilities:
+## 职责
 
-1. receive `Agent_OnLoad` and obtain `jvmtiEnv`;
-2. register `VMInit` and `ClassFileLoadHook`;
-3. copy selected class bytes into a Java `byte[]` through JNI;
-4. return a Java ASM result in JVMTI-allocated memory.
+原生层接收 `Agent_OnLoad`，注册 `VMInit` 和 `ClassFileLoadHook`，通过 JNI 将类字节码交给 Java 转换器，再将结果复制到 JVMTI 分配的内存。
 
-Minecraft mappings and transformations remain in
-`NativeTransformerBridge` and the existing Java `MoonsTransformer`.
+Minecraft 映射和字节码转换由 `NativeTransformerBridge` 与 `MoonsTransformer` 负责；运行时和模块初始化由 Java 层负责。
 
-## Build and verification
+## 构建与验证
 
-On Windows with the Visual Studio C++ tools and a JDK installed:
+在仓库根目录执行。环境要求与 [主 README](../readme.md#环境要求) 相同，以下任务仅在 Windows 上运行：
 
 ```powershell
-gradle build --console=plain
+.\gradlew.bat verifyNativeAgent verifyNativeMoonsTransformer
 ```
 
-The build discovers CMake from PATH or the Visual Studio installation and stages
-these test artifacts below `build/moons-test/<version>/native-agent`:
+| 任务 | 验证内容 |
+|---|---|
+| `verifyNativeAgent` | JVMTI → JNI → Java ASM → JVMTI 的字节码转换链路 |
+| `verifyNativeMoonsTransformer` | 正式 tick 转换器及其到 `AgentBridge` 的调用链路 |
 
-- `moons-native.dll`
-- `moons-api.jar`
+默认验证 Minecraft 26.1.2；验证 26.2 时追加 `'-Pminecraft_version=26.2'`。任务会自动构建测试依赖并配置 JVM 参数。
 
-The Java payload consumed by the bridge is built at
-`build/dist/agent/<version>/moons.jar`; verification consumes it as test input.
+测试文件位于 `build/moons-test/<version>/native-agent/`：
 
-`verifyNativeAgent` proves the generic JVMTI/JNI/ASM byte round trip.
-`verifyNativeMoonsTransformer` additionally proves that the production Moons
-tick transformer reaches `AgentBridge`.
+- `moons-native.dll`：启动代理。
+- `moons-api.jar`：供转换后 Hook 使用的 API，由正式转换器验证任务准备。
 
-## Manual verification form
+`<version>` 为 `26_1` 或 `26_2`。正式转换器验证使用 `build/dist/agent/<version>/moons.jar` 作为输入。
 
-PowerShell requires the complete `-agentpath` argument to be quoted because its
-options are separated by semicolons:
+## 代理参数
 
-```powershell
-java '-agentpath:C:\path\moons-native.dll=jar=C:\path\moons.jar;bootstrap=C:\path\moons-api.jar;include=net/minecraft/,com/mojang/,net/caffeinemc/' -cp app.jar example.Main
-```
+手动配置时，参数以分号分隔。PowerShell 中须将完整的 `-agentpath:...` 参数放在引号内。
 
-Options:
+| 参数 | 说明 |
+|---|---|
+| `jar` | 必填，包含 Java 转换桥及 ASM 的 JAR |
+| `bootstrap` | 可选，向引导类加载器提供 API JAR |
+| `bridge` | 可选，Java 转换桥类名，默认使用正式桥接类 |
+| `include` | 可选，以逗号分隔的类内部名称前缀，在进入 JNI 前过滤 |
 
-- `jar` (required): JAR containing the Java transformer bridge and ASM.
-- `bootstrap` (optional): bootstrap-visible API JAR used by loaded hooks.
-- `bridge` (optional): Java bridge class; defaults to the production bridge.
-- `include` (optional): comma-separated internal-name prefixes filtered before
-  crossing JNI.
-
-The current native path demonstrates startup transformation and the production
-hook bridge. Runtime/module bootstrap is still owned by the Java Agent path and
-is not duplicated in C++.
+构建与验证任务定义见 [gradle/native.gradle](../gradle/native.gradle)。

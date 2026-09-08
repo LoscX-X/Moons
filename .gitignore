@@ -120,6 +120,7 @@ runs/
 
 # Local documentation and compiled binaries are not repository sources
 /docs/
+/THIRD_PARTY_NOTICES.md
 *.exe
 *.dll
 

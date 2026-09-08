@@ -7,7 +7,6 @@
  * Danger includes low health (+absorption), missing armor,
  * being burrowed/in a hole with a lower safety threshold, predicted explosion
  * damage from entities or beds/respawn anchors, and predicted fall damage.
- * Source attribution is recorded in THIRD_PARTY_NOTICES.md.
  */
 package com.blanoir.moons.client.module.impl.player;
 

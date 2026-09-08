@@ -8,7 +8,7 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.effect.MobEffects;
 
 /**
- * Automatic sprint control. Source attribution is recorded in THIRD_PARTY_NOTICES.md.
+ * Automatic sprint control.
  *
  * The sprint decision is forced inside {@code LocalPlayer#aiStep} (see
  * LocalPlayer sprint-decision hooks), so sprint re-engages automatically after a screen

@@ -3,7 +3,6 @@
  *
  * While mining a block the
  * best hotbar tool is selected and kept selected after mining stops.
- * Source attribution is recorded in THIRD_PARTY_NOTICES.md.
  */
 package com.blanoir.moons.client.module.impl.world;
 

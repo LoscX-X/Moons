@@ -64,7 +64,7 @@ $env:JAVA_HOME = 'C:\Program Files\Java\jdk-25'
 
 开发约定见 [CONTRIBUTING.md](CONTRIBUTING.md)，原生启动代理测试见 [native-agent/README.md](native-agent/README.md)。
 
-许可证见 [LICENSE.txt](LICENSE.txt)，第三方来源记录见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+许可证见 [LICENSE](LICENSE)。
 
 ---
 

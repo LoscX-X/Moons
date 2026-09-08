@@ -11,8 +11,6 @@ import net.minecraft.world.phys.Vec3;
 
 /**
  * Tracks delayed entity positions from vanilla movement packets.
- *
- * <p>Source attribution is recorded in THIRD_PARTY_NOTICES.md.
  */
 public final class TrackedEntityPosition {
     private final VecDeltaCodec codec = new VecDeltaCodec();

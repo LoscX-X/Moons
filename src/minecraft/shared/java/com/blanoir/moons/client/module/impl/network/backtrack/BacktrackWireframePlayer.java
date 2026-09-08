@@ -11,8 +11,6 @@ import org.joml.Quaternionf;
 
 /**
  * Wireframe player model used by the Backtrack ESP.
- *
- * <p>Source attribution is recorded in THIRD_PARTY_NOTICES.md.
  */
 public final class BacktrackWireframePlayer {
     private static final AABB LIMB = new AABB(0.0, 0.0, 0.0, 0.125, 0.375, 0.125);

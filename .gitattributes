@@ -4,6 +4,7 @@
 .gitattributes text eol=lf
 .gitignore text eol=lf
 gradlew text eol=lf
+CMakeLists.txt text eol=lf
 
 *.java text eol=lf
 *.kt text eol=lf

@@ -14,6 +14,10 @@ on:
           - full
           - download
           - ui-runtime
+      verify:
+        description: Run optional full verification
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -35,8 +39,12 @@ jobs:
           distribution: temurin
           java-version: '25'
       - uses: gradle/actions/setup-gradle@v5
-      - name: Check all supported Minecraft versions
+      - name: Compile all supported Minecraft versions
         if: github.event_name != 'workflow_dispatch' || inputs.package != 'ui-runtime'
+        shell: pwsh
+        run: .\gradlew.bat compileAllVersions --console=plain
+      - name: Run optional full verification
+        if: github.event_name == 'workflow_dispatch' && inputs.verify
         shell: pwsh
         run: .\gradlew.bat checkAllVersions --console=plain
       - name: Build selected packages
@@ -45,15 +53,17 @@ jobs:
         shell: pwsh
         env:
           PACKAGE_KIND: ${{ inputs.package || 'all' }}
+          VERIFY_PACKAGES: ${{ github.event_name == 'workflow_dispatch' && inputs.verify && inputs.package == 'all' }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $tasks = switch ($env:PACKAGE_KIND) {
-            'all'        { @('moonsPackages', 'verifyLauncherPackages') }
+          $tasks = @(switch ($env:PACKAGE_KIND) {
+            'all'        { @('moonsPackages') }
             'full'       { @('moonsFullExe') }
             'download'   { @('moonsExe') }
             'ui-runtime' { @('moonsUiRuntime') }
             default     { throw "Unknown package: $env:PACKAGE_KIND" }
-          }
+          })
+          if ($env:VERIFY_PACKAGES -eq 'true') { $tasks += 'verifyLauncherPackages' }
           $tag = "build-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
           $runtimeUrl = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$tag/moons-ui-runtime.jar"
           "release_tag=$tag" >> $env:GITHUB_OUTPUT

@@ -63,7 +63,9 @@ Open **Actions → Project checks and packages → Run workflow** and select:
 - `full` / `download`: the full / lightweight package, together with the UI runtime.
 - `ui-runtime`: the UI runtime only.
 
-Pushes to the main branch build packages and create a prerelease after checks pass. Pull requests run checks only. Selecting `ui-runtime` manually skips Minecraft checks. The workflow configures the lightweight launcher's dependency download URL automatically.
+Daily CI compiles production sources for every supported version with `compileAllVersions`; it does not run custom `verify` tasks or style checks. Pushes to the main branch also build packages and create a prerelease. Pull requests compile only. Selecting `ui-runtime` manually skips Minecraft compilation. The workflow configures the lightweight launcher's dependency download URL automatically.
+
+Enable the optional `verify` checkbox in **Run workflow** to run `checkAllVersions` and, when building `all`, `verifyLauncherPackages`. These tasks remain available locally for manual regression checks.
 
 ## Development and License
 

@@ -39,14 +39,24 @@ public final class InputBindingVerification {
                                         List.of())));
         InputConstants.Key mouse5 = ModuleKeybinds.fromMouseButton(InputConstants.MOUSE_BUTTON_5);
         require(
+                ModuleKeybinds.isValid(mouse5),
+                "Mouse 5 must resolve to a valid key: raw="
+                        + InputConstants.MOUSE_BUTTON_5
+                        + ", name="
+                        + mouse5.getName()
+                        + ", value="
+                        + mouse5.getValue());
+        require(
                 mouse5.equals(BindCommand.parseKey("MOUSE5")),
                 "command and callback agree on Mouse 5");
-        require(ModuleKeybinds.bind("mouse_verify", mouse5), "Mouse 5 can be bound");
+        require(
+                ModuleKeybinds.bind("mouse_verify", mouse5),
+                "Mouse 5 can be bound; GUI=" + ModuleKeybinds.getGuiKey().getName());
         require(
                 mouse5.equals(ModuleKeybinds.getBoundKey("mouse_verify")),
                 "saved binding round trip");
         require(
-                ModuleKeybinds.fromMouseButton(InputConstants.MOUSE_BUTTON_8 + 1)
+                ModuleKeybinds.fromMouseButton(InputConstants.MOUSE_BUTTON_LEFT + 8)
                         == InputConstants.UNKNOWN,
                 "invalid raw button rejected");
 
@@ -138,7 +148,10 @@ public final class InputBindingVerification {
         InputConstants.Key modifier = BindCommand.parseKey("rctrl");
         InputConstants.Key mouse8 = BindCommand.parseKey("mouse8");
         require(
-                mouse8.equals(ModuleKeybinds.fromMouseButton(InputConstants.MOUSE_BUTTON_8)),
+                ModuleKeybinds.isValid(mouse8)
+                        && mouse8.equals(
+                                ModuleKeybinds.fromMouseButton(
+                                        InputConstants.MOUSE_BUTTON_LEFT + 7)),
                 "last mouse button uses this version's numbering");
         require(ModuleKeybinds.bind("mouse_verify", letter), "keyboard module binding");
         Set<InputConstants.Key> snapshot = ModuleKeybinds.boundKeys();

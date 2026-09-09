@@ -144,3 +144,31 @@ java {
 
 sourceSets.client.compileClasspath += sourceSets.api.output
 sourceSets.features.compileClasspath += sourceSets.client.output + sourceSets.client.compileClasspath
+
+// Daily CI compiles production sources only. Full verification remains opt-in.
+def versionCompilations = []
+moonsBuild.supportedVersions.each { minecraftVersion, directory ->
+    def previousCompilation = versionCompilations.isEmpty() ? null : versionCompilations.last()
+    def versionCompilation = tasks.register("compileMinecraft${directory}", Exec) {
+        group = "build"
+        description = "Compiles production sources for Minecraft ${minecraftVersion} without verification."
+        if (previousCompilation != null) {
+            mustRunAfter previousCompilation
+        }
+        workingDir project.projectDir
+        executable moonsToolchains.gradleExecutable.absolutePath
+        def nestedBuild = layout.buildDirectory.dir("compilation/${directory}").get().asFile.absolutePath
+        args moonsToolchains.nestedGradleArguments([
+                "clientClasses", "featuresClasses", "agentClasses",
+                "-Pminecraft_version=${minecraftVersion}",
+                "-Pmoons_build_directory=${nestedBuild}"
+        ].collect { it.toString() })
+    }
+    versionCompilations.add(versionCompilation)
+}
+
+tasks.register("compileAllVersions") {
+    group = "build"
+    description = "Compiles production sources for every supported Minecraft version without tests or custom verification."
+    dependsOn versionCompilations
+}

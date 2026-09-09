@@ -78,8 +78,8 @@ public final class BindCommand {
             return InputConstants.UNKNOWN;
         try {
             InputConstants.Key key = InputConstants.getKey(name);
-            int maximum = name.startsWith("key.mouse.") ? InputConstants.MOUSE_BUTTON_8 : 348;
-            return ModuleKeybinds.isValid(key) && key.getValue() <= maximum
+            return ModuleKeybinds.isValid(key)
+                            && (key.getType() == InputConstants.Type.MOUSE || key.getValue() <= 348)
                     ? key
                     : InputConstants.UNKNOWN;
         } catch (RuntimeException ignored) {

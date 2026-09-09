@@ -87,14 +87,23 @@ public final class ModuleKeybinds {
 
     /** Converts a raw mouse button to a validated binding key. */
     public static InputConstants.Key fromMouseButton(int button) {
-        if (button < InputConstants.MOUSE_BUTTON_LEFT || button > InputConstants.MOUSE_BUTTON_8) {
+        if (!isMouseButton(button)) {
             return InputConstants.UNKNOWN;
         }
         return validOrUnknown(InputConstants.Type.MOUSE.getOrCreate(button));
     }
 
+    private static boolean isMouseButton(int button) {
+        // GLFW starts at 0, SDL at 1. In 26.1.2 MOUSE_BUTTON_8 incorrectly equals 0.
+        int first = InputConstants.MOUSE_BUTTON_LEFT;
+        return button >= first && button < first + 8;
+    }
+
     public static boolean isValid(InputConstants.Key key) {
-        return key != null && key != InputConstants.UNKNOWN && key.getValue() >= 0;
+        return key != null
+                && key != InputConstants.UNKNOWN
+                && key.getValue() >= 0
+                && (key.getType() != InputConstants.Type.MOUSE || isMouseButton(key.getValue()));
     }
 
     private static InputConstants.Key parse(String name) {

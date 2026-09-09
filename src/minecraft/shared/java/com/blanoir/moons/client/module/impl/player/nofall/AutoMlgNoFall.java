@@ -2,7 +2,9 @@ package com.blanoir.moons.client.module.impl.player.nofall;
 
 import com.blanoir.moons.client.management.rotation.SilentPacketRotation;
 import com.blanoir.moons.client.utils.math.MathUtils;
+import com.blanoir.moons.client.utils.math.RandomMath;
 import com.blanoir.moons.client.utils.player.HotbarQueries;
+import com.blanoir.moons.client.utils.prediction.LandingPrediction;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 import com.blanoir.moons.client.utils.world.FluidQueries;
 import com.blanoir.moons.client.utils.world.placement.BlockPlacementUtils;
@@ -18,8 +20,6 @@ import net.minecraft.world.level.material.Fluids;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
-
-import java.util.concurrent.ThreadLocalRandom;
 
 /** AutoMLG timing, placement and recovery state machine. */
 public final class AutoMlgNoFall {
@@ -197,16 +197,10 @@ public final class AutoMlgNoFall {
 
     private int ticksUntilGround(Minecraft client) {
         if (client.player.getDeltaMovement().y >= 0.0D) return 999;
-        double distance = distanceToGround(client, 30.0D);
-        if (distance == Double.POSITIVE_INFINITY) return 999;
-        double simulatedDrop = 0.0D;
-        double simulatedVelocity = client.player.getDeltaMovement().y;
-        for (int tick = 1; tick <= 20; tick++) {
-            simulatedDrop += simulatedVelocity;
-            simulatedVelocity = (simulatedVelocity - 0.08D) * 0.98D;
-            if (Math.abs(simulatedDrop) >= distance) return tick;
-        }
-        return 999;
+        int ticks =
+                LandingPrediction.ticksUntilGround(
+                        client.player.getDeltaMovement().y, distanceToGround(client, 30.0D));
+        return ticks == Integer.MAX_VALUE ? 999 : ticks;
     }
 
     private void placeWaterBucket(
@@ -370,8 +364,8 @@ public final class AutoMlgNoFall {
     }
 
     private static double addAimNoise(double value) {
-        ThreadLocalRandom random = ThreadLocalRandom.current();
-        return value + random.nextDouble(0.05D, 0.08D) * (random.nextDouble() * 2.0D - 1.0D);
+        return value
+                + RandomMath.nextDouble(0.05D, 0.08D) * (RandomMath.nextDouble() * 2.0D - 1.0D);
     }
 
     private static BlockHitResult raycast(

@@ -2,6 +2,7 @@ package com.blanoir.moons.client.module.world.scaffold;
 
 import com.blanoir.moons.client.event.network.PacketSendEvent;
 import com.blanoir.moons.client.management.rotation.RotationHistory;
+import com.blanoir.moons.client.utils.math.RandomMath;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 
 import net.minecraft.client.Minecraft;
@@ -18,7 +19,6 @@ import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.List;
 import java.util.Locale;
-import java.util.UUID;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -74,7 +74,7 @@ final class ScaffoldPlacementDebugger {
         if (!active) return;
         HISTORY.clear();
         epoch = System.nanoTime();
-        session = System.currentTimeMillis() + "-" + UUID.randomUUID().toString().substring(0, 8);
+        session = System.currentTimeMillis() + "-" + RandomMath.uuid().toString().substring(0, 8);
         firstAlert = "none";
         saved = "not saved";
         previousSupport = null;

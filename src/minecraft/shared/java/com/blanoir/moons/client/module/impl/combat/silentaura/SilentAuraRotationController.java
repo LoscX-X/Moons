@@ -9,6 +9,9 @@ import com.blanoir.moons.client.module.impl.combat.silentaura.aim.SilentAimType;
 import com.blanoir.moons.client.utils.math.MathUtils;
 import com.blanoir.moons.client.utils.math.RandomMath;
 import com.blanoir.moons.client.utils.math.Smoothing;
+import com.blanoir.moons.client.utils.prediction.AimPrediction;
+import com.blanoir.moons.client.utils.prediction.MotionPrediction;
+import com.blanoir.moons.client.utils.prediction.TrajectoryPrediction;
 import com.blanoir.moons.client.utils.raytrace.RaytraceUtils;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 import com.blanoir.moons.client.utils.rotation.aim.AimJitter;
@@ -35,11 +38,6 @@ public final class SilentAuraRotationController {
 
     private static final double CROSSING_EXIT_MARGIN = 0.22D;
 
-    /** Predict only while overlapping; long-distance tracking remains purely geometric. */
-    private static final double CROSSING_EXIT_LOOKAHEAD_TICKS = 5.0D;
-
-    private static final double CROSSING_MIN_RELATIVE_SPEED_SQUARED = 0.0016D;
-
     /** Prefer chest/head, but keep a small safe inset when only the lower body is visible. */
     private static final double LOWER_BODY_FLOOR = 0.03D;
 
@@ -63,7 +61,7 @@ public final class SilentAuraRotationController {
     private double stickyAimY = Double.NaN;
     private Vec3 heldOrbitOffset;
     private Vec3 orbitOffset = Vec3.ZERO;
-    private final SilentAuraPrediction prediction = new SilentAuraPrediction();
+    private MotionPrediction prediction = new MotionPrediction();
     private double noiseTime;
     private double noiseStrength;
     private double noiseSpeed = 1.0D;
@@ -123,7 +121,7 @@ public final class SilentAuraRotationController {
             flickYawAccelScale = flickPitchAccelScale = 1.0D;
             aimType.reset();
             motionSeed =
-                    System.nanoTime()
+                    RandomMath.nextLong()
                             ^ Integer.toUnsignedLong(target.getId()) * 0xD1B54A32D192ED03L
                             ^ Integer.toUnsignedLong(currentPlayer.tickCount) * 0x9E3779B97F4A7C15L;
             stickyAimY = point.y;
@@ -131,6 +129,11 @@ public final class SilentAuraRotationController {
         active = true;
         returning = false;
         targetId = target.getId();
+        MotionPrediction.Parameters predictionParameters =
+                SilentAuraConfig.motionPredictionParameters();
+        if (!prediction.parameters().equals(predictionParameters)) {
+            prediction = new MotionPrediction(predictionParameters);
+        }
         prediction.observe(currentPlayer.tickCount, target.position(), target.getDeltaMovement());
         double frameDelta = Math.max(0.0D, Math.min(0.05D, deltaSeconds));
         double parameterBlend = Smoothing.exponentialResponse(12.0D, frameDelta);
@@ -180,7 +183,12 @@ public final class SilentAuraRotationController {
             // that exact pair are what ACA EqualRotation checks directly.
             Vec3 centre = targetBox.getCenter();
             double lookahead =
-                    crossingLookaheadTicks(client, prediction.velocity(), eye, targetBox);
+                    AimPrediction.crossingLookaheadTicks(
+                            currentPlayer.getDeltaMovement(),
+                            prediction.velocity(),
+                            eye,
+                            targetBox,
+                            CROSSING_EXIT_MARGIN);
             Vec3 localVelocity = currentPlayer.getDeltaMovement();
             Vec3 targetVelocity = prediction.velocity();
             Vec3 yawEye =
@@ -460,10 +468,16 @@ public final class SilentAuraRotationController {
         double insetX = Math.min(box.getXsize() * 0.22D, 0.11D);
         double insetZ = Math.min(box.getZsize() * 0.22D, 0.11D);
         Vec3 predicted =
-                new Vec3(
-                        Mth.clamp(point.x + travel.x, box.minX + insetX, box.maxX - insetX),
-                        point.y,
-                        Mth.clamp(point.z + travel.z, box.minZ + insetZ, box.maxZ - insetZ));
+                AimPrediction.clampedLead(
+                        point,
+                        new Vec3(travel.x, 0.0D, travel.z),
+                        new AABB(
+                                box.minX + insetX,
+                                point.y,
+                                box.minZ + insetZ,
+                                box.maxX - insetX,
+                                point.y,
+                                box.maxZ - insetZ));
         Vec3 eye = client.player.getEyePosition();
         return RaytraceUtils.canRayTraceTo(client, eye, predicted) ? predicted : point;
     }
@@ -486,7 +500,7 @@ public final class SilentAuraRotationController {
             pathJitterBlend = 0.0F;
             heldOrbitOffset = null;
             returnMotionSeed =
-                    System.nanoTime()
+                    RandomMath.nextLong()
                             ^ Integer.toUnsignedLong(currentPlayer.tickCount) * 0x94D049BB133111EBL;
             nextReturnMotionSample = 0.0D;
             aimType.reset();
@@ -638,12 +652,12 @@ public final class SilentAuraRotationController {
         // opening is exposed it can move an otherwise visible point behind the
         // cover. The live selector already follows the moving entity.
         if (leadTicks <= 0.0D || lowerBodyFallback) return point;
-        Vec3 lead = point.add(prediction.displacement(leadTicks));
         AABB box = target.getBoundingBox();
         double upperBodyFloor = Mth.lerp(UPPER_BODY_FLOOR, box.minY, box.maxY);
         double upperBodyCeiling = Mth.lerp(UPPER_BODY_CEILING, box.minY, box.maxY);
-        return MathUtils.closestPoint(
-                lead,
+        return AimPrediction.clampedLead(
+                point,
+                prediction.displacement(leadTicks),
                 new AABB(box.minX, upperBodyFloor, box.minZ, box.maxX, upperBodyCeiling, box.maxZ));
     }
 
@@ -734,10 +748,10 @@ public final class SilentAuraRotationController {
         double futureMargin = currentMargin;
         float trackingPitch = desired.pitch();
         if (horizonTicks > 1.0E-4D) {
-            Vec3 futureEye = eye.add(localVelocity.scale(horizonTicks));
-            Vec3 targetTravel = targetVelocity.scale(horizonTicks);
-            AABB futureBox = box.move(targetTravel.x, targetTravel.y, targetTravel.z);
-            Vec3 futurePoint = desiredPoint.add(targetTravel);
+            Vec3 futureEye = TrajectoryPrediction.linearPosition(eye, localVelocity, horizonTicks);
+            AABB futureBox = TrajectoryPrediction.linearBox(box, targetVelocity, horizonTicks);
+            Vec3 futurePoint =
+                    TrajectoryPrediction.linearPosition(desiredPoint, targetVelocity, horizonTicks);
             Rotation futureRotation = RotationUtils.rotationTo(futureEye, futurePoint);
             futureMargin =
                     verticalRayMargin(client, futureEye, futureRotation.yaw(), pitch, futureBox);
@@ -791,29 +805,6 @@ public final class SilentAuraRotationController {
     }
 
     /**
-     * While our eye is inside the opponent, every horizontal look direction
-     * still begins inside their hitbox. Use that safe interval to turn toward
-     * the side from which we will look back after crossing. Without this
-     * preview the geometric yaw flips only after passing the box centre, so a
-     * far landing leaves almost the complete 180-degree turn for later ticks.
-     */
-    private static double crossingLookaheadTicks(
-            Minecraft client, Vec3 targetVelocity, Vec3 eye, AABB box) {
-        Vec3 localVelocity = client.player.getDeltaMovement();
-        double relativeX = localVelocity.x - targetVelocity.x;
-        double relativeZ = localVelocity.z - targetVelocity.z;
-        if (relativeX * relativeX + relativeZ * relativeZ < CROSSING_MIN_RELATIVE_SPEED_SQUARED)
-            return 0.0D;
-
-        AABB corridor = box.inflate(CROSSING_EXIT_MARGIN);
-        double exitX = axisExitTicks(eye.x, relativeX, corridor.minX, corridor.maxX);
-        double exitZ = axisExitTicks(eye.z, relativeZ, corridor.minZ, corridor.maxZ);
-        double exitTicks = Math.min(exitX, exitZ);
-        if (!Double.isFinite(exitTicks) || exitTicks < 0.0D) return 0.0D;
-        return Mth.clamp(exitTicks + 0.65D, 0.75D, CROSSING_EXIT_LOOKAHEAD_TICKS);
-    }
-
-    /**
      * Crossing is horizontal, but the local body must still share the target's
      * vertical span. Using eye Y here excluded every ordinary jump-through:
      * the eye rises above a player box while the legs/torso still pass through
@@ -831,14 +822,6 @@ public final class SilentAuraRotationController {
         boolean bodiesOverlapVertically =
                 localBox.maxY >= corridor.minY && localBox.minY <= corridor.maxY;
         return horizontalCentreInside && bodiesOverlapVertically;
-    }
-
-    private static double axisExitTicks(
-            double position, double velocity, double minimum, double maximum) {
-        if (Math.abs(velocity) < 1.0E-6D) return Double.POSITIVE_INFINITY;
-        return velocity > 0.0D
-                ? Math.max(0.0D, (maximum - position) / velocity)
-                : Math.max(0.0D, (minimum - position) / velocity);
     }
 
     /**

@@ -7,6 +7,7 @@ import com.blanoir.moons.client.config.settings.ModeSetting;
 import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.module.impl.combat.velocity.VelocityPacketListener;
 import com.blanoir.moons.client.module.impl.movement.JumpReset;
+import com.blanoir.moons.client.utils.math.RandomMath;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -47,7 +48,8 @@ public final class Velocity {
     private static boolean allowNext = true;
     private static boolean pendingDamageKnown;
     private static boolean pendingDamageAllowed;
-    private static double chanceCounter;
+    private static final RandomMath.PercentAccumulator CHANCE_SAMPLER =
+            new RandomMath.PercentAccumulator();
 
     private Velocity() {}
 
@@ -188,8 +190,7 @@ public final class Velocity {
         if (FAKE_CHECK.get() && allowNext) return null;
 
         allowNext = true;
-        chanceCounter = (chanceCounter % 100.0D) + CHANCE.get();
-        if (chanceCounter < 100.0D) return null;
+        if (!CHANCE_SAMPLER.test(CHANCE.get())) return null;
 
         Vec3 current = snapshot.movement();
         double horizontal = HORIZONTAL.get();

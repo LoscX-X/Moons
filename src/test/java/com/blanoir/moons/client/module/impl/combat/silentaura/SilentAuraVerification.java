@@ -15,34 +15,10 @@ public final class SilentAuraVerification {
     private static int checks;
 
     public static void main(String[] args) throws Exception {
-        prediction();
         noise();
         balance();
         packets();
         System.out.println("SilentAura verification passed: " + checks + " assertions");
-    }
-
-    private static void prediction() {
-        SilentAuraPrediction prediction = new SilentAuraPrediction();
-        Vec3 velocity = new Vec3(0.2D, 0.0D, 0.0D);
-        prediction.observe(0, Vec3.ZERO, velocity);
-        near(prediction.displacement(1.0D).x, 0.2D, 1.0E-8D, "one tick lead uses blocks/tick");
-        prediction.observe(0, new Vec3(100, 0, 0), Vec3.ZERO);
-        near(prediction.displacement(1).x, 0.2D, 1.0E-8D, "render calls do not resample a tick");
-        prediction.observe(1, velocity, velocity);
-        prediction.observe(2, velocity, Vec3.ZERO);
-        near(prediction.displacement(2).length(), 0, 1.0E-8D, "stop discards momentum");
-        prediction.observe(3, Vec3.ZERO, velocity.scale(-1));
-        check(prediction.displacement(1).x < 0, "reversal predicts new direction");
-        prediction.observe(4, new Vec3(100, 0, 0), velocity);
-        near(prediction.displacement(2).length(), 0, 1.0E-8D, "teleport does not create lead");
-        prediction.reset();
-        near(prediction.displacement(2).length(), 0, 1.0E-8D, "reset discards prediction");
-        prediction.observe(9, Vec3.ZERO, velocity);
-        near(prediction.displacement(0).length(), 0, 1.0E-8D, "disabled lead stays disabled");
-        check(
-                prediction.displacement(0.575D).x > prediction.displacement(0.425D).x,
-                "Lock horizon is stronger than Balance horizon");
     }
 
     private static void noise() {

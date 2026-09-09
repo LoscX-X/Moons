@@ -25,7 +25,6 @@ public final class ModuleCatalog {
         ModuleRegistry.add(Player.antiWeb());
         ModuleRegistry.add(Player.autoSword());
         ModuleRegistry.add(Movement.sprint());
-        ModuleRegistry.add(Movement.noSlow());
         ModuleRegistry.add(Movement.noJumpDelay());
         ModuleRegistry.add(World.fastPlace());
         ModuleRegistry.add(Player.autoTotem());

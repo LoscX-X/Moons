@@ -2,11 +2,15 @@ package com.blanoir.moons.client.management.combat;
 
 import com.blanoir.moons.client.management.input.CombatInputController;
 import com.blanoir.moons.client.management.targeting.Targeting;
+import com.blanoir.moons.client.utils.prediction.CooldownPrediction;
+import com.blanoir.moons.client.utils.prediction.DamagePrediction;
+import com.blanoir.moons.client.utils.prediction.TrajectoryPrediction;
+import com.blanoir.moons.client.utils.prediction.VerticalPrediction;
+import com.blanoir.moons.client.utils.prediction.VerticalPrediction.VerticalState;
 import com.blanoir.moons.client.utils.raytrace.RaytraceUtils;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.util.Mth;
-import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.Attributes;
@@ -15,9 +19,6 @@ import net.minecraft.world.phys.Vec3;
 
 public final class CombatDecisionEngine {
     private static final double FULL_STRENGTH = 0.90D;
-    private static final double GRAVITY = 0.08D;
-    private static final double SLOW_FALLING_GRAVITY = 0.01D;
-    private static final double VERTICAL_DRAG = 0.98D;
     private static final double REACH_TOLERANCE = 0.12D;
     private static final int CRITICAL_LANDING_MARGIN_TICKS = 1;
     private static final int IMMINENT_CRITICAL_GRACE_TICKS = 1;
@@ -116,7 +117,7 @@ public final class CombatDecisionEngine {
         }
         double targetHealth = livingTarget.getHealth() + livingTarget.getAbsorptionAmount();
         double charge = client.player.getAttackStrengthScale(0.5F);
-        return estimateDamage(client, livingTarget, charge, false) >= targetHealth;
+        return DamagePrediction.meleeDamage(client, livingTarget, charge, false) >= targetHealth;
     }
 
     public static Decision evaluate(
@@ -178,7 +179,7 @@ public final class CombatDecisionEngine {
             return new Decision(
                     AttackKind.CRITICAL,
                     0,
-                    estimateDamage(client, livingTarget, currentCharge, true),
+                    DamagePrediction.meleeDamage(client, livingTarget, currentCharge, true),
                     1.0D,
                     "vanilla-critical-now");
         }
@@ -190,7 +191,8 @@ public final class CombatDecisionEngine {
                         ? new Decision(
                                 currentKind,
                                 0,
-                                estimateDamage(client, livingTarget, currentCharge, false),
+                                DamagePrediction.meleeDamage(
+                                        client, livingTarget, currentCharge, false),
                                 1.0D,
                                 "vanilla-normal-now")
                         : Decision.abort("normal-not-ready");
@@ -265,7 +267,7 @@ public final class CombatDecisionEngine {
 
         for (int tick = Math.max(1, earliest); tick <= searchHorizon; tick++) {
             VerticalState vertical = states[tick];
-            double charge = Mth.clamp(currentCharge + tick / attackDelay, 0.0D, 1.0D);
+            double charge = CooldownPrediction.chargeAt(currentCharge, attackDelay, tick);
             if (!vertical.critical()
                     || !hasForecastLandingMargin(states, tick)
                     || charge <= FULL_STRENGTH
@@ -274,7 +276,7 @@ public final class CombatDecisionEngine {
             }
 
             int projectedOvercharge =
-                    projectedOverchargeTicks(
+                    CooldownPrediction.projectedOverchargeTicks(
                             currentCharge,
                             attackDelay,
                             tick,
@@ -297,12 +299,13 @@ public final class CombatDecisionEngine {
                                     playerVelocity.x * tick,
                                     vertical.yOffset(),
                                     playerVelocity.z * tick);
-            AABB targetBox = target.getBoundingBox().move(targetVelocity.scale(tick));
+            AABB targetBox =
+                    TrajectoryPrediction.linearBox(target.getBoundingBox(), targetVelocity, tick);
             if (distanceToAabb(futureEye, targetBox) > reach + REACH_TOLERANCE) {
                 continue;
             }
 
-            double damage = estimateDamage(client, target, charge, true);
+            double damage = DamagePrediction.meleeDamage(client, target, charge, true);
             double confidence =
                     Mth.clamp(
                             1.0D - targetVelocity.horizontalDistance() * tick * 0.035D,
@@ -340,15 +343,6 @@ public final class CombatDecisionEngine {
     private static boolean hasForecastLandingMargin(VerticalState[] states, int criticalTick) {
         int marginTick = criticalTick + CRITICAL_LANDING_MARGIN_TICKS;
         return marginTick < states.length && states[marginTick].critical();
-    }
-
-    private static int projectedOverchargeTicks(
-            double currentCharge, double attackDelay, int futureTick, int currentOverchargeTicks) {
-        if (currentCharge >= 0.999D) {
-            return currentOverchargeTicks + futureTick;
-        }
-        int ticksUntilFull = Math.max(0, (int) Math.ceil((1.0D - currentCharge) * attackDelay));
-        return Math.max(0, futureTick - ticksUntilFull);
     }
 
     private static int countSyncedFollowUps(
@@ -394,106 +388,20 @@ public final class CombatDecisionEngine {
     }
 
     private static VerticalState[] forecastVerticalStates(Minecraft client, int count) {
-        VerticalState[] states = new VerticalState[count + 1];
-        double velocityY = client.player.getDeltaMovement().y;
-        double fallDistance = client.player.fallDistance;
-        double yOffset = 0.0D;
-        boolean onGround = client.player.onGround();
-        double groundDistance = measureGroundDistance(client);
-        double groundYOffset = -groundDistance;
+        Vec3 start = client.player.position().add(0.0D, 0.05D, 0.0D);
+        double groundDistance =
+                Math.max(
+                        0.05D,
+                        RaytraceUtils.distanceToBlock(
+                                client, start, start.add(0.0D, -8.0D, 0.0D), 8.0D));
         boolean physicalJumpHeld =
                 CombatInputController.isPhysicallyDown(client, client.options.keyJump);
-        boolean effectiveJumpHeld =
-                physicalJumpHeld || CombatInputController.isDown(client, client.options.keyJump);
-        int jumpCycle = onGround ? 0 : 1;
-
-        states[0] =
-                new VerticalState(
-                        yOffset,
-                        fallDistance > 0.0D && velocityY < CONFIRMED_DESCENT_VELOCITY && !onGround,
-                        onGround,
-                        jumpCycle);
-
-        for (int tick = 1; tick <= count; tick++) {
-            boolean firstEffectiveJump = jumpCycle == 0 && effectiveJumpHeld;
-            boolean repeatedPhysicalJump = jumpCycle > 0 && physicalJumpHeld;
-            if (onGround && (firstEffectiveJump || repeatedPhysicalJump)) {
-                velocityY = LivingEntity.BASE_JUMP_POWER + client.player.getJumpBoostPower();
-                fallDistance = 0.0D;
-                onGround = false;
-                jumpCycle++;
-            }
-
-            if (!onGround) {
-                var levitation = client.player.getEffect(MobEffects.LEVITATION);
-                if (levitation != null) {
-                    int amplifier = levitation.getAmplifier();
-                    velocityY += (0.05D * (amplifier + 1) - velocityY) * 0.2D;
-                    fallDistance = 0.0D;
-                } else {
-                    double gravity =
-                            client.player.hasEffect(MobEffects.SLOW_FALLING) && velocityY <= 0.0D
-                                    ? SLOW_FALLING_GRAVITY
-                                    : GRAVITY;
-                    velocityY = (velocityY - gravity) * VERTICAL_DRAG;
-                    if (velocityY < 0.0D) {
-                        if (client.player.hasEffect(MobEffects.SLOW_FALLING)) {
-                            fallDistance = 0.0D;
-                        } else {
-                            fallDistance -= velocityY;
-                        }
-                    }
-                    yOffset += velocityY;
-                }
-
-                if (velocityY <= 0.0D && yOffset <= groundYOffset) {
-                    yOffset = groundYOffset;
-                    velocityY = 0.0D;
-                    fallDistance = 0.0D;
-                    onGround = true;
-                }
-            }
-
-            states[tick] =
-                    new VerticalState(
-                            yOffset,
-                            fallDistance > 0.0D
-                                    && velocityY < CONFIRMED_DESCENT_VELOCITY
-                                    && !onGround,
-                            onGround,
-                            jumpCycle);
-        }
-        return states;
-    }
-
-    private static double measureGroundDistance(Minecraft client) {
-        Vec3 start = client.player.position().add(0.0D, 0.05D, 0.0D);
-        Vec3 end = start.add(0.0D, -8.0D, 0.0D);
-        return Math.max(0.05D, RaytraceUtils.distanceToBlock(client, start, end, 8.0D));
-    }
-
-    private static double estimateDamage(
-            Minecraft client, LivingEntity target, double charge, boolean critical) {
-        double attackDamage =
-                Math.max(0.0D, client.player.getAttributeValue(Attributes.ATTACK_DAMAGE));
-        double rawDamage = attackDamage * (0.2D + charge * charge * 0.8D);
-        if (critical) {
-            rawDamage *= 1.5D;
-        }
-
-        double armor = Math.max(0.0D, target.getArmorValue());
-        double toughness = Math.max(0.0D, target.getAttributeValue(Attributes.ARMOR_TOUGHNESS));
-        double armorPoints =
-                Math.min(
-                        20.0D,
-                        Math.max(armor / 5.0D, armor - rawDamage / (2.0D + toughness / 4.0D)));
-        double damage = rawDamage * (1.0D - armorPoints / 25.0D);
-        var resistance = target.getEffect(MobEffects.RESISTANCE);
-        if (resistance != null) {
-            int amplifier = resistance.getAmplifier() + 1;
-            damage *= Math.max(0.0D, 1.0D - amplifier * 0.2D);
-        }
-        return Math.max(0.0D, damage);
+        return VerticalPrediction.forecast(
+                client.player,
+                count,
+                groundDistance,
+                physicalJumpHeld,
+                physicalJumpHeld || CombatInputController.isDown(client, client.options.keyJump));
     }
 
     private static boolean valid(Minecraft client, Entity target) {
@@ -512,7 +420,4 @@ public final class CombatDecisionEngine {
         double dz = Math.max(Math.max(box.minZ - point.z, 0.0D), point.z - box.maxZ);
         return Math.sqrt(dx * dx + dy * dy + dz * dz);
     }
-
-    private record VerticalState(
-            double yOffset, boolean critical, boolean onGround, int jumpCycle) {}
 }

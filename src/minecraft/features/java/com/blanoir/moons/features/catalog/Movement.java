@@ -2,7 +2,6 @@ package com.blanoir.moons.features.catalog;
 
 import static com.blanoir.moons.client.module.framework.ModuleRegistry.*;
 
-import com.blanoir.moons.client.module.framework.ModuleCategories;
 import com.blanoir.moons.client.module.framework.ModuleRegistry;
 import com.blanoir.moons.client.module.impl.movement.*;
 
@@ -70,27 +69,6 @@ final class Movement {
                 Sprint::isEnabled,
                 Sprint::setEnabled,
                 Sprint::modeName);
-    }
-
-    static ModuleRegistry.Module noSlow() {
-        return module(
-                "noslow",
-                "NoSlow",
-                ModuleCategories.MOVEMENT,
-                NoSlow::isEnabled,
-                NoSlow::setEnabled,
-                NoSlow::hudTag,
-                bool("bow", "Bow", "noslow.bow", false, NoSlow::setBow),
-                bool(
-                        "keep_sprinting",
-                        "Keep sprinting",
-                        "noslow.keepSprinting",
-                        true,
-                        NoSlow::setKeepSprinting),
-                bool("crossbow", "Crossbow", "noslow.crossbow", false, NoSlow::setCrossbow),
-                bool("food", "Food", "noslow.food", true, NoSlow::setFood),
-                bool("potion", "Potion", "noslow.potion", true, NoSlow::setPotion),
-                bool("shield", "Shield", "noslow.shield", true, NoSlow::setShield));
     }
 
     static ModuleRegistry.Module noJumpDelay() {

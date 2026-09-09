@@ -238,6 +238,51 @@ public final class SilentAura {
         return 1;
     }
 
+    public static int setPredictionMaxSpeed(Minecraft ignoredClient, double value) {
+        SilentAuraConfig.predictionMaxSpeed(value);
+        return 1;
+    }
+
+    public static int setPredictionMaxAcceleration(Minecraft ignoredClient, double value) {
+        SilentAuraConfig.predictionMaxAcceleration(value);
+        return 1;
+    }
+
+    public static int setPredictionMaxHorizon(Minecraft ignoredClient, double value) {
+        SilentAuraConfig.predictionMaxHorizon(value);
+        return 1;
+    }
+
+    public static int setPredictionVerticalScale(Minecraft ignoredClient, double value) {
+        SilentAuraConfig.predictionVerticalScale(value);
+        return 1;
+    }
+
+    public static int setPredictionMaxTurnRate(Minecraft ignoredClient, double value) {
+        SilentAuraConfig.predictionMaxTurnRate(value);
+        return 1;
+    }
+
+    public static int setPredictionMaxTurnAngle(Minecraft ignoredClient, double value) {
+        SilentAuraConfig.predictionMaxTurnAngle(value);
+        return 1;
+    }
+
+    public static int setPredictionResponse(Minecraft client, String raw) {
+        if (raw == null || raw.isBlank()) return 0;
+        try {
+            String[] parts = raw.trim().split("[-,:]", 2);
+            double min = Double.parseDouble(parts[0].trim());
+            double max = parts.length == 1 ? min : Double.parseDouble(parts[1].trim());
+            if (!Double.isFinite(min) || !Double.isFinite(max)) return 0;
+            SilentAuraConfig.predictionResponse(min, max);
+            return 1;
+        } catch (NumberFormatException exception) {
+            ClientChat.send(client, "Prediction response must be a number or min-max ticks.");
+            return 0;
+        }
+    }
+
     public static int setPredictionStrength(Minecraft ignoredClient, double value) {
         SilentAuraConfig.prediction(value);
         return 1;

@@ -6,6 +6,7 @@ import com.blanoir.moons.client.config.settings.IntSetting;
 import com.blanoir.moons.client.config.settings.ModeSetting;
 import com.blanoir.moons.client.config.settings.StringSetting;
 import com.blanoir.moons.client.management.targeting.Targeting;
+import com.blanoir.moons.client.utils.prediction.MotionPrediction;
 
 import net.minecraft.resources.Identifier;
 
@@ -48,7 +49,23 @@ public final class SilentAuraConfig {
     private static final DoubleSetting AIM_WANDER =
             decimal("silentaura.aimWander", 0.45D, 0.0D, 1.0D);
     private static final DoubleSetting PREDICTION_LEAD =
-            decimal("silentaura.predictionLead", 0.5D, 0.0D, 2.0D);
+            decimal("silentaura.predictionLead", 0.75D, 0.0D, 2.0D);
+    private static final DoubleSetting PREDICTION_MAX_SPEED =
+            decimal("silentaura.motion.maxSpeed", 1.5D, .1D, 3D);
+    private static final DoubleSetting PREDICTION_MAX_ACCELERATION =
+            decimal("silentaura.motion.maxAcceleration", .12D, 0D, 1D);
+    private static final DoubleSetting PREDICTION_MAX_HORIZON =
+            decimal("silentaura.motion.maxHorizon", 3D, 0D, 6D);
+    private static final DoubleSetting PREDICTION_VERTICAL_SCALE =
+            decimal("silentaura.motion.verticalScale", .35D, 0D, 1D);
+    private static final DoubleSetting PREDICTION_MAX_TURN_RATE =
+            decimal("silentaura.motion.maxTurnRate", 0D, 0D, 90D);
+    private static final DoubleSetting PREDICTION_MAX_TURN_ANGLE =
+            decimal("silentaura.motion.maxTurnAngle", 90D, 0D, 180D);
+    private static final DoubleSetting PREDICTION_MIN_RESPONSE =
+            decimal("silentaura.motion.minResponse", .35D, 0.0D, 3.0D);
+    private static final DoubleSetting PREDICTION_MAX_RESPONSE =
+            decimal("silentaura.motion.maxResponse", 1.5D, 0.0D, 3.0D);
     private static final ModeSetting<AimMode> AIM_MODE =
             new ModeSetting.Builder<AimMode>()
                     .name("silentaura.aimMode")
@@ -152,6 +169,54 @@ public final class SilentAuraConfig {
 
     public static double predictionLead() {
         return PREDICTION_LEAD.get();
+    }
+
+    public static void predictionMaxSpeed(double value) {
+        PREDICTION_MAX_SPEED.set(value);
+    }
+
+    public static void predictionMaxAcceleration(double value) {
+        PREDICTION_MAX_ACCELERATION.set(value);
+    }
+
+    public static void predictionMaxHorizon(double value) {
+        PREDICTION_MAX_HORIZON.set(value);
+    }
+
+    public static void predictionVerticalScale(double value) {
+        PREDICTION_VERTICAL_SCALE.set(value);
+    }
+
+    public static void predictionMaxTurnRate(double value) {
+        PREDICTION_MAX_TURN_RATE.set(value);
+    }
+
+    public static void predictionMaxTurnAngle(double value) {
+        PREDICTION_MAX_TURN_ANGLE.set(value);
+    }
+
+    public static void predictionResponse(double min, double max) {
+        PREDICTION_MIN_RESPONSE.set(Math.min(min, max));
+        PREDICTION_MAX_RESPONSE.set(Math.max(min, max));
+    }
+
+    public static boolean predictionTurningEnabled() {
+        return PREDICTION_MAX_TURN_RATE.get() > 0.0D;
+    }
+
+    public static MotionPrediction.Parameters motionPredictionParameters() {
+        double minResponse = PREDICTION_MIN_RESPONSE.get();
+        double maxResponse = PREDICTION_MAX_RESPONSE.get();
+        return MotionPrediction.Parameters.builder()
+                .maxSpeed(PREDICTION_MAX_SPEED.get())
+                .maxAcceleration(PREDICTION_MAX_ACCELERATION.get())
+                .maxHorizonTicks(PREDICTION_MAX_HORIZON.get())
+                .verticalScale(PREDICTION_VERTICAL_SCALE.get())
+                .responseTicks(
+                        Math.min(minResponse, maxResponse), Math.max(minResponse, maxResponse))
+                .maxTurnRateDegreesPerTick(PREDICTION_MAX_TURN_RATE.get())
+                .maxTurnAngleDegrees(PREDICTION_MAX_TURN_ANGLE.get())
+                .build();
     }
 
     public static boolean balanceMode() {

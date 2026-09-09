@@ -55,6 +55,36 @@ final class Player {
                 number("chance", "Chance", "autoweb.chance", 1, 0, 1, .01, AutoWeb::setChance),
                 bool("wall", "Wall webs", "autoweb.wall", false, AutoWeb::setWallEnabled),
                 bool("ground", "Ground webs", "autoweb.ground", true, AutoWeb::setGroundEnabled),
+                integer(
+                                "ground_window",
+                                "Landing window ticks",
+                                "autoweb.groundWindow",
+                                5,
+                                1,
+                                12,
+                                1,
+                                AutoWeb::setGroundWindow)
+                        .visibleWhen(AutoWeb::groundEnabled),
+                number(
+                                "ground_max_speed",
+                                "Max target speed (blocks/tick)",
+                                "autoweb.groundMaxSpeed",
+                                .30,
+                                .05,
+                                1.5,
+                                .01,
+                                AutoWeb::setGroundMaxSpeed)
+                        .visibleWhen(AutoWeb::groundEnabled),
+                number(
+                                "ground_max_relative_speed",
+                                "Max relative speed (blocks/tick)",
+                                "autoweb.groundMaxRelativeSpeed",
+                                .45,
+                                .05,
+                                2,
+                                .01,
+                                AutoWeb::setGroundMaxRelativeSpeed)
+                        .visibleWhen(AutoWeb::groundEnabled),
                 bool(
                         "wait_confirm_rotation",
                         "Wait confirm rotation",

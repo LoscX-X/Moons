@@ -1,5 +1,6 @@
 package com.blanoir.moons.client.module.impl.combat.silentaura.aim;
 
+import com.blanoir.moons.client.utils.math.RandomMath;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 import com.blanoir.moons.client.utils.rotation.aim.AimMotionNoise;
 import com.blanoir.moons.client.utils.rotation.aim.HumanAimSimulator;
@@ -90,7 +91,7 @@ public final class BalanceSilentAimType implements SilentAimType {
     public Correction correct(
             Rotation desired, float currentYaw, double time, boolean targetChanged) {
         if (targetChanged || !initialized) {
-            seed = System.nanoTime();
+            seed = RandomMath.nextLong();
             initialized = true;
         }
         // Vary the response, never freeze the world-space aim direction. A held

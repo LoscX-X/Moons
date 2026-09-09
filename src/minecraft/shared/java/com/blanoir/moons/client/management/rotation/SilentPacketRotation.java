@@ -6,6 +6,7 @@ import com.blanoir.moons.client.access.GameAccess;
 import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.event.network.PacketSendEvent;
 import com.blanoir.moons.client.utils.math.MathUtils;
+import com.blanoir.moons.client.utils.math.RandomMath;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 import com.blanoir.moons.client.utils.rotation.aim.RotationUtils;
 
@@ -565,13 +566,11 @@ public final class SilentPacketRotation {
      */
     public static float packetRotationJitter() {
         double gcd = mouseSensitivityGcd();
-        java.util.concurrent.ThreadLocalRandom random =
-                java.util.concurrent.ThreadLocalRandom.current();
         if (!Double.isFinite(gcd) || gcd <= 1.0E-7D) {
-            return random.nextBoolean() ? 0.02F : -0.02F;
+            return RandomMath.nextBoolean() ? 0.02F : -0.02F;
         }
-        int steps = random.nextInt(1, 3);
-        return (random.nextBoolean() ? steps : -steps) * (float) gcd;
+        int steps = RandomMath.betweenInclusive(1, 2);
+        return (RandomMath.nextBoolean() ? steps : -steps) * (float) gcd;
     }
 
     /** Matches vanilla mouse increments at packet frequency. */

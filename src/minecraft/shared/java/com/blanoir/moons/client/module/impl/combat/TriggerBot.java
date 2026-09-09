@@ -15,6 +15,7 @@ import com.blanoir.moons.client.module.impl.render.Animations;
 import com.blanoir.moons.client.utils.combat.CombatReach;
 import com.blanoir.moons.client.utils.entity.EntityDistance;
 import com.blanoir.moons.client.utils.math.RandomMath;
+import com.blanoir.moons.client.utils.prediction.CooldownPrediction;
 import com.blanoir.moons.client.utils.raytrace.RaytraceUtils;
 
 import net.minecraft.client.Minecraft;
@@ -388,7 +389,11 @@ public final class TriggerBot {
             // sees how many ticks remain before the sampled charge threshold,
             // so it can align that cooldown with the current jump instead of
             // starting its forecast only after the threshold has elapsed.
-            int ticksUntilReady = ticksUntilChargeThreshold(client, charge, nextAttackCharge);
+            int ticksUntilReady =
+                    CooldownPrediction.ticksUntilThreshold(
+                            charge,
+                            nextAttackCharge,
+                            client.player.getCurrentItemAttackStrengthDelay());
             Critical.AutomaticAttackGate criticalGate =
                     Critical.gateAutomaticAttack(client, target, ticksUntilReady);
             if (criticalGate != Critical.AutomaticAttackGate.ALLOW
@@ -435,13 +440,6 @@ public final class TriggerBot {
 
     private static boolean isPlayerPhysicallyAttacking(Minecraft client) {
         return CombatInputController.isPhysicallyDown(client, client.options.keyAttack);
-    }
-
-    private static int ticksUntilChargeThreshold(
-            Minecraft client, double currentCharge, double requiredCharge) {
-        if (currentCharge >= requiredCharge) return 0;
-        double attackDelay = Math.max(1.0D, client.player.getCurrentItemAttackStrengthDelay());
-        return Math.max(1, (int) Math.ceil((requiredCharge - currentCharge) * attackDelay));
     }
 
     private static Entity getAttackableCrosshairTarget(Minecraft client) {

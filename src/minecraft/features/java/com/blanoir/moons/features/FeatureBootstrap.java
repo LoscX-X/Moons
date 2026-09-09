@@ -22,7 +22,6 @@ import com.blanoir.moons.client.module.impl.misc.AntiNick;
 import com.blanoir.moons.client.module.impl.misc.antibot.AntiBot;
 import com.blanoir.moons.client.module.impl.movement.JumpReset;
 import com.blanoir.moons.client.module.impl.movement.KeepSprint;
-import com.blanoir.moons.client.module.impl.movement.NoSlow;
 import com.blanoir.moons.client.module.impl.network.Backtrack;
 import com.blanoir.moons.client.module.impl.network.FakeLag;
 import com.blanoir.moons.client.module.impl.network.LowHealthFakeLag;
@@ -93,7 +92,6 @@ final class FeatureBootstrap {
         ScoreboardChanger.init();
         InventorySee.init();
         TargetInfoHud.init();
-        NoSlow.init();
         Nametags.init();
         Minecraft client = Minecraft.getInstance();
         if (Caver.isEnabled() && client.level != null) {
@@ -143,7 +141,6 @@ final class FeatureBootstrap {
     static void shutdown() {
         RotationHistory.reset();
         Minecraft client = Minecraft.getInstance();
-        NoSlow.shutdown();
         if (MinecraftClientAccess.screen(client) instanceof MoonsComposeScreen) {
             MinecraftClientAccess.setScreen(client, null);
         }

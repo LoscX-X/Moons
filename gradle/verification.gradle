@@ -24,7 +24,7 @@ def clientVerifications = [
                 description: "Verifies shared silent rotation acquisition, commitment and real-send history."],
         verifySilentAura: [
                 mainClass: "com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraVerification",
-                description: "Verifies SilentAura prediction, noise, acquisition and packet motion invariants."],
+                description: "Verifies SilentAura noise, acquisition and packet motion invariants."],
         verifyXrayMerge: [
                 mainClass: "com.blanoir.moons.client.module.impl.render.xray.XrayMergeVerification",
                 description: "Verifies Xray defaults, master settings and packet scan gating."],
@@ -43,6 +43,15 @@ def clientVerifications = [
         verifyRenderRotation: [
                 mainClass: "com.blanoir.moons.features.RenderRotationVerification",
                 description: "Verifies render rotation preview, ownership, and interpolation behavior."],
+        verifyPrediction: [
+                mainClass: "com.blanoir.moons.client.utils.PredictionVerification",
+                description: "Verifies shared motion, trajectory, aim and landing prediction contracts."],
+        verifyPostHitLanding: [
+                mainClass: "com.blanoir.moons.client.management.targeting.PostHitLandingWindowVerification",
+                description: "Verifies repeated attacks preserve post-hit landing opportunities."],
+        verifyRandomMath: [
+                mainClass: "com.blanoir.moons.client.utils.RandomMathVerification",
+                description: "Verifies shared probability, range and seeded-random contracts."],
         verifyCombatUtils: [
                 mainClass: "com.blanoir.moons.client.utils.CombatUtilsVerification",
                 description: "Verifies shared combat math and rotation boundary semantics."],

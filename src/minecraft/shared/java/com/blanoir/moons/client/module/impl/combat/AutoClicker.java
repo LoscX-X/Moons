@@ -7,12 +7,11 @@ import com.blanoir.moons.client.config.settings.IntSetting;
 import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.management.input.CombatInputController;
 import com.blanoir.moons.client.utils.client.ClientReady;
+import com.blanoir.moons.client.utils.math.RandomMath;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.world.phys.BlockHitResult;
-
-import java.util.concurrent.ThreadLocalRandom;
 
 /** Automatic clicks routed through the shared input controller. */
 public final class AutoClicker {
@@ -85,7 +84,7 @@ public final class AutoClicker {
     private static void scheduleNext(long now) {
         double low = Math.min(MIN_CPS.get(), MAX_CPS.get());
         double high = Math.max(MIN_CPS.get(), MAX_CPS.get());
-        double cps = low == high ? low : ThreadLocalRandom.current().nextDouble(low, high);
+        double cps = RandomMath.nextDouble(low, high);
         nextClickAtNanos = now + (long) (1_000_000_000.0D / Math.max(1.0D, cps));
     }
 

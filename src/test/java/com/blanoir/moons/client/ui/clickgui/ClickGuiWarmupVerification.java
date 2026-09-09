@@ -1,11 +1,11 @@
 package com.blanoir.moons.client.ui.clickgui;
 
 import com.blanoir.moons.client.config.Settings;
+import com.blanoir.moons.client.utils.math.RandomMath;
 
 import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
 /** Exercises the real UI composition on a worker with a CPU canvas and no Minecraft instance. */
@@ -14,7 +14,7 @@ public final class ClickGuiWarmupVerification {
         Path config =
                 Path.of(
                         System.getProperty("java.io.tmpdir"),
-                        "moons-gui-check-" + UUID.randomUUID());
+                        "moons-gui-check-" + RandomMath.uuid());
         Settings.configure(config);
         Settings.load();
         var preview = ClickGuiWarmup.class.getDeclaredMethod("renderPreview");

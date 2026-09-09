@@ -148,12 +148,6 @@ final class VersionMappings {
                                 "()V",
                                 TargetMethod.HookKind.MOVE_INPUT),
                         new TargetMethod(
-                                "movement.item-use-speed",
-                                List.of("net/minecraft/client/player/LocalPlayer"),
-                                List.of("itemUseSpeedMultiplier"),
-                                "()F",
-                                TargetMethod.HookKind.FLOAT_RETURN),
-                        new TargetMethod(
                                 "player.move",
                                 List.of("net/minecraft/world/entity/Entity"),
                                 List.of("moveRelative"),

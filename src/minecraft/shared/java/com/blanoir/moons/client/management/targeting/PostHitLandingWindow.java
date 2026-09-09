@@ -23,15 +23,29 @@ public final class PostHitLandingWindow {
     private double relativeHorizontalSpeed = Double.POSITIVE_INFINITY;
 
     public void arm(Player target, int lifetimeTicks, int landingWindowTicks) {
+        arm(Sample.of(target), lifetimeTicks, landingWindowTicks);
+    }
+
+    public void arm(Sample target, int lifetimeTicks, int landingWindowTicks) {
         if (target == null) {
             clear();
             return;
         }
-        targetId = target.getId();
+        if (target.targetId() == targetId
+                && target.tick() >= lastTargetTick
+                && !snapshot().expired()) {
+            // Aura may attack again on the very tick the target lands. Keep
+            // the last airborne sample so update can still detect that edge.
+            // Refresh the request lifetime, never the already-open landing window.
+            remainingTicks = Math.max(remainingTicks, Math.max(1, lifetimeTicks));
+            windowDurationTicks = Math.max(1, landingWindowTicks);
+            return;
+        }
+        targetId = target.targetId();
         remainingTicks = Math.max(1, lifetimeTicks);
         windowDurationTicks = Math.max(1, landingWindowTicks);
         windowTicks = 0;
-        lastTargetTick = target.tickCount;
+        lastTargetTick = target.tick();
         lastPosition = target.position();
         previousOnGround = target.onGround();
         sawAirborne = !previousOnGround;
@@ -41,14 +55,23 @@ public final class PostHitLandingWindow {
     }
 
     public Snapshot update(Player target, Vec3 observerVelocity) {
-        if (!matches(target) || remainingTicks <= 0) {
+        return update(Sample.of(target), observerVelocity);
+    }
+
+    public Snapshot update(Sample target, Vec3 observerVelocity) {
+        if (target == null || target.targetId() != targetId || remainingTicks <= 0) {
             return snapshot();
         }
-        if (target.tickCount == lastTargetTick) {
+        if (target.tick() == lastTargetTick) {
             return snapshot();
         }
 
-        int elapsedTicks = Math.max(1, target.tickCount - lastTargetTick);
+        if (target.tick() < lastTargetTick) {
+            clear();
+            return snapshot();
+        }
+
+        int elapsedTicks = (int) Math.min(Integer.MAX_VALUE, (long) target.tick() - lastTargetTick);
         remainingTicks = Math.max(0, remainingTicks - elapsedTicks);
         if (windowTicks > 0) {
             windowTicks = Math.max(0, windowTicks - elapsedTicks);
@@ -74,7 +97,7 @@ public final class PostHitLandingWindow {
 
         previousOnGround = onGround;
         lastPosition = position;
-        lastTargetTick = target.tickCount;
+        lastTargetTick = target.tick();
         return snapshot();
     }
 
@@ -115,4 +138,14 @@ public final class PostHitLandingWindow {
             boolean expired,
             double targetHorizontalSpeed,
             double relativeHorizontalSpeed) {}
+
+    /** Tick-stamped observations also allow deterministic replay of attack/landing ordering. */
+    public record Sample(int targetId, int tick, Vec3 position, boolean onGround) {
+        private static Sample of(Player target) {
+            return target == null
+                    ? null
+                    : new Sample(
+                            target.getId(), target.tickCount, target.position(), target.onGround());
+        }
+    }
 }

@@ -22,6 +22,8 @@ import com.blanoir.moons.client.management.rotation.RotationRequest;
 import com.blanoir.moons.client.management.rotation.SilentPacketRotation;
 import com.blanoir.moons.client.render.WorldOverlayRenderer;
 import com.blanoir.moons.client.utils.client.ClientReady;
+import com.blanoir.moons.client.utils.math.RandomMath;
+import com.blanoir.moons.client.utils.prediction.TrajectoryPrediction;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 import com.blanoir.moons.client.utils.world.placement.BlockPlacementUtils;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -53,7 +55,6 @@ import java.util.Comparator;
 import java.util.Deque;
 import java.util.List;
 import java.util.Locale;
-import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Minecraft 26.x scaffold state, placement and rotation engine.
@@ -1213,7 +1214,7 @@ public final class ScaffoldEngine {
             return;
         }
 
-        double edgeDistance = legitEdgeDistance(client, predictedLegitBox(client));
+        double edgeDistance = legitEdgeDistance(client, TrajectoryPrediction.nextInputBox(client));
         boolean jumping = client.player.input.keyPresses.jump();
         boolean needsSneak =
                 Double.isNaN(edgeDistance)
@@ -1276,26 +1277,7 @@ public final class ScaffoldEngine {
     }
 
     private static int randomIntInclusive(int min, int max) {
-        return min >= max ? min : ThreadLocalRandom.current().nextInt(min, max + 1);
-    }
-
-    private static AABB predictedLegitBox(Minecraft client) {
-        Input input = client.player.input.keyPresses;
-        int forward = (input.forward() ? 1 : 0) - (input.backward() ? 1 : 0);
-        int strafe = (input.left() ? 1 : 0) - (input.right() ? 1 : 0);
-        double moveX;
-        double moveZ;
-        if (forward == 0 && strafe == 0) {
-            Vec3 velocity = client.player.getDeltaMovement();
-            moveX = velocity.x;
-            moveZ = velocity.z;
-        } else {
-            double speed = client.player.isSprinting() ? 0.2873D : 0.221D;
-            float yaw = adjustedYaw(client.player.getYRot(), forward, strafe);
-            moveX = -Math.sin(yaw * Mth.DEG_TO_RAD) * speed;
-            moveZ = Math.cos(yaw * Mth.DEG_TO_RAD) * speed;
-        }
-        return client.player.getBoundingBox().move(moveX, 0.0D, moveZ);
+        return min >= max ? min : RandomMath.betweenInclusive(min, max);
     }
 
     private static double legitEdgeDistance(Minecraft client, AABB predicted) {
@@ -1550,15 +1532,6 @@ public final class ScaffoldEngine {
 
     private static boolean verticalTowerActive(Minecraft client) {
         return scaffoldPath == ScaffoldPath.TOWER && verticalTowerRequested(client);
-    }
-
-    private static float adjustedYaw(float yaw, float forward, float strafe) {
-        if (forward < 0.0F) yaw += 180.0F;
-        if (strafe != 0.0F) {
-            float multiplier = forward == 0.0F ? 1.0F : 0.5F * Math.signum(forward);
-            yaw += -90.0F * multiplier * Math.signum(strafe);
-        }
-        return Mth.wrapDegrees(yaw);
     }
 
     private static BlockPos desiredPlacementPos(Minecraft client, Vec3 playerPosition) {

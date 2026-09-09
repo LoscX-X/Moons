@@ -11,9 +11,10 @@ import com.blanoir.moons.client.management.targeting.Targeting;
 import com.blanoir.moons.client.module.impl.combat.CombatModuleCoordinator;
 import com.blanoir.moons.client.utils.math.MathUtils;
 import com.blanoir.moons.client.utils.math.Smoothing;
-import com.blanoir.moons.client.utils.raytrace.RaytraceUtils;
+import com.blanoir.moons.client.utils.prediction.AimPrediction;
+import com.blanoir.moons.client.utils.prediction.AimPrediction.AimForecast;
+import com.blanoir.moons.client.utils.prediction.TrajectoryPrediction;
 import com.blanoir.moons.client.utils.rotation.Rotation;
-import com.blanoir.moons.client.utils.rotation.aim.AimPointUtils;
 import com.blanoir.moons.client.utils.rotation.aim.RotationUtils;
 import com.blanoir.moons.client.utils.rotation.aim.VisibleAimPoints;
 
@@ -143,12 +144,10 @@ public final class AimAssist {
         var currentPlayer = client == null ? null : client.player;
         Vec3 futureEye =
                 client != null && currentPlayer != null
-                        ? currentPlayer
-                                .getEyePosition()
-                                .add(
-                                        currentPlayer
-                                                .getDeltaMovement()
-                                                .scale(Math.max(0, ticksAhead)))
+                        ? TrajectoryPrediction.linearPosition(
+                                currentPlayer.getEyePosition(),
+                                currentPlayer.getDeltaMovement(),
+                                Math.max(0, ticksAhead))
                         : Vec3.ZERO;
 
         return forecastAttack(client, target, ticksAhead, futureEye);
@@ -156,115 +155,28 @@ public final class AimAssist {
 
     public static AimForecast forecastAttack(
             Minecraft client, Entity target, int ticksAhead, Vec3 futureEye) {
-        var currentPlayer = client == null ? null : client.player;
-        boolean enabled = ENABLED.get();
-        double smooth = SMOOTH.get();
-        double range = RANGE.get();
         if (client == null
-                || currentPlayer == null
+                || client.player == null
                 || client.level == null
                 || !(target instanceof LivingEntity living)
                 || !isValidTarget(client, living)) {
             return AimForecast.unavailable();
         }
-
-        int ticks = Math.max(0, ticksAhead);
-
-        Vec3 targetMotion = living.getDeltaMovement();
-
-        AABB futureBox = living.getBoundingBox().move(targetMotion.scale(ticks));
-
-        Vec3 futureAimPoint =
-                AimPointUtils.closest(futureBox, futureEye, currentPlayer.getLookAngle(), range);
-
-        boolean visible = RaytraceUtils.canRayTraceTo(client, futureEye, futureAimPoint);
-
-        if (!visible) {
-            Vec3 center = futureBox.getCenter();
-
-            if (RaytraceUtils.canRayTraceTo(client, futureEye, center)) {
-                futureAimPoint = center;
-                visible = true;
-            }
-        }
-
-        Rotation rotation = RotationUtils.rotationTo(futureEye, futureAimPoint);
-
-        double yawError = Math.abs(Mth.wrapDegrees(rotation.yaw() - currentPlayer.getYRot()));
-
-        double pitchError = Math.abs(rotation.pitch() - currentPlayer.getXRot());
-
-        double angularError = Math.hypot(yawError, pitchError);
-
-        boolean currentlyOnTarget =
-                client.hitResult instanceof EntityHitResult hit && hit.getEntity() == target;
-
-        double inputMultiplier = 1.0D;
-        int ticksUntilAligned;
-
-        if (enabled) {
-            inputMultiplier =
-                    mouseSmoothMultiplier(MouseInputTracker.currentMotion(System.nanoTime()));
-
-            double effectiveSmooth = Mth.clamp(smooth * inputMultiplier, 0.01D, 0.99D);
-
-            ticksUntilAligned = estimateAlignmentTicks(angularError, effectiveSmooth);
-        } else {
-            ticksUntilAligned = currentlyOnTarget && ticks == 0 ? 0 : Integer.MAX_VALUE;
-        }
-
-        double targetSpeed = targetMotion.length();
-
-        double motionUncertainty = Mth.clamp(targetSpeed * ticks * 0.18D, 0.0D, 0.75D);
-
-        double angleConfidence = Math.exp(-angularError / 28.0D);
-
-        double alignmentConfidence;
-
-        if (ticksUntilAligned == Integer.MAX_VALUE) {
-            alignmentConfidence =
-                    currentlyOnTarget ? Math.exp(-targetSpeed * ticks * 0.45D) : 0.15D;
-        } else {
-            alignmentConfidence =
-                    ticksUntilAligned <= ticks
-                            ? 1.0D
-                            : Math.exp(-(ticksUntilAligned - ticks) * 0.8D);
-        }
-
-        double confidence =
-                visible
-                        ? Mth.clamp(
-                                angleConfidence * alignmentConfidence * (1.0D - motionUncertainty),
-                                0.0D,
-                                1.0D)
-                        : 0.0D;
-
-        if (currentlyOnTarget && ticks == 0) {
-            confidence = 1.0D;
-        }
-
-        return new AimForecast(
-                visible,
-                angularError,
-                ticksUntilAligned,
-                confidence,
-                futureAimPoint,
-                inputMultiplier);
-    }
-
-    private static int estimateAlignmentTicks(double angularError, double effectiveSmooth) {
-        if (angularError <= MIN_CORRECTION_ANGLE_DEGREES) {
-            return 0;
-        }
-
-        double retention = 1.0D - effectiveSmooth;
-
-        return Math.max(
-                1,
-                (int)
-                        Math.ceil(
-                                Math.log(MIN_CORRECTION_ANGLE_DEGREES / angularError)
-                                        / Math.log(retention)));
+        boolean enabled = ENABLED.get();
+        double inputMultiplier =
+                enabled
+                        ? mouseSmoothMultiplier(MouseInputTracker.currentMotion(System.nanoTime()))
+                        : 1.0D;
+        return AimPrediction.forecastAttack(
+                client,
+                living,
+                ticksAhead,
+                futureEye,
+                enabled,
+                SMOOTH.get(),
+                RANGE.get(),
+                inputMultiplier,
+                MIN_CORRECTION_ANGLE_DEGREES);
     }
 
     /**
@@ -534,18 +446,6 @@ public final class AimAssist {
         }
 
         return Double.toString(value);
-    }
-
-    public record AimForecast(
-            boolean visible,
-            double angularError,
-            int ticksUntilAligned,
-            double confidence,
-            Vec3 aimPoint,
-            double inputMultiplier) {
-        private static AimForecast unavailable() {
-            return new AimForecast(false, 180.0D, Integer.MAX_VALUE, 0.0D, null, 0.0D);
-        }
     }
 
     private record TargetRotation(

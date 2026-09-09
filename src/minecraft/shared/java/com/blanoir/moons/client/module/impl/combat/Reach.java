@@ -12,6 +12,7 @@ import com.blanoir.moons.client.management.network.PacketBlink;
 import com.blanoir.moons.client.management.targeting.Targeting;
 import com.blanoir.moons.client.utils.combat.CombatReach;
 import com.blanoir.moons.client.utils.entity.EntityDistance;
+import com.blanoir.moons.client.utils.math.RandomMath;
 import com.blanoir.moons.client.utils.raytrace.RaytraceUtils;
 
 import net.minecraft.client.Minecraft;
@@ -33,7 +34,6 @@ import net.minecraft.world.phys.Vec3;
 
 import java.util.List;
 import java.util.Locale;
-import java.util.Random;
 
 /**
  * Manual extended-ray attacks. Advanced mode stores the exact attack/swing
@@ -75,7 +75,6 @@ public final class Reach {
                     .build();
 
     private static boolean initialized;
-    private static final Random RANDOM = new Random();
     private static boolean expanding = true;
     private static int remainingTicks;
     private static double displayedRealDistance = -1.0D;
@@ -108,7 +107,7 @@ public final class Reach {
         EventBus.TICK.register(
                 "Reach.sampleExpansionChance",
                 event -> {
-                    expanding = RANDOM.nextDouble() <= CHANCE.get() / 100.0D;
+                    expanding = RandomMath.chancePercent(CHANCE.get());
                 });
         // Tick end is after LocalPlayer has sent this tick's movement. Releasing
         // here preserves movement -> old attack packet ordering on the wire.

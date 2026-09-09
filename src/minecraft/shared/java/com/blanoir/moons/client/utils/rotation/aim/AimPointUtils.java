@@ -6,7 +6,7 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
-/** Stateless target-box point selection and short-horizon motion prediction. */
+/** Stateless target-box point selection. */
 public final class AimPointUtils {
     public enum Mode {
         CENTER,
@@ -72,11 +72,6 @@ public final class AimPointUtils {
 
     public static Vec3 resolve(Mode mode, AABB box, Vec3 eye, Vec3 look, double maxDistance) {
         return mode == Mode.CLOSEST ? closest(box, eye, look, maxDistance) : center(box);
-    }
-
-    public static AABB predict(AABB box, Vec3 smoothedVelocity, double ticksAhead) {
-        double ticks = Mth.clamp(ticksAhead, 0.0D, 3.0D);
-        return box.move(smoothedVelocity.scale(ticks));
     }
 
     private static Vec3 normalizedLook(Vec3 look) {

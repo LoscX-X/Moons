@@ -23,6 +23,8 @@ import com.blanoir.moons.client.management.targeting.Targeting;
 import com.blanoir.moons.client.utils.client.ClientReady;
 import com.blanoir.moons.client.utils.math.RandomMath;
 import com.blanoir.moons.client.utils.player.HotbarQueries;
+import com.blanoir.moons.client.utils.prediction.TrajectoryPrediction;
+import com.blanoir.moons.client.utils.prediction.TrajectoryPrediction.TrajectoryStep;
 import com.blanoir.moons.client.utils.world.placement.BlockPlacementUtils;
 
 import net.minecraft.client.Minecraft;
@@ -30,7 +32,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.Pose;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Items;
@@ -46,7 +47,6 @@ public final class AutoWeb {
     private static final int MIN_WALL_PREDICTION_TICKS = 3;
     private static final int MAX_WALL_PREDICTION_TICKS = 6;
     private static final int ATTACK_REQUEST_LIFETIME_TICKS = 24;
-    private static final int GROUND_LANDING_WINDOW_TICKS = 3;
     private static final int MAX_PLACE_CONFIRM_TICKS = 40;
     private static final int MAX_HOLD_TICKS = 20;
     private static final Direction[] SUPPORT_DIRECTIONS = {
@@ -64,12 +64,7 @@ public final class AutoWeb {
     private static final double DEFAULT_COOLDOWN_SECONDS = 0.5D;
     private static final double MIN_COOLDOWN_SECONDS = 0.0D;
     private static final double MAX_COOLDOWN_SECONDS = 30.0D;
-    private static final double HORIZONTAL_DRAG = 0.91D;
-    private static final double GRAVITY = 0.08D;
-    private static final double VERTICAL_DRAG = 0.98D;
     private static final double RAY_EPSILON = 1.0E-4D;
-    private static final double MAX_GROUND_TARGET_SPEED = 0.18D;
-    private static final double MAX_GROUND_RELATIVE_SPEED = 0.28D;
     private static final double[] FACE_SAMPLES = {0.18D, 0.5D, 0.82D};
 
     private static final BooleanSetting ENABLED =
@@ -80,6 +75,25 @@ public final class AutoWeb {
 
     private static final BooleanSetting GROUND_ENABLED =
             new BooleanSetting.Builder().name("autoweb.ground").defaultValue(true).build();
+
+    private static final IntSetting GROUND_WINDOW_TICKS =
+            new IntSetting.Builder()
+                    .name("autoweb.groundWindow")
+                    .defaultValue(5)
+                    .range(1, 12)
+                    .build();
+    private static final DoubleSetting GROUND_MAX_SPEED =
+            new DoubleSetting.Builder()
+                    .name("autoweb.groundMaxSpeed")
+                    .defaultValue(0.30D)
+                    .range(0.05D, 1.5D)
+                    .build();
+    private static final DoubleSetting GROUND_MAX_RELATIVE_SPEED =
+            new DoubleSetting.Builder()
+                    .name("autoweb.groundMaxRelativeSpeed")
+                    .defaultValue(0.45D)
+                    .range(0.05D, 2.0D)
+                    .build();
 
     private static final BooleanSetting WAIT_CONFIRM_ROTATION =
             new BooleanSetting.Builder()
@@ -130,7 +144,7 @@ public final class AutoWeb {
     private static int heldWebSlot = -1;
     private static int originalSlot = -1;
     private static WebActionPhase phase = WebActionPhase.IDLE;
-    private static BlockPos lastPlacedPos;
+    private static String lastDecision = "waiting_attack";
     private static int pendingAttackTargetId = -1;
     private static int pendingAttackTicks;
     private static boolean pendingWallAttempted;
@@ -157,6 +171,12 @@ public final class AutoWeb {
             return;
         }
 
+        if (!ready(client)) {
+            resetAll(client);
+            lastDecision = "not_ready";
+            return;
+        }
+
         if (remainingCooldownTicks > 0) {
             remainingCooldownTicks--;
         }
@@ -173,14 +193,10 @@ public final class AutoWeb {
             GROUND_LANDING_WINDOW.clear();
         }
 
-        if (!ready(client)) {
-            resetPlan(client);
-            return;
-        }
-
         observePlacementConfirmation(client);
 
         if (AutoLava.isBusy() || AntiLava.isBusy() || AntiWeb.isBusy() || AutoBed.isBusy()) {
+            lastDecision = "other_placement";
             return;
         }
 
@@ -189,11 +205,13 @@ public final class AutoWeb {
             return;
         }
         if (remainingCooldownTicks > 0) {
+            lastDecision = "cooldown";
             return;
         }
         // A fast return releases slot/rotation ownership immediately, but a
         // second web must not start until the first server result is known.
         if (pendingPlaceConfirmationPos != null) {
+            lastDecision = "awaiting_confirmation";
             return;
         }
         processIdleTick(client);
@@ -221,6 +239,7 @@ public final class AutoWeb {
                 || !Targeting.isValidTargetPlayer(client, player)
                 || isTrappedInWeb(client, player)
                 || findWebSlot(client) == -1) {
+            lastDecision = "attack_ineligible_or_no_web";
             return;
         }
         // Attack callbacks may run before or after LocalPlayer.tick depending
@@ -229,9 +248,10 @@ public final class AutoWeb {
         pendingAttackTargetId = player.getId();
         pendingAttackTicks = ATTACK_REQUEST_LIFETIME_TICKS;
         pendingWallAttempted = false;
+        lastDecision = "attack_armed";
         if (GROUND_ENABLED.get()) {
             GROUND_LANDING_WINDOW.arm(
-                    player, ATTACK_REQUEST_LIFETIME_TICKS, GROUND_LANDING_WINDOW_TICKS);
+                    player, ATTACK_REQUEST_LIFETIME_TICKS, GROUND_WINDOW_TICKS.get());
         } else {
             GROUND_LANDING_WINDOW.clear();
         }
@@ -239,6 +259,7 @@ public final class AutoWeb {
 
     private static boolean tryExecutePendingAttack(Minecraft client) {
         if (pendingAttackTargetId == -1) {
+            lastDecision = "waiting_attack";
             return false;
         }
         Player target =
@@ -282,17 +303,22 @@ public final class AutoWeb {
         PostHitLandingWindow.Snapshot landing =
                 GROUND_LANDING_WINDOW.update(target, client.player.getDeltaMovement());
         if (landing.expired()) {
+            lastDecision = "landing_window_expired";
             clearPendingAttack();
             return false;
         }
-        if (!target.onGround()
-                || !landing.insideLandingWindow()
-                || landing.targetHorizontalSpeed() > MAX_GROUND_TARGET_SPEED
-                || landing.relativeHorizontalSpeed() > MAX_GROUND_RELATIVE_SPEED) {
+        if (!target.onGround() || !landing.insideLandingWindow()) {
+            lastDecision = landing.sawAirborne() ? "waiting_landing" : "waiting_airborne";
+            return false;
+        }
+        if (landing.targetHorizontalSpeed() > GROUND_MAX_SPEED.get()
+                || landing.relativeHorizontalSpeed() > GROUND_MAX_RELATIVE_SPEED.get()) {
+            lastDecision = "ground_speed_limit";
             return false;
         }
         PlacementPlan plan = findLandingGroundPlan(client, target);
-        if (plan == null || plan.placePos().equals(lastPlacedPos)) {
+        if (plan == null) {
+            lastDecision = "no_safe_reachable_cell";
             return false;
         }
         return consumePlacementAttempt(client, plan);
@@ -301,22 +327,20 @@ public final class AutoWeb {
     private static boolean consumePlacementAttempt(Minecraft client, PlacementPlan plan) {
         clearPendingAttack();
         if (RandomMath.chance(CHANCE.get())) {
+            lastDecision = "placing";
             beginWebHold(client, plan);
+        } else {
+            lastDecision = "chance_skipped";
         }
         return true;
     }
 
     /** Aim at the next feet position, without rewarding cells already being left. */
     private static PlacementPlan findLandingGroundPlan(Minecraft client, Player target) {
-        Vec3 velocity = observedTargetVelocity(target);
+        Vec3 velocity = TrajectoryPrediction.observedVelocity(target);
         int leadTicks = Math.min(1, PREDICTION_TICKS.get());
         Vec3 travel =
-                Entity.collideBoundingBox(
-                        target,
-                        new Vec3(velocity.x * leadTicks, 0.0D, velocity.z * leadTicks),
-                        target.getBoundingBox(),
-                        client.level,
-                        java.util.List.of());
+                TrajectoryPrediction.horizontalCollisionTravel(client, target, velocity, leadTicks);
         AABB box = target.getBoundingBox().move(travel);
         Vec3 feet = target.position().add(travel);
         Vec3 eye = target.getEyePosition().add(travel);
@@ -426,12 +450,10 @@ public final class AutoWeb {
         if (placeConfirmTicks < requiredServerSettleTicks(client)) {
             return;
         }
-        BlockPos confirmedPos = pendingPlaceConfirmationPos;
         boolean strictWait =
                 WAIT_CONFIRM_ROTATION.get() && phase == WebActionPhase.CLICKING_TO_PLACE;
         clearPlacementConfirmation();
         remainingCooldownTicks = (int) Math.ceil(COOLDOWN_SECONDS.get() * 20.0D);
-        lastPlacedPos = confirmedPos;
         if (strictWait) {
             beginReturnRotation(client);
         }
@@ -543,7 +565,7 @@ public final class AutoWeb {
             Vec3 incomingVelocity = velocity;
             if (tick > 0) {
                 TrajectoryStep step =
-                        advanceTrajectory(client, target, position, velocity, grounded);
+                        TrajectoryPrediction.advance(client, target, position, velocity, grounded);
                 position = step.position();
                 velocity = step.velocity();
                 grounded = step.grounded();
@@ -709,37 +731,13 @@ public final class AutoWeb {
 
     private static PlacementPlan findWallPlan(
             Minecraft client, Player target, boolean upperBodyOnly) {
-        Vec3 velocity = observedTargetVelocity(target);
+        Vec3 velocity = TrajectoryPrediction.observedVelocity(target);
         int horizon =
                 clampInt(
                         PREDICTION_TICKS.get(),
                         MIN_WALL_PREDICTION_TICKS,
                         MAX_WALL_PREDICTION_TICKS);
         return findTrajectoryPlan(client, target, velocity, horizon, true, upperBodyOnly, false);
-    }
-
-    private static TrajectoryStep advanceTrajectory(
-            Minecraft client, Player target, Vec3 position, Vec3 velocity, boolean grounded) {
-        // Resolve each step against real block shapes. The small downward
-        // grounded step detects both floor support and walking off an edge.
-        Vec3 requested =
-                grounded && velocity.y <= 0.0D
-                        ? new Vec3(velocity.x, -GRAVITY, velocity.z)
-                        : velocity;
-        AABB box = target.getBoundingBox().move(position.subtract(target.position()));
-        Vec3 movement =
-                Entity.collideBoundingBox(
-                        target, requested, box, client.level, java.util.List.of());
-        boolean blockedX = Math.abs(movement.x - requested.x) > RAY_EPSILON;
-        boolean blockedY = Math.abs(movement.y - requested.y) > RAY_EPSILON;
-        boolean blockedZ = Math.abs(movement.z - requested.z) > RAY_EPSILON;
-        Vec3 nextVelocity =
-                new Vec3(
-                        blockedX ? 0.0D : velocity.x * HORIZONTAL_DRAG,
-                        blockedY ? 0.0D : (requested.y - GRAVITY) * VERTICAL_DRAG,
-                        blockedZ ? 0.0D : velocity.z * HORIZONTAL_DRAG);
-        return new TrajectoryStep(
-                position.add(movement), nextVelocity, blockedY && requested.y < 0.0D);
     }
 
     private static Vec3 predictedEyePosition(Player target, Vec3 feetPosition) {
@@ -995,17 +993,6 @@ public final class AutoWeb {
     }
 
     /** Follow measured displacement; stale delta movement can retain old knockback. */
-    private static Vec3 observedTargetVelocity(Player target) {
-        Vec3 observed =
-                new Vec3(
-                        target.getX() - target.xo,
-                        target.getY() - target.yo,
-                        target.getZ() - target.zo);
-        return Double.isFinite(observed.lengthSqr()) && observed.lengthSqr() <= 2.25D
-                ? observed
-                : Vec3.ZERO;
-    }
-
     private static Vec3 horizontalDirection(Vec3 vector) {
         double length = Math.sqrt(vector.x * vector.x + vector.z * vector.z);
         return length < 1.0E-8D ? Vec3.ZERO : new Vec3(vector.x / length, 0.0D, vector.z / length);
@@ -1107,11 +1094,10 @@ public final class AutoWeb {
         }
 
         if (plan.groundOnly()) {
-            Vec3 velocity = observedTargetVelocity(target);
+            Vec3 velocity = TrajectoryPrediction.observedVelocity(target);
             // Rotation may have waited a tick or longer. Do not click an old
             // feet cell after another knockback, jump or direction change.
-            if (!target.onGround()
-                    || Math.hypot(velocity.x, velocity.z) > MAX_GROUND_TARGET_SPEED) {
+            if (!target.onGround() || Math.hypot(velocity.x, velocity.z) > GROUND_MAX_SPEED.get()) {
                 return null;
             }
             PlacementPlan current = findLandingGroundPlan(client, target);
@@ -1172,7 +1158,7 @@ public final class AutoWeb {
                         .getBoundingBox()
                         .inflate(SELF_SAFETY_MARGIN, 0.05D, SELF_SAFETY_MARGIN);
         AABB predictedPlayerBox =
-                predictTargetBox(client.player, predictionTick)
+                TrajectoryPrediction.freeFlightBox(client.player, predictionTick)
                         .inflate(SELF_SAFETY_MARGIN, 0.05D, SELF_SAFETY_MARGIN);
         AABB sweptPlayerBox =
                 new AABB(
@@ -1204,23 +1190,6 @@ public final class AutoWeb {
             }
         }
         return false;
-    }
-
-    private static AABB predictTargetBox(Player target, int ticks) {
-        Vec3 position = target.position();
-        Vec3 velocity = target.getDeltaMovement();
-        boolean grounded = target.onGround();
-        for (int tick = 0; tick < ticks; tick++) {
-            if (grounded) {
-                position = position.add(velocity.x, 0.0D, velocity.z);
-                velocity = new Vec3(velocity.x * 0.91D, 0.0D, velocity.z * 0.91D);
-            } else {
-                double nextY = (velocity.y - 0.08D) * 0.98D;
-                velocity = new Vec3(velocity.x * 0.91D, nextY, velocity.z * 0.91D);
-                position = position.add(velocity);
-            }
-        }
-        return target.getDimensions(Pose.STANDING).makeBoundingBox(position);
     }
 
     private static boolean withinPlacementRange(Minecraft client, Vec3 hitLocation) {
@@ -1367,6 +1336,26 @@ public final class AutoWeb {
         return 1;
     }
 
+    public static int setGroundWindow(Minecraft client, int value) {
+        GROUND_WINDOW_TICKS.set(value);
+        clearPendingAttack();
+        return 1;
+    }
+
+    public static int setGroundMaxSpeed(Minecraft client, double value) {
+        GROUND_MAX_SPEED.set(value);
+        return 1;
+    }
+
+    public static int setGroundMaxRelativeSpeed(Minecraft client, double value) {
+        GROUND_MAX_RELATIVE_SPEED.set(value);
+        return 1;
+    }
+
+    public static boolean groundEnabled() {
+        return GROUND_ENABLED.get();
+    }
+
     public static int setWaitConfirmRotation(Minecraft client, boolean value) {
         WAIT_CONFIRM_ROTATION.set(value);
         ClientChat.send(
@@ -1451,8 +1440,6 @@ public final class AutoWeb {
         WAITING_FOR_RETURN
     }
 
-    private record TrajectoryStep(Vec3 position, Vec3 velocity, boolean grounded) {}
-
     private record WallGeometry(
             Direction direction,
             double alignment,
@@ -1474,6 +1461,10 @@ public final class AutoWeb {
     // Debug
     public static String debugState() {
         return phase.name().toLowerCase(java.util.Locale.ROOT)
+                + " gate="
+                + lastDecision
+                + " request="
+                + pendingAttackTicks
                 + " hold="
                 + postPlaceHoldRemainingTicks
                 + " confirm="

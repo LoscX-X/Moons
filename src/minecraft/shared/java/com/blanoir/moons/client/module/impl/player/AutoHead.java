@@ -8,14 +8,13 @@ import com.blanoir.moons.client.config.settings.IntSetting;
 import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.management.rotation.SilentPacketRotation;
 import com.blanoir.moons.client.module.impl.world.Scaffold;
+import com.blanoir.moons.client.utils.math.RandomMath;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket;
 import net.minecraft.network.protocol.game.ServerboundUseItemPacket;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.Items;
-
-import java.util.concurrent.ThreadLocalRandom;
 
 /** Uses a hotbar player head for servers that implement UHC head consumables. */
 public final class AutoHead {
@@ -81,7 +80,7 @@ public final class AutoHead {
 
         int min = Math.min(MIN_DELAY.get(), MAX_DELAY.get());
         int max = Math.max(MIN_DELAY.get(), MAX_DELAY.get());
-        nextUseNanos = now + ThreadLocalRandom.current().nextLong(min, max + 1L) * 1_000_000L;
+        nextUseNanos = now + RandomMath.betweenInclusive(min, max) * 1_000_000L;
         var connection = client.getConnection();
         int originalSlot = inventory.getSelectedSlot();
         // Keep the local held item intact, with ordered select/use/restore packets.

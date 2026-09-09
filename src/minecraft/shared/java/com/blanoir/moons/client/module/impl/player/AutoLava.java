@@ -14,6 +14,8 @@ import com.blanoir.moons.client.utils.client.ClientReady;
 import com.blanoir.moons.client.utils.math.MathUtils;
 import com.blanoir.moons.client.utils.math.RandomMath;
 import com.blanoir.moons.client.utils.player.HotbarQueries;
+import com.blanoir.moons.client.utils.prediction.KnockbackPrediction;
+import com.blanoir.moons.client.utils.prediction.TrajectoryPrediction;
 import com.blanoir.moons.client.utils.rotation.aim.AimPointUtils;
 import com.blanoir.moons.client.utils.world.FluidQueries;
 import com.blanoir.moons.client.utils.world.placement.BlockPlacementUtils;
@@ -22,9 +24,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.tags.FluidTags;
-import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.ClipContext;
@@ -41,12 +41,9 @@ public final class AutoLava {
     private static final int MAX_CYCLE_TICKS = 60;
     private static final double FACE_EDGE_INSET = 0.06D;
     private static final double RAY_EPSILON = 1.0E-4D;
-    private static final double HORIZONTAL_DRAG = 0.91D;
-    private static final double KNOCKBACK_SAMPLE_THRESHOLD = 0.08D;
     private static final double SELF_SAFETY_MARGIN = 0.12D;
     private static final double TARGET_PATH_PADDING = 0.42D;
     private static final int PLACEMENT_SCAN_RADIUS = 4;
-    private static final int COLLISION_BINARY_STEPS = 8;
     private static final int ATTACK_REQUEST_LIFETIME_TICKS = 30;
     private static final int GROUND_LANDING_WINDOW_TICKS = 3;
     private static final double MAX_GROUND_TARGET_SPEED = 0.15D;
@@ -163,15 +160,7 @@ public final class AutoLava {
     private static int activeSmoothTicks;
     private static int phaseTicks;
     private static int cycleTicks;
-    private static int sampledTargetId = -1;
-    private static int sampledTargetTick = Integer.MIN_VALUE;
-    private static Vec3 lastSampledTargetPosition;
-    private static Vec3 smoothedTargetVelocity = Vec3.ZERO;
-    private static Vec3 smoothedTargetAcceleration = Vec3.ZERO;
-    private static Vec3 attackBaselineVelocity = Vec3.ZERO;
-    private static Vec3 anticipatedAttackVelocity = Vec3.ZERO;
-    private static boolean awaitingAttackVelocity;
-    private static int knockbackWaitTicks;
+    private static final KnockbackPrediction TARGET_MOTION = new KnockbackPrediction();
     private static Vec3 planningViewDirection;
     private static int cycleGeneration;
     private static int activeGeneration;
@@ -225,7 +214,7 @@ public final class AutoLava {
         } else {
             GROUND_LANDING_WINDOW.clear();
         }
-        beginMotionSampling(client, target);
+        TARGET_MOTION.begin(client, target);
     }
 
     private static void tick(Minecraft client) {
@@ -245,16 +234,16 @@ public final class AutoLava {
                 Player target = targetById(client, pendingTargetId);
                 if (!Targeting.isValidTargetPlayer(client, target) || target.isOnFire()) {
                     clearPendingTrigger();
-                    clearMotionSampling();
+                    TARGET_MOTION.reset();
                 } else {
-                    sampleTargetMotion(target);
+                    TARGET_MOTION.observe(client, target);
                     PostHitLandingWindow.Snapshot landing =
                             GROUND_LANDING_WINDOW.update(target, client.player.getDeltaMovement());
                     if (GROUND_ENABLED.get()
                             && landing.expired()
                             && (pendingWallAttempted || !WALL_ENABLED.get())) {
                         clearPendingTrigger();
-                        clearMotionSampling();
+                        TARGET_MOTION.reset();
                     } else if (System.nanoTime() >= pendingExecuteAtNanos) {
                         tryBeginPendingCycle(client, target, landing);
                     }
@@ -264,7 +253,7 @@ public final class AutoLava {
         }
         Player activeTarget = targetById(client, activeTargetId);
         if (activeTarget != null) {
-            sampleTargetMotion(activeTarget);
+            TARGET_MOTION.observe(client, activeTarget);
         }
         phaseTicks++;
         cycleTicks++;
@@ -290,7 +279,7 @@ public final class AutoLava {
         }
         if (!GROUND_ENABLED.get()) {
             clearPendingTrigger();
-            clearMotionSampling();
+            TARGET_MOTION.reset();
             return;
         }
         if (!landing.insideLandingWindow()
@@ -312,18 +301,18 @@ public final class AutoLava {
         int pending = pendingTargetId;
         clearPendingTrigger();
         if (AntiWeb.isBusy() || AntiLava.isBusy() || AutoWeb.isBusy() || AutoBed.isBusy()) {
-            clearMotionSampling();
+            TARGET_MOTION.reset();
             return;
         }
 
         Player target = targetById(client, pending);
         if (!Targeting.isValidTargetPlayer(client, target) || target.isOnFire()) {
-            clearMotionSampling();
+            TARGET_MOTION.reset();
             return;
         }
         int slot = findSlot(client, Items.LAVA_BUCKET);
         if (slot < 0) {
-            clearMotionSampling();
+            TARGET_MOTION.reset();
             return;
         }
 
@@ -566,7 +555,7 @@ public final class AutoLava {
             finishCycle(client);
             return;
         }
-        sampleTargetMotion(target);
+        TARGET_MOTION.observe(client, target);
         // This is the cycle's one and only placement plan.  It is deliberately
         // made after both configurable delays, from the current camera ray and
         // the latest sampled motion, so later phases cannot jump between cells.
@@ -702,86 +691,6 @@ public final class AutoLava {
                 : null;
     }
 
-    private static void beginMotionSampling(Minecraft client, Player target) {
-        sampledTargetId = target.getId();
-        sampledTargetTick = target.tickCount;
-        lastSampledTargetPosition = target.position();
-        attackBaselineVelocity = target.getDeltaMovement();
-        anticipatedAttackVelocity = expectedPostAttackVelocity(client, target);
-        awaitingAttackVelocity =
-                horizontalDifference(anticipatedAttackVelocity, attackBaselineVelocity)
-                        > KNOCKBACK_SAMPLE_THRESHOLD;
-        knockbackWaitTicks = 0;
-        smoothedTargetVelocity =
-                awaitingAttackVelocity ? anticipatedAttackVelocity : attackBaselineVelocity;
-        smoothedTargetAcceleration = Vec3.ZERO;
-    }
-
-    /**
-     * Combines observed position steps with the entity velocity. Position steps
-     * receive more weight because remote-player delta movement can lag behind a
-     * server knockback update. Acceleration is deliberately capped at prediction
-     * time so one interpolation correction cannot throw the lava several cells.
-     */
-    private static void sampleTargetMotion(Player target) {
-        if (target == null) {
-            return;
-        }
-        if (sampledTargetId != target.getId() || lastSampledTargetPosition == null) {
-            beginMotionSampling(Minecraft.getInstance(), target);
-            return;
-        }
-        if (sampledTargetTick == target.tickCount) {
-            return;
-        }
-
-        int elapsedTicks = Math.max(1, target.tickCount - sampledTargetTick);
-        Vec3 position = target.position();
-        Vec3 observed = position.subtract(lastSampledTargetPosition).scale(1.0D / elapsedTicks);
-        Vec3 reported = target.getDeltaMovement();
-        Vec3 sample = limitHorizontal(observed.scale(0.72D).add(reported.scale(0.28D)), 1.5D);
-        Vec3 previousVelocity = smoothedTargetVelocity;
-        knockbackWaitTicks += elapsedTicks;
-        if (awaitingAttackVelocity
-                && knockbackWaitTicks <= 4
-                && horizontalDifference(sample, attackBaselineVelocity)
-                        < KNOCKBACK_SAMPLE_THRESHOLD) {
-            // The attack packet is already out but the remote velocity update
-            // has not arrived yet. Keep the vanilla impulse estimate instead
-            // of smoothing it back into the stale pre-hit motion.
-            smoothedTargetVelocity = anticipatedAttackVelocity;
-            smoothedTargetAcceleration = Vec3.ZERO;
-        } else {
-            awaitingAttackVelocity = false;
-            double impulse = horizontalDifference(sample, previousVelocity);
-            if (impulse >= KNOCKBACK_SAMPLE_THRESHOLD) {
-                // A knockback packet is a velocity discontinuity, not a
-                // multi-tick acceleration. Adopt it immediately so a large
-                // sideways hit cannot be damped by the old 55/45 filter.
-                smoothedTargetVelocity = sample;
-                smoothedTargetAcceleration = Vec3.ZERO;
-            } else {
-                smoothedTargetVelocity = previousVelocity.scale(0.55D).add(sample.scale(0.45D));
-                Vec3 observedAcceleration = smoothedTargetVelocity.subtract(previousVelocity);
-                smoothedTargetAcceleration =
-                        smoothedTargetAcceleration
-                                .scale(0.65D)
-                                .add(observedAcceleration.scale(0.35D));
-            }
-        }
-        lastSampledTargetPosition = position;
-        sampledTargetTick = target.tickCount;
-    }
-
-    private static Vec3 limitHorizontal(Vec3 movement, double maximum) {
-        double horizontal = Math.sqrt(movement.x * movement.x + movement.z * movement.z);
-        if (horizontal <= maximum || horizontal <= 1.0E-9D) {
-            return movement;
-        }
-        double scale = maximum / horizontal;
-        return new Vec3(movement.x * scale, movement.y, movement.z * scale);
-    }
-
     private static void clearPendingTrigger() {
         pendingTargetId = -1;
         pendingExecuteAtNanos = 0L;
@@ -789,122 +698,10 @@ public final class AutoLava {
         GROUND_LANDING_WINDOW.clear();
     }
 
-    private static void clearMotionSampling() {
-        sampledTargetId = -1;
-        sampledTargetTick = Integer.MIN_VALUE;
-        lastSampledTargetPosition = null;
-        smoothedTargetVelocity = Vec3.ZERO;
-        smoothedTargetAcceleration = Vec3.ZERO;
-        attackBaselineVelocity = Vec3.ZERO;
-        anticipatedAttackVelocity = Vec3.ZERO;
-        awaitingAttackVelocity = false;
-        knockbackWaitTicks = 0;
-    }
-
     /** Vanilla-style horizontal velocity immediately after this attack. */
-    private static Vec3 expectedPostAttackVelocity(Minecraft client, Player target) {
-        Vec3 current = target.getDeltaMovement();
-        double dx = target.getX() - client.player.getX();
-        double dz = target.getZ() - client.player.getZ();
-        double length = Math.hypot(dx, dz);
-        if (length < 1.0E-6D) {
-            return current;
-        }
-        double levels =
-                Math.max(0.0D, client.player.getAttributeValue(Attributes.ATTACK_KNOCKBACK))
-                        + (client.player.isSprinting() ? 1.0D : 0.0D);
-        double impulse =
-                levels
-                        * 0.5D
-                        * (1.0D
-                                - Mth.clamp(
-                                        target.getAttributeValue(Attributes.KNOCKBACK_RESISTANCE),
-                                        0.0D,
-                                        1.0D));
-        if (impulse <= 1.0E-6D) {
-            return current;
-        }
-        return new Vec3(
-                current.x * 0.5D + dx / length * impulse,
-                current.y,
-                current.z * 0.5D + dz / length * impulse);
-    }
-
-    private static double horizontalDifference(Vec3 first, Vec3 second) {
-        return Math.hypot(first.x - second.x, first.z - second.z);
-    }
-
-    /**
-     * Advances horizontal movement with vanilla drag and world collision. A
-     * wall stops only the blocked axis, so lateral knockback continues sliding
-     * along it instead of predicting through the wall or stopping completely.
-     */
-    private static Vec3 predictHorizontalPosition(
-            Minecraft client, Player entity, Vec3 velocity, Vec3 acceleration, double ticks) {
-        Vec3 position = entity.position();
-        AABB box = entity.getBoundingBox();
-        double remaining = Math.max(0.0D, ticks);
-        double velocityX =
-                velocity.x + Mth.clamp(acceleration.x, -0.08D, 0.08D) * Math.min(1.0D, remaining);
-        double velocityZ =
-                velocity.z + Mth.clamp(acceleration.z, -0.08D, 0.08D) * Math.min(1.0D, remaining);
-        while (remaining > 1.0E-6D) {
-            double fraction = Math.min(1.0D, remaining);
-            Vec3 moved =
-                    collideHorizontal(
-                            client, entity, box, velocityX * fraction, velocityZ * fraction);
-            position = position.add(moved.x, 0.0D, moved.z);
-            box = box.move(moved.x, 0.0D, moved.z);
-            if (Math.abs(moved.x - velocityX * fraction) > 1.0E-4D) {
-                velocityX = 0.0D;
-            }
-            if (Math.abs(moved.z - velocityZ * fraction) > 1.0E-4D) {
-                velocityZ = 0.0D;
-            }
-            velocityX *= Math.pow(HORIZONTAL_DRAG, fraction);
-            velocityZ *= Math.pow(HORIZONTAL_DRAG, fraction);
-            remaining -= fraction;
-        }
-        return position;
-    }
-
-    private static Vec3 collideHorizontal(
-            Minecraft client, Player entity, AABB box, double requestedX, double requestedZ) {
-        double movedX = clipAxis(client, entity, box, requestedX, true);
-        AABB afterX = box.move(movedX, 0.0D, 0.0D);
-        double movedZ = clipAxis(client, entity, afterX, requestedZ, false);
-        return new Vec3(movedX, 0.0D, movedZ);
-    }
-
-    private static double clipAxis(
-            Minecraft client, Player entity, AABB box, double requested, boolean xAxis) {
-        if (Math.abs(requested) <= 1.0E-9D) {
-            return 0.0D;
-        }
-        AABB full = xAxis ? box.move(requested, 0.0D, 0.0D) : box.move(0.0D, 0.0D, requested);
-        if (client.level.noCollision(entity, full)) {
-            return requested;
-        }
-        double low = 0.0D;
-        double high = 1.0D;
-        for (int step = 0; step < COLLISION_BINARY_STEPS; step++) {
-            double middle = (low + high) * 0.5D;
-            AABB candidate =
-                    xAxis
-                            ? box.move(requested * middle, 0.0D, 0.0D)
-                            : box.move(0.0D, 0.0D, requested * middle);
-            if (client.level.noCollision(entity, candidate)) {
-                low = middle;
-            } else {
-                high = middle;
-            }
-        }
-        return requested * low;
-    }
-
     private static boolean safeForLocalPlayer(Minecraft client, BlockPos source, double leadTicks) {
         Vec3 predicted =
-                predictHorizontalPosition(
+                TrajectoryPrediction.horizontalPosition(
                         client,
                         client.player,
                         client.player.getDeltaMovement(),
@@ -931,15 +728,16 @@ public final class AutoLava {
             Minecraft client, Player target, PlacementRoute route) {
         double strength = PREDICTION.get();
         Vec3 velocity =
-                sampledTargetId == target.getId()
-                        ? smoothedTargetVelocity
+                TARGET_MOTION.matches(target)
+                        ? TARGET_MOTION.velocity()
                         : target.getDeltaMovement();
         Vec3 acceleration =
-                sampledTargetId == target.getId() ? smoothedTargetAcceleration : Vec3.ZERO;
+                TARGET_MOTION.matches(target) ? TARGET_MOTION.acceleration() : Vec3.ZERO;
         double predictionDelayTicks = PREDICTION_DELAY_MS.get() / 50.0D;
         double leadTicks = (SMOOTH_TICKS.get() + 1.5D + predictionDelayTicks) * strength;
         Vec3 predicted =
-                predictHorizontalPosition(client, target, velocity, acceleration, leadTicks);
+                TrajectoryPrediction.horizontalPosition(
+                        client, target, velocity, acceleration, leadTicks);
         BlockPos desired =
                 BlockPos.containing(
                         predicted.x, target.getBoundingBox().minY + 1.0E-4D, predicted.z);
@@ -1214,7 +1012,7 @@ public final class AutoLava {
         activeGeneration = 0;
         returnSwitchScheduled = false;
         slotReadyAtNanos = 0L;
-        clearMotionSampling();
+        TARGET_MOTION.reset();
         planningViewDirection = null;
         lavaPos = null;
         placementHit = null;

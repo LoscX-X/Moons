@@ -21,7 +21,6 @@ import com.blanoir.moons.client.module.impl.misc.ChatFilter;
 import com.blanoir.moons.client.module.impl.misc.StaticFov;
 import com.blanoir.moons.client.module.impl.movement.KeepSprint;
 import com.blanoir.moons.client.module.impl.movement.NoJumpDelay;
-import com.blanoir.moons.client.module.impl.movement.NoSlow;
 import com.blanoir.moons.client.module.impl.movement.Sprint;
 import com.blanoir.moons.client.module.impl.render.Animations;
 import com.blanoir.moons.client.module.impl.render.Chams;
@@ -75,21 +74,13 @@ public final class FeatureHooks {
         switch (hook.id()) {
             case "movement.living-ai-step" -> livingAiStep(hook.owner());
             case "movement.keyboard-input" -> keyboardInput(hook.owner());
-            case "movement.item-use-speed" -> {
-                if (hook.owner() instanceof net.minecraft.client.player.LocalPlayer player
-                        && hook.value() instanceof Number speed) {
-                    hook.value(NoSlow.itemUseSpeedMultiplier(player, speed.floatValue()));
-                }
-            }
             case "movement.sprint-start", "movement.sprint-input" -> {
                 if (hook.owner() instanceof net.minecraft.client.player.LocalPlayer player) {
                     boolean vanilla = Boolean.TRUE.equals(hook.value());
                     hook.value(
                             !CombatInputController.isSprintSuppressed()
                                     && !Scaffold.shouldSuppressSprint(Minecraft.getInstance())
-                                    && (Sprint.shouldSprint(player)
-                                            || NoSlow.shouldKeepSprinting(player)
-                                            || vanilla));
+                                    && (Sprint.shouldSprint(player) || vanilla));
                 }
             }
             case "movement.sprint-stop" -> {
@@ -98,9 +89,7 @@ public final class FeatureHooks {
                     hook.value(
                             CombatInputController.isSprintSuppressed()
                                     || Scaffold.shouldSuppressSprint(Minecraft.getInstance())
-                                    || (!Sprint.shouldSprint(player)
-                                            && !NoSlow.shouldKeepSprinting(player)
-                                            && vanilla));
+                                    || (!Sprint.shouldSprint(player) && vanilla));
                 }
             }
             case "movement.jump-yaw" -> silentYaw(hook);

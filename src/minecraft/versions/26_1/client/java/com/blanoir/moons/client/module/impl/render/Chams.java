@@ -69,6 +69,7 @@ public final class Chams {
         if (!CHAMS_ENABLED.get()) {
             activePlayerChams = false;
             dirty = false;
+            renderingItemSubmit = null;
             HELD_ITEM_SUBMITS.clear();
             RENDER_TARGET.close();
         }
@@ -95,19 +96,18 @@ public final class Chams {
      * the chams offscreen target.
      */
     public static boolean shouldRenderEntityChamsFor(AvatarRenderState state) {
+        if (!CHAMS_ENABLED.get() || state.isSpectator) {
+            return false;
+        }
         Minecraft client = Minecraft.getInstance();
         var currentPlayer = client == null ? null : client.player;
         var currentLevel = client == null ? null : client.level;
 
-        if (!CHAMS_ENABLED.get() || currentLevel == null || currentPlayer == null) {
+        if (currentLevel == null || currentPlayer == null) {
             return false;
         }
 
         if (MinecraftClientAccess.isHudHidden(client)) {
-            return false;
-        }
-
-        if (state.isSpectator) {
             return false;
         }
 
@@ -175,7 +175,7 @@ public final class Chams {
             return;
         }
 
-        RENDER_TARGET.initAndGet();
+        RENDER_TARGET.beginFrame();
     }
 
     public static void compositeIfNeeded() {

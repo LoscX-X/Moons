@@ -5,6 +5,7 @@ import static com.blanoir.moons.agent.core.HookInstructions.appendVoidCancellati
 import static com.blanoir.moons.agent.core.HookInstructions.beforeReturns;
 import static com.blanoir.moons.agent.core.HookInstructions.call;
 import static com.blanoir.moons.agent.core.HookInstructions.containsIdentifiedHook;
+import static com.blanoir.moons.agent.core.HookInstructions.guardHook;
 import static com.blanoir.moons.agent.core.HookInstructions.loadThisAndCall;
 import static com.blanoir.moons.agent.core.HookInstructions.thisCall;
 
@@ -86,18 +87,26 @@ final class MoonsTransformer {
                 if (!matched) failedHooks.add(target.id() + ":target-not-found");
             }
             if (!changed) return null;
-            // HAND_ANIMATION inserts conditional branches around vanilla transform
-            // invocations.  COMPUTE_MAXS preserves the old StackMapTable, which is
-            // sufficient for straight-line hooks but invalid for those new branch
-            // targets.  The vanilla verification fixture does not expose this because
-            // ASM's BasicInterpreter ignores the serialized StackMapTable; HotSpot does
-            // validate it during a live JVMTI retransformation and an isolated host consequently
-            // rejected ItemInHandRenderer with JVMTI_ERROR_FAILS_VERIFICATION.
+            // Animation hooks and allocation guards introduce new branch targets.
+            // Rebuild StackMapTable entries for these classes rather than preserving
+            // vanilla frames that do not describe the added branches and locals.
             boolean recomputeFrames =
                     targets.stream()
                             .anyMatch(
                                     target ->
-                                            target.hook() == TargetMethod.HookKind.HAND_ANIMATION);
+                                            target.hook() == TargetMethod.HookKind.HAND_ANIMATION
+                                                    || target.hook()
+                                                            == TargetMethod.HookKind.SCOREBOARD
+                                                    || target.hook()
+                                                            == TargetMethod.HookKind.TRIM_RENDER
+                                                    || target.hook()
+                                                            == TargetMethod.HookKind.XRAY_TESSELLATE
+                                                    || target.hook()
+                                                            == TargetMethod.HookKind
+                                                                    .SODIUM_RENDER_MODEL
+                                                    || target.hook()
+                                                            == TargetMethod.HookKind
+                                                                    .VERSION_SPECIFIC);
             ClassWriter writer =
                     recomputeFrames
                             ? new LoaderAwareClassWriter(
@@ -121,6 +130,16 @@ final class MoonsTransformer {
 
     private static boolean load(MethodNode method, TargetMethod target) {
         return switch (target.hook()) {
+            case VERSION_SPECIFIC -> {
+                boolean loaded = target.installer().apply(method, target.id());
+                if (loaded) {
+                    InsnList marker = new InsnList();
+                    marker.add(new LdcInsnNode("moons.hook:" + target.id()));
+                    marker.add(new InsnNode(Opcodes.POP));
+                    method.instructions.insert(marker);
+                }
+                yield loaded;
+            }
             case CLIENT_TICK -> loadClientTick(method);
             case FRAME -> loadFrame(method);
             case HUD -> loadHud(method);
@@ -269,7 +288,7 @@ final class MoonsTransformer {
         hook.add(new InsnNode(Opcodes.RETURN));
         hook.add(proceed);
         hook.add(new FrameNode(Opcodes.F_SAME, 0, null, 0, null));
-        method.instructions.insert(hook);
+        method.instructions.insert(guardHook(id, hook));
         return true;
     }
 
@@ -818,6 +837,7 @@ final class MoonsTransformer {
 
     private static boolean loadHandAnimation(MethodNode method, String id) {
         // renderArmWithItem: hand=4, swingProgress=5, equipProgress=7, PoseStack=8.
+        LabelNode continueVanilla = new LabelNode();
         InsnList start = new InsnList();
         start.add(new VarInsnNode(Opcodes.ALOAD, 8));
         start.add(
@@ -827,6 +847,9 @@ final class MoonsTransformer {
                         "pushPose",
                         "()V",
                         false));
+        start.add(new LdcInsnNode(id));
+        start.add(call("isHookActive", "(Ljava/lang/String;)Z"));
+        start.add(new JumpInsnNode(Opcodes.IFEQ, continueVanilla));
         start.add(new LdcInsnNode(id));
         start.add(new VarInsnNode(Opcodes.ALOAD, 0));
         start.add(new InsnNode(Opcodes.ICONST_4));
@@ -865,7 +888,6 @@ final class MoonsTransformer {
 
         // Submit the completed item pose directly to avoid composing a
         // second modern arm/use-animation transform over it.
-        LabelNode continueVanilla = new LabelNode();
         start.add(new LdcInsnNode(id + ".replace-vanilla"));
         start.add(new VarInsnNode(Opcodes.ALOAD, 0));
         start.add(new VarInsnNode(Opcodes.ALOAD, 4));
@@ -1005,7 +1027,7 @@ final class MoonsTransformer {
                         "onBooleanValue",
                         "(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;Z)Z"));
         appendVoidCancellation(hook);
-        method.instructions.insertBefore(lookup, hook);
+        method.instructions.insertBefore(lookup, guardHook(id, hook));
         return true;
     }
 
@@ -1129,7 +1151,7 @@ final class MoonsTransformer {
                         "onBooleanValue",
                         "(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;Z)Z"));
         appendVoidCancellation(hook);
-        method.instructions.insert(hook);
+        method.instructions.insert(guardHook(id, hook));
         beforeReturns(
                 method,
                 Opcodes.RETURN,
@@ -1258,7 +1280,7 @@ final class MoonsTransformer {
                         "onBooleanValue",
                         "(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;Z)Z"));
         appendVoidCancellation(start);
-        method.instructions.insert(start);
+        method.instructions.insert(guardHook(id, start));
         beforeReturns(
                 method,
                 Opcodes.RETURN,
@@ -1530,6 +1552,13 @@ final class MoonsTransformer {
     }
 
     private static boolean containsHook(MethodNode method, TargetMethod target) {
+        if (target.hook() == TargetMethod.HookKind.VERSION_SPECIFIC) {
+            for (AbstractInsnNode instruction : method.instructions) {
+                if (instruction instanceof LdcInsnNode constant
+                        && ("moons.hook:" + target.id()).equals(constant.cst)) return true;
+            }
+            return false;
+        }
         if (target.hook() == TargetMethod.HookKind.ITEM_STACK_ARGUMENT_5) {
             return containsIdentifiedHook(method, target.id(), "onObjectValue");
         }
@@ -1538,6 +1567,7 @@ final class MoonsTransformer {
         }
         String hookName =
                 switch (target.hook()) {
+                    case VERSION_SPECIFIC -> throw new AssertionError("Handled above");
                     case CLIENT_TICK -> "onClientTickStart";
                     case FRAME -> "onFrame";
                     case HUD -> "onHudRender";

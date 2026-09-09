@@ -270,8 +270,12 @@ public final class ScoreboardChanger {
     }
 
     private static void syncClientData() {
+        if (!ENABLED.get()) {
+            if (dataObjective != null || titlePatched || linePatched || addedLine) restoreData();
+            return;
+        }
         Objective objective = currentObjective();
-        if (!ENABLED.get() || objective == null) {
+        if (objective == null) {
             restoreData();
             return;
         }

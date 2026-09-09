@@ -6,6 +6,11 @@ import com.blanoir.moons.client.utils.render.ArgbColors;
 final class HudText {
     private static final int THEME_PRIMARY = 0xFFC49A6C;
     private static final int THEME_PANEL = 0xD02D2723;
+    private static final CachedColor PRIMARY = new CachedColor();
+    private static final CachedColor TITLE = new CachedColor();
+    private static final CachedColor GRADIENT = new CachedColor();
+    private static final CachedColor PARAMETER = new CachedColor();
+    private static final CachedColor BACKGROUND = new CachedColor();
 
     private HudText() {}
 
@@ -15,13 +20,11 @@ final class HudText {
 
     static int hudColor() {
         if (HudConfig.USE_THEME_COLOR.get()) return THEME_PRIMARY;
-        Integer custom = HudConfig.parseColor(HudConfig.COLOR.get());
-        return custom == null ? THEME_PRIMARY : custom;
+        return PRIMARY.resolve(HudConfig.COLOR.get(), THEME_PRIMARY);
     }
 
     static int titleColor() {
-        Integer configured = HudConfig.parseColor(HudConfig.TITLE_COLOR.get());
-        return configured == null ? 0xFFFFFFFF : configured;
+        return TITLE.resolve(HudConfig.TITLE_COLOR.get(), 0xFFFFFFFF);
     }
 
     static int hudNameColor(int row, double seconds) {
@@ -33,8 +36,7 @@ final class HudText {
         return switch (HudConfig.NAME_COLOR_MODE.get()) {
             case FIXED -> primary;
             case GRADIENT -> {
-                Integer parsed = HudConfig.parseColor(HudConfig.GRADIENT_COLOR.get());
-                int secondary = parsed == null ? 0xFF765CFF : parsed;
+                int secondary = GRADIENT.resolve(HudConfig.GRADIENT_COLOR.get(), 0xFF765CFF);
                 double spatialPhase =
                         switch (HudConfig.GRADIENT_DIRECTION.get()) {
                             case HORIZONTAL ->
@@ -58,13 +60,28 @@ final class HudText {
     }
 
     static int parameterColor() {
-        Integer parsed = HudConfig.parseColor(HudConfig.PARAMETER_COLOR.get());
-        return parsed == null ? 0xFFFFFFFF : parsed;
+        return PARAMETER.resolve(HudConfig.PARAMETER_COLOR.get(), 0xFFFFFFFF);
     }
 
     static int hudBackgroundColor() {
         if (HudConfig.USE_THEME_BACKGROUND.get()) return THEME_PANEL;
-        Integer custom = HudConfig.parseColor(HudConfig.BACKGROUND_COLOR.get());
-        return custom == null ? THEME_PANEL : custom;
+        return BACKGROUND.resolve(HudConfig.BACKGROUND_COLOR.get(), THEME_PANEL);
+    }
+
+    /** Gradient sampling asks for the same configured colors many times per frame. */
+    private static final class CachedColor {
+        private String raw;
+        private int color;
+        private boolean initialized;
+
+        private int resolve(String next, int fallback) {
+            if (!initialized || !java.util.Objects.equals(raw, next)) {
+                raw = next;
+                Integer parsed = HudConfig.parseColor(next);
+                color = parsed == null ? fallback : parsed;
+                initialized = true;
+            }
+            return color;
+        }
     }
 }

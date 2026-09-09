@@ -27,8 +27,17 @@ internal object PanelStyle {
     val text = Color(0xFFF0EEE9)
     val muted = Color(0xFF999791)
     val dim = Color(0xFF69686A)
+
+    private data class ThemeColor(val value: String, val color: Color)
+
+    @Volatile private var cachedTheme: ThemeColor? = null
     val accent: Color
-        get() = parseColor(Settings.getString(GUI_THEME_KEY, DEFAULT_GUI_THEME))
+        get() {
+            val theme = Settings.getString(GUI_THEME_KEY, DEFAULT_GUI_THEME)
+            val cached = cachedTheme
+            if (cached != null && theme == cached.value) return cached.color
+            return parseColor(theme).also { cachedTheme = ThemeColor(theme, it) }
+        }
 
     val accentBright: Color
         get() = accent

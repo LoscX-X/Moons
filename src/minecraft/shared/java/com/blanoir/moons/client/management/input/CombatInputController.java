@@ -11,8 +11,6 @@ import net.minecraft.client.input.MouseButtonInfo;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.EntityHitResult;
 
-import org.lwjgl.glfw.GLFW;
-
 import java.util.EnumSet;
 
 /**
@@ -145,7 +143,7 @@ public final class CombatInputController {
                             client.mouseHandler,
                             client.getWindow().handle(),
                             new MouseButtonInfo(key.getValue(), 0),
-                            GLFW.GLFW_RELEASE);
+                            InputConstants.RELEASE);
                 }
             } else {
                 KeyMapping.set(key, isPhysicallyDown(client, mapping));
@@ -168,11 +166,7 @@ public final class CombatInputController {
         if (isInvalidKey(key)) {
             return false;
         }
-        if (key.getType() == InputConstants.Type.MOUSE) {
-            return GLFW.glfwGetMouseButton(client.getWindow().handle(), key.getValue())
-                    == GLFW.GLFW_PRESS;
-        }
-        return InputConstants.isKeyDown(client.getWindow(), key.getValue());
+        return MinecraftClientAccess.isHardwareKeyDown(client, key);
     }
 
     /**
@@ -223,7 +217,7 @@ public final class CombatInputController {
                     client.mouseHandler,
                     client.getWindow().handle(),
                     new MouseButtonInfo(key.getValue(), 0),
-                    GLFW.GLFW_PRESS);
+                    InputConstants.PRESS);
         } else {
             KeyMapping.set(key, true);
             KeyMapping.click(key);
@@ -339,7 +333,7 @@ public final class CombatInputController {
                     client.mouseHandler,
                     client.getWindow().handle(),
                     new MouseButtonInfo(key.getValue(), 0),
-                    GLFW.GLFW_RELEASE);
+                    InputConstants.RELEASE);
         } else {
             KeyMapping.set(key, false);
         }

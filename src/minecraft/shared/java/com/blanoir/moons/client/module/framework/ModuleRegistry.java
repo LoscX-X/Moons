@@ -30,7 +30,10 @@ public final class ModuleRegistry {
             Set.of("clickgui", "hud", "xraytargets", "chatprefix");
     private static Runnable catalogRegistration;
     private static boolean catalogInitializing;
-    private static boolean catalogInitialized;
+    private static volatile boolean catalogInitialized;
+    private static List<Module> catalogSnapshot = List.of();
+    private static List<HudCandidate> hudCandidates = List.of();
+    private static volatile List<Module> enabledSnapshot = List.of();
 
     private ModuleRegistry() {}
 
@@ -45,7 +48,11 @@ public final class ModuleRegistry {
     }
 
     /** Registers descriptors on the first catalog-backed API access. */
-    public static synchronized void ensureCatalog() {
+    public static void ensureCatalog() {
+        if (!catalogInitialized) initializeCatalog();
+    }
+
+    private static synchronized void initializeCatalog() {
         if (catalogInitialized) {
             return;
         }
@@ -59,6 +66,19 @@ public final class ModuleRegistry {
         catalogInitializing = true;
         try {
             catalogRegistration.run();
+            catalogSnapshot = List.copyOf(MODULES);
+            hudCandidates =
+                    MODULES.stream()
+                            .filter(module -> !HUD_HIDDEN_MODULES.contains(module.id()))
+                            .sorted(
+                                    Comparator.comparingInt(
+                                                    (Module module) -> module.name().length())
+                                            .reversed())
+                            .map(
+                                    module ->
+                                            new HudCandidate(
+                                                    module, "module." + module.id() + ".hide"))
+                            .toList();
             catalogInitialized = true;
             catalogRegistration = null;
         } catch (RuntimeException | Error failure) {
@@ -72,7 +92,7 @@ public final class ModuleRegistry {
 
     public static List<Module> modules() {
         ensureCatalog();
-        return List.copyOf(MODULES);
+        return catalogSnapshot;
     }
 
     public static JsonObject snapshot() {
@@ -133,13 +153,34 @@ public final class ModuleRegistry {
 
     public static List<Module> enabledModules() {
         ensureCatalog();
-        return MODULES.stream()
-                .filter(module -> safeEnabled(module.enabled()))
-                .filter(ModuleRegistry::hudVisible)
-                .sorted(
-                        Comparator.comparingInt((Module module) -> module.name().length())
-                                .reversed())
-                .toList();
+        List<Module> previous = enabledSnapshot;
+        List<Module> changed = null;
+        int count = 0;
+        // Keep enabled/visibility reads live, but allocate only when membership changes.
+        // Names and catalog order are immutable, so they need sorting only once.
+        for (int index = 0; index < hudCandidates.size(); index++) {
+            HudCandidate candidate = hudCandidates.get(index);
+            Module module = candidate.module();
+            if (!safeEnabled(module.enabled()) || Settings.getBoolean(candidate.hiddenKey(), false))
+                continue;
+            if (changed == null && (count >= previous.size() || previous.get(count) != module)) {
+                changed = new ArrayList<>(previous.size() + 1);
+                changed.addAll(previous.subList(0, count));
+            }
+            if (changed != null) changed.add(module);
+            count++;
+        }
+        if (changed != null) {
+            List<Module> next = List.copyOf(changed);
+            enabledSnapshot = next;
+            return next;
+        }
+        if (count != previous.size()) {
+            List<Module> next = List.copyOf(previous.subList(0, count));
+            enabledSnapshot = next;
+            return next;
+        }
+        return previous;
     }
 
     public static Module module(
@@ -165,6 +206,8 @@ public final class ModuleRegistry {
         return new Module(
                 normalized, name, category, enabled, toggle, tag, List.copyOf(allSettings));
     }
+
+    private record HudCandidate(Module module, String hiddenKey) {}
 
     private static boolean hudVisible(Module module) {
         return !HUD_HIDDEN_MODULES.contains(module.id())

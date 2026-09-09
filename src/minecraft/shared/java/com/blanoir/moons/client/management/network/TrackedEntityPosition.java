@@ -1,5 +1,7 @@
 package com.blanoir.moons.client.management.network;
 
+import com.blanoir.moons.client.access.PacketAccess;
+
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientboundEntityPositionSyncPacket;
@@ -47,13 +49,13 @@ public final class TrackedEntityPosition {
         Vec3 trackedPos =
                 switch (packet) {
                     case ClientboundMoveEntityPacket move when move.getEntity(level) == target ->
-                            codec.decode(move.getXa(), move.getYa(), move.getZa());
+                            PacketAccess.decodeEntityDelta(move, codec);
                     case ClientboundTeleportEntityPacket teleport
                             when teleport.id() == target.getId() ->
                             teleport.change().position();
                     case ClientboundEntityPositionSyncPacket sync
                             when sync.id() == target.getId() ->
-                            sync.values().position();
+                            PacketAccess.syncPosition(sync);
                     case null, default -> null;
                 };
 

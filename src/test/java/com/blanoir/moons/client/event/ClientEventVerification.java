@@ -4,6 +4,7 @@ import com.blanoir.moons.api.ScopedResources;
 import com.blanoir.moons.client.config.Settings;
 import com.blanoir.moons.client.config.settings.ModeSetting;
 import com.blanoir.moons.client.management.input.CombatInputController;
+import com.blanoir.moons.client.module.framework.ModuleRegistry;
 import com.blanoir.moons.client.module.impl.combat.Velocity;
 import com.blanoir.moons.client.utils.rotation.aim.RotationUtils;
 import com.blanoir.moons.runtime.lifecycle.DefaultResourceScope;
@@ -11,8 +12,11 @@ import com.blanoir.moons.runtime.lifecycle.DefaultResourceScope;
 import net.minecraft.world.phys.Vec3;
 
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Verifies lifecycle cleanup independently of a running game. */
 public final class ClientEventVerification {
@@ -52,7 +56,8 @@ public final class ClientEventVerification {
             }
         }
 
-        Settings.configure(Files.createTempDirectory("moons-config-verify-"));
+        Path configDirectory = Files.createTempDirectory("moons-config-verify-");
+        Settings.configure(configDirectory);
         ModeSetting<String> mode =
                 new ModeSetting.Builder<String>()
                         .name("verification.mode")
@@ -63,6 +68,10 @@ public final class ClientEventVerification {
         require(mode.tryDeserialize("BLATANT"), "case-insensitive canonical mode");
         require(!mode.tryDeserialize("balant"), "misspelled mode rejected");
         require(mode.get().equals("blatant"), "invalid input preserves current choice");
+        mode.set("default");
+        require(mode.serialized().equals("default"), "typed mutation updates cached mode");
+        mode.deserialize("BLATANT");
+        require(mode.get().equals("blatant"), "deserialization updates cached mode");
         Settings.setString("velocity.mode", "vanilla");
         Velocity.init();
         require(
@@ -81,7 +90,66 @@ public final class ClientEventVerification {
         require(
                 CombatInputController.consumePendingAttackHit(null) == null,
                 "missing client cannot produce a pending attack hit");
+        verifyCatalogSnapshots();
+        verifyUnchangedSettings(configDirectory);
         System.out.println("CLIENT_EVENTS_AND_CONFIG_VERIFIED");
+    }
+
+    private static void verifyCatalogSnapshots() {
+        AtomicBoolean shortEnabled = new AtomicBoolean(true);
+        AtomicBoolean longEnabled = new AtomicBoolean(true);
+        ModuleRegistry.Module shortModule =
+                new ModuleRegistry.Module(
+                        "perf_short",
+                        "Tiny",
+                        "misc",
+                        shortEnabled::get,
+                        (client, enabled) -> 1,
+                        () -> "",
+                        List.of());
+        ModuleRegistry.Module longModule =
+                new ModuleRegistry.Module(
+                        "perf_long",
+                        "Longer module",
+                        "misc",
+                        longEnabled::get,
+                        (client, enabled) -> 1,
+                        () -> "",
+                        List.of());
+        ModuleRegistry.installCatalog(
+                () -> {
+                    ModuleRegistry.add(shortModule);
+                    ModuleRegistry.add(longModule);
+                });
+        List<ModuleRegistry.Module> both = ModuleRegistry.enabledModules();
+        require(both.equals(List.of(longModule, shortModule)), "HUD keeps length order");
+        require(ModuleRegistry.enabledModules() == both, "unchanged membership reuses snapshot");
+        longEnabled.set(false);
+        require(
+                ModuleRegistry.enabledModules().equals(List.of(shortModule)),
+                "live disable is immediate");
+        require(both.size() == 2, "old snapshots remain immutable after a toggle");
+        longEnabled.set(true);
+        Settings.setBoolean("module.perf_short.hide", true);
+        require(
+                ModuleRegistry.enabledModules().equals(List.of(longModule)),
+                "hide changes are immediate");
+        Settings.setBoolean("module.perf_short.hide", false);
+        require(ModuleRegistry.enabledModules().equals(both), "restored entries keep ordering");
+        shortEnabled.set(false);
+        longEnabled.set(false);
+        require(ModuleRegistry.enabledModules().isEmpty(), "all-disabled snapshot is empty");
+    }
+
+    private static void verifyUnchangedSettings(Path configDirectory) throws Exception {
+        Settings.setString("verification.unchanged", "value");
+        Path file = configDirectory.resolve("moons.properties");
+        FileTime sentinel = FileTime.fromMillis(1_000L);
+        Files.setLastModifiedTime(file, sentinel);
+        Settings.setString("verification.unchanged", "value");
+        require(
+                Files.getLastModifiedTime(file).equals(sentinel),
+                "same setting value avoids disk rewrite");
     }
 
     private static void require(boolean condition, String message) {

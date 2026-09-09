@@ -104,11 +104,72 @@ namespace Moons.Verification
                 Require(Hashing.Sha256(result) == Hashing.Sha256(runtimeJar), "prepared runtime matches the built JAR");
                 Require(File.Exists(Path.Combine(directory, "libraries", "moons-ui-runtime.current")),
                     "prepared runtime publishes the cache pointer");
+                Type program = launcher.GetType("Moons.WindowsLauncher.Program", true);
+                Require((int)program.GetMethod("SelfTestVersionDetection", BindingFlags.Static | BindingFlags.NonPublic)
+                    .Invoke(null, null) == 0, "launcher selects only exact supported versions");
+                MethodInfo extract = program.GetMethod("ExtractPayload", BindingFlags.Static | BindingFlags.NonPublic);
+                string featuresEntry = (string)program.GetField("FeaturesJarEntry", BindingFlags.Static | BindingFlags.NonPublic)
+                    .GetRawConstantValue();
+                string[] keys = { "26.1", "26.2", "26.3" };
+                string[] versions = { "26.1.2", "26.2", "26.3-pre-3" };
+                for (int index = 0; index < keys.Length; index++)
+                {
+                    string payload = (string)extract.Invoke(null, new object[] { directory, keys[index] });
+                    string builtPayload = Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(Path.GetFullPath(executable))),
+                        "universal", keys[index], "moons.jar");
+                    VerifyPayloadEntries(builtPayload, payload, featuresEntry);
+                    using (ZipArchive archive = ZipFile.OpenRead(payload))
+                    using (MemoryStream featureBytes = new MemoryStream(ZipEntries.ReadBytes(archive.GetEntry(featuresEntry))))
+                    using (ZipArchive features = new ZipArchive(featureBytes, ZipArchiveMode.Read))
+                    {
+                        var module = RuntimeMetadata.Parse(Encoding.UTF8.GetString(
+                            ZipEntries.ReadBytes(features.GetEntry("META-INF/moons-module.properties"))));
+                        Require(module["minecraft"] == versions[index], "restored payload has its own version metadata");
+                        Require(features.GetEntry("assets/moons/font/minecraft-ascii.ttf") != null,
+                            "each payload includes the Minecraft font");
+                    }
+                }
             }
             finally
             {
                 if (Directory.Exists(directory)) Directory.Delete(directory, true);
             }
+        }
+
+        private static void VerifyPayloadEntries(string expected, string restored, string featuresEntry)
+        {
+            using (ZipArchive original = ZipFile.OpenRead(expected))
+            using (ZipArchive actual = ZipFile.OpenRead(restored))
+                VerifyArchiveEntries(original, actual, featuresEntry);
+        }
+
+        private static void VerifyArchiveEntries(ZipArchive expected, ZipArchive actual, string nestedEntry)
+        {
+            int expectedCount = 0;
+            int actualCount = 0;
+            foreach (ZipArchiveEntry entry in actual.Entries)
+                if (!ZipEntries.IsDirectory(entry)) actualCount++;
+            foreach (ZipArchiveEntry entry in expected.Entries)
+            {
+                if (ZipEntries.IsDirectory(entry)) continue;
+                expectedCount++;
+                ZipArchiveEntry restored = actual.GetEntry(entry.FullName);
+                Require(restored != null, "packaged payload includes " + entry.FullName);
+                byte[] expectedBytes = ZipEntries.ReadBytes(entry);
+                byte[] actualBytes = ZipEntries.ReadBytes(restored);
+                if (entry.FullName == nestedEntry)
+                {
+                    using (ZipArchive expectedNested = new ZipArchive(new MemoryStream(expectedBytes), ZipArchiveMode.Read))
+                    using (ZipArchive actualNested = new ZipArchive(new MemoryStream(actualBytes), ZipArchiveMode.Read))
+                        VerifyArchiveEntries(expectedNested, actualNested, null);
+                }
+                else
+                {
+                    Require(Convert.ToBase64String(expectedBytes) == Convert.ToBase64String(actualBytes),
+                        "packaged payload matches current build: " + entry.FullName);
+                }
+            }
+            Require(expectedCount == actualCount, "packaged payload entry count matches current build");
         }
 
         private static void Require(bool condition, string message)

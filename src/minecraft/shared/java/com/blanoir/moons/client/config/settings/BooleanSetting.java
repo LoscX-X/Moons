@@ -4,7 +4,7 @@ import com.blanoir.moons.client.config.Settings;
 
 public final class BooleanSetting {
     private final String key;
-    private boolean value;
+    private volatile boolean value;
 
     private BooleanSetting(String key, boolean defaultValue) {
         this.key = key;

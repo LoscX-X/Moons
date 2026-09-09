@@ -19,6 +19,8 @@ import net.minecraft.world.scores.DisplaySlot;
 import net.minecraft.world.scores.PlayerTeam;
 
 public final class MinecraftClientAccess {
+    private static final java.util.Map<Integer, Integer> SCANCODE_KEYS = new java.util.HashMap<>();
+
     private MinecraftClientAccess() {}
 
     public static Screen screen(Minecraft client) {
@@ -104,5 +106,86 @@ public final class MinecraftClientAccess {
             Blocks.COPPER_BLOCK.waxed().weathered(),
             Blocks.COPPER_BLOCK.waxed().oxidized()
         };
+    }
+
+    public static boolean isBedItem(net.minecraft.world.item.Item item) {
+        return item instanceof net.minecraft.world.item.BedItem;
+    }
+
+    public static boolean isEnderman(Entity entity) {
+        return entity instanceof net.minecraft.world.entity.monster.EnderMan;
+    }
+
+    public static void swingAttackLocally(
+            net.minecraft.client.player.LocalPlayer player,
+            net.minecraft.world.InteractionHand hand) {
+        player.swing(hand, false);
+    }
+
+    public static void animatePlacement(
+            net.minecraft.client.player.LocalPlayer player,
+            net.minecraft.world.InteractionHand hand,
+            boolean visible) {
+        if (visible) player.swing(hand);
+        else
+            player.connection.send(
+                    new net.minecraft.network.protocol.game.ServerboundSwingPacket(hand));
+    }
+
+    public static boolean isBindingKeyDown(
+            Minecraft client, com.mojang.blaze3d.platform.InputConstants.Key key) {
+        if (key == null || key == com.mojang.blaze3d.platform.InputConstants.UNKNOWN) return false;
+        if (key.getType() == com.mojang.blaze3d.platform.InputConstants.Type.SCANCODE) {
+            int keyCode =
+                    SCANCODE_KEYS.computeIfAbsent(
+                            key.getValue(), MinecraftClientAccess::keyForScancode);
+            return keyCode >= org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE
+                    && com.mojang.blaze3d.platform.InputConstants.isKeyDown(
+                            client.getWindow(), keyCode);
+        }
+        int minimum =
+                key.getType() == com.mojang.blaze3d.platform.InputConstants.Type.MOUSE
+                        ? org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_1
+                        : org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE;
+        int maximum =
+                key.getType() == com.mojang.blaze3d.platform.InputConstants.Type.MOUSE
+                        ? org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_LAST
+                        : org.lwjgl.glfw.GLFW.GLFW_KEY_LAST;
+        if (key.getValue() < minimum || key.getValue() > maximum) return false;
+        return isHardwareKeyDown(client, key);
+    }
+
+    private static int keyForScancode(int scancode) {
+        // Only ask GLFW about named keys, never arbitrary gaps in its key-code range.
+        for (java.lang.reflect.Field field :
+                com.mojang.blaze3d.platform.InputConstants.class.getFields()) {
+            if (!field.getName().startsWith("KEY_") || field.getType() != int.class) continue;
+            try {
+                int candidate = field.getInt(null);
+                if (candidate >= org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE
+                        && candidate <= org.lwjgl.glfw.GLFW.GLFW_KEY_LAST
+                        && org.lwjgl.glfw.GLFW.glfwGetKeyScancode(candidate) == scancode)
+                    return candidate;
+            } catch (IllegalAccessException ignored) {
+                // Public constants are normally accessible; keep an unsupported key unpressed.
+            }
+        }
+        return org.lwjgl.glfw.GLFW.GLFW_KEY_UNKNOWN;
+    }
+
+    public static boolean isHardwareKeyDown(
+            Minecraft client, com.mojang.blaze3d.platform.InputConstants.Key key) {
+        if (key.getType() == com.mojang.blaze3d.platform.InputConstants.Type.MOUSE) {
+            return org.lwjgl.glfw.GLFW.glfwGetMouseButton(
+                            client.getWindow().handle(), key.getValue())
+                    == com.mojang.blaze3d.platform.InputConstants.PRESS;
+        }
+        return com.mojang.blaze3d.platform.InputConstants.isKeyDown(
+                client.getWindow(), key.getValue());
+    }
+
+    public static net.minecraft.resources.Identifier trimPaletteTexture(String palette) {
+        return net.minecraft.resources.Identifier.withDefaultNamespace(
+                "textures/trims/color_palettes/" + palette + ".png");
     }
 }

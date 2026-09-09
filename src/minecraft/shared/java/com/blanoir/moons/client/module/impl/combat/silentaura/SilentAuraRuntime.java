@@ -1,5 +1,6 @@
 package com.blanoir.moons.client.module.impl.combat.silentaura;
 
+import com.blanoir.moons.client.access.PacketAccess;
 import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.event.network.PacketSendEvent;
 import com.blanoir.moons.client.management.input.CombatInputController;
@@ -23,6 +24,7 @@ public final class SilentAuraRuntime {
     private static final SilentAuraTargetRouter SELECTOR = new SilentAuraTargetRouter();
     private static final SilentAuraRotationRouter ROTATION = new SilentAuraRotationRouter();
     private static boolean initialized;
+    private static boolean running;
     private static String activeMode;
     private static boolean activeMatrix;
     private static SentRotation sent = SentRotation.invalid();
@@ -46,9 +48,10 @@ public final class SilentAuraRuntime {
 
     private static void frame(Minecraft client, double deltaSeconds) {
         if (!baseCanRun(client)) {
-            reset(client);
+            if (running) reset(client);
             return;
         }
+        running = true;
         if (!SilentAuraConfig.aimMode().equals(activeMode)
                 || SilentAuraConfig.matrixCompatibility() != activeMatrix) {
             resetTargeting();
@@ -183,7 +186,8 @@ public final class SilentAuraRuntime {
             // A vanilla USE_ITEM sent before LocalPlayer.tick must own the
             // exact float pair of the movement packet that closes this tick.
             // Even a sub-display-decimal mouse/GCD change trips BadPacketsJ.
-            RotationLease.holdManual(new Rotation(use.getYRot(), use.getXRot()));
+            RotationLease.holdManual(
+                    new Rotation(PacketAccess.useItemYaw(use), PacketAccess.useItemPitch(use)));
             return;
         }
         if (!(event.packet() instanceof ServerboundMovePlayerPacket)) {
@@ -336,6 +340,7 @@ public final class SilentAuraRuntime {
     }
 
     public static void reset(Minecraft client) {
+        running = false;
         Animations.setAuraBlocking(false);
         SELECTOR.clear();
         ROTATION.clear();
@@ -393,15 +398,21 @@ public final class SilentAuraRuntime {
 
     public record SentRotation(
             boolean valid, float yaw, float pitch, Vec3 eye, Vec3 look, int targetId) {
+        private static final SentRotation INVALID =
+                new SentRotation(false, 0.0F, 0.0F, Vec3.ZERO, Vec3.ZERO, -1);
+
         static SentRotation invalid() {
-            return new SentRotation(false, 0.0F, 0.0F, Vec3.ZERO, Vec3.ZERO, -1);
+            return INVALID;
         }
     }
 
     public record AttackRotation(
             boolean valid, float yaw, float pitch, Vec3 eye, Vec3 look, int targetId) {
+        private static final AttackRotation INVALID =
+                new AttackRotation(false, 0.0F, 0.0F, Vec3.ZERO, Vec3.ZERO, -1);
+
         static AttackRotation invalid() {
-            return new AttackRotation(false, 0.0F, 0.0F, Vec3.ZERO, Vec3.ZERO, -1);
+            return INVALID;
         }
     }
 }

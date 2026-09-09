@@ -1,5 +1,6 @@
 package com.blanoir.moons.client.module.impl.combat.silentaura;
 
+import com.blanoir.moons.client.access.PacketAccess;
 import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.event.action.AttackInputEvent;
 import com.blanoir.moons.client.event.action.UseInputEvent;
@@ -17,7 +18,6 @@ import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ServerboundAttackPacket;
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
 import net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket;
-import net.minecraft.network.protocol.game.ServerboundSwingPacket;
 import net.minecraft.network.protocol.game.ServerboundUseItemOnPacket;
 import net.minecraft.network.protocol.game.ServerboundUseItemPacket;
 import net.minecraft.world.effect.MobEffectInstance;
@@ -197,7 +197,12 @@ public final class SilentAuraPlacementDebugger {
             return;
         }
         if (packet instanceof ServerboundUseItemPacket use) {
-            recordUseItemPacket(client, trace, tick, use.getYRot(), use.getXRot());
+            recordUseItemPacket(
+                    client,
+                    trace,
+                    tick,
+                    PacketAccess.useItemYaw(use),
+                    PacketAccess.useItemPitch(use));
             return;
         }
         if (packet instanceof ServerboundAttackPacket attack) {
@@ -223,7 +228,7 @@ public final class SilentAuraPlacementDebugger {
                             + ",server="
                             + trackedSlot()
                             + ")");
-        } else if (packet instanceof ServerboundSwingPacket) {
+        } else if (PacketAccess.isSwingPacket(packet)) {
             trace.swingPackets++;
             trace.add("SWING#" + trace.swingPackets + "(+" + elapsedMicros(trace) + "us)");
         }

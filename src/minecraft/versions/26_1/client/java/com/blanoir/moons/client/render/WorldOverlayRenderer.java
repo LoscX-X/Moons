@@ -142,6 +142,7 @@ public final class WorldOverlayRenderer {
         int vertexBufferSize = drawParameters.vertexCount() * format.getVertexSize();
 
         if (vertexBuffer == null || vertexBuffer.size() < vertexBufferSize) {
+            int capacity = Math.max(4096, Integer.highestOneBit(vertexBufferSize - 1) << 1);
             if (vertexBuffer != null) {
                 vertexBuffer.close();
             }
@@ -150,7 +151,7 @@ public final class WorldOverlayRenderer {
                     new MappableRingBuffer(
                             () -> MoonsConfig.MOD_ID + " " + label,
                             GpuBuffer.USAGE_VERTEX | GpuBuffer.USAGE_MAP_WRITE,
-                            vertexBufferSize);
+                            capacity);
         }
 
         CommandEncoder commandEncoder = RenderSystem.getDevice().createCommandEncoder();

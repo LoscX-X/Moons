@@ -1,5 +1,6 @@
 package com.blanoir.moons.client.module.impl.render;
 
+import com.blanoir.moons.client.access.MinecraftClientAccess;
 import com.mojang.blaze3d.platform.NativeImage;
 
 import net.minecraft.client.Minecraft;
@@ -82,9 +83,7 @@ final class TrimTextures {
     }
 
     private static NativeImage readPalette(Minecraft client, String palette) throws IOException {
-        Identifier id =
-                Identifier.withDefaultNamespace(
-                        "textures/trims/color_palettes/" + palette + ".png");
+        Identifier id = MinecraftClientAccess.trimPaletteTexture(palette);
         try (InputStream input = client.getResourceManager().open(id)) {
             return NativeImage.read(input);
         }

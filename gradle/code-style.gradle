@@ -16,7 +16,7 @@ def kotlinSources = fileTree('src') { include '**/*.kt', '**/*.kts' }
 def registerFormatter = { String taskName, boolean checkOnly, boolean javaLanguage ->
     tasks.register(taskName, JavaExec) {
         group = checkOnly ? 'verification' : 'formatting'
-        description = "${checkOnly ? 'Checks' : 'Formats'} all ${javaLanguage ? 'Java' : 'Kotlin'} sources, including both Minecraft versions."
+        description = "${checkOnly ? 'Checks' : 'Formats'} all ${javaLanguage ? 'Java' : 'Kotlin'} sources, including all Minecraft versions."
         def sources = javaLanguage ? javaSources : kotlinSources
         classpath = javaLanguage ? configurations.javaFormatter : configurations.kotlinFormatter
         mainClass = javaLanguage ? 'com.google.googlejavaformat.java.Main' : 'com.facebook.ktfmt.cli.Main'

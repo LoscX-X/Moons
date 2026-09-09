@@ -48,6 +48,7 @@ public final class ChamsRenderTarget implements AutoCloseable {
     private final String name;
     private final OutputTarget outputTarget;
     private TextureTarget target;
+    private boolean preparedThisFrame;
 
     public ChamsRenderTarget(String name) {
         this.name = name;
@@ -56,6 +57,11 @@ public final class ChamsRenderTarget implements AutoCloseable {
 
     public OutputTarget outputTarget() {
         return outputTarget;
+    }
+
+    public void beginFrame() {
+        // Defer allocation and clearing until a remapped render type requests its target.
+        preparedThisFrame = false;
     }
 
     /**
@@ -69,16 +75,15 @@ public final class ChamsRenderTarget implements AutoCloseable {
 
         if (target == null) {
             target = new TextureTarget(name, width, height, true);
-            clear();
         } else if (target.width != width || target.height != height) {
             target.resize(width, height);
-        } else {
-            clear();
         }
+        clear();
+        preparedThisFrame = true;
     }
 
     private RenderTarget getOrCreateTarget() {
-        if (target == null) {
+        if (!preparedThisFrame || target == null) {
             initAndGet();
         }
         return target;
@@ -100,7 +105,7 @@ public final class ChamsRenderTarget implements AutoCloseable {
      * Blits the accumulated chams color texture into the main render target.
      */
     public void composite(RenderTarget mainTarget) {
-        if (target == null || mainTarget == null) {
+        if (!preparedThisFrame || target == null || mainTarget == null) {
             return;
         }
         var sourceColor = target.getColorTextureView();
@@ -128,6 +133,7 @@ public final class ChamsRenderTarget implements AutoCloseable {
 
     @Override
     public void close() {
+        preparedThisFrame = false;
         if (target != null) {
             target.destroyBuffers();
             target = null;

@@ -2,7 +2,9 @@
 
 [简体中文](README.zh-CN.md) | **English**
 
-A Windows client project for Minecraft Java Edition, supporting **26.1.2 / 26.2** and loaded through a JNI/JVMTI bridge. Client logic is shared across versions, with version differences handled by dedicated adapters.
+A Windows client project for Minecraft Java Edition, supporting **26.1.2 / 26.2 / 26.3-pre-3** and loaded through a JNI/JVMTI bridge. Client logic is shared across versions, with version differences handled by dedicated adapters.
+
+26.3 support currently targets `26.3-pre-3`. Its source directory remains `26_3` and payload key remains `26.3` when the target is updated to the final release.
 
 ## Download and Run
 
@@ -36,7 +38,7 @@ Output is written to `build/dist/`. Individual packages can also be built separa
 
 | Task | Output |
 |---|---|
-| `moonsPackages` | All packages, covering both Minecraft versions |
+| `moonsPackages` | All packages, covering all supported Minecraft versions |
 | `moonsFullExe` | `moons-full.exe` |
 | `moonsExe` | `moons.exe` |
 | `moonsUiRuntime` | `dependencies/moons-ui-runtime.jar` and its SHA-256 checksum file |
@@ -48,9 +50,10 @@ The first build requires an internet connection to download dependencies. When b
 ```powershell
 .\gradlew.bat moonsJar '-Pminecraft_version=26.1.2'
 .\gradlew.bat moonsJar '-Pminecraft_version=26.2'
+.\gradlew.bat moonsJar '-Pminecraft_version=26.3-pre-3'
 ```
 
-The outputs are `build/dist/agent/26_1/moons.jar` and `build/dist/agent/26_2/moons.jar`. These payloads are loaded by the bridge and cannot be launched with `java -jar`.
+The outputs are `build/dist/agent/26_1/moons.jar`, `build/dist/agent/26_2/moons.jar`, and `build/dist/agent/26_3/moons.jar`. These payloads are loaded by the bridge and cannot be launched with `java -jar`.
 
 ## GitHub Actions
 

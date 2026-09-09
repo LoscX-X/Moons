@@ -1,6 +1,7 @@
 package com.blanoir.moons.client.module.impl.combat;
 
 import com.blanoir.moons.client.access.MinecraftClientAccess;
+import com.blanoir.moons.client.access.PacketAccess;
 import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.DoubleSetting;
@@ -22,7 +23,6 @@ import net.minecraft.network.PacketListener;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.network.protocol.game.ServerboundAttackPacket;
-import net.minecraft.network.protocol.game.ServerboundSwingPacket;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntitySelector;
@@ -144,7 +144,7 @@ public final class Reach {
         }
 
         Packet<?> attack = new ServerboundAttackPacket(target.getId());
-        Packet<?> swing = new ServerboundSwingPacket(InteractionHand.MAIN_HAND);
+        Packet<?> swing = PacketAccess.swingPacket(InteractionHand.MAIN_HAND);
         store(client, target, attack, swing);
         return true;
     }
@@ -197,13 +197,13 @@ public final class Reach {
 
     /** Moves only the extracted render state; the target entity remains lagged. */
     public static void applyAdvancedRender(Entity entity, EntityRenderState state) {
-        Vec3 renderPosition = TARGET_LAG.renderPosition();
         if (!ENABLED.get()
                 || !advancedMode()
-                || renderPosition == null
                 || entity == null
                 || state == null
-                || !TARGET_LAG.matches(entity)) {
+                || !TARGET_LAG.matches(entity)) return;
+        Vec3 renderPosition = TARGET_LAG.renderPosition();
+        if (renderPosition == null) {
             return;
         }
         state.x = renderPosition.x;
@@ -326,7 +326,7 @@ public final class Reach {
         packets.forEach(client.player.connection::send);
         // The stored swing packet animates other clients; this overload updates
         // only the local arm and cannot create a second outgoing swing packet.
-        client.player.swing(InteractionHand.MAIN_HAND, false);
+        MinecraftClientAccess.swingAttackLocally(client.player, InteractionHand.MAIN_HAND);
         client.player.resetAttackStrengthTicker();
     }
 

@@ -43,6 +43,20 @@ tasks.register("verifySourceLayout") {
                     }
                 }
             }
+            def featureOwners = [:]
+            ["src/minecraft/features/java",
+             "src/minecraft/versions/${directory}/features/java"].each { root ->
+                fileTree(root) { include "**/*.java" }.each { source ->
+                    def packageMatcher = source.getText("UTF-8") =~ /(?m)^\s*package\s+([\w.]+)/
+                    def packageName = packageMatcher.find() ? packageMatcher.group(1) : ""
+                    def identity = "${packageName}.${source.name}"
+                    def previous = featureOwners.putIfAbsent(identity, source)
+                    if (previous != null) {
+                        violations.add("Duplicate ${minecraftVersion} feature ${identity}: "
+                                + "${relativePath(previous)} and ${relativePath(source)}")
+                    }
+                }
+            }
         }
         if (!violations.isEmpty()) {
             throw new GradleException("Source layout violations:\n - " + violations.sort().join("\n - "))

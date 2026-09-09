@@ -6,7 +6,7 @@ import com.blanoir.moons.client.ui.clickgui.MoonsComposeScreen
 import com.blanoir.moons.client.ui.hud.TextGuiSkiaOverlay
 import net.minecraft.client.Minecraft
 
-/** Draws Compose after the main RenderTarget blit and immediately before GLFW swaps buffers. */
+/** Draws Compose through the selected Minecraft version's final-frame surface. */
 object ComposeRenderBridge {
     @JvmStatic
     fun renderCurrentScreen() {

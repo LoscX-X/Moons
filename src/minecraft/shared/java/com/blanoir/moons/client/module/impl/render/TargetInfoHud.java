@@ -48,6 +48,9 @@ public final class TargetInfoHud {
     private long lastTargetNanos;
     private double visibility;
     private double displayedHealth = Double.NaN;
+    private double formattedHealth = Double.NaN;
+    private float formattedMaxHealth = Float.NaN;
+    private String healthText = "";
 
     private TargetInfoHud() {}
 
@@ -113,13 +116,23 @@ public final class TargetInfoHud {
                 true,
                 bounds,
                 shown.getName().getString(),
-                String.format(
-                        Locale.ROOT, "%.1f / %.1f HP", Math.max(0.0D, displayedHealth), maxHealth),
+                healthText(maxHealth),
                 PlayerHitEstimator.text(client, shown, resolvedHealth),
                 ratio,
                 healthColor(displayedHealth, maxHealth),
                 alpha,
                 slide);
+    }
+
+    private String healthText(float maxHealth) {
+        double health = Math.max(0.0D, displayedHealth);
+        if (Double.compare(health, formattedHealth) != 0
+                || Float.compare(maxHealth, formattedMaxHealth) != 0) {
+            healthText = String.format(Locale.ROOT, "%.1f / %.1f HP", health, maxHealth);
+            formattedHealth = health;
+            formattedMaxHealth = maxHealth;
+        }
+        return healthText;
     }
 
     private void resetHiddenState() {

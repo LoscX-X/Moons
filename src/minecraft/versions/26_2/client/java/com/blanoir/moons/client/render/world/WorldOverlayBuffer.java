@@ -18,8 +18,7 @@ import java.util.OptionalDouble;
 import java.util.function.Consumer;
 
 public final class WorldOverlayBuffer {
-    private static final StagedVertexBuffer BUFFER =
-            new StagedVertexBuffer(() -> MoonsConfig.MOD_ID + " world overlay", 262_144);
+    private static StagedVertexBuffer buffer;
 
     private WorldOverlayBuffer() {}
 
@@ -32,16 +31,19 @@ public final class WorldOverlayBuffer {
         var colorView = mainTarget.getColorTextureView();
         var format = pipeline.getVertexFormatBinding(0);
         if (colorView == null || format == null) return;
+        if (buffer == null) {
+            buffer = new StagedVertexBuffer(() -> MoonsConfig.MOD_ID + " world overlay", 262_144);
+        }
         PrimitiveTopology topology = pipeline.getPrimitiveTopology();
         VertexSorting sorting =
                 topology == PrimitiveTopology.QUADS
                         ? RenderSystem.getProjectionType().vertexSorting()
                         : null;
-        StagedVertexBuffer.Draw draw = BUFFER.appendDraw(format, topology, sorting);
-        writer.accept(BUFFER.getVertexBuilder(draw));
-        BUFFER.upload();
+        StagedVertexBuffer.Draw draw = buffer.appendDraw(format, topology, sorting);
+        writer.accept(buffer.getVertexBuilder(draw));
+        buffer.upload();
 
-        StagedVertexBuffer.ExecuteInfo info = BUFFER.getExecuteInfo(draw);
+        StagedVertexBuffer.ExecuteInfo info = buffer.getExecuteInfo(draw);
         if (info != null) {
             GpuBufferSlice transforms =
                     RenderSystem.getDynamicUniforms()
@@ -64,10 +66,13 @@ public final class WorldOverlayBuffer {
             }
         }
 
-        BUFFER.endFrame();
+        buffer.endFrame();
     }
 
     public static synchronized void close() {
-        BUFFER.close();
+        if (buffer != null) {
+            buffer.close();
+            buffer = null;
+        }
     }
 }

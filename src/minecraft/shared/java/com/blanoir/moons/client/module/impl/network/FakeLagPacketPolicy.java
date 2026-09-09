@@ -1,5 +1,7 @@
 package com.blanoir.moons.client.module.impl.network;
 
+import com.blanoir.moons.client.access.PacketAccess;
+
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.common.ClientboundDisconnectPacket;
@@ -20,7 +22,6 @@ import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
 import net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket;
 import net.minecraft.network.protocol.game.ServerboundSetCreativeModeSlotPacket;
 import net.minecraft.network.protocol.game.ServerboundSignUpdatePacket;
-import net.minecraft.network.protocol.game.ServerboundSwingPacket;
 import net.minecraft.network.protocol.game.ServerboundUseItemOnPacket;
 import net.minecraft.network.protocol.game.ServerboundUseItemPacket;
 import net.minecraft.world.phys.Vec3;
@@ -32,7 +33,7 @@ final class FakeLagPacketPolicy {
     static boolean mustFlushBefore(Packet<?> packet) {
         return packet instanceof ServerboundAttackPacket
                 || packet instanceof ServerboundInteractPacket
-                || packet instanceof ServerboundSwingPacket
+                || PacketAccess.isSwingPacket(packet)
                 || packet instanceof ServerboundUseItemOnPacket
                 || packet instanceof ServerboundUseItemPacket
                 || packet instanceof ServerboundSignUpdatePacket

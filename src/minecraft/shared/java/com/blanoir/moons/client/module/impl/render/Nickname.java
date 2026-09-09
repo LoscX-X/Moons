@@ -16,14 +16,20 @@ import net.minecraft.network.chat.contents.TranslatableContents;
 import net.minecraft.world.entity.player.Player;
 
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 /** Local-only replacement for the signed-in player's visible name. */
 public final class Nickname {
     private static final int MAX_CODE_POINTS = 64;
     private static final int MAX_MARKUP_CODE_POINTS = 512;
+    private static final Pattern ANIMATED_MARKUP =
+            Pattern.compile(
+                    "<\\s*(?:rainbow|pulse|wave|shine|aurora|fire|sparkle|chase)(?=[:\\s>])",
+                    Pattern.CASE_INSENSITIVE);
     private static final StringSetting VALUE =
             new StringSetting.Builder().name("nickname.value").defaultValue("").build();
     private static String cachedMarkup;
+    private static boolean cachedAnimated;
     private static long renderFrame;
     private static long renderTimeMillis;
     private static long cachedRenderFrame = Long.MIN_VALUE;
@@ -43,7 +49,7 @@ public final class Nickname {
                     if (isEnabled()) {
                         styledValue();
                         if (chatStyledValueUsed
-                                && isAnimatedMarkup(VALUE.get())
+                                && cachedAnimated
                                 && renderTimeMillis >= nextChatRefreshMillis
                                 && !MinecraftClientAccess.isChatOpen(event.client())) {
                             nextChatRefreshMillis = renderTimeMillis + 50L;
@@ -65,7 +71,9 @@ public final class Nickname {
         String markup = VALUE.get();
         long frame = renderFrame;
         long timeMillis = frame == 0L ? System.nanoTime() / 1_000_000L : renderTimeMillis;
-        if (!markup.equals(cachedMarkup) || frame != cachedRenderFrame) {
+        boolean changed = !markup.equals(cachedMarkup);
+        if (changed) cachedAnimated = isAnimatedMarkup(markup);
+        if (changed || (cachedAnimated && frame != cachedRenderFrame)) {
             cachedMarkup = markup;
             cachedRenderFrame = frame;
             cachedStyledValue = DynamicMiniMessage.parse(markup, timeMillis);
@@ -232,16 +240,7 @@ public final class Nickname {
     }
 
     private static boolean isAnimatedMarkup(String markup) {
-        if (markup == null) return false;
-        String lower = markup.toLowerCase(java.util.Locale.ROOT);
-        return lower.contains("<rainbow")
-                || lower.contains("<pulse:")
-                || lower.contains("<wave:")
-                || lower.contains("<shine:")
-                || lower.contains("<aurora")
-                || lower.contains("<fire")
-                || lower.contains("<sparkle:")
-                || lower.contains("<chase:");
+        return markup != null && ANIMATED_MARKUP.matcher(markup).find();
     }
 
     private static int indexOfIgnoreCase(String text, String target, int start) {

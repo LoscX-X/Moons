@@ -7,9 +7,8 @@ import com.blanoir.moons.client.config.settings.DoubleSetting;
 import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.event.frame.WorldRenderEvent;
 import com.blanoir.moons.client.module.impl.misc.antibot.AntiBot;
+import com.blanoir.moons.client.module.impl.render.nametags.NametagTextCache;
 import com.blanoir.moons.client.render.WorldOverlayRenderer;
-import com.blanoir.moons.client.utils.combat.damage.PlayerHitEstimator;
-import com.blanoir.moons.client.utils.player.PlayerHealthResolver;
 import com.blanoir.moons.client.utils.text.NumberText;
 import com.mojang.blaze3d.vertex.PoseStack;
 
@@ -18,7 +17,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
@@ -28,7 +26,6 @@ import org.joml.Quaternionf;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 
 public final class Nametags {
 
@@ -42,12 +39,6 @@ public final class Nametags {
 
     private static final int BACKGROUND_COLOR = 0x5A0A0E18;
     private static final int FULL_BRIGHT_LIGHT = 0x00F000F0;
-    private static final int NAME_COLOR = 0xFFF5F7FF;
-    private static final int DISTANCE_COLOR = 0xFFD0BE90;
-    private static final int HEALTH_GOOD = 0xFF8FE3AB;
-    private static final int HEALTH_WARNING = 0xFFFFD47B;
-    private static final int HEALTH_LOW = 0xFFFF8F9E;
-    private static final int HIT_COLOR = 0xFFFFD75A;
 
     private static final BooleanSetting ENABLED =
             new BooleanSetting.Builder().name("nametags.enabled").defaultValue(true).build();
@@ -85,6 +76,11 @@ public final class Nametags {
             return;
         }
 
+        var players = currentLevel.players();
+        if (players.isEmpty() || (players.size() == 1 && players.get(0) == currentPlayer)) {
+            return;
+        }
+
         PoseStack matrices = context.poseStack();
         if (matrices == null) {
             return;
@@ -93,31 +89,39 @@ public final class Nametags {
         MultiBufferSource.BufferSource consumers = client.renderBuffers().bufferSource();
 
         Camera camera = MinecraftClientAccess.camera(client);
-        Vec3 cameraPos = MinecraftClientAccess.camera(client).position();
+        Vec3 cameraPos = camera.position();
         float tickDelta = context.tickDelta();
+        Vec3 selfPos = interpolatedPosition(currentPlayer, tickDelta);
+        boolean showDistance = SHOW_DISTANCE.get();
+        boolean safeMode = SAFE_MODE.get();
+        boolean highlighter = Chams.isHighlighterEnabled();
 
-        List<WorldOverlayRenderer.ColoredPin> pins = new ArrayList<>();
+        List<WorldOverlayRenderer.ColoredPin> pins = highlighter ? new ArrayList<>() : List.of();
 
-        for (Player player : currentLevel.players()) {
+        boolean submitted = false;
+        for (Player player : players) {
             if (!shouldRenderPlayer(client, player)) {
                 continue;
             }
 
             Vec3 playerPos = interpolatedPosition(player, tickDelta);
-            Vec3 selfPos = interpolatedPosition(currentPlayer, tickDelta);
 
             Vec3 renderPos = playerPos.subtract(cameraPos);
             double distance = selfPos.distanceTo(playerPos);
 
-            Component text = formatNametag(player, distance);
+            Component text =
+                    NametagTextCache.format(client, player, distance, showDistance, safeMode);
             drawNametag(client, matrices, consumers, camera, player, renderPos, text, distance);
+            submitted = true;
 
-            if (Chams.isHighlighterEnabled()) {
-                pins.add(createPlayerPin(player, tickDelta));
+            if (highlighter) {
+                pins.add(createPlayerPin(player, playerPos));
             }
         }
 
-        consumers.endBatch();
+        if (submitted) {
+            consumers.endBatch();
+        }
 
         if (pins.isEmpty()) {
             return;
@@ -149,9 +153,7 @@ public final class Nametags {
                         || (!player.isShiftKeyDown() && !player.getName().getString().isBlank()));
     }
 
-    private static WorldOverlayRenderer.ColoredPin createPlayerPin(Player player, float tickDelta) {
-        Vec3 pos = interpolatedPosition(player, tickDelta);
-
+    private static WorldOverlayRenderer.ColoredPin createPlayerPin(Player player, Vec3 pos) {
         return new WorldOverlayRenderer.ColoredPin(
                 (float) pos.x,
                 (float) pos.y,
@@ -171,35 +173,6 @@ public final class Nametags {
                 Mth.lerp((double) tickDelta, entity.zo, entity.getZ()));
     }
 
-    private static Component formatNametag(Player player, double distance) {
-        MutableComponent nametag =
-                Component.literal(player.getName().getString()).withColor(NAME_COLOR);
-        if (SHOW_DISTANCE.get()) {
-            nametag.append(
-                    Component.literal("  " + String.format(Locale.ROOT, "%.1fm", distance))
-                            .withColor(DISTANCE_COLOR));
-        }
-        if (SAFE_MODE.get()) {
-            return nametag;
-        }
-
-        float health = PlayerHealthResolver.resolve(player);
-        float maxHealth = PlayerHealthResolver.max(player);
-        int healthColor =
-                health > maxHealth * 0.6F
-                        ? HEALTH_GOOD
-                        : health > maxHealth * 0.3F ? HEALTH_WARNING : HEALTH_LOW;
-        nametag.append(
-                Component.literal("  " + String.format(Locale.ROOT, "%.1f HP", health))
-                        .withColor(healthColor));
-        return nametag.append(
-                Component.literal(
-                                "  "
-                                        + PlayerHitEstimator.text(
-                                                Minecraft.getInstance(), player, health))
-                        .withColor(HIT_COLOR));
-    }
-
     private static void drawNametag(
             Minecraft client,
             PoseStack matrices,
@@ -209,10 +182,6 @@ public final class Nametags {
             Vec3 renderPos,
             Component text,
             double distance) {
-        if (text == null || text.getString().isEmpty()) {
-            return;
-        }
-
         Font font = client.font;
         int width = font.width(text);
 
@@ -264,6 +233,9 @@ public final class Nametags {
 
     public static int setEnabled(Minecraft client, boolean newEnabled) {
         ENABLED.set(newEnabled);
+        if (!newEnabled) {
+            NametagTextCache.clear();
+        }
         ClientChat.send(
                 client,
                 "Nametags "

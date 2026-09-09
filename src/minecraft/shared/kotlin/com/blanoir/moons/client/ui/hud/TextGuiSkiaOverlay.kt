@@ -6,58 +6,56 @@ import com.blanoir.moons.client.module.impl.render.TargetInfoHud
 import com.blanoir.moons.client.ui.MinecraftScreenAccess
 import com.blanoir.moons.client.ui.animation.Animation
 import com.blanoir.moons.client.ui.clickgui.MoonsComposeScreen
-import com.blanoir.moons.client.ui.compose.FinalFrameGl
+import com.blanoir.moons.client.ui.compose.FinalFrameSurface
 import com.blanoir.moons.client.ui.layout.Bounds
 import com.blanoir.moons.client.utils.io.EmbeddedResources
 import com.blanoir.moons.client.utils.time.FrameClock
 import com.mojang.blaze3d.systems.RenderSystem
-import java.io.ByteArrayInputStream
 import java.util.LinkedHashMap
-import javax.imageio.ImageIO
 import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
 import net.minecraft.client.Minecraft
-import org.jetbrains.skia.BackendRenderTarget
-import org.jetbrains.skia.BlendMode
-import org.jetbrains.skia.ColorFilter
-import org.jetbrains.skia.ColorSpace
 import org.jetbrains.skia.Data
-import org.jetbrains.skia.DirectContext
 import org.jetbrains.skia.Font
 import org.jetbrains.skia.FontEdging
+import org.jetbrains.skia.FontHinting
 import org.jetbrains.skia.FontMgr
-import org.jetbrains.skia.FramebufferFormat
-import org.jetbrains.skia.Image
 import org.jetbrains.skia.Paint
 import org.jetbrains.skia.PaintMode
 import org.jetbrains.skia.Point
 import org.jetbrains.skia.RRect
 import org.jetbrains.skia.Rect
-import org.jetbrains.skia.SamplingMode
 import org.jetbrains.skia.Shader
-import org.jetbrains.skia.Surface as SkiaSurface
-import org.jetbrains.skia.SurfaceColorFormat
-import org.jetbrains.skia.SurfaceOrigin
+import org.jetbrains.skia.TextBlob
 import org.jetbrains.skia.Typeface
 
-/**
- * TextGUI and TargetInfo rendered directly into GLFW's final framebuffer. No Minecraft text, pose
- * stack, resource reload or HUD render event is used.
- */
+/** TextGUI and TargetInfo painted by Skia through the selected version's final-frame surface. */
 object TextGuiSkiaOverlay {
     private const val INTER_RESOURCE = "assets/moons/font/inter-frozen-medium.otf"
-    private const val MINECRAFT_FONT_RESOURCE = "assets/moons/font/minecraft-ascii.png.b64"
+    private const val MINECRAFT_FONT_RESOURCE = "assets/moons/font/minecraft-ascii.ttf"
     private const val TAG_SEPARATOR = " - "
+    private val hiddenTagPattern = Regex("(?i)on|enable|enabled|active")
+    private val choiceTagPattern = Regex("[A-Za-z][A-Za-z0-9_-]*")
+    private val percentagePattern = Regex("[-+]?\\d+(?:\\.\\d+)?(?=%)")
+    private val digitPattern = Regex("\\d")
+    private val normalizedTags = LinkedHashMap<String, String>()
 
-    private var context: DirectContext? = null
-    private var target: BackendRenderTarget? = null
-    private var surface: SkiaSurface? = null
-    private var surfaceWidth = -1
-    private var surfaceHeight = -1
+    private val frameSurface = FinalFrameSurface()
     private var startedNanos = 0L
     private val animationClock = FrameClock(0.0)
     private val moduleEntries = LinkedHashMap<String, ModuleEntry>()
+    private val sortedRows = ArrayList<Row>()
+    private val rowComparator = compareByDescending<Row> { it.width }.thenBy { it.name }
+    private var rowsDirty = true
+    private var rowScale = Float.NaN
+    private var rowPixelMode = false
+    private val drawnBounds = DrawnBounds()
+    private var fittedValue = ""
+    private var fittedResult = ""
+    private var fittedWidth = Float.NaN
+    private var fittedScale = Float.NaN
+    private var fittedPixelMode = false
 
     private var loadedTextResources: TextResources? = null
     private val textResources: TextResources
@@ -69,6 +67,8 @@ object TextGuiSkiaOverlay {
         val client = Minecraft.getInstance()
         if (client.player == null || client.level == null) {
             moduleEntries.clear()
+            sortedRows.clear()
+            rowsDirty = true
             animationClock.reset()
             MoonsHud.updateExternalBounds(Bounds(0.0, 0.0, 0.0, 0.0), HudConfig.SCALE.get())
             return
@@ -87,9 +87,9 @@ object TextGuiSkiaOverlay {
 
         val now = System.nanoTime()
         val animationSeconds = animationClock.nextDeltaSeconds(now)
-        val modules = ModuleRegistry.enabledModules()
         updateModuleEntries(
-            if (editorVisible || HudConfig.VISIBLE.get()) modules else emptyList(),
+            if (editorVisible || HudConfig.VISIBLE.get()) ModuleRegistry.enabledModules()
+            else emptyList(),
             animationSeconds,
         )
         val drawTextGui = editorVisible || moduleEntries.isNotEmpty()
@@ -108,31 +108,23 @@ object TextGuiSkiaOverlay {
         if (startedNanos == 0L) startedNanos = now
         val seconds = (now - startedNanos) / 1_000_000_000.0
 
-        val state = FinalFrameGl.prepare(width, height)
-        try {
-            ensureSurface(width, height)
-            context?.resetAll()
-            val canvas = surface?.canvas ?: return
+        drawnBounds.reset()
+        frameSurface.render(width, height, contentBounds = { drawnBounds.rect() }) { canvas ->
             if (drawTextGui)
                 drawTextGui(
                     canvas,
                     client,
-                    moduleEntries.values.toList(),
                     editorVisible,
                     seconds,
                     animationSeconds,
                 )
             if (targetSnapshot.visible()) drawTargetInfo(canvas, targetSnapshot)
-            surface?.flushAndSubmit()
-        } finally {
-            state.restore()
         }
     }
 
     private fun drawTextGui(
         canvas: org.jetbrains.skia.Canvas,
         client: Minecraft,
-        entries: List<ModuleEntry>,
         editing: Boolean,
         seconds: Double,
         animationSeconds: Double,
@@ -141,54 +133,75 @@ object TextGuiSkiaOverlay {
         val hudScale = HudConfig.SCALE.get().toFloat()
         val physicalScale = guiScale * hudScale
         val fontSize = 9.0f * physicalScale
-        val rowHeight = max(10.0f * physicalScale, fontSize + physicalScale)
-        val titleGap = 2.0f * physicalScale
+        val rowHeight = max(12.0f * physicalScale, fontSize + 3.0f * physicalScale)
+        val titleGap = 3.0f * physicalScale
         val padding = 2.0f * physicalScale
         val barGap = 2.0f * physicalScale
         val barWidth = max(1.0f, 1.25f * physicalScale)
         val pixelMode = HudConfig.FONT_MODE.get() == HudConfig.HudFontMode.MINECRAFT
 
         val resources = textResources
-        resources.font.size = fontSize
+        resources.configureFont(fontSize)
         val header =
             if ((editing || HudConfig.VISIBLE.get()) && HudConfig.SHOW_TITLE.get())
                 HudConfig.header(client)
             else ""
-        val rows =
-            entries
-                .map { entry ->
-                    val nameWidth =
-                        measure(resources, entry.module.name(), physicalScale, pixelMode)
-                    val tag = entry.tag
-                    val separatorWidth =
-                        if (tag.isBlank()) 0.0f
-                        else measure(resources, TAG_SEPARATOR, physicalScale, pixelMode)
-                    val actualTagWidth =
-                        if (tag.isBlank()) 0.0f
-                        else measure(resources, tag, physicalScale, pixelMode)
-                    val stableTagWidth =
-                        if (tag.isBlank()) 0.0f
-                        else
-                            max(
-                                actualTagWidth,
-                                measure(
-                                    resources,
-                                    stableTagTemplate(tag),
-                                    physicalScale,
-                                    pixelMode,
-                                ),
-                            )
-                    Row(
-                        entry,
-                        tag,
-                        nameWidth,
-                        separatorWidth,
-                        actualTagWidth,
-                        stableTagWidth,
-                        nameWidth + separatorWidth + stableTagWidth + padding + barGap + barWidth,
-                    )
-                }
-                .sortedWith(compareByDescending<Row> { it.width }.thenBy { it.entry.module.name() })
+        if (rowScale != physicalScale || rowPixelMode != pixelMode) {
+            rowScale = physicalScale
+            rowPixelMode = pixelMode
+            rowsDirty = true
+            moduleEntries.values.forEach { it.row = null }
+        }
+        if (rowsDirty) {
+            sortedRows.clear()
+            moduleEntries.values.forEach { entry ->
+                val row =
+                    entry.row
+                        ?: run {
+                            val name = entry.module.name()
+                            val nameWidth = measure(resources, name, physicalScale, pixelMode)
+                            val tag = entry.tag
+                            val separatorWidth =
+                                if (tag.isBlank()) 0.0f
+                                else measure(resources, TAG_SEPARATOR, physicalScale, pixelMode)
+                            val actualTagWidth =
+                                if (tag.isBlank()) 0.0f
+                                else measure(resources, tag, physicalScale, pixelMode)
+                            val stableTagWidth =
+                                if (tag.isBlank()) 0.0f
+                                else
+                                    max(
+                                        actualTagWidth,
+                                        measure(
+                                            resources,
+                                            stableTagTemplate(tag),
+                                            physicalScale,
+                                            pixelMode,
+                                        ),
+                                    )
+                            Row(
+                                    entry,
+                                    name,
+                                    tag,
+                                    nameWidth,
+                                    separatorWidth,
+                                    actualTagWidth,
+                                    stableTagWidth,
+                                    nameWidth +
+                                        separatorWidth +
+                                        stableTagWidth +
+                                        padding +
+                                        barGap +
+                                        barWidth,
+                                )
+                                .also { entry.row = it }
+                        }
+                sortedRows.add(row)
+            }
+            sortedRows.sortWith(rowComparator)
+            rowsDirty = false
+        }
+        val rows = sortedRows
 
         rows.forEachIndexed { index, row ->
             val target = index.toDouble()
@@ -276,7 +289,7 @@ object TextGuiSkiaOverlay {
             drawModuleName(
                 canvas,
                 resources,
-                row.entry.module.name(),
+                row.name,
                 textX,
                 rowY,
                 rowHeight,
@@ -334,16 +347,23 @@ object TextGuiSkiaOverlay {
         active: List<ModuleRegistry.Module>,
         animationSeconds: Double,
     ) {
-        val activeIds = HashSet<String>()
+        moduleEntries.values.forEach { it.present = false }
         active.forEach { module ->
-            activeIds += module.id()
-            val entry = moduleEntries.getOrPut(module.id()) { ModuleEntry(module) }
+            val entry =
+                moduleEntries.getOrPut(module.id()) {
+                    rowsDirty = true
+                    ModuleEntry(module)
+                }
+            val tag = safeTag(module)
+            if (entry.tag != tag || entry.module.name() != module.name()) {
+                entry.tag = tag
+                entry.row = null
+                rowsDirty = true
+            }
             entry.module = module
-            entry.tag = safeTag(module)
             entry.present = true
         }
-        moduleEntries.forEach { (id, entry) ->
-            entry.present = id in activeIds
+        moduleEntries.values.forEach { entry ->
             entry.progress =
                 Animation.approach(
                     entry.progress,
@@ -352,8 +372,13 @@ object TextGuiSkiaOverlay {
                     16.0,
                 )
         }
-        moduleEntries.entries.removeIf { (_, entry) ->
-            !entry.present && entry.progress < 0.015
+        val iterator = moduleEntries.values.iterator()
+        while (iterator.hasNext()) {
+            val entry = iterator.next()
+            if (!entry.present && entry.progress < 0.015) {
+                iterator.remove()
+                rowsDirty = true
+            }
         }
     }
 
@@ -370,8 +395,15 @@ object TextGuiSkiaOverlay {
         val alpha = snapshot.alpha().coerceIn(0, 255)
         val resources = textResources
         val pixelMode = HudConfig.FONT_MODE.get() == HudConfig.HudFontMode.MINECRAFT
-        resources.font.size = 9.0f * componentScale
-        val fill = Paint().apply { isAntiAlias = true }
+        resources.configureFont(9.0f * componentScale)
+        val fill = resources.targetPaint
+        val edge = max(2.0f, componentScale)
+        drawnBounds.include(
+            originX - edge,
+            originY - edge,
+            originX + 166.0f * componentScale + edge,
+            originY + 63.0f * componentScale + edge,
+        )
         try {
             fill.color = HudText.withAlpha(0x252933, min(224, alpha))
             canvas.drawRRect(
@@ -506,7 +538,7 @@ object TextGuiSkiaOverlay {
                 )
             }
         } finally {
-            fill.close()
+            fill.mode = PaintMode.FILL
         }
     }
 
@@ -517,7 +549,21 @@ object TextGuiSkiaOverlay {
         scale: Float,
         pixelMode: Boolean,
     ): String {
-        if (measure(resources, value, scale, pixelMode) <= maxWidth) return value
+        if (
+            value == fittedValue &&
+                maxWidth == fittedWidth &&
+                scale == fittedScale &&
+                pixelMode == fittedPixelMode
+        )
+            return fittedResult
+        fittedValue = value
+        fittedWidth = maxWidth
+        fittedScale = scale
+        fittedPixelMode = pixelMode
+        if (measure(resources, value, scale, pixelMode) <= maxWidth) {
+            fittedResult = value
+            return value
+        }
         val suffix = "..."
         var result = value
         while (
@@ -525,7 +571,8 @@ object TextGuiSkiaOverlay {
         ) {
             result = result.dropLast(1)
         }
-        return result + suffix
+        fittedResult = result + suffix
+        return fittedResult
     }
 
     private fun drawModuleBar(
@@ -548,6 +595,7 @@ object TextGuiSkiaOverlay {
                 HudText.hudNameColor(row, sampleOffset.toDouble(), seconds),
                 alpha,
             )
+        drawnBounds.include(x, y + inset, x + width, y + inset + height)
         canvas.drawRect(Rect.makeXYWH(x, y + inset, width, height), resources.barPaint)
     }
 
@@ -566,6 +614,7 @@ object TextGuiSkiaOverlay {
                 (255.0 * HudConfig.PANEL_OPACITY.get() / 100.0 * animationProgress).toInt(),
             )
         if (panelAlpha <= 0) return
+        drawnBounds.include(x, y, x + width, y + height)
         textResources.panelPaint.color = HudText.withAlpha(HudText.hudBackgroundColor(), panelAlpha)
         canvas.drawRect(Rect.makeXYWH(x, y, width, height), textResources.panelPaint)
     }
@@ -589,29 +638,18 @@ object TextGuiSkiaOverlay {
                 (HudConfig.NAME_COLOR_MODE.get() == HudConfig.NameColorMode.RAINBOW ||
                     HudConfig.GRADIENT_DIRECTION.get() == HudConfig.GradientDirection.HORIZONTAL)
         if (pixelMode && horizontal) {
-            var cursor = x
-            value.codePoints().forEach { codePoint ->
-                val glyph = String(Character.toChars(codePoint))
-                val glyphWidth = resources.pixelFont.measure(glyph, physicalScale)
-                val color =
-                    HudText.withAlpha(
-                        HudText.hudNameColor(
-                            row,
-                            (cursor - x + glyphWidth * 0.5f).toDouble(),
-                            seconds,
-                        ),
-                        alpha,
-                    )
-                resources.pixelFont.draw(
+            val top = centeredPixelTop(y, rowHeight, physicalScale)
+            gradientShader(row, x, max(width, 0.5f), seconds, alpha).use { shader ->
+                resources.pixelFont.drawGradient(
                     canvas,
-                    glyph,
-                    cursor,
-                    centeredPixelTop(y, rowHeight, physicalScale),
+                    value,
+                    x,
+                    top,
                     physicalScale,
-                    color,
+                    HudText.withAlpha(0xFFFFFFFF.toInt(), alpha),
                     HudConfig.TEXT_SHADOW.get(),
+                    shader,
                 )
-                cursor += glyphWidth
             }
             return
         }
@@ -685,8 +723,15 @@ object TextGuiSkiaOverlay {
         color: Int,
         shader: Shader?,
     ) {
-        val metrics = resources.font.metrics
-        val baseline = y + (rowHeight - metrics.height) * 0.5f - metrics.ascent
+        val baseline = y + (rowHeight - resources.fontHeight) * 0.5f - resources.fontAscent
+        // Font overhang and shadow can extend beyond the logical row while it slides in.
+        val margin = max(2.0f, resources.fontSize * 2.0f)
+        drawnBounds.include(
+            x - margin,
+            baseline - margin,
+            x + resources.measure(value) + margin,
+            baseline + margin,
+        )
         if (HudConfig.TEXT_SHADOW.get()) {
             resources.shadowPaint.color =
                 HudText.withAlpha(0xFF000000.toInt(), min(150, color ushr 24))
@@ -715,65 +760,36 @@ object TextGuiSkiaOverlay {
         pixelMode: Boolean,
     ): Float =
         if (pixelMode) resources.pixelFont.measure(value, physicalScale)
-        else resources.font.measureTextWidth(value)
+        else resources.measure(value)
 
     private fun safeTag(module: ModuleRegistry.Module): String {
         return try {
             val raw = module.tag().get() ?: return ""
-            if (raw.matches(Regex("(?i)on|enable|enabled|active"))) return ""
+            normalizedTags[raw]?.let {
+                return it
+            }
             val trimmed = raw.trim()
-            if (trimmed.matches(Regex("[A-Za-z][A-Za-z0-9_-]*"))) {
-                ModuleRegistry.displayChoice(trimmed)
-            } else trimmed
+            val normalized =
+                if (raw.matches(hiddenTagPattern)) ""
+                else if (trimmed.matches(choiceTagPattern)) ModuleRegistry.displayChoice(trimmed)
+                else trimmed
+            if (normalizedTags.size >= 256) normalizedTags.remove(normalizedTags.keys.first())
+            normalized.also { normalizedTags[raw] = it }
         } catch (_: RuntimeException) {
             ""
         }
     }
 
     private fun stableTagTemplate(tag: String): String =
-        tag.replace(Regex("[-+]?\\d+(?:\\.\\d+)?(?=%)"), "100").replace(Regex("\\d"), "8")
-
-    private fun ensureSurface(width: Int, height: Int) {
-        if (surface != null && surfaceWidth == width && surfaceHeight == height) return
-        closeSurface()
-        val newContext = DirectContext.makeGL().also { context = it }
-        val newTarget =
-            BackendRenderTarget.makeGL(
-                    width,
-                    height,
-                    0,
-                    0,
-                    0,
-                    FramebufferFormat.GR_GL_RGBA8,
-                )
-                .also { target = it }
-        surface =
-            SkiaSurface.makeFromBackendRenderTarget(
-                newContext,
-                newTarget,
-                SurfaceOrigin.BOTTOM_LEFT,
-                SurfaceColorFormat.RGBA_8888,
-                ColorSpace.sRGB,
-            )
-        surfaceWidth = width
-        surfaceHeight = height
-    }
-
-    private fun closeSurface() {
-        surface?.close()
-        target?.close()
-        context?.close()
-        surface = null
-        target = null
-        context = null
-        surfaceWidth = -1
-        surfaceHeight = -1
-    }
+        tag.replace(percentagePattern, "100").replace(digitPattern, "8")
 
     @JvmStatic
     fun close() {
-        closeSurface()
+        frameSurface.close()
         moduleEntries.clear()
+        sortedRows.clear()
+        rowsDirty = true
+        normalizedTags.clear()
         animationClock.reset()
         loadedTextResources?.close()
         loadedTextResources = null
@@ -781,6 +797,7 @@ object TextGuiSkiaOverlay {
 
     private data class Row(
         val entry: ModuleEntry,
+        val name: String,
         val tag: String,
         val nameWidth: Float,
         val separatorWidth: Float,
@@ -795,7 +812,56 @@ object TextGuiSkiaOverlay {
         var progress: Double = 0.0,
         var positionRows: Double = Double.NaN,
         var present: Boolean = true,
+        var row: Row? = null,
     )
+
+    /** Accumulates physical pixels, independently of the editor's logical drag bounds. */
+    private class DrawnBounds {
+        private var left = Float.POSITIVE_INFINITY
+        private var top = Float.POSITIVE_INFINITY
+        private var right = Float.NEGATIVE_INFINITY
+        private var bottom = Float.NEGATIVE_INFINITY
+
+        fun reset() {
+            left = Float.POSITIVE_INFINITY
+            top = Float.POSITIVE_INFINITY
+            right = Float.NEGATIVE_INFINITY
+            bottom = Float.NEGATIVE_INFINITY
+        }
+
+        fun include(x0: Float, y0: Float, x1: Float, y1: Float) {
+            left = min(left, x0)
+            top = min(top, y0)
+            right = max(right, x1)
+            bottom = max(bottom, y1)
+        }
+
+        fun rect(): Rect? =
+            if (left < right && top < bottom) Rect.makeXYWH(left, top, right - left, bottom - top)
+            else null
+    }
+
+    private class WidthCache(private val font: Font) {
+        private val bySize = LinkedHashMap<Float, LinkedHashMap<String, Float>>()
+        private var currentSize = Float.NaN
+        private var current = LinkedHashMap<String, Float>()
+
+        fun measure(value: String, size: Float): Float {
+            if (currentSize != size) {
+                currentSize = size
+                current =
+                    bySize.getOrPut(size) {
+                        if (bySize.size >= 8) bySize.remove(bySize.keys.first())
+                        LinkedHashMap()
+                    }
+            }
+            return current[value]
+                ?: run {
+                    if (current.size >= 512) current.remove(current.keys.first())
+                    font.measureTextWidth(value).also { current[value] = it }
+                }
+        }
+    }
 
     private class TextResources
     private constructor(
@@ -806,10 +872,38 @@ object TextGuiSkiaOverlay {
         val shadowPaint: Paint,
         val panelPaint: Paint,
         val barPaint: Paint,
+        val targetPaint: Paint,
         val pixelFont: MinecraftPixelFont,
     ) {
+        private val widths = WidthCache(font)
+        private val metricsBySize = LinkedHashMap<Float, Pair<Float, Float>>()
+        var fontSize = Float.NaN
+            private set
+
+        var fontHeight = 0.0f
+            private set
+
+        var fontAscent = 0.0f
+            private set
+
+        fun configureFont(size: Float) {
+            if (fontSize == size) return
+            font.size = size
+            fontSize = size
+            val metrics =
+                metricsBySize.getOrPut(size) {
+                    if (metricsBySize.size >= 8) metricsBySize.remove(metricsBySize.keys.first())
+                    font.metrics.let { it.height to it.ascent }
+                }
+            fontHeight = metrics.first
+            fontAscent = metrics.second
+        }
+
+        fun measure(value: String): Float = widths.measure(value, fontSize)
+
         fun close() {
             pixelFont.close()
+            targetPaint.close()
             barPaint.close()
             panelPaint.close()
             shadowPaint.close()
@@ -851,6 +945,7 @@ object TextGuiSkiaOverlay {
                     shadowPaint,
                     panelPaint,
                     barPaint,
+                    Paint().apply { isAntiAlias = true },
                     MinecraftPixelFont.load(loader),
                 )
             }
@@ -858,13 +953,57 @@ object TextGuiSkiaOverlay {
     }
 
     private class MinecraftPixelFont(
-        private val image: Image,
-        private val advances: IntArray,
+        private val data: Data,
+        private val typeface: Typeface,
+        private val font: Font,
+        private val paint: Paint,
     ) {
+        private val runsBySize = LinkedHashMap<Float, LinkedHashMap<String, PixelRun>>()
+        private var runs = LinkedHashMap<String, PixelRun>()
+        private var fontSize = Float.NaN
+
+        private fun setScale(scale: Float) {
+            val size = 8.0f * scale
+            if (fontSize != size) {
+                font.size = size
+                fontSize = size
+                runs =
+                    runsBySize.getOrPut(size) {
+                        if (runsBySize.size >= 4) {
+                            runsBySize.remove(runsBySize.keys.first())?.values?.forEach {
+                                it.blob?.close()
+                            }
+                        }
+                        LinkedHashMap()
+                    }
+            }
+        }
+
+        private fun textRun(value: String, scale: Float): PixelRun {
+            setScale(scale)
+            return runs[value]
+                ?: run {
+                    if (runs.size >= 256) runs.remove(runs.keys.first())?.blob?.close()
+                    val glyphs = font.getStringGlyphs(value)
+                    val advances = font.getWidths(glyphs)
+                    val positions = FloatArray(glyphs.size)
+                    var cursor = 0.0f
+                    for (index in glyphs.indices) {
+                        positions[index] = cursor
+                        cursor += advances[index]
+                        if (index + 1 < glyphs.size) cursor += 0.25f * scale
+                    }
+                    PixelRun(
+                            if (glyphs.isEmpty()) null
+                            else TextBlob.makeFromPosH(glyphs, positions, 0.0f, font),
+                            cursor,
+                        )
+                        .also { runs[value] = it }
+                }
+        }
+
         fun measure(value: String, scale: Float): Float {
-            var width = 0.0f
-            value.codePoints().forEach { width += advances[glyphIndex(it)] * scale }
-            return width
+            return textRun(value, scale).width
         }
 
         fun draw(
@@ -876,93 +1015,93 @@ object TextGuiSkiaOverlay {
             color: Int,
             shadow: Boolean,
         ) {
-            if (shadow)
-                drawPass(
-                    canvas,
-                    value,
-                    x + scale,
-                    y + scale,
-                    scale,
-                    HudText.withAlpha(0xFF000000.toInt(), min(150, color ushr 24)),
-                )
-            drawPass(canvas, value, x, y, scale, color)
+            drawRun(canvas, value, x, y, scale, color, shadow, null)
         }
 
-        private fun drawPass(
+        fun drawGradient(
             canvas: org.jetbrains.skia.Canvas,
             value: String,
             x: Float,
             y: Float,
             scale: Float,
             color: Int,
+            shadow: Boolean,
+            shader: Shader,
         ) {
-            val filter = ColorFilter.makeBlend(color, BlendMode.SRC_IN)
-            val paint =
-                Paint().apply {
-                    isAntiAlias = false
-                    colorFilter = filter
-                }
+            drawRun(canvas, value, x, y, scale, color, shadow, shader)
+        }
+
+        private fun drawRun(
+            canvas: org.jetbrains.skia.Canvas,
+            value: String,
+            x: Float,
+            y: Float,
+            scale: Float,
+            color: Int,
+            shadow: Boolean,
+            shader: Shader?,
+        ) {
+            val run = textRun(value, scale)
+            val blob = run.blob ?: return
+            val baseline = y + 8.0f * scale
+            val margin = max(2.0f, fontSize * 2.0f)
+            drawnBounds.include(
+                x - margin,
+                baseline - margin,
+                x + run.width + margin,
+                baseline + margin,
+            )
+            if (shadow) {
+                paint.color = HudText.withAlpha(0xFF000000.toInt(), min(150, color ushr 24))
+                canvas.drawTextBlob(blob, x + scale, baseline + scale, paint)
+            }
+            paint.color = if (shader == null) color else 0xFFFFFFFF.toInt()
+            paint.shader = shader
             try {
-                var cursor = x
-                value.codePoints().forEach { codePoint ->
-                    val glyph = glyphIndex(codePoint)
-                    if (glyph != 32) {
-                        val sourceX = (glyph and 15) * 8.0f
-                        val sourceY = (glyph ushr 4) * 8.0f
-                        canvas.drawImageRect(
-                            image,
-                            Rect.makeXYWH(sourceX, sourceY, 8.0f, 8.0f),
-                            Rect.makeXYWH(cursor, y, 8.0f * scale, 8.0f * scale),
-                            SamplingMode.DEFAULT,
-                            paint,
-                            true,
-                        )
-                    }
-                    cursor += advances[glyph] * scale
-                }
+                canvas.drawTextBlob(blob, x, baseline, paint)
             } finally {
-                paint.close()
-                filter.close()
+                paint.shader = null
             }
         }
 
-        fun close() = image.close()
+        fun close() {
+            runsBySize.values.forEach { entries -> entries.values.forEach { it.blob?.close() } }
+            runsBySize.clear()
+            paint.close()
+            font.close()
+            typeface.close()
+            data.close()
+        }
+
+        private data class PixelRun(val blob: TextBlob?, val width: Float)
 
         companion object {
             fun load(loader: ClassLoader): MinecraftPixelFont {
-                val png =
-                    EmbeddedResources.readMimeBase64(
+                val bytes =
+                    EmbeddedResources.readRequiredBytes(
                         loader,
                         MINECRAFT_FONT_RESOURCE,
                         "Missing embedded Minecraft HUD font",
                     )
-                val image = Image.makeFromEncoded(png)
-                val buffered = requireNotNull(ImageIO.read(ByteArrayInputStream(png)))
-                val advances =
-                    IntArray(256) { glyph ->
-                        if (glyph == 32) return@IntArray 4
-                        val originX = (glyph and 15) * 8
-                        val originY = (glyph ushr 4) * 8
-                        var right = -1
-                        for (pixelY in 0 until 8) {
-                            for (pixelX in 0 until 8) {
-                                if (
-                                    (buffered.getRGB(originX + pixelX, originY + pixelY) ushr 24) !=
-                                        0
-                                ) {
-                                    right = max(right, pixelX)
-                                }
-                            }
-                        }
-                        (right + 2).coerceIn(2, 8)
+                val data = Data.makeFromBytes(bytes)
+                val typeface =
+                    requireNotNull(FontMgr.default.makeFromData(data)) {
+                        "Invalid embedded Minecraft HUD font"
                     }
-                return MinecraftPixelFont(image, advances)
+                val font =
+                    Font(typeface, 8.0f).apply {
+                        edging = FontEdging.ALIAS
+                        hinting = FontHinting.NONE
+                        isSubpixel = true
+                        isLinearMetrics = true
+                    }
+                return MinecraftPixelFont(
+                    data,
+                    typeface,
+                    font,
+                    Paint().apply { isAntiAlias = false },
+                )
             }
-
-            private fun glyphIndex(codePoint: Int): Int =
-                if (codePoint in 0..255) codePoint else '?'.code
         }
-
-        private fun glyphIndex(codePoint: Int): Int = Companion.glyphIndex(codePoint)
     }
 }

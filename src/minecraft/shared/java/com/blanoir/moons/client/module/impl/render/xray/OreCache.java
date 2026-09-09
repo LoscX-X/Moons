@@ -16,6 +16,7 @@ import java.util.Map;
 public final class OreCache {
     private static final Map<BlockPos, XrayTarget> XRAY_POSITIONS =
             Collections.synchronizedMap(new HashMap<>());
+    private static volatile List<CachedXrayBlock> cachedEntries = List.of();
 
     private OreCache() {}
 
@@ -33,6 +34,7 @@ public final class OreCache {
             }
 
             XRAY_POSITIONS.put(immutablePos, target);
+            cachedEntries = null;
             return true;
         }
     }
@@ -48,7 +50,10 @@ public final class OreCache {
     }
 
     public static void clear() {
-        XRAY_POSITIONS.clear();
+        synchronized (XRAY_POSITIONS) {
+            XRAY_POSITIONS.clear();
+            cachedEntries = List.of();
+        }
     }
 
     public static List<BlockPos> snapshot() {
@@ -58,11 +63,19 @@ public final class OreCache {
     }
 
     public static List<CachedXrayBlock> snapshotEntries() {
+        List<CachedXrayBlock> snapshot = cachedEntries;
+        if (snapshot != null) {
+            return snapshot;
+        }
         synchronized (XRAY_POSITIONS) {
+            if (cachedEntries != null) {
+                return cachedEntries;
+            }
             List<CachedXrayBlock> entries = new ArrayList<>(XRAY_POSITIONS.size());
 
             XRAY_POSITIONS.forEach((pos, target) -> entries.add(new CachedXrayBlock(pos, target)));
-            return entries;
+            cachedEntries = List.copyOf(entries);
+            return cachedEntries;
         }
     }
 
@@ -88,6 +101,7 @@ public final class OreCache {
 
                 if (dx > maxDistance || dz > maxDistance) {
                     iterator.remove();
+                    cachedEntries = null;
                 }
             }
         }
@@ -99,30 +113,36 @@ public final class OreCache {
         }
 
         synchronized (XRAY_POSITIONS) {
-            XRAY_POSITIONS
-                    .entrySet()
-                    .removeIf(
-                            entry -> {
-                                BlockPos pos = entry.getKey();
-                                XrayTarget target = entry.getValue();
+            boolean removed =
+                    XRAY_POSITIONS
+                            .entrySet()
+                            .removeIf(
+                                    entry -> {
+                                        BlockPos pos = entry.getKey();
+                                        XrayTarget target = entry.getValue();
 
-                                if (!target.isEnabled()) {
-                                    return true;
-                                }
+                                        if (!target.isEnabled()) {
+                                            return true;
+                                        }
 
-                                /*
-                                 * Keep a detected block rendered until the server/client state becomes air.
-                                 * Some servers temporarily mask ores as another non-air block; removing only
-                                 * on air avoids dropping a real target just because it is currently disguised.
-                                 */
-                                return client.level.getBlockState(pos).isAir();
-                            });
+                                        /*
+                                         * Keep a detected block rendered until the server/client state becomes air.
+                                         * Some servers temporarily mask ores as another non-air block; removing only
+                                         * on air avoids dropping a real target just because it is currently disguised.
+                                         */
+                                        return client.level.getBlockState(pos).isAir();
+                                    });
+            if (removed) {
+                cachedEntries = null;
+            }
         }
     }
 
     public static void removePosition(BlockPos pos) {
         synchronized (XRAY_POSITIONS) {
-            XRAY_POSITIONS.remove(pos);
+            if (XRAY_POSITIONS.remove(pos) != null) {
+                cachedEntries = null;
+            }
         }
     }
 

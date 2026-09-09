@@ -1,5 +1,6 @@
 package com.blanoir.moons.client.module.impl.player;
 
+import com.blanoir.moons.client.access.MinecraftClientAccess;
 import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.DoubleSetting;
@@ -252,7 +253,7 @@ public final class AntiLava {
         if (currentHit != null && canPlace(client, activeHand, activeHotbarSlot, currentHit)) {
             InteractionResult result = useOnSilently(client, activeHand, currentHit);
             if (result.consumesAction()) {
-                client.player.swing(activeHand);
+                MinecraftClientAccess.animatePlacement(client.player, activeHand, true);
             }
         }
         placementPhase = PlacementPhase.WAITING_FOR_PLACE_PACKET;

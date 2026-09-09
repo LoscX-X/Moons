@@ -33,7 +33,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
-import net.minecraft.network.protocol.game.ServerboundSwingPacket;
 import net.minecraft.network.protocol.game.ServerboundUseItemOnPacket;
 import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
@@ -1400,8 +1399,7 @@ public final class ScaffoldEngine {
         ScaffoldPlacementDebugger.result(result.toString());
         if (!result.consumesAction()) return false;
         if (!client.player.getAbilities().instabuild) blockCount--;
-        if (SWING.get()) client.player.swing(hand);
-        else client.player.connection.send(new ServerboundSwingPacket(hand));
+        MinecraftClientAccess.animatePlacement(client.player, hand, SWING.get());
         PLACED.add(new PlacedMark(target.placePos(), System.currentTimeMillis()));
         long placedAt = System.currentTimeMillis();
         PLACEMENT_TIMES.addLast(placedAt);

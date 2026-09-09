@@ -2,7 +2,9 @@
 
 **简体中文** | [English](readme.md)
 
-面向 Minecraft Java Edition 的 Windows 客户端项目，支持 **26.1.2 / 26.2**，通过 JNI/JVMTI 桥接加载。客户端逻辑集中维护，版本差异由独立适配层处理。
+面向 Minecraft Java Edition 的 Windows 客户端项目，支持 **26.1.2 / 26.2 / 26.3-pre-3**，通过 JNI/JVMTI 桥接加载。客户端逻辑集中维护，版本差异由独立适配层处理。
+
+26.3 当前预支持 `26.3-pre-3`，适配目录固定为 `26_3`，载荷标识为 `26.3`；正式版发布后在同一目录内更新目标版本。
 
 ## 获取与运行
 
@@ -36,7 +38,7 @@ $env:JAVA_HOME = 'C:\Program Files\Java\jdk-25'
 
 | 任务 | 产物 |
 |---|---|
-| `moonsPackages` | 全部产物，包含两个 Minecraft 版本 |
+| `moonsPackages` | 全部产物，包含全部受支持的 Minecraft 版本 |
 | `moonsFullExe` | `moons-full.exe` |
 | `moonsExe` | `moons.exe` |
 | `moonsUiRuntime` | `dependencies/moons-ui-runtime.jar` 及 SHA-256 校验文件 |
@@ -48,9 +50,10 @@ $env:JAVA_HOME = 'C:\Program Files\Java\jdk-25'
 ```powershell
 .\gradlew.bat moonsJar '-Pminecraft_version=26.1.2'
 .\gradlew.bat moonsJar '-Pminecraft_version=26.2'
+.\gradlew.bat moonsJar '-Pminecraft_version=26.3-pre-3'
 ```
 
-产物分别为 `build/dist/agent/26_1/moons.jar` 和 `build/dist/agent/26_2/moons.jar`，供桥接层加载，不支持 `java -jar` 启动。
+产物分别为 `build/dist/agent/26_1/moons.jar`、`build/dist/agent/26_2/moons.jar` 和 `build/dist/agent/26_3/moons.jar`，供桥接层加载，不支持 `java -jar` 启动。
 
 ## GitHub Actions
 

@@ -54,7 +54,6 @@ import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.resources.model.EquipmentClientInfo;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.SectionPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.LivingEntity;
@@ -62,13 +61,57 @@ import net.minecraft.world.entity.player.Input;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec2;
 import net.minecraft.world.scores.Objective;
 
 /** Applies transformed method hooks used by the built-in client features. */
 public final class FeatureHooks {
     private FeatureHooks() {}
+
+    /** Called before the runtime allocates a method-hook event or boxes its values. */
+    public static boolean isActive(String id) {
+        return switch (id) {
+            case "xray.block-tessellate.end", "optional.sodium.render-model.end" ->
+                    XrayTerrain.isRenderingBackground();
+            case "xray.block-tessellate",
+                    "optional.sodium.render-model",
+                    "optional.sodium.process-quad.force-opaque",
+                    "optional.sodium.process-quad.layer",
+                    "optional.sodium.process-quad.alpha",
+                    "xray.force-opaque",
+                    "xray.quad-alpha",
+                    "xray.material-layer",
+                    "xray.section-quad.alpha",
+                    "xray.section-quad.layer",
+                    "xray.section-occlusion" ->
+                    XrayTerrain.isEnabled();
+            case "render.camera-zoom",
+                    "render.frustum-visible",
+                    "render.clip-occlusion",
+                    "optional.sodium.clip-occlusion" ->
+                    Clip.isEnabled();
+            case "render.full-bright" -> FullBright.isEnabled();
+            case "render.static-fov" -> StaticFov.isEnabled();
+            case "render.scoreboard" -> ScoreboardChanger.isEnabled();
+            case "render.silent-aura-animation", "render.silent-aura-animation.replace-vanilla" ->
+                    Animations.isEnabled();
+            case "render.trim", "render.trim.direct" -> Trim.isEnabled();
+            case "render.armor-hide" -> ArmorHide.isEnabled();
+            case "render.player-nametag" -> Nametags.isEnabled();
+            case "render.chams-draw",
+                    "render.chams-draw-oit",
+                    "render.chams-type",
+                    "render.chams-equipment",
+                    "render.chams-cape",
+                    "render.chams-mark-item",
+                    "render.chams-item.type",
+                    "render.chams-foil.type" ->
+                    Chams.isChamsEnabled();
+            case "combat.reach.pick" ->
+                    Reach.isEnabled() || EventBus.PICK_RESULT.listenerCount() != 0;
+            default -> true;
+        };
+    }
 
     public static void apply(RuntimeEvents.MethodHook hook) {
         switch (hook.id()) {
@@ -144,13 +187,8 @@ public final class FeatureHooks {
                 if (hook.value() instanceof ItemStack item) hook.value(Scaffold.spoofedItem(item));
             }
             case "render.silent-aura-animation" -> {
-                if (hook.argument() instanceof Object[] values
-                        && values.length == 4
-                        && values[0] instanceof PoseStack pose
-                        && values[1] instanceof Number swing
-                        && values[2] instanceof Number equip) {
-                    Animations.apply(pose, swing.floatValue(), equip.floatValue(), values[3]);
-                }
+                if (hook.argument() instanceof Object[] values && Animations.submit(values))
+                    hook.value(false);
             }
             case "render.silent-aura-animation.replace-vanilla" -> {
                 if (Animations.shouldReplaceVanilla(hook.argument())) hook.value(true);
@@ -172,8 +210,12 @@ public final class FeatureHooks {
             }
             case "render.chams-frame.begin" -> Chams.beginFrameIfNeeded();
             case "render.chams-frame.end" -> Chams.compositeIfNeeded();
+            case "render.chams-draw", "render.chams-draw-oit" -> {
+                if (Chams.captureDraw(hook.owner(), hook.argument())) hook.value(false);
+            }
             case "render.chams-submit" -> {
-                if (hook.argument() instanceof LivingEntityRenderState state) {
+                if (EventBus.LIVING_RENDER_PRE.listenerCount() != 0
+                        && hook.argument() instanceof LivingEntityRenderState state) {
                     EventBus.LIVING_RENDER_PRE.post(new LivingRenderEvent.Pre(state));
                 }
                 if (hook.argument() instanceof AvatarRenderState state) {
@@ -189,7 +231,8 @@ public final class FeatureHooks {
                 Chams.endPlayerChams();
                 ArmorHide.endAvatar();
                 Trim.endAvatar();
-                if (hook.argument() instanceof LivingEntityRenderState state) {
+                if (EventBus.LIVING_RENDER_POST.listenerCount() != 0
+                        && hook.argument() instanceof LivingEntityRenderState state) {
                     EventBus.LIVING_RENDER_POST.post(new LivingRenderEvent.Post(state));
                 }
             }
@@ -456,16 +499,9 @@ public final class FeatureHooks {
     }
 
     private static void frustumVisible(RuntimeEvents.MethodHook hook) {
-        if (!Clip.isEnabled() || !(hook.argument() instanceof AABB box)) return;
-        Minecraft client = Minecraft.getInstance();
-        var player = client.player;
-        if (player == null
-                || client.level == null
-                || client.options.getCameraType().isFirstPerson()) return;
-        int dx = SectionPos.blockToSectionCoord(box.minX) - player.chunkPosition().x();
-        int dz = SectionPos.blockToSectionCoord(box.minZ) - player.chunkPosition().z();
-        int radius = Clip.visibleRadiusChunks();
-        if (Math.abs(dx) <= radius && Math.abs(dz) <= radius) hook.value(true);
+        if (!Boolean.TRUE.equals(hook.value())
+                && hook.argument() instanceof net.minecraft.world.phys.AABB box
+                && Clip.forceVisible(box)) hook.value(true);
     }
 
     private static void xrayTessellate(RuntimeEvents.MethodHook hook) {

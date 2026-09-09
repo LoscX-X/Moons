@@ -269,6 +269,17 @@ public final class AgentBridge {
         }
     }
 
+    public static boolean isHookActive(String id) {
+        RuntimeBridge current = runtime;
+        if (current == RuntimeBridge.NOOP) return false;
+        try {
+            return current.isHookActive(id);
+        } catch (Throwable failure) {
+            report(id, failure);
+            return true;
+        }
+    }
+
     public static void onVoidHook(String id, Object owner, Object argument) {
         try {
             runtime.onVoidHook(id, owner, argument);

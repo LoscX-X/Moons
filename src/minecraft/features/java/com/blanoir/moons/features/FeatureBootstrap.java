@@ -145,6 +145,7 @@ final class FeatureBootstrap {
             MinecraftClientAccess.setScreen(client, null);
         }
         ComposeRenderBridge.close();
+        com.blanoir.moons.client.ui.render.SmoothGui.close();
         RemoteConfigClient.shutdown();
         PremiumCheckCommand.shutdown();
         AntiNick.shutdown();

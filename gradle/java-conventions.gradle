@@ -36,7 +36,10 @@ sourceSets {
         compileClasspath += sourceSets.api.output
     }
     features {
-        java.setSrcDirs(["src/minecraft/features/java"])
+        java.setSrcDirs([
+                "src/minecraft/features/java",
+                "src/minecraft/versions/${selectedVersionDirectory}/features/java"
+        ])
         resources.setSrcDirs(["src/minecraft/features/resources"])
         compileClasspath += sourceSets.api.output + sourceSets.runtime.output
     }

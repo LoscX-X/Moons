@@ -37,6 +37,7 @@ namespace Moons.WindowsLauncher
         private static readonly Color AccentHover = Color.FromArgb(161, 137, 255);
         private const string Payload26_1Resource = "Moons.Payload.26_1.jar";
         private const string Payload26_2PatchResource = "Moons.Payload.26_2.patch";
+        private const string Payload26_3PatchResource = "Moons.Payload.26_3.patch";
         private const string FeaturesJarEntry =
             "META-INF/moons/modules/moons-core-features.jar";
         private const string BootstrapApiResource = "Moons.Api.jar";
@@ -145,6 +146,7 @@ namespace Moons.WindowsLauncher
                     EnsureUiRuntime(home, arguments, null, null, delegate { return false; });
                     ExtractPayload(home, "26.1");
                     ExtractPayload(home, "26.2");
+                    ExtractPayload(home, "26.3");
                     ExtractBootstrapApi(home);
                     ExtractBridge(home);
                     HardwareIdGenerator.Generate();
@@ -214,6 +216,19 @@ namespace Moons.WindowsLauncher
             passed &= String.Equals(NormalizeConfiguredVersion("26.1.2"),
                 "26.1", StringComparison.Ordinal);
             passed &= NormalizeConfiguredVersion("26.1.3") == null;
+            passed &= String.Equals(NormalizeConfiguredVersion("26.3-pre-3"),
+                "26.3", StringComparison.Ordinal);
+            passed &= String.Equals(MatchSupportedVersion(
+                "net.minecraft.client.main.Main --version 26.3-pre-3"),
+                "26.3", StringComparison.Ordinal);
+            passed &= String.Equals(MatchSupportedVersion(
+                @"C:\Games\Minecraft\versions\26.3-pre-3\26.3-pre-3.jar"),
+                "26.3", StringComparison.Ordinal);
+            passed &= NormalizeConfiguredVersion("26.3-pre-2") == null;
+            passed &= MatchSupportedVersion("26.3-pre-30") == null;
+            passed &= MatchSupportedVersion("26.3-pre-3-custom") == null;
+            passed &= MatchSupportedVersion("26.3") == null;
+            passed &= MatchSupportedVersion("26.2 and 26.3-pre-3") == null;
             passed &= MatchSupportedVersion("Minecraft 1.21.5") == null;
             passed &= MatchSupportedVersion("26.1.2 and 26.2") == null;
             passed &= IsMinecraftTargetEvidence(
@@ -1067,7 +1082,7 @@ namespace Moons.WindowsLauncher
                 {
                     throw new InvalidOperationException(
                         "Unsupported --minecraft-version value: " + configured
-                        + ". Expected 26.1, 26.1.2, or 26.2.");
+                        + ". Expected 26.1, 26.1.2, 26.2, or 26.3-pre-3.");
                 }
                 return selected;
             }
@@ -1087,10 +1102,10 @@ namespace Moons.WindowsLauncher
 
             throw new InvalidOperationException(
                 "Unable to identify whether PID " + target.Pid
-                + " is Minecraft 26.1.2 or 26.2. Load was cancelled to avoid loading "
+                + " is Minecraft 26.1.2, 26.2, or 26.3-pre-3. Load was cancelled to avoid loading "
                 + "the wrong mappings.\r\n\r\n"
                 + "Start the game normally so its command line contains --version, or run "
-                + DisplayName + " with --minecraft-version 26.1/26.1.2/26.2.");
+                + DisplayName + " with --minecraft-version 26.1/26.1.2/26.2/26.3-pre-3.");
         }
 
         private static string NormalizeConfiguredVersion(string configured)
@@ -1100,6 +1115,10 @@ namespace Moons.WindowsLauncher
                 || String.Equals(value, "26.1.2", StringComparison.OrdinalIgnoreCase))
             {
                 return "26.1";
+            }
+            if (String.Equals(value, "26.3-pre-3", StringComparison.OrdinalIgnoreCase))
+            {
+                return "26.3";
             }
             return String.Equals(value, "26.2", StringComparison.OrdinalIgnoreCase)
                 ? "26.2" : null;
@@ -1117,11 +1136,14 @@ namespace Moons.WindowsLauncher
             bool is26_2 = Regex.IsMatch(evidence,
                 @"(?<![0-9.])26\.2(?![0-9.])",
                 RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-            if (is26_1 == is26_2)
+            bool is26_3 = Regex.IsMatch(evidence,
+                @"(?<![0-9A-Za-z.\-])26\.3-pre-3(?![0-9A-Za-z.\-])",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if ((is26_1 ? 1 : 0) + (is26_2 ? 1 : 0) + (is26_3 ? 1 : 0) != 1)
             {
                 return null;
             }
-            return is26_2 ? "26.2" : "26.1";
+            return is26_3 ? "26.3" : is26_2 ? "26.2" : "26.1";
         }
 
         private static string ReadProcessCommandLine(int pid)
@@ -1535,19 +1557,23 @@ namespace Moons.WindowsLauncher
             }
             if (String.Equals(version, "26.2", StringComparison.Ordinal))
             {
-                return ExtractPatchedPayload(home);
+                return ExtractPatchedPayload(home, Payload26_2PatchResource, "moons-26.2.jar");
+            }
+            if (String.Equals(version, "26.3", StringComparison.Ordinal))
+            {
+                return ExtractPatchedPayload(home, Payload26_3PatchResource, "moons-26.3.jar");
             }
             throw new InvalidOperationException("No embedded payload for Minecraft " + version + ".");
         }
 
-        private static string ExtractPatchedPayload(string home)
+        private static string ExtractPatchedPayload(string home, string patchResource, string fileName)
         {
             byte[] basePayload = ReadResourceBytes(Payload26_1Resource);
-            byte[] patch = ReadResourceBytes(Payload26_2PatchResource);
+            byte[] patch = ReadResourceBytes(patchResource);
             string identity = Hashing.Sha256(Encoding.UTF8.GetBytes(
                 Hashing.Sha256(basePayload) + ":" + Hashing.Sha256(patch)));
             string directory = Path.Combine(home, "cache", "launcher", identity);
-            string target = Path.Combine(directory, "moons-26.2.jar");
+            string target = Path.Combine(directory, fileName);
             Directory.CreateDirectory(directory);
             if (File.Exists(target))
             {

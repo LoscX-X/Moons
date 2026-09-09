@@ -1,5 +1,6 @@
 package com.blanoir.moons.client.module.impl.player;
 
+import com.blanoir.moons.client.access.MinecraftClientAccess;
 import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.DoubleSetting;
@@ -30,7 +31,6 @@ import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.item.BedItem;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
@@ -1554,7 +1554,7 @@ public final class AutoBed {
     private static boolean validMaterial(Minecraft client, ItemStack stack) {
         if (stack.isEmpty()
                 || !(stack.getItem() instanceof BlockItem blockItem)
-                || blockItem instanceof BedItem
+                || MinecraftClientAccess.isBedItem(blockItem)
                 || blockItem.getBlock() instanceof FallingBlock) {
             return false;
         }
@@ -1564,7 +1564,8 @@ public final class AutoBed {
 
     private static int findBedSlot(Minecraft client) {
         return HotbarQueries.firstMatch(
-                client.player.getInventory(), stack -> stack.getItem() instanceof BedItem);
+                client.player.getInventory(),
+                stack -> MinecraftClientAccess.isBedItem(stack.getItem()));
     }
 
     private static boolean canPlaceMaterial(
@@ -1614,7 +1615,8 @@ public final class AutoBed {
         if (bedPlan == null
                 || bedSlot < 0
                 || client.player.getInventory().getSelectedSlot() != bedSlot
-                || !(client.player.getInventory().getItem(bedSlot).getItem() instanceof BedItem)
+                || !(MinecraftClientAccess.isBedItem(
+                        client.player.getInventory().getItem(bedSlot).getItem()))
                 || !client.level.getBlockState(bedPlan.foot()).canBeReplaced()
                 || !client.level.getBlockState(bedPlan.head()).canBeReplaced()
                 || occupiedByPlayer(client, bedPlan.foot())
@@ -1781,7 +1783,7 @@ public final class AutoBed {
         try {
             InteractionResult result = client.gameMode.useItemOn(client.player, hand, hit);
             if (result.consumesAction()) {
-                client.player.swing(hand);
+                MinecraftClientAccess.animatePlacement(client.player, hand, true);
             }
             return result;
         } finally {

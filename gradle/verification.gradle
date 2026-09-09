@@ -10,6 +10,9 @@ tasks.named("test", Test) {
 // Add client verification programs here. Each entry is registered and attached
 // to check together, so a new task cannot silently miss the default lifecycle.
 def clientVerifications = [
+        verifyInputBindings: [
+                mainClass: "com.blanoir.moons.features.command.InputBindingVerification",
+                description: "Verifies independent keyboard, mouse, action and GUI bindings."],
         verifyScaffoldRotations: [
                 mainClass: "com.blanoir.moons.client.module.world.scaffold.PlacementRotationVerification",
                 description: "Verifies Scaffold placement rotation history and settling."],
@@ -33,7 +36,7 @@ def clientVerifications = [
                 description: "Verifies unified AntiBot evidence, recovery and legacy mode compatibility."],
         verifyBacktrack: [
                 mainClass: "com.blanoir.moons.client.module.impl.network.backtrack.BacktrackVerification",
-                description: "Verifies Backtrack burst deadlines and readable legacy ESP colors."],
+                description: "Verifies Backtrack attack windows, ordered replay, compact settings and ESP colors."],
         verifyClickGuiWarmup: [
                 mainClass: "com.blanoir.moons.client.ui.clickgui.ClickGuiWarmupVerification",
                 description: "Renders ClickGUI on a worker CPU canvas without a game instance or config writes."],

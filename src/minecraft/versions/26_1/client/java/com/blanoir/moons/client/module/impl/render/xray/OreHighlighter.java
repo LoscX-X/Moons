@@ -250,6 +250,7 @@ public final class OreHighlighter {
         int vertexBufferSize = drawParameters.vertexCount() * format.getVertexSize();
 
         if (vertexBuffer == null || vertexBuffer.size() < vertexBufferSize) {
+            int capacity = Math.max(4096, Integer.highestOneBit(vertexBufferSize - 1) << 1);
             if (vertexBuffer != null) {
                 vertexBuffer.close();
             }
@@ -258,7 +259,7 @@ public final class OreHighlighter {
                     new MappableRingBuffer(
                             () -> MoonsConfig.MOD_ID + " ore highlighter",
                             GpuBuffer.USAGE_VERTEX | GpuBuffer.USAGE_MAP_WRITE,
-                            vertexBufferSize);
+                            capacity);
         }
 
         CommandEncoder commandEncoder = RenderSystem.getDevice().createCommandEncoder();

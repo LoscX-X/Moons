@@ -78,7 +78,7 @@ public final class BindCommand {
             return InputConstants.UNKNOWN;
         try {
             InputConstants.Key key = InputConstants.getKey(name);
-            int maximum = name.startsWith("key.mouse.") ? 7 : 348;
+            int maximum = name.startsWith("key.mouse.") ? InputConstants.MOUSE_BUTTON_8 : 348;
             return ModuleKeybinds.isValid(key) && key.getValue() <= maximum
                     ? key
                     : InputConstants.UNKNOWN;

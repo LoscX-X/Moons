@@ -25,7 +25,6 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asComposeCanvas
-import androidx.compose.ui.input.pointer.PointerButton
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerId
 import androidx.compose.ui.input.pointer.PointerType
@@ -41,9 +40,10 @@ import com.blanoir.moons.client.config.ClientBranding
 import com.blanoir.moons.client.config.Settings
 import com.blanoir.moons.client.module.framework.ModuleKeybinds
 import com.blanoir.moons.client.ui.MinecraftScreenAccess
-import com.blanoir.moons.client.ui.compose.FinalFrameGl
-import com.blanoir.moons.client.ui.compose.GlfwComposeEvents
+import com.blanoir.moons.client.ui.compose.FinalFrameSurface
+import com.blanoir.moons.client.ui.compose.SdlComposeEvents
 import com.blanoir.moons.client.ui.hud.HudLayoutController
+import com.mojang.blaze3d.platform.InputConstants
 import com.mojang.blaze3d.systems.RenderSystem
 import java.awt.event.KeyEvent as AwtKeyEvent
 import java.awt.event.MouseEvent as AwtMouseEvent
@@ -54,32 +54,21 @@ import net.minecraft.client.input.CharacterEvent
 import net.minecraft.client.input.KeyEvent
 import net.minecraft.client.input.MouseButtonEvent
 import net.minecraft.network.chat.Component
-import org.jetbrains.skia.BackendRenderTarget
-import org.jetbrains.skia.ColorSpace
-import org.jetbrains.skia.DirectContext
-import org.jetbrains.skia.FramebufferFormat
-import org.jetbrains.skia.Surface as SkiaSurface
-import org.jetbrains.skia.SurfaceColorFormat
-import org.jetbrains.skia.SurfaceOrigin
-import org.lwjgl.glfw.GLFW
 
 // Rows subscribe explicitly so registry polling still reaches cached/lazy panels.
 internal val ClickGuiRevision = mutableIntStateOf(0)
 
 /**
- * Compose/Skia ClickGUI rendered independently into GLFW's default framebuffer. Minecraft still
- * owns the Screen lifecycle and input; Compose owns layout and final-frame drawing.
+ * Compose/Skia ClickGUI composited through RenderPearl. Minecraft still owns the Screen lifecycle
+ * and input; Compose owns layout and final-frame drawing.
  */
 @OptIn(InternalComposeUiApi::class)
 class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} ClickGUI")) {
     private var composeScene: ComposeScene? = null
-    private var skiaContext: DirectContext? = null
-    private var renderTarget: BackendRenderTarget? = null
-    private var surface: SkiaSurface? = null
-    private var surfaceWidth = -1
-    private var surfaceHeight = -1
+    private val frameSurface = FinalFrameSurface()
     private var currentScale = 1f
     private var currentUiDensity = 1.4f
+    @Volatile private var sceneDirty = true
 
     private var bindingModuleId by mutableStateOf<String?>(null)
     private var revision by ClickGuiRevision
@@ -120,6 +109,7 @@ class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} Cl
         if (now >= nextRegistrySyncNanos) {
             nextRegistrySyncNanos = now + 50_000_000L
             revision++
+            sceneDirty = true
         }
         val window = Minecraft.getInstance().window
         val frameWidth = window.width
@@ -133,16 +123,16 @@ class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} Cl
         currentUiDensity = (frameHeight / 1080f * 1.4f).coerceIn(1.2f, 2f)
         ensureScene(frameWidth, frameHeight)
 
-        val state = FinalFrameGl.prepare(frameWidth, frameHeight)
-        try {
-            skiaContext?.resetAll()
-            ensureSurface(frameWidth, frameHeight)
-            val scene = composeScene ?: return
-            val targetSurface = surface ?: return
-            scene.render(targetSurface.canvas.asComposeCanvas(), now)
-            targetSurface.flushAndSubmit()
-        } finally {
-            state.restore()
+        val scene = composeScene ?: return
+        // Keep compositing every game frame, but only rasterize/upload when the UI changes.
+        // Compose invalidations include animation frame awaiters, so this adds no frame cap.
+        frameSurface.render(
+            frameWidth,
+            frameHeight,
+            redraw = sceneDirty || scene.hasInvalidations(),
+        ) { canvas ->
+            sceneDirty = false
+            scene.render(canvas.asComposeCanvas(), now)
         }
     }
 
@@ -151,62 +141,28 @@ class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} Cl
             composeScene
                 ?: CanvasLayersComposeScene(
                         density = Density(currentUiDensity),
-                        invalidate = {},
+                        invalidate = { sceneDirty = true },
                     )
                     .also {
                         composeScene = it
                         it.setContent { ClickGuiContent() }
                     }
-        scene.density = Density(currentUiDensity)
-        scene.size = IntSize(frameWidth, frameHeight)
-    }
-
-    private fun ensureSurface(frameWidth: Int, frameHeight: Int) {
-        // The GLFW default framebuffer consumed by Skia is non-multisampled
-        // and has no stencil attachment. Querying either attachment raises
-        // GL_INVALID_ENUM every frame in a restricted core profile.
-        val samples = 0
-        val stencilBits = 0
-        if (surface != null && surfaceWidth == frameWidth && surfaceHeight == frameHeight) return
-        closeSurface()
-        val context = skiaContext ?: DirectContext.makeGL().also { skiaContext = it }
-        val target =
-            BackendRenderTarget.makeGL(
-                    frameWidth,
-                    frameHeight,
-                    samples,
-                    stencilBits,
-                    0,
-                    FramebufferFormat.GR_GL_RGBA8,
-                )
-                .also { renderTarget = it }
-        surface =
-            SkiaSurface.makeFromBackendRenderTarget(
-                context,
-                target,
-                SurfaceOrigin.BOTTOM_LEFT,
-                SurfaceColorFormat.RGBA_8888,
-                ColorSpace.sRGB,
-            )
-        surfaceWidth = frameWidth
-        surfaceHeight = frameHeight
-    }
-
-    private fun closeSurface() {
-        surface?.close()
-        renderTarget?.close()
-        surface = null
-        renderTarget = null
-        surfaceWidth = -1
-        surfaceHeight = -1
+        if (scene.density.density != currentUiDensity) {
+            scene.density = Density(currentUiDensity)
+            sceneDirty = true
+        }
+        val size = scene.size
+        if (size == null || size.width != frameWidth || size.height != frameHeight) {
+            scene.size = IntSize(frameWidth, frameHeight)
+            sceneDirty = true
+        }
     }
 
     fun dispose() {
         composeScene?.close()
         composeScene = null
-        closeSurface()
-        skiaContext?.close()
-        skiaContext = null
+        sceneDirty = true
+        frameSurface.close()
     }
 
     @OptIn(ExperimentalComposeUiApi::class)
@@ -232,6 +188,8 @@ class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} Cl
 
     fun isHudLayoutEditing(): Boolean = hudLayoutEditing
 
+    fun isBindingKey(): Boolean = bindingModuleId != null
+
     private fun composeOffset(x: Double, y: Double) =
         Offset((x * currentScale).toFloat(), (y * currentScale).toFloat())
 
@@ -244,10 +202,10 @@ class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} Cl
             position = position,
             type = PointerType.Mouse,
             nativeEvent =
-                GlfwComposeEvents.mouse(
+                SdlComposeEvents.mouse(
                     position.x.toInt(),
                     position.y.toInt(),
-                    GlfwComposeEvents.modifiers(window),
+                    SdlComposeEvents.modifiers(),
                     0,
                     AwtMouseEvent.MOUSE_MOVED,
                 ),
@@ -265,6 +223,7 @@ class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} Cl
             }
             return true
         }
+        if (ModuleKeybinds.isGuiKey(ModuleKeybinds.fromMouseButton(event.button()))) return true
         if (
             hudLayoutEditing &&
                 hudLayoutController.mouseClicked(event.button(), event.x(), event.y())
@@ -279,12 +238,12 @@ class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} Cl
         composeScene?.sendPointerEvent(
             PointerEventType.Press,
             position = position,
-            button = PointerButton(event.button()),
+            button = SdlComposeEvents.pointerButton(event.button()),
             nativeEvent =
-                GlfwComposeEvents.mouse(
+                SdlComposeEvents.mouse(
                     position.x.toInt(),
                     position.y.toInt(),
-                    GlfwComposeEvents.modifiers(window),
+                    SdlComposeEvents.modifiers(),
                     event.button(),
                     AwtMouseEvent.MOUSE_PRESSED,
                 ),
@@ -310,10 +269,10 @@ class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} Cl
             PointerEventType.Move,
             pointers = listOf(pointer),
             nativeEvent =
-                GlfwComposeEvents.mouse(
+                SdlComposeEvents.mouse(
                     position.x.toInt(),
                     position.y.toInt(),
-                    GlfwComposeEvents.modifiers(window),
+                    SdlComposeEvents.modifiers(),
                     event.button(),
                     AwtMouseEvent.MOUSE_DRAGGED,
                 ),
@@ -334,12 +293,12 @@ class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} Cl
         composeScene?.sendPointerEvent(
             PointerEventType.Release,
             position = position,
-            button = PointerButton(event.button()),
+            button = SdlComposeEvents.pointerButton(event.button()),
             nativeEvent =
-                GlfwComposeEvents.mouse(
+                SdlComposeEvents.mouse(
                     position.x.toInt(),
                     position.y.toInt(),
-                    GlfwComposeEvents.modifiers(window),
+                    SdlComposeEvents.modifiers(),
                     event.button(),
                     AwtMouseEvent.MOUSE_RELEASED,
                 ),
@@ -371,11 +330,11 @@ class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} Cl
                     (-vertical * currentScale).toFloat(),
                 ),
             nativeEvent =
-                GlfwComposeEvents.wheel(
+                SdlComposeEvents.wheel(
                     position.x.toInt(),
                     position.y.toInt(),
                     vertical,
-                    GlfwComposeEvents.modifiers(window),
+                    SdlComposeEvents.modifiers(),
                 ),
         )
         return true
@@ -384,21 +343,21 @@ class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} Cl
     override fun keyPressed(event: KeyEvent): Boolean {
         if (hudLayoutEditing) {
             when (event.key()) {
-                GLFW.GLFW_KEY_ESCAPE -> {
+                InputConstants.KEY_ESCAPE -> {
                     hudLayoutController.mouseReleased()
                     hudPointerCaptured = false
                     hudLayoutEditing = false
                     return true
                 }
-                GLFW.GLFW_KEY_R -> if (hudLayoutController.resetSelected()) return true
+                InputConstants.KEY_R -> if (hudLayoutController.resetSelected()) return true
             }
         }
         bindingModuleId?.let { moduleId ->
             val key = ModuleKeybinds.fromEvent(event)
             when (event.key()) {
-                GLFW.GLFW_KEY_ESCAPE -> bindingModuleId = null
-                GLFW.GLFW_KEY_BACKSPACE,
-                GLFW.GLFW_KEY_DELETE -> {
+                InputConstants.KEY_ESCAPE -> bindingModuleId = null
+                InputConstants.KEY_BACKSPACE,
+                InputConstants.KEY_DELETE -> {
                     ModuleKeybinds.unbind(moduleId)
                     bindingModuleId = null
                     revision++
@@ -412,13 +371,14 @@ class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} Cl
             return true
         }
         val key = ModuleKeybinds.fromEvent(event)
-        if (event.key() == GLFW.GLFW_KEY_ESCAPE || ModuleKeybinds.isGuiKey(key)) {
+        // The independent binding listener owns this key, including when a host hook is absent.
+        if (ModuleKeybinds.isGuiKey(key)) return true
+        if (event.key() == InputConstants.KEY_ESCAPE) {
             onClose()
             return true
         }
         composeScene?.sendKeyEvent(
-            GlfwComposeEvents.key(
-                Minecraft.getInstance().window.handle(),
+            SdlComposeEvents.key(
                 AwtKeyEvent.KEY_PRESSED,
                 event.key(),
             )
@@ -428,8 +388,7 @@ class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} Cl
 
     override fun keyReleased(event: KeyEvent): Boolean {
         composeScene?.sendKeyEvent(
-            GlfwComposeEvents.key(
-                Minecraft.getInstance().window.handle(),
+            SdlComposeEvents.key(
                 AwtKeyEvent.KEY_RELEASED,
                 event.key(),
             )
@@ -439,10 +398,9 @@ class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} Cl
 
     override fun charTyped(event: CharacterEvent): Boolean {
         composeScene?.sendKeyEvent(
-            GlfwComposeEvents.key(
-                Minecraft.getInstance().window.handle(),
+            SdlComposeEvents.key(
                 AwtKeyEvent.KEY_TYPED,
-                GLFW.GLFW_KEY_UNKNOWN,
+                InputConstants.UNKNOWN.value,
                 event.codepoint(),
             )
         )

@@ -2,6 +2,7 @@ package com.blanoir.moons.client.module.impl.render.xray;
 
 import com.blanoir.moons.client.access.GameAccess;
 import com.blanoir.moons.client.access.MinecraftClientAccess;
+import com.blanoir.moons.client.access.PacketAccess;
 import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.config.MoonsConfig;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
@@ -15,7 +16,6 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
-import net.minecraft.network.protocol.game.ServerboundSwingPacket;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.level.Level;
@@ -303,7 +303,7 @@ public final class XrayDestroyPacketMode {
                         pos,
                         Direction.DOWN,
                         0));
-        connectionSnapshot.send(new ServerboundSwingPacket(InteractionHand.MAIN_HAND));
+        connectionSnapshot.send(PacketAccess.swingPacket(InteractionHand.MAIN_HAND));
         packetsSent++;
     }
 

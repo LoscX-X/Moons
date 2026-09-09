@@ -6,19 +6,21 @@ import com.mojang.blaze3d.platform.InputConstants;
 
 import net.minecraft.client.input.KeyEvent;
 
-import org.lwjgl.glfw.GLFW;
-
+import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Central owner for Moons keyboard and mouse bindings.
  *
- * <p>Moons bindings are stored only in its own config and are dispatched from
- * raw press callbacks. They never register, rewrite, or save host
+ * <p>Moons bindings are stored only in its own config. An independent input listener polls
+ * keyboard and mouse state and merges raw callbacks into the same press edges.
+ * Bindings never register, rewrite, or save host
  * {@code KeyMapping}s. Changing a host mapping to
- * {@link InputConstants#UNKNOWN} leaves it with GLFW key {@code -1}, which some
+ * {@link InputConstants#UNKNOWN} leaves it with the platform's unknown key code, which some
  * clients still poll every render frame.</p>
  */
 public final class ModuleKeybinds {
@@ -28,6 +30,8 @@ public final class ModuleKeybinds {
     private static final String ACTION_PREFIX = "keybind.action.";
     private static final String GUI_KEY_CONFIG = "keybind.gui";
     private static final Map<String, Runnable> ACTIONS = new LinkedHashMap<>();
+    private static long boundKeysRevision = Long.MIN_VALUE;
+    private static Set<InputConstants.Key> boundKeysSnapshot = Set.of();
 
     private ModuleKeybinds() {}
 
@@ -47,6 +51,26 @@ public final class ModuleKeybinds {
             return;
         }
         ACTIONS.put(actionId, handler);
+        boundKeysRevision = Long.MIN_VALUE;
+    }
+
+    /** All configured inputs, with the GUI key first and shared keys visited only once. */
+    public static Set<InputConstants.Key> boundKeys() {
+        long revision = Settings.revision();
+        if (revision == boundKeysRevision) return boundKeysSnapshot;
+        Set<InputConstants.Key> keys = new LinkedHashSet<>();
+        keys.add(getGuiKey());
+        for (Module module : ModuleRegistry.modules()) {
+            InputConstants.Key key = getBoundKey(module.id());
+            if (isValid(key)) keys.add(key);
+        }
+        for (String actionId : ACTIONS.keySet()) {
+            InputConstants.Key key = parse(Settings.getString(ACTION_PREFIX + actionId, ""));
+            if (isValid(key)) keys.add(key);
+        }
+        boundKeysSnapshot = Collections.unmodifiableSet(keys);
+        boundKeysRevision = revision;
+        return boundKeysSnapshot;
     }
 
     /** Converts a keyboard callback to a validated binding key. */
@@ -63,7 +87,7 @@ public final class ModuleKeybinds {
 
     /** Converts a raw mouse button to a validated binding key. */
     public static InputConstants.Key fromMouseButton(int button) {
-        if (button < GLFW.GLFW_MOUSE_BUTTON_1 || button > GLFW.GLFW_MOUSE_BUTTON_LAST) {
+        if (button < InputConstants.MOUSE_BUTTON_LEFT || button > InputConstants.MOUSE_BUTTON_8) {
             return InputConstants.UNKNOWN;
         }
         return validOrUnknown(InputConstants.Type.MOUSE.getOrCreate(button));

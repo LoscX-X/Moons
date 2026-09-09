@@ -17,7 +17,6 @@ import net.minecraft.world.entity.MobCategory;
 import net.minecraft.world.entity.animal.squid.GlowSquid;
 import net.minecraft.world.entity.monster.Blaze;
 import net.minecraft.world.entity.monster.Creeper;
-import net.minecraft.world.entity.monster.EnderMan;
 import net.minecraft.world.entity.monster.Ghast;
 import net.minecraft.world.entity.monster.zombie.Zombie;
 import net.minecraft.world.phys.Vec3;
@@ -169,7 +168,7 @@ public final class UhcFinder {
     }
 
     private static float[] colorFor(LivingEntity entity) {
-        if (entity instanceof EnderMan) {
+        if (MinecraftClientAccess.isEnderman(entity)) {
             return rgb(143, 0, 226);
         }
 

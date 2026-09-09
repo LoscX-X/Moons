@@ -3,9 +3,9 @@ package com.blanoir.moons.client.event;
 import com.blanoir.moons.api.ScopedResources;
 import com.blanoir.moons.api.Subscription;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
@@ -17,7 +17,8 @@ public class Event<T> {
     private final String name;
     private final EventThread thread;
     private final Object registrationLock = new Object();
-    private final List<RegisteredListener<T>> listeners = new CopyOnWriteArrayList<>();
+    private final List<RegisteredListener<T>> listeners = new ArrayList<>();
+    private volatile RegisteredListener<?>[] snapshot = new RegisteredListener<?>[0];
 
     public Event() {
         this("unnamed", EventThread.CALLER);
@@ -37,7 +38,7 @@ public class Event<T> {
     }
 
     public int listenerCount() {
-        return listeners.size();
+        return snapshot.length;
     }
 
     public void register(Consumer<T> listener) {
@@ -65,6 +66,7 @@ public class Event<T> {
                 index++;
             }
             listeners.add(index, registration);
+            snapshot = listeners.toArray(new RegisteredListener<?>[0]);
         }
 
         AtomicBoolean closed = new AtomicBoolean();
@@ -75,18 +77,22 @@ public class Event<T> {
                     }
                     synchronized (registrationLock) {
                         listeners.remove(registration);
+                        snapshot = listeners.toArray(new RegisteredListener<?>[0]);
                     }
                 });
     }
 
+    @SuppressWarnings("unchecked")
     public void post(T event) {
-        for (RegisteredListener<T> registration : listeners) {
+        Cancellable cancellable = event instanceof Cancellable value ? value : null;
+        for (RegisteredListener<?> entry : snapshot) {
+            RegisteredListener<T> registration = (RegisteredListener<T>) entry;
             try {
                 registration.listener.accept(event);
             } catch (Throwable failure) {
                 reportFailure(registration.name, failure);
             }
-            if (event instanceof Cancellable cancellable && cancellable.isCancelled()) {
+            if (cancellable != null && cancellable.isCancelled()) {
                 break;
             }
         }

@@ -16,7 +16,7 @@ ext.moonsPluginTypes = [
 
 // Applied scripts share only this immutable configuration and the lazily
 // resolved tools in moonsToolchains. Task providers are obtained by name.
-def supportedVersions = ["26.1.2": "26_1", "26.2": "26_2"].asImmutable()
+def supportedVersions = ["26.1.2": "26_1", "26.2": "26_2", "26.3-pre-3": "26_3"].asImmutable()
 def minecraftVersion = project.minecraft_version.toString()
 def versionDirectory = supportedVersions[minecraftVersion]
 if (versionDirectory == null) {

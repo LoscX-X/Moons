@@ -292,29 +292,38 @@ public final class DefaultRuntimeBridge implements RuntimeBridge {
     }
 
     @Override
+    public boolean isHookActive(String id) {
+        return !closed.get() && events.methodHook().hasListeners(id);
+    }
+
+    @Override
     public void onVoidHook(String id, Object owner, Object argument) {
-        if (!closed.get())
-            events.methodHook().publish(new RuntimeEvents.MethodHook(id, owner, argument, null));
+        if (!closed.get() && events.methodHook().hasListeners(id))
+            events.methodHook()
+                    .publish(id, new RuntimeEvents.MethodHook(id, owner, argument, null));
     }
 
     @Override
     public Object onObjectValue(String id, Object owner, Object argument, Object value) {
+        if (closed.get() || !events.methodHook().hasListeners(id)) return value;
         RuntimeEvents.MethodHook event = new RuntimeEvents.MethodHook(id, owner, argument, value);
-        if (!closed.get()) events.methodHook().publish(event);
+        events.methodHook().publish(id, event);
         return event.value();
     }
 
     @Override
     public boolean onBooleanValue(String id, Object owner, Object argument, boolean value) {
+        if (closed.get() || !events.methodHook().hasListeners(id)) return value;
         RuntimeEvents.MethodHook event = new RuntimeEvents.MethodHook(id, owner, argument, value);
-        if (!closed.get()) events.methodHook().publish(event);
+        events.methodHook().publish(id, event);
         return event.value() instanceof Boolean replacement ? replacement : value;
     }
 
     @Override
     public float onFloatValue(String id, Object owner, float argument, float value) {
+        if (closed.get() || !events.methodHook().hasListeners(id)) return value;
         RuntimeEvents.MethodHook event = new RuntimeEvents.MethodHook(id, owner, argument, value);
-        if (!closed.get()) events.methodHook().publish(event);
+        events.methodHook().publish(id, event);
         return event.value() instanceof Number replacement ? replacement.floatValue() : value;
     }
 

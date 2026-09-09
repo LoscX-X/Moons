@@ -151,11 +151,7 @@ final class RenderRotationController {
 
     static float frameSeconds(BodyRotationState state, long now) {
         float result =
-                (float)
-                        Mth.clamp(
-                                (now - state.lastFrameNanos) / 1_000_000_000.0D,
-                                1.0D / 240.0D,
-                                0.1D);
+                (float) Mth.clamp((now - state.lastFrameNanos) / 1_000_000_000.0D, 0.0D, 0.1D);
         state.lastFrameNanos = now;
         return result;
     }

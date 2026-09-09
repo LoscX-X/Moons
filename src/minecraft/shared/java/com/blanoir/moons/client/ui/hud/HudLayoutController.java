@@ -4,10 +4,9 @@ import com.blanoir.moons.client.config.Settings;
 import com.blanoir.moons.client.ui.layout.Bounds;
 import com.blanoir.moons.client.ui.render.SmoothGui;
 import com.blanoir.moons.client.utils.render.ArgbColors;
+import com.mojang.blaze3d.platform.InputConstants;
 
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-
-import org.lwjgl.glfw.GLFW;
 
 import java.util.List;
 
@@ -63,13 +62,13 @@ public final class HudLayoutController {
     }
 
     public boolean mouseClicked(int button, double x, double y) {
-        if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT && button != GLFW.GLFW_MOUSE_BUTTON_RIGHT)
-            return false;
+        if (button != InputConstants.MOUSE_BUTTON_LEFT
+                && button != InputConstants.MOUSE_BUTTON_RIGHT) return false;
         List<HudEditorRegistry.Target> targets = HudEditorRegistry.targets();
         for (int index = targets.size() - 1; index >= 0; index--) {
             HudEditorRegistry.Target target = targets.get(index);
             Bounds bounds = target.currentBounds();
-            if (button == GLFW.GLFW_MOUSE_BUTTON_RIGHT && bounds.contains(x, y)) {
+            if (button == InputConstants.MOUSE_BUTTON_RIGHT && bounds.contains(x, y)) {
                 beginInteraction();
                 active = target;
                 action = Action.RESIZE;
@@ -82,7 +81,7 @@ public final class HudLayoutController {
                 resizePointerOffsetY = y - bounds.bottom();
                 return true;
             }
-            if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && bounds.contains(x, y)) {
+            if (button == InputConstants.MOUSE_BUTTON_LEFT && bounds.contains(x, y)) {
                 beginInteraction();
                 active = target;
                 action = Action.MOVE;

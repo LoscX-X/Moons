@@ -14,8 +14,10 @@ public final class ModeSetting<T> {
     private final T defaultValue;
     private final Map<String, Option<T>> lookup;
     private final List<Option<T>> options;
+    private final List<String> optionIds;
     private final BooleanSupplier visibleWhen;
     private final BooleanSupplier enabledWhen;
+    private volatile Option<T> current;
 
     private ModeSetting(Builder<T> builder) {
         defaultValue = Objects.requireNonNull(builder.defaultValue, "defaultValue");
@@ -35,37 +37,46 @@ public final class ModeSetting<T> {
             throw new IllegalStateException("Default mode is not a legal option.");
 
         storage = new StringSetting.Builder().name(builder.key).defaultValue(fallback.id()).build();
+        current = option(storage.get());
+        optionIds = options.stream().map(Option::id).toList();
         visibleWhen = builder.visibleWhen;
         enabledWhen = builder.enabledWhen;
     }
 
     public T get() {
-        return option(storage.get()).value();
+        // Mode reads also run inside per-entity and per-quad hooks. Resolve the
+        // serialized string only when the setting changes, never on each read.
+        return current.value();
     }
 
     public String serialized() {
-        return option(storage.get()).id();
+        return current.id();
     }
 
     public void set(T value) {
         Option<T> option = optionForValue(value);
-        storage.set((option == null ? optionForValue(defaultValue) : option).id());
+        select(option == null ? Objects.requireNonNull(optionForValue(defaultValue)) : option);
     }
 
     public void deserialize(String value) {
-        storage.set(option(value).id());
+        select(option(value));
     }
 
     /** Command input rejects unknown values without replacing the current mode. */
     public boolean tryDeserialize(String value) {
         Option<T> found = lookup.get(normalize(value));
         if (found == null) return false;
-        storage.set(found.id());
+        select(found);
         return true;
     }
 
     public List<String> optionIds() {
-        return options.stream().map(Option::id).toList();
+        return optionIds;
+    }
+
+    private void select(Option<T> option) {
+        current = option;
+        storage.set(option.id());
     }
 
     public boolean isVisible() {

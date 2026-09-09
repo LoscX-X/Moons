@@ -166,7 +166,7 @@ public final class TriggerBot {
 
     /**
      * SilentAura input ownership lives here rather than in the aimer. The
-     * physical button remains readable through GLFW while its vanilla mapping
+     * physical button remains readable through the version input adapter while its vanilla mapping
      * is suppressed, so Aura can keep tracking without leaking a camera click.
      */
     private static void prepareSilentAuraInput(Minecraft client) {

@@ -7,17 +7,14 @@ import com.blanoir.moons.api.bridge.RuntimeBridge;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.lang.reflect.InvocationHandler;
-import java.lang.reflect.InvocationTargetException;
+import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Method;
-import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -31,7 +28,8 @@ public final class NativeTransformerBridge {
     private static final String[] GAME_BRIDGE_CLASS_NAMES = {
         "com.blanoir.moons.api.bridge.RuntimeBridge",
         "com.blanoir.moons.api.bridge.NoopRuntimeBridge",
-        "com.blanoir.moons.api.bridge.AgentBridge"
+        "com.blanoir.moons.api.bridge.AgentBridge",
+        RuntimeBridgeAdapter.NAME
     };
 
     private static final MoonsTransformer TRANSFORMER =
@@ -51,7 +49,7 @@ public final class NativeTransformerBridge {
      * <p>A non-delegating game loader may not expose arbitrary application packages
      * to bootstrap, so transformed game classes cannot link the bootstrap copy of
      * AgentBridge. A loader-local facade keeps the bytecode linkage local while a
-     * JDK Proxy forwards calls to the real bootstrap/runtime bridge.</p>
+     * typed MethodHandles forward calls to the real bootstrap/runtime bridge.</p>
      */
     public static String[] gameBridgeClassNames() {
         return GAME_BRIDGE_CLASS_NAMES.clone();
@@ -61,6 +59,10 @@ public final class NativeTransformerBridge {
         byte[][] result = new byte[GAME_BRIDGE_CLASS_NAMES.length][];
         Map<String, Integer> wanted = new HashMap<>();
         for (int index = 0; index < GAME_BRIDGE_CLASS_NAMES.length; index++) {
+            if (GAME_BRIDGE_CLASS_NAMES[index].equals(RuntimeBridgeAdapter.NAME)) {
+                result[index] = RuntimeBridgeAdapter.classBytes();
+                continue;
+            }
             wanted.put(GAME_BRIDGE_CLASS_NAMES[index].replace('.', '/') + ".class", index);
         }
         ClassLoader payloadLoader = NativeTransformerBridge.class.getClassLoader();
@@ -152,50 +154,12 @@ public final class NativeTransformerBridge {
                 || gameRuntimeBridge.getClassLoader() != gameLoader) {
             throw new IllegalStateException("Game bridge was not defined by the game loader");
         }
-        InvocationHandler handler = new RuntimeBridgeInvocationHandler(delegate);
+        Class<?> adapter = Class.forName(RuntimeBridgeAdapter.NAME, true, gameLoader);
         Object proxy =
-                Proxy.newProxyInstance(gameLoader, new Class<?>[] {gameRuntimeBridge}, handler);
+                adapter.getConstructor(MethodHandle[].class)
+                        .newInstance((Object) RuntimeBridgeAdapter.handles(delegate));
         Method install = gameAgentBridge.getMethod("install", gameRuntimeBridge);
         install.invoke(null, proxy);
-    }
-
-    private static final class RuntimeBridgeInvocationHandler implements InvocationHandler {
-        private final RuntimeBridge delegate;
-        private final Map<Method, Method> methods = new ConcurrentHashMap<>();
-
-        private RuntimeBridgeInvocationHandler(RuntimeBridge delegate) {
-            this.delegate = delegate;
-        }
-
-        @Override
-        public Object invoke(Object proxy, Method method, Object[] arguments) throws Throwable {
-            if (method.getDeclaringClass() == Object.class) {
-                return switch (method.getName()) {
-                    case "toString" -> Branding.name() + " game-loader RuntimeBridge proxy";
-                    case "hashCode" -> System.identityHashCode(proxy);
-                    case "equals" -> proxy == arguments[0];
-                    default -> throw new UnsupportedOperationException(method.toString());
-                };
-            }
-            Method target =
-                    methods.computeIfAbsent(
-                            method,
-                            source -> {
-                                try {
-                                    return RuntimeBridge.class.getMethod(
-                                            source.getName(), source.getParameterTypes());
-                                } catch (NoSuchMethodException failure) {
-                                    throw new IllegalStateException(
-                                            "Game bridge API differs from bootstrap API: " + source,
-                                            failure);
-                                }
-                            });
-            try {
-                return target.invoke(delegate, arguments);
-            } catch (InvocationTargetException failure) {
-                throw failure.getCause();
-            }
-        }
     }
 
     private static void verifyBootstrapApi() throws ClassNotFoundException {

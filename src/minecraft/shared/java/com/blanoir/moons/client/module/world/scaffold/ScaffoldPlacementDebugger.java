@@ -1,5 +1,6 @@
 package com.blanoir.moons.client.module.world.scaffold;
 
+import com.blanoir.moons.client.access.PacketAccess;
 import com.blanoir.moons.client.event.network.PacketSendEvent;
 import com.blanoir.moons.client.management.rotation.RotationHistory;
 import com.blanoir.moons.client.utils.math.RandomMath;
@@ -169,7 +170,7 @@ final class ScaffoldPlacementDebugger {
             return;
         }
         if (event.packet() instanceof ServerboundUseItemOnPacket use) {
-            var hit = use.getHitResult();
+            var hit = PacketAccess.useOnHit(use);
             boolean own =
                     attempt != null
                             && attempt.support().equals(hit.getBlockPos())
@@ -182,7 +183,7 @@ final class ScaffoldPlacementDebugger {
             double reach = client.player.blockInteractionRange();
             add(
                     "USE_ON seq="
-                            + use.getSequence()
+                            + PacketAccess.useOnSequence(use)
                             + " id="
                             + (own ? attempt.id() : "external/replayed")
                             + " support="
@@ -216,7 +217,7 @@ final class ScaffoldPlacementDebugger {
             }
             PENDING.addLast(
                     new Use(
-                            use.getSequence(),
+                            PacketAccess.useOnSequence(use),
                             now,
                             eye,
                             sentEye,

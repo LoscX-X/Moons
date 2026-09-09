@@ -1,5 +1,7 @@
 package com.blanoir.moons.client.module.impl.misc.antibot;
 
+import com.blanoir.moons.client.access.PacketAccess;
+
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientboundMoveEntityPacket;
@@ -75,7 +77,7 @@ final class AntiBotState {
                     || !(movement.getEntity(client.level) instanceof Player player)
                     || player == client.player) return;
             TrackedPlayer tracked = track(player);
-            if (movement.isOnGround() && movement.getYa() != 0) {
+            if (movement.isOnGround() && PacketAccess.hasVerticalDelta(movement)) {
                 tracked.invalidGroundVl = Math.min(50, tracked.invalidGroundVl + 1);
             } else if (!movement.isOnGround()) {
                 tracked.invalidGroundVl /= 2;
@@ -83,7 +85,7 @@ final class AntiBotState {
                 tracked.invalidGroundVl = Math.max(0, tracked.invalidGroundVl - 1);
             }
         } else if (packet instanceof ClientboundRemoveEntitiesPacket remove) {
-            remove.getEntityIds().forEach((int id) -> trackedPlayers.remove(id));
+            PacketAccess.removedEntityIds(remove).forEach((int id) -> trackedPlayers.remove(id));
         }
     }
 

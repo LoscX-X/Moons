@@ -3,6 +3,7 @@ package com.blanoir.moons.client.management.rotation;
 import static com.blanoir.moons.client.utils.math.MathUtils.approach;
 
 import com.blanoir.moons.client.access.GameAccess;
+import com.blanoir.moons.client.access.PacketAccess;
 import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.event.network.PacketSendEvent;
 import com.blanoir.moons.client.utils.math.MathUtils;
@@ -96,7 +97,8 @@ public final class SilentPacketRotation {
     private static void recordSentPacket(PacketSendEvent.Post event) {
         if (event.packet() instanceof ServerboundUseItemPacket useItemPacket
                 && USE_LOCK.markInteractionPacket(
-                        useItemPacket.getYRot(), useItemPacket.getXRot())) {
+                        PacketAccess.useItemYaw(useItemPacket),
+                        PacketAccess.useItemPitch(useItemPacket))) {
             return;
         }
         if (event.packet() instanceof ServerboundUseItemOnPacket

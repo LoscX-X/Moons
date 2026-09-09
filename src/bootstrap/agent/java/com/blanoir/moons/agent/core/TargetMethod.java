@@ -7,7 +7,18 @@ record TargetMethod(
         List<String> classNames,
         List<String> methodNames,
         String descriptor,
-        HookKind hook) {
+        HookKind hook,
+        java.util.function.BiFunction<org.objectweb.asm.tree.MethodNode, String, Boolean>
+                installer) {
+    TargetMethod(
+            String id,
+            List<String> classNames,
+            List<String> methodNames,
+            String descriptor,
+            HookKind hook) {
+        this(id, classNames, methodNames, descriptor, hook, null);
+    }
+
     boolean matchesClass(String internalName) {
         return classNames.contains(internalName);
     }
@@ -21,6 +32,7 @@ record TargetMethod(
     }
 
     enum HookKind {
+        VERSION_SPECIFIC,
         CLIENT_TICK,
         FRAME,
         HUD,

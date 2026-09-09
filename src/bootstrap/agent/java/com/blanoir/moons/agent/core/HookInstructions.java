@@ -20,6 +20,18 @@ final class HookInstructions {
 
     private HookInstructions() {}
 
+    /** Both branches preserve the incoming operand stack; callers recompute frames. */
+    static InsnList guardHook(String id, InsnList hook) {
+        LabelNode skipped = new LabelNode();
+        InsnList guarded = new InsnList();
+        guarded.add(new LdcInsnNode(id));
+        guarded.add(call("isHookActive", "(Ljava/lang/String;)Z"));
+        guarded.add(new JumpInsnNode(Opcodes.IFEQ, skipped));
+        guarded.add(hook);
+        guarded.add(skipped);
+        return guarded;
+    }
+
     static void appendVoidCancellation(InsnList hook) {
         LabelNode proceed = new LabelNode();
         hook.add(new JumpInsnNode(Opcodes.IFNE, proceed));

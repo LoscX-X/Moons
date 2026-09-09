@@ -11,7 +11,8 @@ public final class Settings {
     private static final String FILE_NAME = MoonsConfig.MOD_ID + ".properties";
     private static final Properties PROPERTIES = new Properties();
     private static Path configDirectory;
-    private static boolean loaded = false;
+    private static volatile boolean loaded = false;
+    private static volatile long revision;
     private static int deferredSaveDepth;
     private static boolean savePending;
 
@@ -54,19 +55,17 @@ public final class Settings {
     }
 
     public static boolean getBoolean(String key, boolean defaultValue) {
-        load();
+        ensureLoaded();
         String value = PROPERTIES.getProperty(key);
         return value == null ? defaultValue : Boolean.parseBoolean(value);
     }
 
     public static void setBoolean(String key, boolean value) {
-        load();
-        PROPERTIES.setProperty(key, Boolean.toString(value));
-        saveAfterMutation();
+        setProperty(key, Boolean.toString(value));
     }
 
     public static int getInt(String key, int defaultValue) {
-        load();
+        ensureLoaded();
         String value = PROPERTIES.getProperty(key);
         if (value == null) return defaultValue;
         try {
@@ -77,13 +76,11 @@ public final class Settings {
     }
 
     public static void setInt(String key, int value) {
-        load();
-        PROPERTIES.setProperty(key, Integer.toString(value));
-        saveAfterMutation();
+        setProperty(key, Integer.toString(value));
     }
 
     public static double getDouble(String key, double defaultValue) {
-        load();
+        ensureLoaded();
         String value = PROPERTIES.getProperty(key);
         if (value == null) return defaultValue;
         try {
@@ -94,20 +91,33 @@ public final class Settings {
     }
 
     public static void setDouble(String key, double value) {
-        load();
-        PROPERTIES.setProperty(key, Double.toString(value));
-        saveAfterMutation();
+        setProperty(key, Double.toString(value));
     }
 
     public static String getString(String key, String defaultValue) {
-        load();
+        ensureLoaded();
         return PROPERTIES.getProperty(key, defaultValue);
     }
 
+    /** Changes only when an in-memory setting changes, including during a save batch. */
+    public static long revision() {
+        ensureLoaded();
+        return revision;
+    }
+
     public static void setString(String key, String value) {
-        load();
-        PROPERTIES.setProperty(key, value);
-        saveAfterMutation();
+        setProperty(key, value);
+    }
+
+    private static void ensureLoaded() {
+        // Publish initialization once. Hot reads must not wait on the Settings
+        // monitor while a settings mutation writes the properties file.
+        if (!loaded) load();
+    }
+
+    private static void setProperty(String key, String value) {
+        ensureLoaded();
+        if (!value.equals(PROPERTIES.setProperty(key, value))) saveAfterMutation();
     }
 
     public static synchronized void remove(String key) {
@@ -131,6 +141,7 @@ public final class Settings {
     }
 
     private static synchronized void saveAfterMutation() {
+        revision++;
         if (deferredSaveDepth > 0) savePending = true;
         else save();
     }

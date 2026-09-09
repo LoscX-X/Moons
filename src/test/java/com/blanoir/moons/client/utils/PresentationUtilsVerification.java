@@ -17,7 +17,44 @@ import java.util.Locale;
 public final class PresentationUtilsVerification {
     private PresentationUtilsVerification() {}
 
+    private static void verifyClipVisibilityRange() throws Exception {
+        Class<?> type =
+                Class.forName("com.blanoir.moons.client.module.impl.render.Clip$VisibilityRange");
+        var constructor = type.getDeclaredConstructor(int.class, int.class);
+        var contains = type.getDeclaredMethod("contains", double.class, double.class);
+        constructor.setAccessible(true);
+        contains.setAccessible(true);
+        for (int chunkX : new int[] {-1875000, -13, -1, 0, 1, 1875000}) {
+            for (int chunkZ : new int[] {-100, -1, 0, 100}) {
+                Object range = constructor.newInstance(chunkX, chunkZ);
+                for (int offsetX : new int[] {-13, -12, 0, 12, 13}) {
+                    for (int offsetZ : new int[] {-13, -12, 0, 12, 13}) {
+                        for (double fraction : new double[] {-0.001, 0.0, 0.001, 15.999, 16.0}) {
+                            double x = ((long) chunkX + offsetX) * 16.0 + fraction;
+                            double z = ((long) chunkZ + offsetZ) * 16.0 + fraction;
+                            boolean previous =
+                                    Math.abs(
+                                                            net.minecraft.core.SectionPos
+                                                                            .blockToSectionCoord(x)
+                                                                    - chunkX)
+                                                    <= 12
+                                            && Math.abs(
+                                                            net.minecraft.core.SectionPos
+                                                                            .blockToSectionCoord(z)
+                                                                    - chunkZ)
+                                                    <= 12;
+                            require(
+                                    (boolean) contains.invoke(range, x, z) == previous,
+                                    "Clip must preserve its complete 12-chunk visibility square");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     public static void main(String[] args) throws Exception {
+        verifyClipVisibilityRange();
         require(ColorCodec.parseRgbOrArgb("001122") == 0xFF001122, "RGB becomes opaque");
         require(ColorCodec.parseRgbOrArgb("80112233") == 0x80112233, "ARGB retains its alpha");
         expectFailure(NumberFormatException.class, () -> ColorCodec.parseRgbOrArgb("0x112233"));

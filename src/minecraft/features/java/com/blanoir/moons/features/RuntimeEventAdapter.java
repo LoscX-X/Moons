@@ -26,6 +26,7 @@ import com.blanoir.moons.client.event.tick.TickEndEvent;
 import com.blanoir.moons.client.event.tick.TickEvent;
 import com.blanoir.moons.client.event.world.BlockUpdateEvent;
 import com.blanoir.moons.client.management.input.CombatInputController;
+import com.blanoir.moons.client.management.input.KeybindInputListener;
 import com.blanoir.moons.client.management.input.MouseInputTracker;
 import com.blanoir.moons.client.management.rotation.MoveFix;
 import com.blanoir.moons.client.management.rotation.RotationHistory;
@@ -48,6 +49,7 @@ import com.blanoir.moons.client.module.impl.render.xray.OreScanner;
 import com.blanoir.moons.client.module.impl.world.AutoTool;
 import com.blanoir.moons.client.module.impl.world.Scaffold;
 import com.blanoir.moons.client.ui.clickgui.ModuleGui;
+import com.blanoir.moons.client.ui.clickgui.MoonsComposeScreen;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 import com.blanoir.moons.client.utils.time.FrameClock;
 import com.blanoir.moons.runtime.RuntimeEvents;
@@ -78,8 +80,6 @@ import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 
-import org.lwjgl.glfw.GLFW;
-
 import java.util.ArrayDeque;
 import java.util.Collections;
 import java.util.Deque;
@@ -88,10 +88,10 @@ import java.util.WeakHashMap;
 
 /** Converts loader-neutral runtime events to the existing typed feature API. */
 final class RuntimeEventAdapter {
-    private static final double MIN_FRAME_SECONDS = 1.0D / 240.0D;
+    private static final double INITIAL_FRAME_SECONDS = 1.0D / 240.0D;
 
     private final RuntimeEvents runtime;
-    private final FrameClock frameClock = new FrameClock(MIN_FRAME_SECONDS);
+    private final FrameClock frameClock = new FrameClock(INITIAL_FRAME_SECONDS);
     private final Map<Object, MouseCapture> mouseCaptures = weakMap();
     private final Map<Object, PositionCapture> positionCaptures = weakMap();
     private final Map<Object, ActionCapture> actionCaptures = weakMap();
@@ -100,6 +100,7 @@ final class RuntimeEventAdapter {
             ThreadLocal.withInitial(ArrayDeque::new);
     private ClientContextChangedEvent.Snapshot clientContext;
     private volatile DeltaTracker deltaTracker;
+    private final KeybindInputListener bindingInputs = new KeybindInputListener();
 
     RuntimeEventAdapter(RuntimeEvents runtime) {
         this.runtime = runtime;
@@ -125,7 +126,7 @@ final class RuntimeEventAdapter {
         resources.own(runtime.playerPosition().subscribe(this::playerPosition));
         resources.own(runtime.renderState().subscribe(this::renderState));
         resources.own(runtime.rendererClose().subscribe(this::rendererClose));
-        resources.own(runtime.methodHook().subscribe(FeatureHooks::apply));
+        resources.own(runtime.methodHook().subscribe(FeatureHooks::isActive, FeatureHooks::apply));
     }
 
     private void tick(RuntimeEvents.ClientTick event) {
@@ -166,10 +167,21 @@ final class RuntimeEventAdapter {
     }
 
     private void frame(RuntimeEvents.Frame event) {
+        pollBindings();
         WorldRenderDispatch.beginFrame();
         if (event.deltaTracker() instanceof DeltaTracker tracker) deltaTracker = tracker;
-        double deltaSeconds = Math.max(MIN_FRAME_SECONDS, frameClock.nextDeltaSeconds());
+        double deltaSeconds = frameClock.nextDeltaSeconds();
         EventBus.FRAME.post(new FrameEvent(Minecraft.getInstance(), deltaSeconds));
+    }
+
+    private void pollBindings() {
+        Minecraft client = Minecraft.getInstance();
+        Object screen = MinecraftClientAccess.screen(client);
+        bindingInputs.poll(
+                ModuleKeybinds.boundKeys(),
+                client.isWindowActive(),
+                key -> MinecraftClientAccess.isBindingKeyDown(client, key),
+                key -> routeBindingPress(client, key, screen == null));
     }
 
     private void hud(RuntimeEvents.Hud event) {
@@ -195,70 +207,76 @@ final class RuntimeEventAdapter {
     }
 
     private void key(RuntimeEvents.Key event) {
-        if (event.handler() instanceof KeyboardHandler handler
-                && event.event() instanceof KeyEvent keyEvent) {
+        if (!(event.event() instanceof KeyEvent keyEvent)) return;
+        InputConstants.Key key = ModuleKeybinds.fromEvent(keyEvent);
+        if (event.action() == InputConstants.RELEASE) bindingInputs.release(key);
+        if (event.handler() instanceof KeyboardHandler handler) {
             KeyInputEvent input =
                     new KeyInputEvent(handler, event.window(), event.action(), keyEvent);
             EventBus.KEY_INPUT.post(input);
             if (input.isCancelled()) {
+                if (event.action() == InputConstants.PRESS) bindingInputs.suppress(key);
                 event.control().cancel();
                 return;
             }
         }
-        if (event.action() != GLFW.GLFW_PRESS || !(event.event() instanceof KeyEvent keyEvent))
+        if (event.action() != InputConstants.PRESS) {
+            if (event.action() == InputConstants.REPEAT && bindingInputs.consumed(key)) {
+                event.control().cancel();
+            }
             return;
+        }
         Minecraft client = Minecraft.getInstance();
-        if (client.player == null || client.level == null) return;
-        if (MinecraftClientAccess.screen(client) == null) {
+        if (client.player != null
+                && client.level != null
+                && MinecraftClientAccess.screen(client) == null) {
             for (int slot = 0; slot < client.options.keyHotbarSlots.length; slot++) {
                 if (client.options.keyHotbarSlots[slot].matches(keyEvent)
                         && Scaffold.handleHotbarSwap(slot, 0)) {
+                    bindingInputs.suppress(key);
                     event.control().cancel();
                     return;
                 }
             }
         }
-        routeBindingPress(
-                client,
-                ModuleKeybinds.fromEvent(keyEvent),
-                MinecraftClientAccess.screen(client) == null,
-                event.control());
+        if (bindingInputs.press(key, pressed -> routeBindingPress(client, pressed, true))) {
+            event.control().cancel();
+        }
     }
 
     private void mouse(RuntimeEvents.Mouse event) {
-        if (event.handler() instanceof MouseHandler handler
-                && event.button() instanceof MouseButtonInfo button) {
+        if (!(event.button() instanceof MouseButtonInfo button)) return;
+        InputConstants.Key key = ModuleKeybinds.fromMouseButton(button.button());
+        if (event.action() == InputConstants.RELEASE) bindingInputs.release(key);
+        if (event.handler() instanceof MouseHandler handler) {
             MouseButtonEvent input =
                     new MouseButtonEvent(handler, event.window(), button, event.action());
             EventBus.MOUSE_BUTTON.post(input);
             if (input.isCancelled()) {
+                if (event.action() == InputConstants.PRESS) bindingInputs.suppress(key);
                 event.control().cancel();
                 return;
             }
         }
-        if (event.action() != GLFW.GLFW_PRESS
-                || !(event.button() instanceof MouseButtonInfo button)) return;
+        if (event.action() != InputConstants.PRESS) return;
         Minecraft client = Minecraft.getInstance();
-        if (client.player == null || client.level == null) return;
-        routeBindingPress(
-                client,
-                ModuleKeybinds.fromMouseButton(button.button()),
-                MinecraftClientAccess.screen(client) == null,
-                event.control());
+        if (bindingInputs.press(key, pressed -> routeBindingPress(client, pressed, true))) {
+            event.control().cancel();
+        }
     }
 
-    private static void routeBindingPress(
-            Minecraft client,
-            InputConstants.Key key,
-            boolean allowGameplayBindings,
-            RuntimeEvents.Control control) {
-        ModuleKeybinds.Dispatch dispatch = ModuleKeybinds.dispatchPress(key, allowGameplayBindings);
+    private boolean routeBindingPress(
+            Minecraft client, InputConstants.Key key, boolean allowGameplayBindings) {
+        if (!client.isWindowActive() || client.player == null || client.level == null) return false;
+        Object screen = MinecraftClientAccess.screen(client);
+        if (screen != null && (!(screen instanceof MoonsComposeScreen gui) || gui.isBindingKey()))
+            return false;
+        ModuleKeybinds.Dispatch dispatch =
+                ModuleKeybinds.dispatchPress(key, allowGameplayBindings && screen == null);
         if (dispatch == ModuleKeybinds.Dispatch.GUI) {
             ModuleGui.toggle(client);
         }
-        if (dispatch.consumed()) {
-            control.cancel();
-        }
+        return dispatch.consumed();
     }
 
     private void mouseScroll(RuntimeEvents.MouseScroll event) {
@@ -290,17 +308,24 @@ final class RuntimeEventAdapter {
                 EventBus.MOUSE_MOTION_PRE.post(new MouseMotionEvent.Pre(handler));
             }
             if (player != null) {
-                mouseCaptures.put(
-                        event.handler(), new MouseCapture(player.getYRot(), player.getXRot()));
+                MouseCapture capture =
+                        mouseCaptures.computeIfAbsent(
+                                event.handler(), ignored -> new MouseCapture());
+                capture.yaw = player.getYRot();
+                capture.pitch = player.getXRot();
+                capture.active = true;
             }
             return;
         }
-        MouseCapture capture = mouseCaptures.remove(event.handler());
-        if (capture != null && player != null) {
-            MouseInputTracker.recordFrame(
-                    System.nanoTime(),
-                    Mth.wrapDegrees(player.getYRot() - capture.yaw),
-                    player.getXRot() - capture.pitch);
+        MouseCapture capture = mouseCaptures.get(event.handler());
+        if (capture != null && capture.active) {
+            capture.active = false;
+            if (player != null) {
+                MouseInputTracker.recordFrame(
+                        System.nanoTime(),
+                        Mth.wrapDegrees(player.getYRot() - capture.yaw),
+                        player.getXRot() - capture.pitch);
+            }
         }
         if (event.handler() instanceof MouseHandler handler) {
             EventBus.MOUSE_MOTION_POST.post(new MouseMotionEvent.Post(handler));
@@ -473,7 +498,8 @@ final class RuntimeEventAdapter {
         OreScanner.queueBlockUpdate(position);
         EventBus.BLOCK_UPDATE_POST.post(
                 new BlockUpdateEvent.Post(level, position, previous, state, event.applied()));
-        if (stack.isEmpty()) previousBlocks.remove();
+        // Keep the empty deque for the next block update on this thread.
+        // Removing it here recreated both the deque and ThreadLocal entry per block.
     }
 
     private void moveInput(RuntimeEvents.MoveInput event) {
@@ -640,7 +666,8 @@ final class RuntimeEventAdapter {
             renderRotations.apply(avatar, state, event.partialTick());
             Animations.applyThirdPerson(avatar, state);
         }
-        if (event.entity() instanceof Entity entity
+        if (EventBus.ENTITY_RENDER_STATE.listenerCount() != 0
+                && event.entity() instanceof Entity entity
                 && event.state() instanceof EntityRenderState state) {
             EventBus.ENTITY_RENDER_STATE.post(
                     new EntityRenderStateEvent(entity, state, event.partialTick()));
@@ -668,7 +695,11 @@ final class RuntimeEventAdapter {
         return Collections.synchronizedMap(new WeakHashMap<>());
     }
 
-    private record MouseCapture(float yaw, float pitch) {}
+    private static final class MouseCapture {
+        float yaw;
+        float pitch;
+        boolean active;
+    }
 
     private static final class ActionCapture {
         boolean attackActive;

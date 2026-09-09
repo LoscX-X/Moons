@@ -35,7 +35,7 @@ jobs:
           distribution: temurin
           java-version: '25'
       - uses: gradle/actions/setup-gradle@v5
-      - name: Check both supported Minecraft versions
+      - name: Check all supported Minecraft versions
         if: github.event_name != 'workflow_dispatch' || inputs.package != 'ui-runtime'
         shell: pwsh
         run: .\gradlew.bat checkAllVersions --console=plain
@@ -115,7 +115,7 @@ jobs:
           - `moons.exe`: downloads and caches the matching UI runtime from this release.
           - `moons-ui-runtime.jar`: standalone UI dependency, with a SHA-256 sidecar.
 
-          Only assets selected for this run are included. Both launchers support Minecraft 26.1.2 and 26.2.
+          Only assets selected for this run are included. Both launchers support Minecraft 26.1.2, 26.2 and 26.3-pre-3.
           NOTES
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" artifacts/* --repo "$GITHUB_REPOSITORY" --clobber

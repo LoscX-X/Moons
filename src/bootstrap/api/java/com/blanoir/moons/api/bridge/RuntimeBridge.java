@@ -84,6 +84,11 @@ public interface RuntimeBridge {
 
     default void onRendererClose(Object renderer) {}
 
+    /** Allows injection sites to skip constructing arguments for an unused hook. */
+    default boolean isHookActive(String id) {
+        return true;
+    }
+
     default void onVoidHook(String id, Object owner, Object argument) {}
 
     default Object onObjectValue(String id, Object owner, Object argument, Object value) {

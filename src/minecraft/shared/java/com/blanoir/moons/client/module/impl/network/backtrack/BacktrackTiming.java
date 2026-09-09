@@ -1,14 +1,14 @@
 package com.blanoir.moons.client.module.impl.network.backtrack;
 
 /** Ordered deadlines without an additional per-packet pacing delay. */
-public final class BacktrackTiming {
+final class BacktrackTiming {
     private BacktrackTiming() {}
 
-    public static long deadline(long arrivalMs, int delayMs, long previousDeadlineMs) {
+    static long deadline(long arrivalMs, int delayMs, long previousDeadlineMs) {
         return Math.max(arrivalMs + Math.max(0, delayMs), previousDeadlineMs);
     }
 
-    public static boolean due(long nowMs, long releaseAtMs) {
+    static boolean due(long nowMs, long releaseAtMs) {
         return nowMs >= releaseAtMs;
     }
 }

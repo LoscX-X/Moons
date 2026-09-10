@@ -2,11 +2,13 @@ package com.blanoir.moons.client.ui.clickgui
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,7 +22,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -36,12 +37,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -49,7 +49,6 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.blanoir.moons.client.config.ClientBranding
-import com.blanoir.moons.client.config.Settings
 import com.blanoir.moons.client.module.framework.ModuleCategories
 import com.blanoir.moons.client.module.framework.ModuleRegistry
 import java.util.Locale
@@ -93,7 +92,7 @@ internal fun ControlMenu(
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val shape = RoundedCornerShape(8.dp)
+    val shape = PanelStyle.cardShape
     val density = LocalDensity.current
     var menuOffset by remember { mutableStateOf(Offset.Zero) }
     Column(
@@ -130,17 +129,21 @@ internal fun ControlMenu(
             if (settingsOpen) {
                 Box(Modifier.fillMaxSize()) {
                     Box(Modifier.align(Alignment.CenterStart)) {
-                        ControlHeaderButton("‹") { onSelectSection("home") }
+                        ControlHeaderImageButton("back", "Back to modules") {
+                            onSelectSection("home")
+                        }
                     }
                     Text(
                         "Settings",
                         color = PanelStyle.text,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Medium,
-                        modifier = Modifier.align(Alignment.Center).offset(x = (-3).dp),
+                        modifier = Modifier.align(Alignment.Center),
                     )
                     Box(Modifier.align(Alignment.CenterEnd)) {
-                        ControlHeaderButton("×") { onSelectSection("home") }
+                        ControlHeaderImageButton("close", "Close settings") {
+                            onSelectSection("home")
+                        }
                     }
                 }
             } else {
@@ -154,7 +157,7 @@ internal fun ControlMenu(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                ControlHeaderImageButton(guiIcon("settings"), "Settings") {
+                ControlHeaderImageButton("settings", "Settings") {
                     onSelectSection("settings")
                 }
             }
@@ -169,45 +172,11 @@ internal fun ControlMenu(
                 onEditHudLayout = onEditHudLayout,
             )
         } else {
-            BasicTextField(
+            PanelSearch(
                 value = search,
-                onValueChange = onSearchChange,
-                singleLine = true,
-                textStyle =
-                    TextStyle(
-                        color = PanelStyle.text,
-                        fontSize = 8.sp,
-                        lineHeight = 10.sp,
-                        fontFamily = PanelFontFamily,
-                    ),
-                cursorBrush = SolidColor(PanelStyle.accent),
-                modifier = Modifier.fillMaxWidth().height(32.dp).background(PanelStyle.setting),
-                decorationBox = { input ->
-                    Row(
-                        Modifier.fillMaxSize().padding(horizontal = 11.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        SearchIcon(Modifier.size(10.dp).offset(y = 2.dp))
-                        Spacer(Modifier.width(7.dp))
-                        Box(
-                            Modifier.weight(1f).height(18.dp),
-                            contentAlignment = Alignment.CenterStart,
-                        ) {
-                            if (search.isEmpty()) {
-                                Text("Search modules", color = PanelStyle.dim, fontSize = 8.sp)
-                            }
-                            input()
-                        }
-                        if (search.isNotEmpty()) {
-                            Text(
-                                "×",
-                                color = PanelStyle.muted,
-                                fontSize = 11.sp,
-                                modifier = Modifier.clickable { onSearchChange("") }.padding(3.dp),
-                            )
-                        }
-                    }
-                },
+                onChange = onSearchChange,
+                compact = true,
+                modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
             )
 
             Column(Modifier.fillMaxWidth().padding(bottom = 5.dp)) {
@@ -215,7 +184,7 @@ internal fun ControlMenu(
                     ControlMenuRow(
                         label = section.label,
                         selected = section.id in openSections && search.isEmpty(),
-                        icon = remember(section.iconId) { section.iconId?.let(::guiIcon) },
+                        icon = section.iconId,
                         onClick = { onSelectSection(section.id) },
                     )
                 }
@@ -235,13 +204,27 @@ internal fun ControlMenu(
                 label = "All modules",
                 selected = sections.all { it.id in openSections } && search.isEmpty(),
                 trailing = moduleCount.toString(),
-                icon = remember { guiIcon("all_modules") },
+                icon = "modules",
                 onClick = { onSelectSection("all") },
+            )
+            ControlMenuRow(
+                label = "Configs",
+                selected = false,
+                icon = "configs",
+                onClick = {
+                    onBindingModuleChange(null)
+                    com.blanoir.moons.client.config.Settings.setString(
+                        "clickgui.settings.page",
+                        "Configs",
+                    )
+                    ModuleGui.setLayout(null, "settings")
+                    onMutated()
+                },
             )
             ControlMenuRow(
                 label = "Close",
                 selected = false,
-                icon = remember { guiIcon("close") },
+                icon = "close",
                 onClick = onClose,
             )
             Spacer(Modifier.height(5.dp))
@@ -259,16 +242,16 @@ private fun GuiSettings(
 ) {
     val presets =
         listOf(
-            "#b29a65",
+            "#22c55e",
             "#ff4050",
             "#c84cff",
             "#6c7cff",
             "#27b8ff",
             "#22c98b",
-            "#f0b43c",
+            "#a4a6a9",
             "#f06aa6",
         )
-    val savedTheme = Settings.getString(GUI_THEME_KEY, DEFAULT_GUI_THEME)
+    val savedTheme = guiThemeValue()
     val clientModules = remember {
         ModuleRegistry.modules().filter { it.id() in CLIENT_SETTINGS_MODULE_IDS }
     }
@@ -277,6 +260,16 @@ private fun GuiSettings(
     LaunchedEffect(savedTheme) { customTheme = savedTheme }
     Column(Modifier.fillMaxWidth()) {
         SettingsSectionHeader("APPEARANCE")
+        ControlMenuRow(
+            label = "Settings layout",
+            selected = false,
+            trailing = "Open",
+            onClick = {
+                onBindingModuleChange(null)
+                ModuleGui.setLayout(null, "settings")
+                onMutated()
+            },
+        )
         Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 7.dp)) {
             Text("GUI theme", color = PanelStyle.muted, fontSize = 7.5.sp)
             Row(
@@ -291,17 +284,8 @@ private fun GuiSettings(
                             .clip(CircleShape)
                             .background(color)
                             .border(
-                                if (
-                                    Settings.getString(GUI_THEME_KEY, DEFAULT_GUI_THEME)
-                                        .equals(hex, ignoreCase = true)
-                                )
-                                    2.dp
-                                else 1.dp,
-                                if (
-                                    Settings.getString(GUI_THEME_KEY, DEFAULT_GUI_THEME)
-                                        .equals(hex, ignoreCase = true)
-                                )
-                                    PanelStyle.text
+                                if (guiThemeValue().equals(hex, ignoreCase = true)) 2.dp else 1.dp,
+                                if (guiThemeValue().equals(hex, ignoreCase = true)) PanelStyle.text
                                 else PanelStyle.border,
                                 CircleShape,
                             )
@@ -327,8 +311,9 @@ private fun GuiSettings(
                 modifier =
                     Modifier.fillMaxWidth()
                         .height(24.dp)
-                        .clip(RoundedCornerShape(4.dp))
+                        .clip(PanelStyle.controlShape)
                         .background(PanelStyle.field)
+                        .border(1.dp, PanelStyle.border, PanelStyle.controlShape)
                         .padding(horizontal = 7.dp, vertical = 5.dp),
             )
         }
@@ -381,48 +366,27 @@ private fun SettingsSectionHeader(label: String) {
 }
 
 @Composable
-private fun ControlHeaderButton(label: String, onClick: () -> Unit) {
-    Box(
-        Modifier.size(22.dp).clip(CircleShape).clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(label, color = PanelStyle.muted, fontSize = 11.sp)
-    }
-}
-
-@Composable
 private fun ControlHeaderImageButton(
-    icon: ImageBitmap?,
+    icon: String?,
     contentDescription: String,
     onClick: () -> Unit,
 ) {
+    val interaction = remember { MutableInteractionSource() }
+    val hover by interaction.collectIsHoveredAsState()
     Box(
-        Modifier.size(22.dp).clip(CircleShape).clickable(onClick = onClick),
+        Modifier.size(22.dp)
+            .clip(PanelStyle.controlShape)
+            .background(if (hover) PanelStyle.hover else Color.Transparent)
+            .hoverable(interaction)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         if (icon != null) {
-            Image(
-                bitmap = icon,
-                contentDescription = contentDescription,
-                modifier = Modifier.size(15.dp),
-                contentScale = ContentScale.Fit,
-                colorFilter = ColorFilter.tint(PanelStyle.muted),
+            SettingsIcon(
+                icon,
+                Modifier.size(15.dp).semantics { this.contentDescription = contentDescription },
             )
         }
-    }
-}
-
-@Composable
-private fun SearchIcon(modifier: Modifier = Modifier) {
-    val icon = remember { guiIcon("search") }
-    if (icon != null) {
-        Image(
-            bitmap = icon,
-            contentDescription = null,
-            modifier = modifier,
-            contentScale = ContentScale.Fit,
-            colorFilter = ColorFilter.tint(PanelStyle.dim),
-        )
     }
 }
 
@@ -431,29 +395,33 @@ private fun ControlMenuRow(
     label: String,
     selected: Boolean,
     trailing: String = "›",
-    icon: ImageBitmap? = null,
+    icon: String? = null,
     onClick: () -> Unit,
 ) {
+    val interaction = remember { MutableInteractionSource() }
+    val hover by interaction.collectIsHoveredAsState()
     val background by
         animateColorAsState(
-            if (selected) PanelStyle.accentSoft else Color.Transparent,
+            if (selected) PanelStyle.selected
+            else if (hover) PanelStyle.hover else Color.Transparent,
             animationSpec = tween(100),
         )
     Row(
         Modifier.fillMaxWidth()
+            .padding(horizontal = 5.dp, vertical = 2.dp)
             .height(24.dp)
+            .clip(PanelStyle.controlShape)
             .background(background)
-            .clickable(onClick = onClick)
+            .hoverable(interaction)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .padding(horizontal = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon != null) {
-            Image(
-                bitmap = icon,
-                contentDescription = null,
-                modifier = Modifier.size(14.dp),
-                contentScale = ContentScale.Fit,
-                colorFilter = ColorFilter.tint(if (selected) PanelStyle.text else PanelStyle.muted),
+            SettingsIcon(
+                icon,
+                Modifier.size(14.dp),
+                if (selected) PanelStyle.text else PanelStyle.muted,
             )
             Spacer(Modifier.width(11.dp))
         }
@@ -463,6 +431,7 @@ private fun ControlMenuRow(
             fontSize = 9.sp,
             modifier = Modifier.weight(1f),
         )
-        Text(trailing, color = PanelStyle.dim, fontSize = 8.sp)
+        if (trailing == "›") SettingsIcon("chevron", Modifier.size(12.dp), PanelStyle.dim)
+        else Text(trailing, color = PanelStyle.dim, fontSize = 8.sp)
     }
 }

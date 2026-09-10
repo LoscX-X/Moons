@@ -186,5 +186,93 @@ internal object FinalFrameGl {
                 )
             }
         }
+
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (javaClass != other?.javaClass) return false
+
+            other as Snapshot
+
+            if (drawFramebuffer != other.drawFramebuffer) return false
+            if (readFramebuffer != other.readFramebuffer) return false
+            if (program != other.program) return false
+            if (vao != other.vao) return false
+            if (arrayBuffer != other.arrayBuffer) return false
+            if (renderbuffer != other.renderbuffer) return false
+            if (activeTexture != other.activeTexture) return false
+            if (blend != other.blend) return false
+            if (blendSrcRgb != other.blendSrcRgb) return false
+            if (blendDstRgb != other.blendDstRgb) return false
+            if (blendSrcAlpha != other.blendSrcAlpha) return false
+            if (blendDstAlpha != other.blendDstAlpha) return false
+            if (blendEquationRgb != other.blendEquationRgb) return false
+            if (blendEquationAlpha != other.blendEquationAlpha) return false
+            if (depth != other.depth) return false
+            if (depthMask != other.depthMask) return false
+            if (depthFunc != other.depthFunc) return false
+            if (scissor != other.scissor) return false
+            if (cull != other.cull) return false
+            if (polygonOffset != other.polygonOffset) return false
+            if (polygonOffsetFactor != other.polygonOffsetFactor) return false
+            if (polygonOffsetUnits != other.polygonOffsetUnits) return false
+            if (colorLogic != other.colorLogic) return false
+            if (colorLogicOp != other.colorLogicOp) return false
+            if (framebufferSrgb != other.framebufferSrgb) return false
+            if (unpackAlignment != other.unpackAlignment) return false
+            if (unpackBuffer != other.unpackBuffer) return false
+            if (unpackRowLength != other.unpackRowLength) return false
+            if (unpackSkipPixels != other.unpackSkipPixels) return false
+            if (unpackSkipRows != other.unpackSkipRows) return false
+            if (unpackImageHeight != other.unpackImageHeight) return false
+            if (unpackSkipImages != other.unpackSkipImages) return false
+            if (!viewport.contentEquals(other.viewport)) return false
+            if (!textures.contentEquals(other.textures)) return false
+            if (!samplers.contentEquals(other.samplers)) return false
+            if (!scissorBox.contentEquals(other.scissorBox)) return false
+            if (!colorMask.contentEquals(other.colorMask)) return false
+
+            return true
+        }
+
+        override fun hashCode(): Int {
+            var result = drawFramebuffer
+            result = 31 * result + readFramebuffer
+            result = 31 * result + program
+            result = 31 * result + vao
+            result = 31 * result + arrayBuffer
+            result = 31 * result + renderbuffer
+            result = 31 * result + activeTexture
+            result = 31 * result + blend.hashCode()
+            result = 31 * result + blendSrcRgb
+            result = 31 * result + blendDstRgb
+            result = 31 * result + blendSrcAlpha
+            result = 31 * result + blendDstAlpha
+            result = 31 * result + blendEquationRgb
+            result = 31 * result + blendEquationAlpha
+            result = 31 * result + depth.hashCode()
+            result = 31 * result + depthMask.hashCode()
+            result = 31 * result + depthFunc
+            result = 31 * result + scissor.hashCode()
+            result = 31 * result + cull.hashCode()
+            result = 31 * result + polygonOffset.hashCode()
+            result = 31 * result + polygonOffsetFactor.hashCode()
+            result = 31 * result + polygonOffsetUnits.hashCode()
+            result = 31 * result + colorLogic.hashCode()
+            result = 31 * result + colorLogicOp
+            result = 31 * result + framebufferSrgb.hashCode()
+            result = 31 * result + unpackAlignment
+            result = 31 * result + unpackBuffer
+            result = 31 * result + unpackRowLength
+            result = 31 * result + unpackSkipPixels
+            result = 31 * result + unpackSkipRows
+            result = 31 * result + unpackImageHeight
+            result = 31 * result + unpackSkipImages
+            result = 31 * result + viewport.contentHashCode()
+            result = 31 * result + textures.contentHashCode()
+            result = 31 * result + samplers.contentHashCode()
+            result = 31 * result + scissorBox.contentHashCode()
+            result = 31 * result + colorMask.contentHashCode()
+            return result
+        }
     }
 }

@@ -6,6 +6,8 @@ import com.blanoir.moons.client.config.settings.DoubleSetting;
 import com.blanoir.moons.client.config.settings.IntSetting;
 import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.event.tick.TickEvent;
+import com.blanoir.moons.client.management.network.LagPacketPolicy;
+import com.blanoir.moons.client.management.network.LagUtils;
 import com.blanoir.moons.client.management.network.PacketDelayQueue;
 import com.blanoir.moons.client.management.targeting.Targeting;
 import com.blanoir.moons.client.utils.client.ClientReady;
@@ -104,7 +106,8 @@ public final class LowHealthFakeLag {
     private static void tick(TickEvent event) {
         Minecraft client = event.client();
         synchronized (LOCK) {
-            long now = System.currentTimeMillis();
+            PACKETS.observeClient(client);
+            long now = LagUtils.nowMillis();
             if (!ENABLED.get()) {
                 resetAllLocked();
                 return;
@@ -144,21 +147,21 @@ public final class LowHealthFakeLag {
 
     /** @return true when the caller must cancel the original send. */
     public static boolean handleOutgoing(Connection connection, Packet<?> packet) {
-        if (PACKETS.isReplaying() || RandomFakeLag.isReplaying() || FakeLag.isReplaying()) {
+        if (LagUtils.isReplaying()) {
             return false;
         }
 
         synchronized (LOCK) {
-            PACKETS.observe(connection);
+            PACKETS.observe(connection, Minecraft.getInstance().level);
             if (!ENABLED.get() || !queueing) {
                 return false;
             }
 
             Minecraft client = Minecraft.getInstance();
-            long now = System.currentTimeMillis();
+            long now = LagUtils.nowMillis();
             if (!ready(client)
                     || now - cycleStartedAtMs >= cycleDurationMs
-                    || FakeLagPacketPolicy.mustFlushBefore(packet)) {
+                    || LagPacketPolicy.mustFlushBefore(packet)) {
                 finishCycleLocked(now);
                 return false;
             }
@@ -173,19 +176,27 @@ public final class LowHealthFakeLag {
 
     public static void handleIncoming(Packet<?> packet) {
         synchronized (LOCK) {
+            if (LagPacketPolicy.mustDiscardOnIncoming(packet)) PACKETS.discard();
             if (!ENABLED.get() || (!queueing && PACKETS.isEmpty())) {
                 return;
             }
 
             Minecraft client = Minecraft.getInstance();
-            if (FakeLagPacketPolicy.mustFlushOnIncoming(client, packet)) {
-                finishCycleLocked(System.currentTimeMillis());
+            if (LagPacketPolicy.mustFlushOnIncoming(client, packet)) {
+                finishCycleLocked(LagUtils.nowMillis());
             }
         }
     }
 
     public static boolean isReplaying() {
         return PACKETS.isReplaying();
+    }
+
+    public static void discardPending() {
+        synchronized (LOCK) {
+            PACKETS.discard();
+            resetAllLocked();
+        }
     }
 
     public static boolean isActive() {
@@ -216,7 +227,7 @@ public final class LowHealthFakeLag {
     }
 
     private static void flushQueueLocked() {
-        PACKETS.flush();
+        PACKETS.flushClient(Minecraft.getInstance());
     }
 
     private static boolean hasEnemyInActivationRange(Minecraft client) {

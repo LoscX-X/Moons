@@ -23,10 +23,10 @@ public final class SprintReset {
                     .option(Mode.NO_STOP, "no_stop")
                     .option(Mode.LEGIT, "legit")
                     .build();
-    private static final IntSetting INTERVAL_MS = integer("sprintreset.intervalMs", 400, 0, 2000);
+    private static final IntSetting INTERVAL_MS = integer("sprintreset.intervalMs", 400, 2000);
     private static final BooleanSetting REQUIRE_TARGET_DAMAGE =
             bool("sprintreset.requireTargetDamage", true);
-    private static final IntSetting DURATION_MS = integer("sprintreset.durationMs", 50, 0, 200);
+    private static final IntSetting DURATION_MS = integer("sprintreset.durationMs", 50, 200);
 
     private static int pendingTargetId = -1;
     private static int pendingInitialHurtTime;
@@ -45,7 +45,7 @@ public final class SprintReset {
     /** Called immediately before vanilla sends the attack. */
     public static void onAttack(Entity entity) {
         Minecraft client = Minecraft.getInstance();
-        var currentPlayer = client == null ? null : client.player;
+        var currentPlayer = client.player;
         if (!ENABLED.get()
                 || !(entity instanceof LivingEntity target)
                 || currentPlayer == null
@@ -85,7 +85,7 @@ public final class SprintReset {
         if (resetActive && System.currentTimeMillis() >= restoreAtMs) {
             CombatInputController.releaseForward(client, CombatInputController.Owner.SPRINT_RESET);
             CombatInputController.releaseSprint(client, CombatInputController.Owner.SPRINT_RESET);
-            if (resumeSprint && currentPlayer.input != null) currentPlayer.setSprinting(true);
+            if (resumeSprint) currentPlayer.setSprinting(true);
             resetActive = false;
             resumeSprint = false;
         }
@@ -164,7 +164,7 @@ public final class SprintReset {
         return new BooleanSetting.Builder().name(name).defaultValue(value).build();
     }
 
-    private static IntSetting integer(String name, int value, int min, int max) {
-        return new IntSetting.Builder().name(name).defaultValue(value).range(min, max).build();
+    private static IntSetting integer(String name, int value, int max) {
+        return new IntSetting.Builder().name(name).defaultValue(value).range(0, max).build();
     }
 }

@@ -17,7 +17,7 @@ import net.minecraft.util.LightCoordsUtil;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityDimensions;
-import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
@@ -43,7 +43,7 @@ final class BacktrackOverlay {
         renderPosition = null;
     }
 
-    void frame(Player target, Vec3 real, double deltaSeconds) {
+    void frame(LivingEntity target, Vec3 real, double deltaSeconds) {
         if (target == null || config.espMode() == BacktrackConfig.EspMode.NONE) {
             reset();
             return;
@@ -56,7 +56,7 @@ final class BacktrackOverlay {
         renderPosition = renderPosition.add(real.subtract(renderPosition).scale(response));
     }
 
-    void renderEsp(WorldRenderEvent event, Player target, Vec3 real) {
+    void renderEsp(WorldRenderEvent event, LivingEntity target, Vec3 real) {
         if (!visible(target, real)
                 || (config.espMode() != BacktrackConfig.EspMode.BOX
                         && config.espMode() != BacktrackConfig.EspMode.WIREFRAME)) return;
@@ -106,7 +106,7 @@ final class BacktrackOverlay {
             PoseStack poses,
             LevelRenderState levelState,
             SubmitNodeCollector collector,
-            Player target,
+            LivingEntity target,
             Vec3 real) {
         if (config.espMode() != BacktrackConfig.EspMode.MODEL || !visible(target, real)) return;
         Minecraft client = Minecraft.getInstance();
@@ -147,7 +147,7 @@ final class BacktrackOverlay {
                         collector);
     }
 
-    private static boolean visible(Player target, Vec3 real) {
+    private static boolean visible(LivingEntity target, Vec3 real) {
         if (target == null || real.distanceToSqr(target.position()) < 0.0025) return false;
         Minecraft client = Minecraft.getInstance();
         return client != null

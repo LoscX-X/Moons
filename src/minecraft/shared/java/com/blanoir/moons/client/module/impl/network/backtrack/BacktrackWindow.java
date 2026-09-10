@@ -4,39 +4,29 @@ import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayDeque;
 
-/** Attack lifetime, approach grace and teleport rejection, independent of packet/render APIs. */
+/** Approach grace, motion sampling and teleport rejection, independent of packet/render APIs. */
 final class BacktrackWindow {
-    private static final int ATTACK_TICKS = 10;
-    private static final long ATTACK_MILLIS = ATTACK_TICKS * 50L;
     private static final int APPROACH_GRACE_TICKS = 3;
     private static final int MOTION_HISTORY_TICKS = 5;
     private static final double MAX_DISPLACEMENT_SQUARED = 25.0;
     private static final double DISTANCE_EPSILON = 1.0E-4;
 
     private final ArrayDeque<Sample> motion = new ArrayDeque<>();
-    private boolean active;
-    private long attackedAt;
-    private int attackedTick;
     private int resumeTick;
 
-    void attack(long now, int tick) {
-        active = true;
-        attackedAt = now;
-        attackedTick = tick;
+    boolean motionReady(int tick) {
+        return tick >= resumeTick;
     }
 
-    boolean expired(long now, int tick) {
-        return !active || now - attackedAt >= ATTACK_MILLIS || tick - attackedTick >= ATTACK_TICKS;
-    }
-
-    boolean ready(long now, int tick) {
-        return !expired(now, tick) && tick >= resumeTick;
+    double speed() {
+        if (motion.size() < 2) return 0;
+        Sample first = motion.getFirst();
+        Sample last = motion.getLast();
+        int ticks = last.tick() - first.tick();
+        return ticks <= 0 ? 0 : first.position().distanceTo(last.position()) / (ticks * .05);
     }
 
     void reset() {
-        active = false;
-        attackedAt = 0;
-        attackedTick = 0;
         resumeTick = 0;
         motion.clear();
     }

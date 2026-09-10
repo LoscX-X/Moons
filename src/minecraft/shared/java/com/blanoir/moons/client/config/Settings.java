@@ -5,7 +5,9 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.Properties;
+import java.util.TreeMap;
 
 public final class Settings {
     private static final String FILE_NAME = MoonsConfig.MOD_ID + ".properties";
@@ -17,6 +19,31 @@ public final class Settings {
     private static boolean savePending;
 
     private Settings() {}
+
+    /** The active configuration file, shared by the GUI and persistence layer. */
+    public static synchronized Path file() {
+        return configPath();
+    }
+
+    static synchronized Map<String, String> snapshotPrefix(String prefix) {
+        load();
+        Map<String, String> snapshot = new TreeMap<>();
+        for (String key : PROPERTIES.stringPropertyNames()) {
+            if (key.startsWith(prefix)) snapshot.put(key, PROPERTIES.getProperty(key));
+        }
+        return snapshot;
+    }
+
+    static synchronized void replacePrefix(String prefix, Map<String, String> values) {
+        load();
+        if (values.keySet().stream().anyMatch(key -> !key.startsWith(prefix))) {
+            throw new IllegalArgumentException("Unexpected settings prefix");
+        }
+        if (snapshotPrefix(prefix).equals(values)) return;
+        PROPERTIES.keySet().removeIf(key -> key.toString().startsWith(prefix));
+        PROPERTIES.putAll(values);
+        saveAfterMutation();
+    }
 
     /** Configures the host-owned directory before the first settings access. */
     public static synchronized void configure(Path directory) {

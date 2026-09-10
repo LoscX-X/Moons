@@ -76,13 +76,13 @@ public final class PlayerHealthResolver {
         }
         String id = objective.getName();
         String display =
-                objective.getDisplayName() == null ? "" : objective.getDisplayName().getString();
+            objective.getDisplayName().getString();
         return HEALTH_WORD.matcher(id + " " + display).find() || isHoplite(client);
     }
 
     private static boolean isHoplite(Minecraft client) {
         var server = client == null ? null : client.getCurrentServer();
-        if (server == null || server.ip == null) {
+        if (server == null) {
             return false;
         }
         return server.ip.toLowerCase(Locale.ROOT).contains("hoplite");

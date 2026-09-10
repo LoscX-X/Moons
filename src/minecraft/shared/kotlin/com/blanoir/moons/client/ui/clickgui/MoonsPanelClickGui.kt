@@ -19,7 +19,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.blanoir.moons.client.config.Settings
 import com.blanoir.moons.client.module.framework.ModuleCategories
@@ -89,11 +92,20 @@ internal fun MoonsPanelClickGui(
                 surface = PanelStyle.panel,
                 background = Color.Transparent,
                 onSurface = PanelStyle.text,
-                onPrimary = Color(0xFF17130D),
+                onPrimary = Color(0xFFF0F4F1),
             )
     ) {
-        ProvideTextStyle(TextStyle(fontFamily = PanelFontFamily)) {
-            val root = Modifier.fillMaxSize().background(Color(0x66000000))
+        ProvideTextStyle(
+            TextStyle(
+                fontFamily = PanelFontFamily,
+                fontSize = 9.sp,
+                lineHeight = 1.2.em,
+                letterSpacing = 0.sp,
+                lineHeightStyle =
+                    LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.Both),
+            )
+        ) {
+            val root = Modifier.fillMaxSize().background(Color(0x66303436))
             BoxWithConstraints(root) {
                 val logicalWidth = maxWidth.value
                 val logicalHeight = maxHeight.value

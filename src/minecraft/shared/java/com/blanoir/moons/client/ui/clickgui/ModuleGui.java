@@ -1,8 +1,12 @@
 package com.blanoir.moons.client.ui.clickgui;
 
 import com.blanoir.moons.client.access.MinecraftClientAccess;
+import com.blanoir.moons.client.config.Settings;
 
 import net.minecraft.client.Minecraft;
+
+import java.awt.Desktop;
+import java.util.List;
 
 /**
  * In-game entry point for the Compose/Skia module GUI.
@@ -14,6 +18,37 @@ public final class ModuleGui {
     private static MoonsComposeScreen cachedScreen;
 
     private ModuleGui() {}
+
+    public static String layout() {
+        return "panels".equals(Settings.getString("clickgui.layout", "settings"))
+                ? "panels"
+                : "settings";
+    }
+
+    public static List<String> layoutOptions() {
+        return List.of("settings", "panels");
+    }
+
+    public static int setLayout(Minecraft ignoredClient, String layout) {
+        if (!layoutOptions().contains(layout)) return 0;
+        Settings.setString("clickgui.layout", layout);
+        return 1;
+    }
+
+    /** Invoked only by the user's configuration-file button. Returns an inline error, if any. */
+    public static String openConfigurationFile() {
+        try {
+            Settings.save();
+            if (!Desktop.isDesktopSupported()
+                    || !Desktop.getDesktop().isSupported(Desktop.Action.OPEN)) {
+                return "Open this file manually: " + Settings.file();
+            }
+            Desktop.getDesktop().open(Settings.file().toFile());
+            return "";
+        } catch (Exception exception) {
+            return "Could not open " + Settings.file() + ": " + exception.getMessage();
+        }
+    }
 
     public static void open(Minecraft client) {
         if (client.player == null || client.level == null) {

@@ -6,6 +6,8 @@ import com.blanoir.moons.client.config.settings.DoubleSetting;
 import com.blanoir.moons.client.config.settings.IntSetting;
 import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.event.tick.TickEvent;
+import com.blanoir.moons.client.management.network.LagPacketPolicy;
+import com.blanoir.moons.client.management.network.LagUtils;
 import com.blanoir.moons.client.management.network.PacketDelayQueue;
 import com.blanoir.moons.client.management.targeting.Targeting;
 import com.blanoir.moons.client.utils.client.ClientReady;
@@ -94,12 +96,13 @@ public final class RandomFakeLag {
     private static void tick(TickEvent event) {
         Minecraft client = event.client();
         synchronized (LOCK) {
+            PACKETS.observeClient(client);
             if (!ENABLED.get()) {
                 resetAllLocked();
                 return;
             }
 
-            long now = System.currentTimeMillis();
+            long now = LagUtils.nowMillis();
             if (!ready(client)) {
                 finishLocked(now, false);
                 encounterActive = false;
@@ -142,21 +145,21 @@ public final class RandomFakeLag {
 
     /** @return true when the original send must be cancelled. */
     public static boolean handleOutgoing(Connection connection, Packet<?> packet) {
-        if (PACKETS.isReplaying() || LowHealthFakeLag.isReplaying() || FakeLag.isReplaying()) {
+        if (LagUtils.isReplaying()) {
             return false;
         }
 
         synchronized (LOCK) {
-            PACKETS.observe(connection);
+            PACKETS.observe(connection, Minecraft.getInstance().level);
             if (!ENABLED.get() || !queueing) {
                 return false;
             }
 
             Minecraft client = Minecraft.getInstance();
-            long now = System.currentTimeMillis();
+            long now = LagUtils.nowMillis();
             if (!ready(client)
                     || now - startedAtMs >= durationMs
-                    || FakeLagPacketPolicy.mustFlushBefore(packet)) {
+                    || LagPacketPolicy.mustFlushBefore(packet)) {
                 finishLocked(now, true);
                 return false;
             }
@@ -171,11 +174,12 @@ public final class RandomFakeLag {
 
     public static void handleIncoming(Packet<?> packet) {
         synchronized (LOCK) {
+            if (LagPacketPolicy.mustDiscardOnIncoming(packet)) PACKETS.discard();
             if (!ENABLED.get() || (!queueing && PACKETS.isEmpty())) {
                 return;
             }
-            if (FakeLagPacketPolicy.mustFlushOnIncoming(Minecraft.getInstance(), packet)) {
-                finishLocked(System.currentTimeMillis(), true);
+            if (LagPacketPolicy.mustFlushOnIncoming(Minecraft.getInstance(), packet)) {
+                finishLocked(LagUtils.nowMillis(), true);
             }
         }
     }
@@ -188,6 +192,13 @@ public final class RandomFakeLag {
 
     public static boolean isReplaying() {
         return PACKETS.isReplaying();
+    }
+
+    public static void discardPending() {
+        synchronized (LOCK) {
+            PACKETS.discard();
+            resetAllLocked();
+        }
     }
 
     private static void startLocked(Player target, long now) {
@@ -210,14 +221,14 @@ public final class RandomFakeLag {
     }
 
     private static void resetAllLocked() {
-        finishLocked(System.currentTimeMillis(), false);
+        finishLocked(LagUtils.nowMillis(), false);
         encounterActive = false;
         encounterMissTicks = 0;
         cooldownUntilMs = 0L;
     }
 
     private static void flushQueueLocked() {
-        PACKETS.flush();
+        PACKETS.flushClient(Minecraft.getInstance());
     }
 
     private static Player findHeadOnTarget(Minecraft client) {

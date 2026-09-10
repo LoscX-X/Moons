@@ -7,6 +7,7 @@
 - 多个版本共用的逻辑放在 `src/minecraft/shared`；Minecraft API 和注入位置的差异放在 `src/minecraft/versions` 对应目录。
 - `src/bootstrap` 是独立加载层，不依赖 Minecraft 或客户端功能类。
 - 涉及静默旋转、物品栏或模拟输入时，使用已有的协调入口，避免多个模块互相覆盖状态。
+- 涉及 Blink、出站延迟或入站缓冲时，复用 [Blink / LagUtils 公共接口](NETWORK_DEVELOPMENT.md)，统一处理回放与连接生命周期。
 - 重构与功能调整尽量分开，方便判断行为变化。
 
 提交前可用仓库自带的格式化任务统一风格：

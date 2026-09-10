@@ -72,7 +72,7 @@ object ClickGuiWarmup {
         try {
             Surface.makeRasterN32Premul(960, 640).use { surface ->
                 scene.setContent {
-                    MoonsPanelClickGui(null, {}, {}, {}, {}, modulesOverride = modules)
+                    MoonsClickGui(null, {}, {}, {}, {}, modulesOverride = modules)
                 }
                 repeat(3) { frame ->
                     if (cancelled) return

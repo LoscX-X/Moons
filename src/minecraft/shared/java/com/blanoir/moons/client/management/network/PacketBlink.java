@@ -2,9 +2,8 @@ package com.blanoir.moons.client.management.network;
 
 import net.minecraft.network.protocol.Packet;
 
-import java.util.ArrayDeque;
-import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Predicate;
 
 /**
  * Thread-safe packet-object buffer. Packets are retained by identity and
@@ -12,26 +11,18 @@ import java.util.List;
  * objects instead of reconstructing equivalent packets later.
  */
 public final class PacketBlink {
-    private final int capacity;
-    private final ArrayDeque<Packet<?>> packets = new ArrayDeque<>();
+    private final LagUtils<Packet<?>> packets;
 
     public PacketBlink(int capacity) {
-        if (capacity < 1) {
-            throw new IllegalArgumentException("capacity must be positive");
-        }
-        this.capacity = capacity;
+        packets = new LagUtils<>(capacity);
     }
 
     public synchronized boolean offer(Packet<?> packet) {
-        if (packet == null || packets.size() >= capacity) {
-            return false;
-        }
-        packets.addLast(packet);
-        return true;
+        return packets.offer(packet);
     }
 
     public synchronized boolean hasCapacity() {
-        return packets.size() < capacity;
+        return packets.hasCapacity();
     }
 
     public synchronized boolean isEmpty() {
@@ -43,9 +34,24 @@ public final class PacketBlink {
     }
 
     public synchronized List<Packet<?>> drain() {
-        List<Packet<?>> drained = new ArrayList<>(packets);
-        packets.clear();
-        return drained;
+        return packets.drain();
+    }
+
+    public synchronized List<Packet<?>> drain(int count) {
+        return packets.drain(count);
+    }
+
+    /** Release n movement packets without reordering actions between them. */
+    public synchronized List<Packet<?>> drainThrough(int count, Predicate<Packet<?>> matches) {
+        return packets.drainThrough(count, matches);
+    }
+
+    public synchronized List<Packet<?>> snapshot() {
+        return packets.snapshot();
+    }
+
+    public synchronized long ageMillis() {
+        return packets.age(LagUtils.nowMillis());
     }
 
     public synchronized void clear() {

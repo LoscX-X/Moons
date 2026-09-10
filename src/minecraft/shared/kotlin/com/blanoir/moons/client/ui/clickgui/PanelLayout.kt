@@ -7,11 +7,11 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,18 +23,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -65,8 +61,7 @@ internal fun CategoryPanel(
     onMutated: () -> Unit,
 ) {
     val density = LocalDensity.current
-    val shape = RoundedCornerShape(6.dp)
-    val categoryIcon = remember(category) { categoryIconId(category)?.let(::guiIcon) }
+    val shape = PanelStyle.cardShape
     Column(
         Modifier.offset {
                 IntOffset(
@@ -81,7 +76,7 @@ internal fun CategoryPanel(
             .background(PanelStyle.panel)
             .border(
                 1.dp,
-                if (active) PanelStyle.accent.copy(alpha = 0.45f) else PanelStyle.border,
+                if (active) PanelStyle.muted else PanelStyle.border,
                 shape,
             )
     ) {
@@ -105,16 +100,8 @@ internal fun CategoryPanel(
                 .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (categoryIcon != null) {
-                Image(
-                    bitmap = categoryIcon,
-                    contentDescription = null,
-                    modifier = Modifier.size(11.dp),
-                    contentScale = ContentScale.Fit,
-                    colorFilter = ColorFilter.tint(PanelStyle.muted),
-                )
-                Spacer(Modifier.width(5.dp))
-            }
+            SettingsIcon(categoryIconId(category) ?: "modules", Modifier.size(13.dp))
+            Spacer(Modifier.width(6.dp))
             Text(
                 category,
                 color = PanelStyle.text,
@@ -137,7 +124,10 @@ internal fun CategoryPanel(
                 shrinkVertically(animationSpec = tween(180, easing = FastOutSlowInEasing)) +
                     fadeOut(animationSpec = tween(120)),
         ) {
-            LazyColumn(Modifier.fillMaxWidth().heightIn(max = maxBodyHeight)) {
+            LazyColumn(
+                Modifier.fillMaxWidth().heightIn(max = maxBodyHeight),
+                contentPadding = PaddingValues(top = 3.dp, bottom = 8.dp),
+            ) {
                 if (modules.isEmpty()) {
                     item {
                         Text(

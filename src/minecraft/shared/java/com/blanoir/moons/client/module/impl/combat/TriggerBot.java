@@ -422,7 +422,7 @@ public final class TriggerBot {
                         : Critical.withoutSilentAuraCritical(
                                 () ->
                                         CombatInputController.attackTargetNow(
-                                                client, target, forceTargetOverride));
+                                                client, target, true));
         if (!attacked) {
             return new AutomaticAttackResult(false, "attack dispatch");
         }
@@ -514,7 +514,7 @@ public final class TriggerBot {
         if (parsedRange == null) {
             ClientChat.send(
                     client,
-                    "Invalid TriggerBot range. Use .moons triggerbot x-x, where each x is between 0.7 and 1.3, for example .moons triggerbot 0.7-1.3.");
+                    "Invalid TriggerBot range. Use .moons Triggerbot x-x, where each x is between 0.7 and 1.3, for example .moons triggerbot 0.7-1.3.");
             return 0;
         }
         MIN_CHARGE.set(parsedRange.min());

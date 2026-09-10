@@ -405,7 +405,7 @@ class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} Cl
             }
             return
         }
-        MoonsPanelClickGui(
+        MoonsClickGui(
             bindingModuleId = bindingModuleId,
             onBindingModuleChange = { bindingModuleId = it },
             onMutated = { revision++ },
@@ -425,7 +425,7 @@ class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} Cl
                     .padding(top = 10.dp)
                     .shadow(14.dp, RoundedCornerShape(7.dp))
                     .clip(RoundedCornerShape(7.dp))
-                    .background(Color(0xF2141415))
+                    .background(PanelStyle.panel)
                     .height(32.dp)
                     .padding(start = 11.dp, end = 5.dp),
                 verticalAlignment = Alignment.CenterVertically,

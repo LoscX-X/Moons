@@ -34,6 +34,7 @@ public final class ClientCommands {
             case "moons" -> handleMoons(tail);
             case "team" -> handleTeam(tail);
             case "bind" -> BindCommand.handle(tail);
+            case "config" -> ConfigCommand.handle(tail);
             case "unload" -> unload();
             case "xray" -> XrayCommand.handle(tail);
             case "web" -> WebCommand.handle(tail);

@@ -10,6 +10,9 @@ tasks.named("test", Test) {
 // Add client verification programs here. Each entry is registered and attached
 // to check together, so a new task cannot silently miss the default lifecycle.
 def clientVerifications = [
+        verifyConfigProfiles: [
+                mainClass: "com.blanoir.moons.client.config.ConfigProfilesVerification",
+                description: "Verifies local config creation, saving, live loading, rollback and validation."],
         verifyInputBindings: [
                 mainClass: "com.blanoir.moons.features.command.InputBindingVerification",
                 description: "Verifies independent keyboard, mouse, action and GUI bindings."],
@@ -37,9 +40,15 @@ def clientVerifications = [
         verifyBacktrack: [
                 mainClass: "com.blanoir.moons.client.module.impl.network.backtrack.BacktrackVerification",
                 description: "Verifies Backtrack attack windows, ordered replay, compact settings and ESP colors."],
+        verifyNetworkLag: [
+                mainClass: "com.blanoir.moons.client.management.network.NetworkLagVerification",
+                description: "Verifies Blink/lag FIFO, timed release, replay guards and connection isolation."],
         verifyClickGuiWarmup: [
                 mainClass: "com.blanoir.moons.client.ui.clickgui.ClickGuiWarmupVerification",
                 description: "Renders ClickGUI on a worker CPU canvas without a game instance or config writes."],
+        verifySettingsClickGui: [
+                mainClass: "com.blanoir.moons.client.ui.clickgui.SettingsClickGuiVerification",
+                description: "Renders both ClickGUI layouts and verifies search, settings, toggles and navigation."],
         verifyClientEvents: [
                 mainClass: "com.blanoir.moons.client.event.ClientEventVerification",
                 description: "Verifies client listener ownership and first-release mode settings."],
@@ -84,6 +93,11 @@ tasks.named("verifyAdvancedAntiBot", JavaExec) {
 
 tasks.named("verifyClickGuiWarmup", JavaExec) {
     systemProperty "java.awt.headless", "true"
+}
+
+tasks.named("verifySettingsClickGui", JavaExec) {
+    systemProperty "java.awt.headless", "true"
+    systemProperty "moons.gui.previewDir", layout.buildDirectory.dir("gui-preview").get().asFile.absolutePath
 }
 
 def featureMetadataFile = layout.buildDirectory.file(

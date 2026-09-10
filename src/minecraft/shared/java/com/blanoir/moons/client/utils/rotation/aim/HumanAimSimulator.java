@@ -60,9 +60,9 @@ public final class HumanAimSimulator {
             float previousStep,
             double acceleration,
             double constantError,
-            float deadzone,
+            float deadZone,
             float maxStep) {
-        if (Math.abs(demand) <= deadzone && Math.abs(previousStep) <= deadzone * 3.0F) {
+        if (Math.abs(demand) <= deadZone && Math.abs(previousStep) <= deadZone * 3.0F) {
             return 0.0F;
         }
 

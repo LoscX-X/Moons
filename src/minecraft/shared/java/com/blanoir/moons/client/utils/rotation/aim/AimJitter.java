@@ -38,7 +38,7 @@ public final class AimJitter {
         double amount = Mth.clamp(strength, 0.0D, 1.0D);
         if (amount <= 0.0D || box == null) return base;
 
-        // Inset must vanish with strength too. Otherwise 0 -> epsilon snaps a
+        // Inset must vanish with strength too. Otherwise, 0 -> epsilon snaps a
         // surface point inward by 0.1 blocks even though the noise is tiny.
         double insetX = Math.min(box.getXsize() * 0.18D, 0.10D) * amount;
         double insetY = Math.min(box.getYsize() * 0.15D, 0.20D) * amount;

@@ -113,6 +113,24 @@ public final class Backtrack {
         return CONFIG.delayMillis();
     }
 
+    public static int minDelayMillis() {
+        return CONFIG.minDelayMillis();
+    }
+
+    public static String targetModeName() {
+        return CONFIG.targetModeName();
+    }
+
+    public static List<String> targetModeOptions() {
+        return CONFIG.targetModeOptions();
+    }
+
+    public static int setTargetMode(Minecraft client, String value) {
+        if (!CONFIG.targetModeOptions().contains(value)) return 0;
+        RUNTIME.release();
+        return CONFIG.setTargetMode(client, value);
+    }
+
     public static double maxRange() {
         return CONFIG.maxRange();
     }

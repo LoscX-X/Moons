@@ -7,6 +7,8 @@ import com.blanoir.moons.client.config.settings.IntSetting;
 import com.blanoir.moons.client.config.settings.ModeSetting;
 import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.event.tick.TickEvent;
+import com.blanoir.moons.client.management.network.LagPacketPolicy;
+import com.blanoir.moons.client.management.network.LagUtils;
 import com.blanoir.moons.client.management.network.PacketDelayQueue;
 import com.blanoir.moons.client.utils.client.ClientReady;
 import com.blanoir.moons.client.utils.math.RandomMath;
@@ -17,10 +19,7 @@ import net.minecraft.network.protocol.Packet;
 
 import java.util.List;
 
-/**
- * Standalone constant outgoing FakeLag. Unlike the health and encounter modes,
- * this mode runs continuously and has its own queue, timing and configuration.
- */
+/** FakeLag mode selection and constant-mode trigger; buffering is shared with Blink/lag. */
 public final class FakeLag {
     private static final int MAX_DELAY_MS = 5000;
     private static final int MAX_RECOIL_MS = 2000;
@@ -109,7 +108,8 @@ public final class FakeLag {
     private static void tick(TickEvent event) {
         Minecraft client = event.client();
         synchronized (LOCK) {
-            long now = System.currentTimeMillis();
+            PACKETS.observeClient(client);
+            long now = LagUtils.nowMillis();
             if (!constantActive() || !ready(client)) {
                 stopLocked(now, false);
                 return;
@@ -132,36 +132,36 @@ public final class FakeLag {
 
     /** @return true when the original send must be cancelled. */
     public static boolean handleOutgoing(Connection connection, Packet<?> packet) {
-        if (isAnyFakeLagReplaying()) {
+        if (LagUtils.isReplaying()) {
             return false;
         }
 
         synchronized (LOCK) {
-            PACKETS.observe(connection);
+            PACKETS.observe(connection, Minecraft.getInstance().level);
             if (!constantActive() || !queueing) {
                 return false;
             }
 
-            long now = System.currentTimeMillis();
+            long now = LagUtils.nowMillis();
             if (!ready(Minecraft.getInstance())
                     || now - startedAtMs >= durationMs
                     || PACKETS.isFull()
-                    || FakeLagPacketPolicy.mustFlushBefore(packet)) {
+                    || LagPacketPolicy.mustFlushBefore(packet)) {
                 stopLocked(now, true);
                 return false;
             }
 
-            PACKETS.offer(packet);
-            return true;
+            return PACKETS.offer(packet);
         }
     }
 
     public static void handleIncoming(Packet<?> packet) {
         synchronized (LOCK) {
+            if (LagPacketPolicy.mustDiscardOnIncoming(packet)) PACKETS.discard();
             if (constantActive()
                     && (queueing || !PACKETS.isEmpty())
-                    && FakeLagPacketPolicy.mustFlushOnIncoming(Minecraft.getInstance(), packet)) {
-                stopLocked(System.currentTimeMillis(), true);
+                    && LagPacketPolicy.mustFlushOnIncoming(Minecraft.getInstance(), packet)) {
+                stopLocked(LagUtils.nowMillis(), true);
             }
         }
     }
@@ -184,8 +184,14 @@ public final class FakeLag {
         return PACKETS.isReplaying();
     }
 
-    private static boolean isAnyFakeLagReplaying() {
-        return isReplaying() || LowHealthFakeLag.isReplaying() || RandomFakeLag.isReplaying();
+    /** Unload discards pending packets without modifying persisted mode settings. */
+    public static void discardPending() {
+        synchronized (LOCK) {
+            PACKETS.discard();
+            stopLocked(LagUtils.nowMillis(), false);
+        }
+        LowHealthFakeLag.discardPending();
+        RandomFakeLag.discardPending();
     }
 
     private static void stopLocked(long now, boolean recoil) {
@@ -197,7 +203,7 @@ public final class FakeLag {
     }
 
     private static void flushLocked() {
-        PACKETS.flush();
+        PACKETS.flushClient(Minecraft.getInstance());
     }
 
     private static boolean ready(Minecraft client) {
@@ -220,7 +226,7 @@ public final class FakeLag {
         synchronized (LOCK) {
             DELAY_MIN.set(Math.min(min, max));
             DELAY_MAX.set(Math.max(min, max));
-            stopLocked(System.currentTimeMillis(), false);
+            stopLocked(LagUtils.nowMillis(), false);
         }
         return 1;
     }
@@ -256,7 +262,7 @@ public final class FakeLag {
         String selected = MODE.serialized();
         synchronized (LOCK) {
             CONSTANT_ENABLED.set(enabled && "constant".equals(selected));
-            stopLocked(System.currentTimeMillis(), false);
+            stopLocked(LagUtils.nowMillis(), false);
         }
         ClientChat.withoutNoticesOnCurrentThread(
                 () -> {

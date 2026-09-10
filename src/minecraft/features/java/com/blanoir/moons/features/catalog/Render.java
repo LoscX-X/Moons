@@ -20,7 +20,14 @@ final class Render {
                 "Render",
                 ModuleGui::isOpen,
                 ModuleGui::setEnabled,
-                () -> "");
+                ModuleGui::layout,
+                choice(
+                        "layout",
+                        "Layout",
+                        "clickgui.layout",
+                        "settings",
+                        ModuleGui.layoutOptions(),
+                        ModuleGui::setLayout));
     }
 
     static ModuleRegistry.Module blockAnimation() {

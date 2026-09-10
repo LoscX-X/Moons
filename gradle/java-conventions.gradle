@@ -102,6 +102,11 @@ tasks.named("compileClientKotlin", moonsPluginTypes.kotlinCompile) {
     source(sourceSets.client.java)
 }
 
+// UI verification exercises internal composables from the split client compilation.
+tasks.named("compileTestKotlin", moonsPluginTypes.kotlinCompile) {
+    friendPaths.from(sourceSets.client.output.classesDirs)
+}
+
 dependencies {
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
 

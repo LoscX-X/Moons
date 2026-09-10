@@ -40,11 +40,7 @@ public final class AntiBot {
 
     public static boolean isBot(Entity entity) {
         Minecraft client = Minecraft.getInstance();
-        if (!isEnabled()
-                || client == null
-                || client.player == null
-                || entity == client.player
-                || !(entity instanceof Player player)) return false;
+        if (!isEnabled() || client.player == null || entity == client.player || !(entity instanceof Player player)) return false;
         return STATE.isBot(client, player);
     }
 

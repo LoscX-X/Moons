@@ -12,6 +12,7 @@ import com.blanoir.moons.client.utils.math.RandomMath;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.phys.Vec3;
+import org.jspecify.annotations.NonNull;
 
 import java.util.List;
 import java.util.Set;
@@ -214,6 +215,11 @@ public final class Velocity {
         allowNext = true;
         Vec3 current = playerSnapshot.movement();
         double horizontal = EXPLOSION_HORIZONTAL.get();
+        Vec3 transformed = getTransformed(knockback, horizontal, current);
+        return transformed.equals(knockback) ? null : transformed;
+    }
+
+    private static @NonNull Vec3 getTransformed(Vec3 knockback, double horizontal, Vec3 current) {
         double vertical = EXPLOSION_VERTICAL.get();
         double desiredX =
                 horizontal > 0.0D ? (current.x + knockback.x) * horizontal / 100.0D : current.x;
@@ -221,9 +227,7 @@ public final class Velocity {
                 vertical > 0.0D ? (current.y + knockback.y) * vertical / 100.0D : current.y;
         double desiredZ =
                 horizontal > 0.0D ? (current.z + knockback.z) * horizontal / 100.0D : current.z;
-        Vec3 transformed =
-                new Vec3(desiredX - current.x, desiredY - current.y, desiredZ - current.z);
-        return transformed.equals(knockback) ? null : transformed;
+        return new Vec3(desiredX - current.x, desiredY - current.y, desiredZ - current.z);
     }
 
     private static synchronized void snapshot(Minecraft client) {

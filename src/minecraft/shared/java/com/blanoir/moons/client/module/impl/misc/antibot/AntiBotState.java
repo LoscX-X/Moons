@@ -85,7 +85,7 @@ final class AntiBotState {
                 tracked.invalidGroundVl = Math.max(0, tracked.invalidGroundVl - 1);
             }
         } else if (packet instanceof ClientboundRemoveEntitiesPacket remove) {
-            PacketAccess.removedEntityIds(remove).forEach((int id) -> trackedPlayers.remove(id));
+            PacketAccess.removedEntityIds(remove).forEach(trackedPlayers::remove);
         }
     }
 

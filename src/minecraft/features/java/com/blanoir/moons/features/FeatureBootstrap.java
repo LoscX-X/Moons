@@ -139,6 +139,7 @@ final class FeatureBootstrap {
     }
 
     static void shutdown() {
+        FakeLag.discardPending();
         RotationHistory.reset();
         Minecraft client = Minecraft.getInstance();
         if (MinecraftClientAccess.screen(client) instanceof MoonsComposeScreen) {

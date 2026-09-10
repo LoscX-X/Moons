@@ -38,9 +38,6 @@ public final class RotationUtils {
 
     public static float quantizeMouseStep(float lastSent, float desired) {
         Minecraft client = Minecraft.getInstance();
-        if (client == null || client.options == null) {
-            return desired;
-        }
         return quantizeMouseStep(lastSent, desired, client.options.sensitivity().get());
     }
 

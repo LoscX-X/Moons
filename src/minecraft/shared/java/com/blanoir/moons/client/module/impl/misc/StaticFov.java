@@ -6,7 +6,7 @@ import com.blanoir.moons.client.config.settings.DoubleSetting;
 
 import net.minecraft.client.Minecraft;
 
-/** Keeps the rendered world FOV independent from sprinting, items and status effects. */
+/** Keeps the rendered world FOV independent of sprinting, items and status effects. */
 public final class StaticFov {
     private static final BooleanSetting ENABLED =
             new BooleanSetting.Builder().name("staticfov.enabled").defaultValue(false).build();

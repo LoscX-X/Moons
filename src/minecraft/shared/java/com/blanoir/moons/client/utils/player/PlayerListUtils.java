@@ -54,7 +54,7 @@ public final class PlayerListUtils {
         var connectionSnapshot = client == null ? null : client.getConnection();
         if (client == null || connectionSnapshot == null || player == null) return true;
         PlayerInfo info = connectionSnapshot.getPlayerInfo(player.getUUID());
-        return info == null || info.getGameMode() == null;
+        return info == null;
     }
 
     private static Collection<PlayerInfo> onlinePlayers(Minecraft client) {

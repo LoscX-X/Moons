@@ -11,7 +11,7 @@ import net.minecraft.client.Minecraft;
 
 import java.util.List;
 
-/** Only user-facing choices live here. Combat policy and rendering defaults are internal. */
+/** The compact editor exposes core controls; saved advanced policy remains active. */
 public final class BacktrackConfig {
     private final BooleanSetting enabled =
             new BooleanSetting.Builder().name("backtrack.enabled").defaultValue(false).build();
@@ -19,8 +19,16 @@ public final class BacktrackConfig {
     private final IntSetting delay =
             new IntSetting.Builder()
                     .name("backtrack.delay.max")
-                    .defaultValue(200)
+                    .defaultValue(150)
                     .range(0, 1000)
+                    .build();
+    private final ModeSetting<TargetMode> targetMode =
+            new ModeSetting.Builder<TargetMode>()
+                    .name("backtrack.targetMode")
+                    .defaultValue(TargetMode.ATTACK)
+                    .option(TargetMode.ATTACK, "attack")
+                    .option(TargetMode.RANGE, "range")
+                    .option(TargetMode.INTENT, "intent")
                     .build();
     private final DoubleSetting range =
             new DoubleSetting.Builder()
@@ -50,6 +58,75 @@ public final class BacktrackConfig {
         return delay.get();
     }
 
+    public int minDelayMillis() {
+        return Math.clamp(Settings.getInt("backtrack.delay.min", 100), 0, delayMillis());
+    }
+
+    public double minRange() {
+        return Math.clamp(Settings.getDouble("backtrack.range.min", 1.0), 0.0, maxRange());
+    }
+
+    public String targetModeName() {
+        return targetMode.serialized();
+    }
+
+    public List<String> targetModeOptions() {
+        return targetMode.optionIds();
+    }
+
+    TargetMode targetMode() {
+        return targetMode.get();
+    }
+
+    int lastAttackMillis() {
+        return Math.clamp(Settings.getInt("backtrack.lastAttackTimeToWork", 1000), 0, 5000);
+    }
+
+    int trackingBufferMillis() {
+        return Math.clamp(Settings.getInt("backtrack.trackingBuffer", 500), 0, 2000);
+    }
+
+    double chance() {
+        return Math.clamp(Settings.getDouble("backtrack.chance", 100), 0, 100);
+    }
+
+    int nextDelayMin() {
+        return Math.clamp(Settings.getInt("backtrack.nextBacktrackDelay.min", 0), 0, 2000);
+    }
+
+    int nextDelayMax() {
+        return Math.clamp(
+                Settings.getInt("backtrack.nextBacktrackDelay.max", 10), nextDelayMin(), 2000);
+    }
+
+    boolean pauseOnHurt() {
+        return Settings.getBoolean("backtrack.pauseOnHurtTime.enabled", false);
+    }
+
+    int hurtTime() {
+        return Math.clamp(Settings.getInt("backtrack.pauseOnHurtTime.hurtTime", 3), 0, 10);
+    }
+
+    int queueLimit() {
+        return Math.clamp(Settings.getInt("backtrack.maxQueueSize", 256), 32, 1024);
+    }
+
+    double speedFactor() {
+        return Math.clamp(Settings.getDouble("backtrack.speedFactor", 8), 0, 30);
+    }
+
+    double pingRatio() {
+        return Math.clamp(Settings.getDouble("backtrack.pingRatio", 0), 0, 3);
+    }
+
+    boolean actionBar() {
+        return Settings.getBoolean("backtrack.actionbar", false);
+    }
+
+    public int setTargetMode(Minecraft client, String value) {
+        return targetMode.tryDeserialize(value) ? 1 : 0;
+    }
+
     public double maxRange() {
         double value = range.get();
         return Double.isFinite(value) ? value : 6.0;
@@ -64,24 +141,28 @@ public final class BacktrackConfig {
     }
 
     public int setDelay(Minecraft client, String raw) {
-        Integer value;
+        int low;
+        int high;
         try {
-            value = Integer.valueOf(raw == null ? "" : raw.trim());
+            String[] values = (raw == null ? "" : raw.trim()).split("-", -1);
+            if (values.length < 1 || values.length > 2) return 0;
+            low = Integer.parseInt(values[0].trim());
+            high = values.length == 1 ? low : Integer.parseInt(values[1].trim());
         } catch (NumberFormatException exception) {
-            value = null;
+            return 0;
         }
-        if (value == null || value < 0 || value > 1000) {
+        if (low < 0 || high > 1000 || low > high) {
             ClientChat.send(client, "Invalid Backtrack delay. Use 0-1000 ms.");
             return 0;
         }
         Settings.beginBatch();
         try {
-            delay.set(value);
-            removeLegacyTuning();
+            delay.set(high);
+            Settings.setInt("backtrack.delay.min", low);
         } finally {
             Settings.endBatch();
         }
-        ClientChat.send(client, "Backtrack delay set to " + value + " ms.");
+        ClientChat.send(client, "Backtrack delay set to " + low + "–" + high + " ms.");
         return 1;
     }
 
@@ -99,7 +180,6 @@ public final class BacktrackConfig {
         Settings.beginBatch();
         try {
             range.set(value);
-            removeLegacyTuning();
         } finally {
             Settings.endBatch();
         }
@@ -116,24 +196,13 @@ public final class BacktrackConfig {
         return 1;
     }
 
-    private static void removeLegacyTuning() {
-        for (String key :
-                List.of(
-                        "range.min",
-                        "delay.min",
-                        "nextBacktrackDelay.min",
-                        "nextBacktrackDelay.max",
-                        "trackingBuffer",
-                        "chance",
-                        "targetMode",
-                        "pauseOnHurtTime.enabled",
-                        "pauseOnHurtTime.hurtTime",
-                        "lastAttackTimeToWork",
-                        "maxQueueSize",
-                        "speedFactor",
-                        "pingRatio",
-                        "actionbar")) {
-            Settings.remove("backtrack." + key);
+    enum TargetMode {
+        ATTACK,
+        RANGE,
+        INTENT;
+
+        boolean acceptsAttackAge(long elapsed, int duration) {
+            return this == INTENT || elapsed >= 0 && elapsed <= duration;
         }
     }
 

@@ -1,10 +1,11 @@
 package com.blanoir.moons.client.module.impl.network.backtrack;
 
 import com.blanoir.moons.client.access.PacketAccess;
+import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.event.frame.FrameEvent;
 import com.blanoir.moons.client.event.frame.WorldRenderEvent;
 import com.blanoir.moons.client.management.network.TrackedEntityPosition;
-import com.blanoir.moons.client.management.targeting.Targeting;
+import com.blanoir.moons.client.utils.math.RandomMath;
 import com.mojang.blaze3d.vertex.PoseStack;
 
 import net.minecraft.client.Minecraft;
@@ -26,18 +27,24 @@ import net.minecraft.network.protocol.game.ClientboundRespawnPacket;
 import net.minecraft.network.protocol.game.ClientboundSetHealthPacket;
 import net.minecraft.network.protocol.game.ClientboundTeleportEntityPacket;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.phys.Vec3;
 
-/** Owns one attacked player and its movement history. All mutable state stays on the client thread. */
+/** Owns the selected target and history for Attack, Range and Intent modes on the client thread. */
 public final class BacktrackRuntime {
     private final BacktrackConfig config;
     private final TrackedEntityPosition position = new TrackedEntityPosition();
-    private final BacktrackPacketQueue<Snapshot> packets = new BacktrackPacketQueue<>();
+    private final BacktrackPacketQueue<Snapshot> packets = new BacktrackPacketQueue<>(1024);
     private final BacktrackWindow window = new BacktrackWindow();
     private final BacktrackOverlay overlay;
-    private Player target;
+    private LivingEntity target;
     private int tick;
+    private long attackedAt = -1;
+    private long blockedUntil;
+    private long lastInRange;
+    private int baseDelay;
+    private int currentDelay;
+    private boolean armed;
 
     public BacktrackRuntime(BacktrackConfig config) {
         this.config = config;
@@ -62,19 +69,43 @@ public final class BacktrackRuntime {
 
     public void attack(Minecraft client, Entity entity) {
         if (!config.enabled()) return;
-        if (!inGame(client) || !eligible(client, entity) || config.delayMillis() == 0) {
+        if (!inGame(client)
+                || !BacktrackTargets.eligible(client, entity)
+                || config.delayMillis() == 0) {
             release();
             return;
         }
-        if (entity != target) {
+        attackedAt = nowMillis();
+        if (config.targetMode() != BacktrackConfig.TargetMode.ATTACK) return;
+        select(client, (LivingEntity) entity);
+    }
+
+    private void select(Minecraft client, LivingEntity entity) {
+        if (entity == null) {
             release();
-            if (distanceSquared(client, entity, entity.position()) > maxRangeSquared()) return;
-            target = (Player) entity;
+            return;
+        }
+        long now = nowMillis();
+        if (now < blockedUntil) return;
+        double distance = distanceSquared(client, entity, entity.position());
+        if (distance < config.minRange() * config.minRange() || distance > maxRangeSquared())
+            return;
+        if (entity != target) {
+            if (!RandomMath.chancePercent(config.chance())) {
+                release();
+                blockedUntil = now + RandomMath.betweenInclusive(100, 150);
+                return;
+            }
+            packets.releaseAll(this::replay);
+            resetTarget();
+            target = entity;
             position.setBaseFrom(target);
             window.seed(position.base(), tick);
+            baseDelay = RandomMath.betweenInclusive(config.minDelayMillis(), config.delayMillis());
+            currentDelay = dynamicDelay(client);
+            armed = true;
         }
-        // Consecutive attacks extend intent without resampling or postponing queued deadlines.
-        window.attack(nowMillis(), tick);
+        lastInRange = now;
     }
 
     private boolean receive(Minecraft client, Packet<?> packet) {
@@ -105,14 +136,16 @@ public final class BacktrackRuntime {
             release();
             return false;
         }
-        if (decision == BacktrackWindow.Decision.RELEASE || !window.ready(now, tick)) {
+        if (decision == BacktrackWindow.Decision.RELEASE || !window.motionReady(tick)) {
+            if (!window.motionReady(tick)) armed = false;
             packets.releaseAll(this::replay);
             return false;
         }
-        if (!packets.offer(
-                new Snapshot(packet, client.getConnection(), client.level),
-                now,
-                config.delayMillis())) {
+        if (packets.size() >= config.queueLimit()
+                || !packets.offer(
+                        new Snapshot(packet, client.getConnection(), client.level),
+                        now,
+                        currentDelay)) {
             release();
             return false;
         }
@@ -122,7 +155,16 @@ public final class BacktrackRuntime {
     public void tick(Minecraft client) {
         if (!config.enabled()) return;
         tick++;
+        if (!inGame(client)) {
+            discard();
+            return;
+        }
+        if (config.targetMode() != BacktrackConfig.TargetMode.ATTACK)
+            select(client, BacktrackTargets.find(client, config));
+        if (target != null) currentDelay += Math.clamp(dynamicDelay(client) - currentDelay, -4, 4);
         advance(client);
+        if (config.actionBar() && tick % 4 == 0)
+            ClientChat.actionBar(client, "Backtrack " + hudStats());
     }
 
     public void frame(FrameEvent event) {
@@ -133,7 +175,12 @@ public final class BacktrackRuntime {
 
     private void advance(Minecraft client) {
         if (!validate(client)) return;
-        if (!window.ready(nowMillis(), tick)
+        if (window.motionReady(tick) && !armed) {
+            baseDelay = RandomMath.betweenInclusive(config.minDelayMillis(), config.delayMillis());
+            currentDelay = dynamicDelay(client);
+            armed = true;
+        }
+        if (!window.motionReady(tick)
                 || !BacktrackWindow.useful(
                         distanceSquared(client, target, position.base()),
                         distanceSquared(client, target, target.position()))) {
@@ -154,9 +201,21 @@ public final class BacktrackRuntime {
             discard();
             return false;
         }
-        if (!eligible(client, target)
+        long now = nowMillis();
+        double visibleDistance = distanceSquared(client, target, target.position());
+        boolean inRange =
+                visibleDistance >= config.minRange() * config.minRange()
+                        && visibleDistance <= maxRangeSquared();
+        if (inRange) lastInRange = now;
+        if (!BacktrackTargets.eligible(client, target)
+                || client.player.tickCount <= 10
                 || config.delayMillis() == 0
-                || window.expired(nowMillis(), tick)
+                || !config.targetMode()
+                        .acceptsAttackAge(
+                                attackedAt < 0 ? -1 : now - attackedAt, config.lastAttackMillis())
+                || visibleDistance < config.minRange() * config.minRange()
+                || !inRange && now - lastInRange > config.trackingBufferMillis()
+                || config.pauseOnHurt() && target.hurtTime >= config.hurtTime()
                 || distanceSquared(client, target, position.base()) > maxRangeSquared()) {
             release();
             return false;
@@ -166,16 +225,24 @@ public final class BacktrackRuntime {
 
     public void release() {
         packets.releaseAll(this::replay);
+        if (target != null)
+            blockedUntil =
+                    nowMillis()
+                            + RandomMath.betweenInclusive(
+                                    config.nextDelayMin(), config.nextDelayMax());
         resetTarget();
     }
 
     public void discard() {
         packets.clear();
         resetTarget();
+        attackedAt = -1;
+        blockedUntil = 0;
     }
 
     private void resetTarget() {
         target = null;
+        armed = false;
         position.base(Vec3.ZERO);
         window.reset();
         overlay.reset();
@@ -186,7 +253,26 @@ public final class BacktrackRuntime {
     }
 
     public String hudStats() {
-        return packets.isEmpty() ? "Ready" : packets.age(nowMillis()) + "ms";
+        return config.minDelayMillis() + "–" + config.delayMillis() + " ms";
+    }
+
+    private int dynamicDelay(Minecraft client) {
+        int maximum = config.delayMillis();
+        if (config.pingRatio() > 0 && client.getConnection() != null) {
+            var info = client.getConnection().getPlayerInfo(client.player.getUUID());
+            if (info != null && info.getLatency() > 0)
+                maximum =
+                        Math.clamp(
+                                (int) Math.round(info.getLatency() * config.pingRatio()),
+                                config.minDelayMillis(),
+                                maximum);
+        }
+        return (int)
+                Math.round(
+                        Math.clamp(
+                                baseDelay + window.speed() * config.speedFactor(),
+                                config.minDelayMillis(),
+                                maximum));
     }
 
     public void renderEsp(WorldRenderEvent event) {
@@ -198,7 +284,7 @@ public final class BacktrackRuntime {
         overlay.renderModel(poses, state, collector, visibleTarget(), position.base());
     }
 
-    private Player visibleTarget() {
+    private LivingEntity visibleTarget() {
         return config.enabled() && target != null && target.isAlive() && !packets.isEmpty()
                 ? target
                 : null;
@@ -239,15 +325,6 @@ public final class BacktrackRuntime {
                 || packet instanceof ClientboundDisconnectPacket
                 || packet instanceof ClientboundRespawnPacket
                 || (packet instanceof ClientboundSetHealthPacket health && health.getHealth() <= 0);
-    }
-
-    private static boolean eligible(Minecraft client, Entity entity) {
-        return entity instanceof Player player
-                && player.isAlive()
-                && !player.isSleeping()
-                && client.player.tickCount > 10
-                && !player.hasPassenger(client.player)
-                && Targeting.isEnemyPlayer(client, player);
     }
 
     private static boolean inGame(Minecraft client) {

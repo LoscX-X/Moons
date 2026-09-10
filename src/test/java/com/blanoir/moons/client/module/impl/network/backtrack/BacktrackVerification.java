@@ -19,14 +19,52 @@ public final class BacktrackVerification {
         verifyQueue();
         verifyWindow();
         verifyVisuals();
+        verifyProfilesAndCompactCatalog();
         System.out.println("BACKTRACK_VERIFIED");
+    }
+
+    private static void verifyProfilesAndCompactCatalog() throws Exception {
+        var entry =
+                Class.forName("com.blanoir.moons.features.catalog.Network")
+                        .getDeclaredMethod("backtrack");
+        entry.setAccessible(true);
+        var descriptor =
+                (com.blanoir.moons.client.module.framework.ModuleRegistry.Module)
+                        entry.invoke(null);
+        com.blanoir.moons.client.module.framework.ModuleRegistry.installCatalog(
+                () -> com.blanoir.moons.client.module.framework.ModuleRegistry.add(descriptor));
+        require(
+                descriptor.settings().stream()
+                        .filter(setting -> setting.isVisible() && !setting.id().equals("hide"))
+                        .map(com.blanoir.moons.client.module.framework.ModuleRegistry.Setting::id)
+                        .toList()
+                        .equals(List.of("target_mode", "delay", "range", "esp")),
+                "Compact GUI preserves modes with only four core controls");
+        com.blanoir.moons.client.module.impl.network.Backtrack.setTargetMode(null, "range");
+        com.blanoir.moons.client.module.impl.network.Backtrack.setDelay(null, "125-225");
+        Settings.setDouble("backtrack.chance", 75);
+        com.blanoir.moons.client.config.ConfigProfiles.create("Backtrack preset");
+        com.blanoir.moons.client.module.impl.network.Backtrack.setTargetMode(null, "intent");
+        com.blanoir.moons.client.module.impl.network.Backtrack.setDelay(null, "400-600");
+        Settings.setDouble("backtrack.chance", 20);
+        com.blanoir.moons.client.config.ConfigProfiles.load("Backtrack preset");
+        require(
+                com.blanoir.moons.client.module.impl.network.Backtrack.targetModeName()
+                                .equals("range")
+                        && com.blanoir.moons.client.module.impl.network.Backtrack.hudStats()
+                                .equals("125–225 ms")
+                        && Settings.getDouble("backtrack.chance", 0) == 75,
+                "Config load updates the real Backtrack mode cache, interval and hidden policy");
     }
 
     private static void verifyConfiguration() {
         BacktrackConfig defaults = new BacktrackConfig();
         require(
-                !defaults.enabled() && defaults.delayMillis() == 200 && defaults.maxRange() == 6,
-                "Fresh configuration uses a 200 ms window and six-block limit");
+                !defaults.enabled()
+                        && defaults.minDelayMillis() == 100
+                        && defaults.delayMillis() == 150
+                        && defaults.maxRange() == 6,
+                "Fresh configuration retains the original 100–150 ms interval and six-block limit");
         Settings.setInt("backtrack.delay.min", 100);
         Settings.setInt("backtrack.delay.max", 150);
         Settings.setDouble("backtrack.range.max", 5.5);
@@ -41,14 +79,32 @@ public final class BacktrackVerification {
                 saved.setDelay(null, "175") == 1 && saved.delayMillis() == 175,
                 "Single delay can be changed");
         require(
-                Settings.getString("backtrack.targetMode", "missing").equals("missing")
-                        && Settings.getString("backtrack.chance", "missing").equals("missing")
-                        && Settings.getString("backtrack.maxQueueSize", "missing")
-                                .equals("missing"),
-                "Editing tuning removes obsolete controls from saved configuration");
+                saved.targetModeName().equals("range")
+                        && Settings.getDouble("backtrack.chance", -1) == 0
+                        && Settings.getInt("backtrack.maxQueueSize", -1) == 0,
+                "Compact controls must preserve mode and hidden policy values");
         require(
-                saved.setDelay(null, "100-200") == 0 && saved.delayMillis() == 175,
-                "A removed range syntax cannot silently truncate a delay");
+                saved.setDelay(null, "100-200") == 1
+                        && saved.minDelayMillis() == 100
+                        && saved.delayMillis() == 200,
+                "Original interval syntax restores both endpoints");
+        require(
+                saved.targetModeOptions().equals(List.of("attack", "range", "intent")),
+                "All original target modes remain available");
+        require(
+                saved.setTargetMode(null, "intent") == 1
+                        && saved.setTargetMode(null, "invalid") == 0
+                        && saved.targetModeName().equals("intent"),
+                "Invalid modes cannot replace the selected mode");
+        require(
+                BacktrackConfig.TargetMode.INTENT.acceptsAttackAge(-1, 1000)
+                        && !BacktrackConfig.TargetMode.ATTACK.acceptsAttackAge(-1, 1000)
+                        && BacktrackConfig.TargetMode.RANGE.acceptsAttackAge(999, 1000)
+                        && !BacktrackConfig.TargetMode.RANGE.acceptsAttackAge(1001, 1000),
+                "Intent works from aim; Attack and Range require recent combat intent");
+        require(
+                new BacktrackRuntime(saved).hudStats().equals("100–200 ms"),
+                "HUD displays configured millisecond endpoints");
         require(
                 saved.setDelay(null, "NaN") == 0 && saved.setDelay(null, "1001") == 0,
                 "Invalid delay is rejected without changing it");
@@ -117,14 +173,8 @@ public final class BacktrackVerification {
 
     private static void verifyWindow() {
         BacktrackWindow window = new BacktrackWindow();
-        require(window.expired(1000, 0), "Tracking needs an actual attack");
-        window.attack(1000, 0);
         window.seed(Vec3.ZERO, 0);
-        require(window.ready(1499, 9), "Attack remains active inside both limits");
-        require(window.expired(1500, 9), "Wall time bounds tracking between ticks");
-        require(window.expired(1499, 10), "Tick lifetime also bounds tracking");
-        window.attack(1400, 8);
-        require(window.ready(1500, 10), "Repeated attacks extend intent");
+        require(window.motionReady(0), "Motion tracking can start independently of target mode");
         require(
                 window.observe(Vec3.ZERO, new Vec3(0.2, 0, 0), 10, 4, 5, 3)
                         == BacktrackWindow.Decision.HOLD,
@@ -133,14 +183,12 @@ public final class BacktrackVerification {
                 window.observe(new Vec3(0.2, 0, 0), new Vec3(0.1, 0, 0), 11, 5, 4, 3)
                         == BacktrackWindow.Decision.RELEASE,
                 "Approaching movement releases even if it is still beyond the visible player");
-        window.attack(1550, 11);
         require(
-                !window.ready(1600, 12) && window.ready(1700, 14),
-                "A new attack on the same player does not cancel approach grace");
+                !window.motionReady(12) && window.motionReady(14),
+                "Approach grace applies across target modes");
 
         BacktrackPacketQueue<Integer> queue = new BacktrackPacketQueue<>();
         queue.offer(1, 1550, 200);
-        window.attack(1700, 14);
         List<Integer> replayed = new ArrayList<>();
         queue.releaseDue(1750, replayed::add);
         require(replayed.equals(List.of(1)), "Repeated attacks never postpone queued deadlines");
@@ -149,8 +197,7 @@ public final class BacktrackVerification {
                         == BacktrackWindow.Decision.RESET,
                 "A teleport rejects stale history");
         window.reset();
-        require(window.expired(1700, 14), "Reset requires a new attack");
-        window.attack(2000, 20);
+        require(window.motionReady(14), "Reset clears the previous target's approach grace");
         window.seed(Vec3.ZERO, 20);
         require(
                 window.observe(Vec3.ZERO, new Vec3(3, 0, 0), 21, 0, 9, 0)
@@ -161,7 +208,6 @@ public final class BacktrackVerification {
                         == BacktrackWindow.Decision.RESET,
                 "Several fast moves also reject a large jump");
         window.reset();
-        window.attack(3000, 30);
         window.seed(new Vec3(100, 0, 0), 30);
         require(
                 window.observe(new Vec3(100, 0, 0), new Vec3(100.2, 0, 0), 31, 4, 5, 3)
@@ -241,7 +287,13 @@ public final class BacktrackVerification {
         runtime.discard();
         config.setEnabled(false);
         require(
-                !runtime.isLagging() && runtime.hudStats().equals("Ready"),
+                !runtime.isLagging()
+                        && runtime.hudStats()
+                                .equals(
+                                        config.minDelayMillis()
+                                                + "–"
+                                                + config.delayMillis()
+                                                + " ms"),
                 "Disable/context reset work without a game or target");
     }
 

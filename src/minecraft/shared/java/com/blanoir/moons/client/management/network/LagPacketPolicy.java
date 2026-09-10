@@ -1,4 +1,4 @@
-package com.blanoir.moons.client.module.impl.network;
+package com.blanoir.moons.client.management.network;
 
 import com.blanoir.moons.client.access.PacketAccess;
 
@@ -26,11 +26,11 @@ import net.minecraft.network.protocol.game.ServerboundUseItemOnPacket;
 import net.minecraft.network.protocol.game.ServerboundUseItemPacket;
 import net.minecraft.world.phys.Vec3;
 
-/** Shared safety boundary for every outgoing-packet FakeLag mode. */
-final class FakeLagPacketPolicy {
-    private FakeLagPacketPolicy() {}
+/** Shared action and world-transition boundaries for outgoing Blink/FakeLag consumers. */
+public final class LagPacketPolicy {
+    private LagPacketPolicy() {}
 
-    static boolean mustFlushBefore(Packet<?> packet) {
+    public static boolean mustFlushBefore(Packet<?> packet) {
         return packet instanceof ServerboundAttackPacket
                 || packet instanceof ServerboundInteractPacket
                 || PacketAccess.isSwingPacket(packet)
@@ -47,7 +47,14 @@ final class FakeLagPacketPolicy {
                 || packet instanceof ServerboundResourcePackPacket;
     }
 
-    static boolean mustFlushOnIncoming(Minecraft client, Packet<?> packet) {
+    /** Discard before resetting a mode: old-world actions must not be replayed after a transition. */
+    public static boolean mustDiscardOnIncoming(Packet<?> packet) {
+        return packet instanceof ClientboundRespawnPacket
+                || packet instanceof ClientboundLoginPacket
+                || packet instanceof ClientboundDisconnectPacket;
+    }
+
+    public static boolean mustFlushOnIncoming(Minecraft client, Packet<?> packet) {
         var currentPlayer = client == null ? null : client.player;
         if (packet instanceof ClientboundPlayerPositionPacket
                 || packet instanceof ClientboundSetHealthPacket

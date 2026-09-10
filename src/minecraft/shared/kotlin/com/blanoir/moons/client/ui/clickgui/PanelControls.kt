@@ -15,6 +15,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,7 +36,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
@@ -78,6 +80,15 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 
 /** Module rows and setting controls. */
+private fun settingLabel(setting: Setting): String =
+    when (setting.name()) {
+        "Track time (ms)" -> "Time (ms)"
+        "Max track range" -> "Max range"
+        "Require target damage" -> "Confirm hit"
+        "Interval ms" -> "Interval (ms)"
+        else -> setting.name()
+    }
+
 @Composable
 internal fun CollapseButton(collapsed: Boolean, onClick: () -> Unit) {
     Box(
@@ -110,23 +121,31 @@ internal fun ModuleRow(
         onMutated()
     }
     LaunchedEffect(registryEnabled) { enabled = registryEnabled }
+    val interaction = remember { MutableInteractionSource() }
+    val hover by interaction.collectIsHoveredAsState()
     val background by
         animateColorAsState(
-            if (enabled) PanelStyle.rowEnabled else PanelStyle.row,
+            if (hover) PanelStyle.hover else PanelStyle.row,
             animationSpec = tween(90),
         )
-    Column(Modifier.fillMaxWidth()) {
+    Column(
+        Modifier.fillMaxWidth()
+            .padding(horizontal = 6.dp, vertical = 3.dp)
+            .clip(PanelStyle.controlShape)
+            .border(1.dp, PanelStyle.border, PanelStyle.controlShape)
+    ) {
         Row(
             Modifier.fillMaxWidth()
-                .height(24.dp)
+                .height(30.dp)
                 .background(background)
+                .hoverable(interaction)
                 .onPointerEvent(PointerEventType.Press) { event ->
                     if (event.button == PointerButton.Secondary) {
                         event.changes.forEach { it.consume() }
                         onExpand()
                     }
                 }
-                .clickable {
+                .clickable(interactionSource = interaction, indication = null) {
                     val next = !enabled
                     enabled = next
                     ModuleRegistry.setEnabled(module.id(), next)
@@ -137,16 +156,15 @@ internal fun ModuleRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
-                Modifier.width(2.dp)
-                    .height(11.dp)
+                Modifier.size(4.dp)
                     .clip(CircleShape)
-                    .background(if (enabled) PanelStyle.accent else PanelStyle.border)
+                    .background(if (enabled) PanelStyle.controlActive else PanelStyle.border)
             )
             Spacer(Modifier.width(7.dp))
             Text(
                 module.name(),
                 color = if (enabled) PanelStyle.text else PanelStyle.muted,
-                fontSize = 8.sp,
+                fontSize = 9.sp,
                 fontWeight = if (enabled) FontWeight.Medium else FontWeight.Normal,
                 modifier = Modifier.weight(1f),
                 maxLines = 1,
@@ -156,11 +174,7 @@ internal fun ModuleRow(
                 Modifier.width(26.dp).fillMaxHeight().clickable(onClick = onExpand),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    if (expanded) "⌄" else "⋮",
-                    color = if (expanded) PanelStyle.accent else PanelStyle.dim,
-                    fontSize = if (expanded) 10.sp else 11.sp,
-                )
+                SettingsIcon("chevron", Modifier.size(12.dp), PanelStyle.muted)
             }
         }
 
@@ -191,11 +205,10 @@ internal fun ModuleRow(
             }
         }
     }
-    Box(Modifier.fillMaxWidth().height(1.dp).background(PanelStyle.border.copy(alpha = 0.55f)))
 }
 
 @Composable
-private fun KeybindSetting(
+internal fun KeybindSetting(
     module: Module,
     bindingModuleId: String?,
     onBindingModuleChange: (String?) -> Unit,
@@ -222,7 +235,7 @@ private fun KeybindSetting(
 }
 
 @Composable
-private fun CompactSetting(module: Module, setting: Setting, onMutated: () -> Unit) {
+internal fun CompactSetting(module: Module, setting: Setting, onMutated: () -> Unit) {
     ClickGuiRevision.intValue
     when (setting.type()) {
         "boolean" -> BooleanSetting(module, setting, onMutated)
@@ -232,7 +245,8 @@ private fun CompactSetting(module: Module, setting: Setting, onMutated: () -> Un
         "choice" -> ChoiceSetting(module, setting, onMutated)
         "text",
         "color" -> TextSetting(module, setting, onMutated)
-        else -> CompactRow { Text(setting.name(), color = PanelStyle.muted, fontSize = 7.sp) }
+        else ->
+            CompactRow { Text(settingLabel(setting), color = PanelStyle.muted, fontSize = 7.sp) }
     }
 }
 
@@ -241,7 +255,7 @@ private fun CompactRow(content: @Composable RowScope.() -> Unit) {
     Row(
         Modifier.fillMaxWidth()
             .height(22.dp)
-            .clip(RoundedCornerShape(4.dp))
+            .clip(PanelStyle.controlShape)
             .background(PanelStyle.row)
             .padding(horizontal = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -256,7 +270,7 @@ private fun BooleanSetting(module: Module, setting: Setting, onMutated: () -> Un
     LaunchedEffect(checked) { displayedChecked = checked }
     CompactRow {
         Text(
-            setting.name(),
+            settingLabel(setting),
             color = PanelStyle.muted,
             fontSize = 7.sp,
             modifier = Modifier.weight(1f),
@@ -290,13 +304,13 @@ private fun NumberSetting(module: Module, setting: Setting, onMutated: () -> Uni
     }
     Column(
         Modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(4.dp))
+            .clip(PanelStyle.controlShape)
             .background(PanelStyle.row)
             .padding(horizontal = 6.dp, vertical = 4.dp)
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(
-                setting.name(),
+                settingLabel(setting),
                 color = PanelStyle.muted,
                 fontSize = 7.sp,
                 modifier = Modifier.weight(1f),
@@ -330,30 +344,32 @@ private fun NumberSetting(module: Module, setting: Setting, onMutated: () -> Uni
                 singleLine = true,
                 textStyle =
                     TextStyle(
-                        color = if (inputValid) PanelStyle.accentBright else Color(0xFFE57373),
+                        color = if (inputValid) PanelStyle.controlActive else Color(0xFFE57373),
                         fontSize = 7.sp,
                         fontFamily = PanelFontFamily,
                         textAlign = TextAlign.End,
                     ),
-                cursorBrush = SolidColor(PanelStyle.accent),
+                cursorBrush = SolidColor(PanelStyle.controlActive),
                 modifier =
-                    Modifier.width(58.dp).height(18.dp).onFocusChanged { state ->
-                        val wasFocused = inputFocused
-                        inputFocused = state.isFocused
-                        if (wasFocused && !state.isFocused) {
-                            inputValue = formatValue(displayedValue)
-                            inputValid = true
-                        }
-                    },
+                    Modifier.width((inputValue.length * 4 + 12).coerceIn(28, 44).dp)
+                        .height(18.dp)
+                        .onFocusChanged { state ->
+                            val wasFocused = inputFocused
+                            inputFocused = state.isFocused
+                            if (wasFocused && !state.isFocused) {
+                                inputValue = formatValue(displayedValue)
+                                inputValid = true
+                            }
+                        },
                 decorationBox = { input ->
                     Box(
                         Modifier.fillMaxSize()
-                            .clip(RoundedCornerShape(3.dp))
+                            .clip(PanelStyle.controlShape)
                             .background(PanelStyle.field)
                             .border(
                                 1.dp,
                                 if (inputValid) PanelStyle.border else Color(0xFFE57373),
-                                RoundedCornerShape(3.dp),
+                                PanelStyle.controlShape,
                             )
                             .padding(horizontal = 4.dp),
                         contentAlignment = Alignment.CenterEnd,
@@ -411,13 +427,13 @@ private fun RangeSetting(module: Module, setting: Setting, onMutated: () -> Unit
     }
     Column(
         Modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(4.dp))
+            .clip(PanelStyle.controlShape)
             .background(PanelStyle.row)
             .padding(horizontal = 6.dp, vertical = 4.dp)
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(
-                setting.name(),
+                settingLabel(setting),
                 color = PanelStyle.muted,
                 fontSize = 7.sp,
                 modifier = Modifier.weight(1f),
@@ -426,7 +442,7 @@ private fun RangeSetting(module: Module, setting: Setting, onMutated: () -> Unit
             )
             Text(
                 "${formatValue(displayedLow)}–${formatValue(displayedHigh)}",
-                color = PanelStyle.accentBright,
+                color = PanelStyle.controlActive,
                 fontSize = 7.sp,
             )
         }
@@ -484,12 +500,12 @@ private fun ChoiceSetting(module: Module, setting: Setting, onMutated: () -> Uni
     }
     Column(
         Modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(4.dp))
+            .clip(PanelStyle.controlShape)
             .background(PanelStyle.row)
             .padding(horizontal = 6.dp, vertical = 5.dp)
     ) {
         Text(
-            setting.name(),
+            settingLabel(setting),
             color = PanelStyle.muted,
             fontSize = 7.sp,
             lineHeight = 8.sp,
@@ -527,21 +543,21 @@ private fun TrimChoiceSetting(
     val selectedName = ModuleRegistry.displayChoice(current).ifBlank { "Select trim" }
     Column(
         Modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(4.dp))
+            .clip(PanelStyle.controlShape)
             .background(PanelStyle.row)
             .padding(horizontal = 6.dp, vertical = 5.dp)
     ) {
-        Text(setting.name(), color = PanelStyle.muted, fontSize = 7.sp)
+        Text(settingLabel(setting), color = PanelStyle.muted, fontSize = 7.sp)
         Spacer(Modifier.height(4.dp))
         Row(
             Modifier.fillMaxWidth()
                 .height(30.dp)
-                .clip(RoundedCornerShape(4.dp))
+                .clip(PanelStyle.controlShape)
                 .background(PanelStyle.field)
                 .border(
                     1.dp,
-                    if (expanded) PanelStyle.accent else PanelStyle.border,
-                    RoundedCornerShape(4.dp),
+                    if (expanded) PanelStyle.controlActive else PanelStyle.border,
+                    PanelStyle.controlShape,
                 )
                 .clickable(enabled = options.isNotEmpty()) { expanded = !expanded }
                 .padding(horizontal = 6.dp),
@@ -593,14 +609,15 @@ private fun TrimChoiceSetting(
                             Column(
                                 Modifier.weight(1f)
                                     .height(52.dp)
-                                    .clip(RoundedCornerShape(4.dp))
+                                    .clip(PanelStyle.controlShape)
                                     .background(
-                                        if (selected) PanelStyle.accentSoft else PanelStyle.field
+                                        if (selected) PanelStyle.controlSoft else PanelStyle.field
                                     )
                                     .border(
                                         1.dp,
-                                        if (selected) PanelStyle.accent else PanelStyle.border,
-                                        RoundedCornerShape(4.dp),
+                                        if (selected) PanelStyle.controlActive
+                                        else PanelStyle.border,
+                                        PanelStyle.controlShape,
                                     )
                                     .clickable {
                                         onSelected(option)
@@ -629,7 +646,8 @@ private fun TrimChoiceSetting(
                                 Text(
                                     ModuleRegistry.displayChoice(option),
                                     color =
-                                        if (selected) PanelStyle.accentBright else PanelStyle.muted,
+                                        if (selected) PanelStyle.controlActive
+                                        else PanelStyle.muted,
                                     fontSize = 5.5.sp,
                                     lineHeight = 6.sp,
                                     textAlign = TextAlign.Center,
@@ -653,11 +671,11 @@ private fun TextSetting(module: Module, setting: Setting, onMutated: () -> Unit)
     var value by remember(setting.id(), current) { mutableStateOf(current) }
     Column(
         Modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(4.dp))
+            .clip(PanelStyle.controlShape)
             .background(PanelStyle.row)
             .padding(horizontal = 6.dp, vertical = 4.dp)
     ) {
-        Text(setting.name(), color = PanelStyle.muted, fontSize = 7.sp)
+        Text(settingLabel(setting), color = PanelStyle.muted, fontSize = 7.sp)
         Spacer(Modifier.height(4.dp))
         BasicTextField(
             value = value,
@@ -675,14 +693,14 @@ private fun TextSetting(module: Module, setting: Setting, onMutated: () -> Unit)
                     fontSize = 7.sp,
                     fontFamily = PanelFontFamily,
                 ),
-            cursorBrush = SolidColor(PanelStyle.accent),
+            cursorBrush = SolidColor(PanelStyle.controlActive),
             modifier = Modifier.fillMaxWidth().height(22.dp),
             decorationBox = { input ->
                 Row(
                     Modifier.fillMaxSize()
-                        .clip(RoundedCornerShape(4.dp))
+                        .clip(PanelStyle.controlShape)
                         .background(PanelStyle.field)
-                        .border(1.dp, PanelStyle.border, RoundedCornerShape(4.dp))
+                        .border(1.dp, PanelStyle.border, PanelStyle.controlShape)
                         .padding(horizontal = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -708,12 +726,12 @@ private fun ValueButton(
     Box(
         widthModifier
             .height(20.dp)
-            .clip(RoundedCornerShape(4.dp))
-            .background(if (active) PanelStyle.accentSoft else PanelStyle.field)
+            .clip(PanelStyle.controlShape)
+            .background(if (active) PanelStyle.controlActive else PanelStyle.controlInactive)
             .border(
                 1.dp,
-                if (active) PanelStyle.accent else PanelStyle.border,
-                RoundedCornerShape(4.dp),
+                if (active) PanelStyle.controlActive else PanelStyle.border,
+                PanelStyle.controlShape,
             )
             .clickable(onClick = onClick)
             .padding(horizontal = 6.dp),
@@ -721,7 +739,7 @@ private fun ValueButton(
     ) {
         Text(
             value,
-            color = if (active) PanelStyle.accentBright else PanelStyle.muted,
+            color = if (active) PanelStyle.controlInactive else PanelStyle.controlActive,
             fontSize = 6.5.sp,
             lineHeight = 6.5.sp,
             textAlign = TextAlign.Center,
@@ -736,7 +754,7 @@ private fun ValueButton(
 private fun CompactSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     val track by
         animateColorAsState(
-            if (checked) PanelStyle.accent else PanelStyle.track,
+            if (checked) PanelStyle.controlActive else PanelStyle.controlInactive,
             animationSpec = tween(130),
         )
     val thumbX by animateDpAsState(if (checked) 13.dp else 2.dp, animationSpec = tween(130))
@@ -750,7 +768,7 @@ private fun CompactSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit) 
             Modifier.offset(x = thumbX)
                 .size(7.dp)
                 .clip(CircleShape)
-                .background(if (checked) Color(0xFF17130D) else PanelStyle.muted)
+                .background(if (checked) PanelStyle.controlInactive else PanelStyle.controlActive)
         )
     }
 }
@@ -823,7 +841,7 @@ private fun SlimSlider(
                 Modifier.fillMaxWidth(fraction)
                     .height(2.dp)
                     .clip(CircleShape)
-                    .background(PanelStyle.accent)
+                    .background(PanelStyle.controlActive)
             )
         }
         Box(
@@ -832,8 +850,8 @@ private fun SlimSlider(
                 }
                 .size(7.dp)
                 .clip(CircleShape)
-                .background(PanelStyle.accentBright)
-                .border(1.dp, PanelStyle.accentSoft, CircleShape)
+                .background(PanelStyle.controlActive)
+                .border(1.dp, PanelStyle.controlSoft, CircleShape)
         )
     }
 }

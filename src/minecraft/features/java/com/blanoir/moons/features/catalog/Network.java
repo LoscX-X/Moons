@@ -22,19 +22,35 @@ final class Network {
                 Backtrack::isEnabled,
                 Backtrack::setEnabled,
                 Backtrack::hudStats,
-                numeric(
+                customChoice(
+                        "target_mode",
+                        "Mode",
+                        Backtrack::targetModeName,
+                        Backtrack.targetModeOptions(),
+                        Backtrack::setTargetMode),
+                new Setting(
                         "delay",
-                        "Track time (ms)",
-                        "integer",
-                        Backtrack::delayMillis,
-                        0,
-                        1000,
-                        1,
+                        "Time (ms)",
+                        "range",
+                        () -> {
+                            var value = new com.google.gson.JsonArray();
+                            value.add(Backtrack.minDelayMillis());
+                            value.add(Backtrack.delayMillis());
+                            return value;
+                        },
+                        0.0,
+                        1000.0,
+                        1.0,
+                        java.util.List.of(),
                         (client, value) ->
-                                Backtrack.setDelay(client, Integer.toString((int) value))),
+                                Backtrack.setDelay(
+                                        client,
+                                        value.getAsJsonArray().get(0).getAsInt()
+                                                + "-"
+                                                + value.getAsJsonArray().get(1).getAsInt())),
                 numeric(
                         "range",
-                        "Max track range",
+                        "Max range",
                         "number",
                         Backtrack::maxRange,
                         0,
@@ -43,11 +59,97 @@ final class Network {
                         (client, value) -> Backtrack.setRange(client, Double.toString(value))),
                 choice(
                         "esp",
-                        "Real location ESP",
+                        "ESP",
                         "backtrack.esp",
                         "box",
                         Backtrack.espModeOptions(),
-                        Backtrack::setEsp));
+                        Backtrack::setEsp),
+                internalNumber("min_range", "Min range", "backtrack.range.min", 1, 0, 10),
+                internalInt(
+                        "next_min",
+                        "Next delay min",
+                        "backtrack.nextBacktrackDelay.min",
+                        0,
+                        0,
+                        2000),
+                internalInt(
+                        "next_max",
+                        "Next delay max",
+                        "backtrack.nextBacktrackDelay.max",
+                        10,
+                        0,
+                        2000),
+                internalInt(
+                        "tracking_buffer",
+                        "Tracking buffer",
+                        "backtrack.trackingBuffer",
+                        500,
+                        0,
+                        2000),
+                internalNumber("chance", "Chance", "backtrack.chance", 100, 0, 100),
+                internalBool(
+                        "pause_hurt", "Pause on hurt", "backtrack.pauseOnHurtTime.enabled", false),
+                internalInt(
+                        "hurt_time", "Hurt time", "backtrack.pauseOnHurtTime.hurtTime", 3, 0, 10),
+                internalInt(
+                        "last_attack",
+                        "Last attack",
+                        "backtrack.lastAttackTimeToWork",
+                        1000,
+                        0,
+                        5000),
+                internalInt("max_queue", "Queue limit", "backtrack.maxQueueSize", 256, 32, 1024),
+                internalNumber("speed_factor", "Speed factor", "backtrack.speedFactor", 8, 0, 30),
+                internalNumber("ping_ratio", "Ping ratio", "backtrack.pingRatio", 0, 0, 3),
+                internalBool("actionbar", "Action bar", "backtrack.actionbar", false));
+    }
+
+    private static Setting internalInt(
+            String id, String label, String key, int fallback, int min, int max) {
+        return numeric(
+                        id,
+                        label,
+                        "integer",
+                        () -> Math.clamp(Settings.getInt(key, fallback), min, max),
+                        min,
+                        max,
+                        1,
+                        (client, value) -> {
+                            Settings.setInt(key, (int) Math.round(value));
+                        })
+                .visibleWhen(() -> false);
+    }
+
+    private static Setting internalNumber(
+            String id, String label, String key, double fallback, double min, double max) {
+        return numeric(
+                        id,
+                        label,
+                        "number",
+                        () -> {
+                            double value = Settings.getDouble(key, fallback);
+                            return Double.isFinite(value) ? Math.clamp(value, min, max) : fallback;
+                        },
+                        min,
+                        max,
+                        .1,
+                        (client, value) -> {
+                            Settings.setDouble(key, value);
+                        })
+                .visibleWhen(() -> false);
+    }
+
+    private static Setting internalBool(String id, String label, String key, boolean fallback) {
+        return bool(
+                        id,
+                        label,
+                        key,
+                        fallback,
+                        (client, value) -> {
+                            Settings.setBoolean(key, value);
+                            return 1;
+                        })
+                .visibleWhen(() -> false);
     }
 
     static ModuleRegistry.Module fakeLag() {

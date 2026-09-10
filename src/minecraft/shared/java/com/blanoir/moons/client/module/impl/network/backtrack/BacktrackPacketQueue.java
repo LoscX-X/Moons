@@ -1,33 +1,33 @@
 package com.blanoir.moons.client.module.impl.network.backtrack;
 
-import java.util.ArrayDeque;
+import com.blanoir.moons.client.management.network.LagUtils;
+
 import java.util.function.Consumer;
 
 /** Client-thread FIFO with bounded storage and no second replay throttle. */
 final class BacktrackPacketQueue<T> {
-    private static final int CAPACITY = 256;
-    private final ArrayDeque<Entry<T>> entries = new ArrayDeque<>();
+    private final LagUtils<T> entries;
+
+    BacktrackPacketQueue() {
+        this(256);
+    }
+
+    BacktrackPacketQueue(int capacity) {
+        entries = new LagUtils<>(capacity);
+    }
 
     boolean offer(T value, long now, int delayMillis) {
-        if (entries.size() >= CAPACITY) return false;
-        Entry<T> last = entries.peekLast();
-        entries.addLast(
-                new Entry<>(
-                        value,
-                        now,
-                        BacktrackTiming.deadline(
-                                now, delayMillis, last == null ? 0 : last.releaseAt())));
-        return true;
+        return entries.offer(value, now, delayMillis);
     }
 
     void releaseDue(long now, Consumer<T> replay) {
-        while (!entries.isEmpty() && BacktrackTiming.due(now, entries.getFirst().releaseAt())) {
-            replay.accept(entries.removeFirst().value());
-        }
+        T value;
+        while ((value = entries.pollDue(now)) != null) replay.accept(value);
     }
 
     void releaseAll(Consumer<T> replay) {
-        while (!entries.isEmpty()) replay.accept(entries.removeFirst().value());
+        T value;
+        while ((value = entries.poll()) != null) replay.accept(value);
     }
 
     void clear() {
@@ -38,9 +38,11 @@ final class BacktrackPacketQueue<T> {
         return entries.isEmpty();
     }
 
-    long age(long now) {
-        return entries.isEmpty() ? 0 : Math.max(0, now - entries.getFirst().arrival());
+    int size() {
+        return entries.size();
     }
 
-    private record Entry<T>(T value, long arrival, long releaseAt) {}
+    long age(long now) {
+        return entries.age(now);
+    }
 }

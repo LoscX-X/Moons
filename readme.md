@@ -55,6 +55,23 @@ The first build requires an internet connection to download dependencies. When b
 
 The outputs are `build/dist/agent/26_1/moons.jar`, `build/dist/agent/26_2/moons.jar`, and `build/dist/agent/26_3/moons.jar`. These payloads are loaded by the bridge and cannot be launched with `java -jar`.
 
+## Local Configs
+
+Open **ClickGUI → Configs** to create a named preset from the current modules, settings and key bindings. Select a preset, then use **Save** to replace its saved values or **Load** to apply it. The panel layout also has a **Configs** entry.
+
+The same operations are available through local commands:
+
+```text
+.config create Duel
+.config save Duel
+.config load Duel
+.config list
+```
+
+Presets are stored as JSON in the `profiles` folder beside the active `moons.properties` file. Names may contain letters, numbers, spaces, `_` and `-`. Create refuses duplicate names; Save updates an existing preset. Loading keeps ClickGUI open and restores module modes before their dependent options, including options hidden from the compact editor.
+
+Backtrack retains **Attack**, **Range** and **Intent** target modes. Its compact editor exposes Mode, Time, Max range and ESP; other saved policy values remain in the config. Its HUD suffix shows the configured millisecond interval.
+
 ## GitHub Actions
 
 Open **Actions → Project checks and packages → Run workflow** and select:

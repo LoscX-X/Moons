@@ -12,6 +12,7 @@ import com.blanoir.moons.client.utils.math.RandomMath;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.phys.Vec3;
+
 import org.jspecify.annotations.NonNull;
 
 import java.util.List;

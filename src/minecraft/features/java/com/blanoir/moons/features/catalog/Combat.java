@@ -147,6 +147,17 @@ final class Combat {
                         SprintReset::setDurationMs));
     }
 
+    static ModuleRegistry.Module autoBlock() {
+        return module(
+                "autoblock",
+                "AutoBlock",
+                ModuleCategories.COMBAT,
+                AutoBlock::isEnabled,
+                AutoBlock::setEnabled,
+                AutoBlock::hudTag,
+                AutoBlock.settings());
+    }
+
     static ModuleRegistry.Module silentAura() {
         return module(
                 "silentaura",
@@ -155,290 +166,7 @@ final class Combat {
                 SilentAura::isEnabled,
                 SilentAura::setEnabled,
                 SilentAura::hudTag,
-                number(
-                        "range",
-                        "Attack range",
-                        "silentaura.range",
-                        3.7,
-                        1,
-                        6,
-                        .05,
-                        SilentAura::setRange),
-                number(
-                        "scan_extra",
-                        "Scan range increase",
-                        "silentaura.scanExtra",
-                        2.5,
-                        0,
-                        7,
-                        .1,
-                        SilentAura::setScanExtra),
-                number("fov", "FOV", "silentaura.fov", 180, 1, 360, 1, SilentAura::setFov),
-                choice(
-                        "target_mode",
-                        "Target mode",
-                        "silentaura.targetMode",
-                        "switch",
-                        SilentAuraConfig.targetModeOptions(),
-                        SilentAura::setTargetMode),
-                integer(
-                        "hurt_time",
-                        "Maximum hurt time",
-                        "silentaura.hurtTime",
-                        10,
-                        0,
-                        10,
-                        1,
-                        SilentAura::setHurtTime),
-                customChoice(
-                        "aim_mode",
-                        "Aim mode",
-                        SilentAuraConfig::aimMode,
-                        SilentAuraConfig.aimModeOptions(),
-                        SilentAura::setAimMode),
-                number(
-                                "smooth",
-                                "Smooth",
-                                "silentaura.smooth",
-                                .58,
-                                .05,
-                                1,
-                                .01,
-                                SilentAura::setSmooth)
-                        .visibleWhen(() -> !SilentAuraConfig.fullLockMode()),
-                bool(
-                        "return_rotation",
-                        "Return rotation",
-                        "silentaura.returnRotation",
-                        true,
-                        SilentAura::setReturnRotation),
-                number(
-                                "return_smooth",
-                                "Return smooth",
-                                "silentaura.returnSmooth",
-                                .45,
-                                .05,
-                                1,
-                                .01,
-                                SilentAura::setReturnSmooth)
-                        .visibleWhen(SilentAuraConfig::returnRotation),
-                number(
-                                "jitter",
-                                "Path jitter",
-                                "silentaura.jitter",
-                                .38,
-                                0,
-                                1,
-                                .01,
-                                SilentAura::setJitter)
-                        .visibleWhen(() -> !SilentAuraConfig.fullLockMode()),
-                number(
-                                "jitter_speed",
-                                "Jitter speed",
-                                "silentaura.jitterSpeed",
-                                .85,
-                                .1,
-                                3,
-                                .05,
-                                SilentAura::setJitterSpeed)
-                        .visibleWhen(() -> !SilentAuraConfig.fullLockMode()),
-                number(
-                                "settled_jitter",
-                                "Settled sway",
-                                "silentaura.settledJitter",
-                                .55,
-                                0,
-                                1,
-                                .01,
-                                SilentAura::setSettledJitter)
-                        .visibleWhen(SilentAuraConfig::balanceMode),
-                number(
-                                "aim_wander",
-                                "Aim wander",
-                                "silentaura.aimWander",
-                                .45,
-                                0,
-                                1,
-                                .01,
-                                SilentAura::setAimWander)
-                        .visibleWhen(() -> !SilentAuraConfig.fullLockMode()),
-                integer(
-                                "aim_wander_ticks",
-                                "Wander interval",
-                                "silentaura.aimWanderTicks",
-                                9,
-                                2,
-                                40,
-                                1,
-                                SilentAura::setAimWanderTicks)
-                        .visibleWhen(() -> !SilentAuraConfig.fullLockMode()),
-                number(
-                                "prediction_lead",
-                                "Velocity lead",
-                                "silentaura.predictionLead",
-                                .75,
-                                0,
-                                2,
-                                .05,
-                                SilentAura::setPredictionLead)
-                        .visibleWhen(() -> !SilentAuraConfig.fullLockMode()),
-                integer(
-                                "full_lock_angle_step",
-                                "Full-lock angle step",
-                                "silentaura.fullLock.angleStep",
-                                90,
-                                30,
-                                180,
-                                1,
-                                SilentAura::setFullLockAngleStep)
-                        .visibleWhen(SilentAuraConfig::fullLockMode),
-                number(
-                                "full_lock_smoothing",
-                                "Full-lock smoothing",
-                                "silentaura.fullLock.smoothing",
-                                0,
-                                0,
-                                1,
-                                .01,
-                                SilentAura::setFullLockSmoothing)
-                        .visibleWhen(SilentAuraConfig::fullLockMode),
-                number(
-                                "full_lock_prediction",
-                                "Full-lock lead ticks",
-                                "silentaura.fullLock.prediction",
-                                1,
-                                0,
-                                3,
-                                .05,
-                                SilentAura::setFullLockPrediction)
-                        .visibleWhen(SilentAuraConfig::fullLockMode),
-                number(
-                        "prediction_max_speed",
-                        "Max target speed (blocks/tick)",
-                        "silentaura.motion.maxSpeed",
-                        1.5,
-                        .1,
-                        3,
-                        .05,
-                        SilentAura::setPredictionMaxSpeed),
-                number(
-                        "prediction_max_acceleration",
-                        "Max target acceleration",
-                        "silentaura.motion.maxAcceleration",
-                        .12,
-                        0,
-                        1,
-                        .01,
-                        SilentAura::setPredictionMaxAcceleration),
-                number(
-                        "prediction_max_horizon",
-                        "Max lead ticks",
-                        "silentaura.motion.maxHorizon",
-                        3,
-                        0,
-                        6,
-                        .05,
-                        SilentAura::setPredictionMaxHorizon),
-                number(
-                                "prediction_vertical_scale",
-                                "Vertical lead weight",
-                                "silentaura.motion.verticalScale",
-                                .35,
-                                0,
-                                1,
-                                .01,
-                                SilentAura::setPredictionVerticalScale)
-                        .visibleWhen(() -> !SilentAuraConfig.fullLockMode()),
-                number(
-                        "prediction_max_turn_rate",
-                        "Max movement turn (deg/tick)",
-                        "silentaura.motion.maxTurnRate",
-                        0,
-                        0,
-                        90,
-                        1,
-                        SilentAura::setPredictionMaxTurnRate),
-                number(
-                                "prediction_max_turn_angle",
-                                "Max predicted turn (deg)",
-                                "silentaura.motion.maxTurnAngle",
-                                90,
-                                0,
-                                180,
-                                1,
-                                SilentAura::setPredictionMaxTurnAngle)
-                        .visibleWhen(SilentAuraConfig::predictionTurningEnabled),
-                range(
-                        "prediction_response",
-                        "Prediction response ticks",
-                        "silentaura.motion.minResponse",
-                        "silentaura.motion.maxResponse",
-                        .35,
-                        1.5,
-                        0,
-                        3,
-                        .05,
-                        SilentAura::setPredictionResponse),
-                bool(
-                                "matrix",
-                                "Matrix compatibility",
-                                "silentaura.matrix",
-                                false,
-                                SilentAura::setMatrixCompatibility)
-                        .visibleWhen(() -> !SilentAuraConfig.fullLockMode()),
-                bool(
-                        "critical",
-                        "Critical",
-                        "silentaura.critical",
-                        true,
-                        SilentAura::setCriticalIntegration),
-                customChoice(
-                                "aim_point",
-                                "Aim point",
-                                SilentAuraConfig::aimPoint,
-                                SilentAuraConfig.aimPointOptions(),
-                                SilentAura::setAimPoint)
-                        .visibleWhen(() -> !SilentAuraConfig.fullLockMode()),
-                number(
-                                "prediction",
-                                "Turn prediction",
-                                "silentaura.predictionStrength",
-                                1,
-                                0,
-                                3,
-                                .05,
-                                SilentAura::setPredictionStrength)
-                        .visibleWhen(() -> !SilentAuraConfig.fullLockMode()),
-                range(
-                        "charge",
-                        "Attack charge",
-                        "silentaura.minCharge",
-                        "silentaura.maxCharge",
-                        .7,
-                        1,
-                        .7,
-                        1.3,
-                        .01,
-                        SilentAura::setCharge),
-                bool("block", "Block", "silentaura.block", true, SilentAura::setBlock),
-                bool(
-                        "target_players",
-                        "Target players",
-                        "silentaura.target.player",
-                        true,
-                        (client, value) -> SilentAura.setTargetCategory(client, "player", value)),
-                bool(
-                        "target_mobs",
-                        "Target mobs",
-                        "silentaura.target.mob",
-                        false,
-                        (client, value) -> SilentAura.setTargetCategory(client, "mob", value)),
-                bool(
-                        "debugger",
-                        "Debugger",
-                        "silentaura.debugger",
-                        false,
-                        SilentAura::setDebugger));
+                SilentAuraConfig.settings());
     }
 
     static ModuleRegistry.Module aimAssist() {
@@ -448,18 +176,8 @@ final class Combat {
                 "Combat",
                 AimAssist::isEnabled,
                 AimAssist::setEnabled,
-                () -> "Assist",
-                number("range", "Range", "aimassist.range", 4.2, 1, 8, .05, AimAssist::setRange),
-                number("fov", "FOV", "aimassist.fov", 45, 1, 360, 1, AimAssist::setFov),
-                number(
-                        "smooth",
-                        "Smooth",
-                        "aimassist.smooth",
-                        .35,
-                        .05,
-                        1,
-                        .01,
-                        AimAssist::setSmooth));
+                AimAssist::mode,
+                AimAssist.settings());
     }
 
     static ModuleRegistry.Module triggerBot() {

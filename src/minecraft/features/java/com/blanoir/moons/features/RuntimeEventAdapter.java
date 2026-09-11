@@ -18,7 +18,6 @@ import com.blanoir.moons.client.event.movement.MoveInputEvent;
 import com.blanoir.moons.client.event.movement.PlayerMotionEvent;
 import com.blanoir.moons.client.event.movement.PlayerMoveEndEvent;
 import com.blanoir.moons.client.event.movement.PlayerUpdateEvent;
-import com.blanoir.moons.client.event.movement.StrafeEvent;
 import com.blanoir.moons.client.event.network.PacketEventAdapter;
 import com.blanoir.moons.client.event.render.EntityRenderStateEvent;
 import com.blanoir.moons.client.event.render.RendererCloseEvent;
@@ -28,9 +27,9 @@ import com.blanoir.moons.client.event.world.BlockUpdateEvent;
 import com.blanoir.moons.client.management.input.CombatInputController;
 import com.blanoir.moons.client.management.input.KeybindInputListener;
 import com.blanoir.moons.client.management.input.MouseInputTracker;
+import com.blanoir.moons.client.management.lease.RotationLease;
 import com.blanoir.moons.client.management.rotation.MoveFix;
-import com.blanoir.moons.client.management.rotation.RotationHistory;
-import com.blanoir.moons.client.management.rotation.RotationLease;
+import com.blanoir.moons.client.management.rotation.RotationManager;
 import com.blanoir.moons.client.management.rotation.RotationQuantizer;
 import com.blanoir.moons.client.management.rotation.SilentPacketRotation;
 import com.blanoir.moons.client.module.framework.ModuleKeybinds;
@@ -47,7 +46,7 @@ import com.blanoir.moons.client.module.impl.player.AutoWeb;
 import com.blanoir.moons.client.module.impl.render.Animations;
 import com.blanoir.moons.client.module.impl.render.xray.OreScanner;
 import com.blanoir.moons.client.module.impl.world.AutoTool;
-import com.blanoir.moons.client.module.impl.world.Scaffold;
+import com.blanoir.moons.client.module.impl.world.scaffold.Scaffold;
 import com.blanoir.moons.client.ui.clickgui.ModuleGui;
 import com.blanoir.moons.client.ui.clickgui.MoonsComposeScreen;
 import com.blanoir.moons.client.utils.rotation.Rotation;
@@ -78,7 +77,6 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
-import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayDeque;
 import java.util.Collections;
@@ -348,7 +346,7 @@ final class RuntimeEventAdapter {
             if (event.kind() == RuntimeEvents.Kind.USE
                     && manualRotation != null
                     && player != null
-                    && !RotationHistory.same(
+                    && !RotationManager.same(
                             manualRotation, new Rotation(player.getYRot(), player.getXRot()))) {
                 event.control().cancel();
                 return;
@@ -525,24 +523,6 @@ final class RuntimeEventAdapter {
         if (!(event.player() instanceof Entity entity) || Minecraft.getInstance().player != entity)
             return;
         Minecraft client = Minecraft.getInstance();
-        if (event.movement() instanceof Vec3 movement) {
-            float initialStrafe = (float) movement.x;
-            float initialForward = (float) movement.z;
-            float initialFriction = event.scale();
-            StrafeEvent strafe = new StrafeEvent(initialStrafe, initialForward, initialFriction);
-            EventBus.STRAFE.post(strafe);
-            // Preserve vanilla's original double vector unless a listener
-            // actually changes it. Rebuilding it from floats every move was
-            // an old Strafe side effect and introduced needless prediction
-            // drift even in the Vanilla Telly/Tower path.
-            if (Float.compare(strafe.getStrafe(), initialStrafe) != 0
-                    || Float.compare(strafe.getForward(), initialForward) != 0) {
-                event.movement(new Vec3(strafe.getStrafe(), movement.y, strafe.getForward()));
-            }
-            if (Float.compare(strafe.getFriction(), initialFriction) != 0) {
-                event.scale(strafe.getFriction());
-            }
-        }
         MoveFix.State movementFix = MoveFix.current(client);
         if (!movementFix.active()) return;
         float yaw = movementFix.yaw();
@@ -603,20 +583,12 @@ final class RuntimeEventAdapter {
 
     private void applyPacketRotation(LocalPlayer player, PositionCapture state) {
         Rotation rotation;
-        RotationLease.Submission committed = RotationLease.submission();
-        if (committed != null) {
-            rotation = committed.rotation();
-        } else if (SilentAura.shouldApplyManualUseRotation()) {
-            rotation = new Rotation(SilentAura.getManualUseYaw(), SilentAura.getManualUsePitch());
-        } else if (SilentPacketRotation.shouldApplyRotation()) {
-            rotation = SilentPacketRotation.packetRotation(Minecraft.getInstance());
-        } else if (Scaffold.shouldApplyRotation()) {
-            rotation = Scaffold.getPacketRotation();
-        } else if (SilentAura.shouldApplyRotation()) {
-            rotation = new Rotation(SilentAura.getPacketYaw(), SilentAura.getPacketPitch());
+        RotationManager.Decision decision = RotationManager.resolve();
+        if (decision != null) {
+            rotation = decision.rotation();
         } else {
             if (!state.continuous) return;
-            Rotation base = RotationHistory.start(Minecraft.getInstance());
+            Rotation base = RotationManager.start(Minecraft.getInstance());
             // Keep the camera itself in the same whole-turn domain before it is
             // captured for restoration. Correcting just this closing packet
             // would let the next vanilla packet jump from 181 back to -179.
@@ -626,9 +598,8 @@ final class RuntimeEventAdapter {
             player.yRotO += continuousYaw - cameraYaw;
             rotation =
                     new Rotation(
-                            SilentPacketRotation.quantizePacketYaw(base.yaw(), player.getYRot()),
-                            SilentPacketRotation.quantizePacketPitch(
-                                    base.pitch(), player.getXRot()));
+                            RotationQuantizer.yaw(base.yaw(), player.getYRot()),
+                            RotationQuantizer.pitch(base.pitch(), player.getXRot()));
             state.continuous = false;
             applyTemporaryRotation(player, state, rotation);
             return;

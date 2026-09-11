@@ -1,5 +1,8 @@
-package com.blanoir.moons.client.management.rotation;
+package com.blanoir.moons.client.management.lease;
 
+import com.blanoir.moons.client.management.rotation.RotationManager;
+import com.blanoir.moons.client.management.rotation.RotationQuantizer;
+import com.blanoir.moons.client.management.rotation.RotationRequest;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 
 import net.minecraft.client.Minecraft;
@@ -9,6 +12,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
 /**
@@ -26,6 +30,7 @@ import java.util.function.Consumer;
 public final class RotationLease {
     public static final int PRIORITY_CONTINUOUS_COMBAT = 50;
     public static final int PRIORITY_BLOCK_INTERACTION = 100;
+    public static final int PRIORITY_SCRIPT_PLACEMENT = 20;
 
     private static RotationLease holder;
     private static Submission submission;
@@ -34,6 +39,7 @@ public final class RotationLease {
     private static boolean resuming;
     private static boolean motionWindow;
     private static int packetObservers;
+    private static long window;
 
     /** Final result used by an action/movement window; never a send acknowledgement. */
     public record Submission(
@@ -45,6 +51,9 @@ public final class RotationLease {
 
     private final String owner;
     private final int priority;
+    private final BooleanSupplier outputReady;
+    private final BooleanSupplier movementCorrection;
+    private final Runnable publishOutput;
     private RotationRequest request;
     private boolean confirmed;
     private boolean pinned;
@@ -54,18 +63,36 @@ public final class RotationLease {
     private Rotation start;
 
     public RotationLease(String owner, int priority) {
+        this(owner, priority, () -> false, () -> {});
+    }
+
+    /** The owner supplies its trajectory; consumers never need to inspect feature classes. */
+    public RotationLease(
+            String owner, int priority, BooleanSupplier outputReady, Runnable publishOutput) {
+        this(owner, priority, outputReady, () -> true, publishOutput);
+    }
+
+    public RotationLease(
+            String owner,
+            int priority,
+            BooleanSupplier outputReady,
+            BooleanSupplier movementCorrection,
+            Runnable publishOutput) {
         this.owner = owner;
         this.priority = priority;
+        this.outputReady = java.util.Objects.requireNonNull(outputReady);
+        this.movementCorrection = java.util.Objects.requireNonNull(movementCorrection);
+        this.publishOutput = java.util.Objects.requireNonNull(publishOutput);
     }
 
     public boolean acquire(RotationRequest request) {
-        return acquire(request, RotationHistory.start(Minecraft.getInstance()), ignored -> {});
+        return acquire(request, RotationManager.start(Minecraft.getInstance()), ignored -> {});
     }
 
     /** The initializer runs once per acquisition, before the new producer computes its trajectory. */
     public boolean acquire(
             RotationRequest request, Rotation camera, Consumer<Rotation> initialize) {
-        synchronized (RotationHistory.class) {
+        synchronized (RotationManager.class) {
             if (request == null || manual != null) return false;
             if (submission != null && submission.lease() != this) return false;
             if (holder != null && holder != this && (holder.pinned || holder.priority >= priority))
@@ -78,7 +105,7 @@ public final class RotationLease {
             requestId++;
             if (acquired) {
                 generation++;
-                start = RotationHistory.start(camera);
+                start = RotationManager.start(camera);
                 try {
                     initialize.accept(start);
                 } catch (RuntimeException | Error failure) {
@@ -91,7 +118,7 @@ public final class RotationLease {
         }
     }
 
-    void confirm(float sentYaw, float sentPitch) {
+    public void confirm(float sentYaw, float sentPitch) {
         if (!active() || confirmed) return;
         if (Math.abs(Mth.wrapDegrees(request.yaw() - sentYaw)) > request.tolerance()
                 || Math.abs(request.pitch() - sentPitch) > request.tolerance()) return;
@@ -100,19 +127,19 @@ public final class RotationLease {
     }
 
     public boolean active() {
-        synchronized (RotationHistory.class) {
+        synchronized (RotationManager.class) {
             return holder == this && request != null;
         }
     }
 
     public boolean confirmed() {
-        synchronized (RotationHistory.class) {
+        synchronized (RotationManager.class) {
             return active() && confirmed;
         }
     }
 
     public RotationRequest request() {
-        synchronized (RotationHistory.class) {
+        synchronized (RotationManager.class) {
             return request;
         }
     }
@@ -123,11 +150,11 @@ public final class RotationLease {
 
     /** Commit once. Later readers, release requests and competing owners cannot replace it. */
     public Rotation commit(Rotation candidate, boolean exact, boolean correctMovement) {
-        synchronized (RotationHistory.class) {
+        synchronized (RotationManager.class) {
             if (!active() || manual != null) return null;
             if (submission != null)
                 return submission.lease() == this ? submission.rotation() : null;
-            Rotation base = RotationHistory.start(start);
+            Rotation base = RotationManager.start(start);
             Rotation result =
                     exact
                             ? candidate
@@ -140,24 +167,45 @@ public final class RotationLease {
     }
 
     public static Submission submission() {
-        synchronized (RotationHistory.class) {
+        synchronized (RotationManager.class) {
             return submission;
+        }
+    }
+
+    /** Resolve only the arbitrated owner, committing its tick/action candidate once. */
+    public static Submission resolveSubmission(boolean forMovement) {
+        synchronized (RotationManager.class) {
+            if (submission == null
+                    && manual == null
+                    && holder != null
+                    && holder.outputReady.getAsBoolean()
+                    && (!forMovement || holder.movementCorrection.getAsBoolean())) {
+                holder.publishOutput.run();
+            }
+            return submission;
+        }
+    }
+
+    public static long window() {
+        synchronized (RotationManager.class) {
+            return window;
         }
     }
 
     /** Covers acquisition, turning, interaction, return and deferred release. */
     public static boolean hasSilentRotation() {
-        synchronized (RotationHistory.class) {
+        synchronized (RotationManager.class) {
             return holder != null || submission != null;
         }
     }
 
     /** sendPosition completed (possibly cancelled/no packet); history is updated separately. */
     public static void finishMotion() {
-        synchronized (RotationHistory.class) {
+        synchronized (RotationManager.class) {
             motionWindow = false;
             RotationLease previous = submission == null ? null : submission.lease();
             submission = null;
+            window++;
             if (previous != null && previous.releasePending && !previous.pinned) previous.release();
             resumePending();
         }
@@ -169,39 +217,39 @@ public final class RotationLease {
      * but actions still belong to their original PLAYER_UPDATE phase.
      */
     public void whenAvailable(Runnable continuation) {
-        synchronized (RotationHistory.class) {
+        synchronized (RotationManager.class) {
             continuations.put(this, java.util.Objects.requireNonNull(continuation));
             resumePending();
         }
     }
 
     public static void beginMotion() {
-        synchronized (RotationHistory.class) {
+        synchronized (RotationManager.class) {
             motionWindow = true;
         }
     }
 
     public static void beginPacketObservation() {
-        synchronized (RotationHistory.class) {
+        synchronized (RotationManager.class) {
             packetObservers++;
         }
     }
 
     public static void endPacketObservation() {
-        synchronized (RotationHistory.class) {
+        synchronized (RotationManager.class) {
             packetObservers--;
         }
     }
 
     public void cancelPending() {
-        synchronized (RotationHistory.class) {
+        synchronized (RotationManager.class) {
             continuations.remove(this);
         }
     }
 
     /** Runs ready preparation outside committed, temporary-camera and packet-observer windows. */
     public static void resumePending() {
-        synchronized (RotationHistory.class) {
+        synchronized (RotationManager.class) {
             if (resuming
                     || motionWindow
                     || packetObservers != 0
@@ -237,7 +285,7 @@ public final class RotationLease {
         }
     }
 
-    boolean matches(Submission value) {
+    public boolean matches(Submission value) {
         return active()
                 && value == submission
                 && value.generation() == generation
@@ -246,29 +294,29 @@ public final class RotationLease {
 
     /** The manual USE_ITEM floats belong to its closing movement, even if Aura is disabled. */
     public static boolean holdManual(Rotation rotation) {
-        synchronized (RotationHistory.class) {
+        synchronized (RotationManager.class) {
             if (holder != null && holder.pinned
-                    || submission != null && !RotationHistory.same(submission.rotation(), rotation))
+                    || submission != null && !RotationManager.same(submission.rotation(), rotation))
                 return false;
-            if (manual != null && !RotationHistory.same(manual, rotation)) return false;
+            if (manual != null && !RotationManager.same(manual, rotation)) return false;
             manual = rotation;
             return true;
         }
     }
 
     public static Rotation manualRotation() {
-        synchronized (RotationHistory.class) {
+        synchronized (RotationManager.class) {
             return manual;
         }
     }
 
-    static void confirmManual(Rotation rotation) {
-        if (manual != null && RotationHistory.same(manual, rotation)) manual = null;
+    public static void confirmManual(Rotation rotation) {
+        if (manual != null && RotationManager.same(manual, rotation)) manual = null;
     }
 
     /** Prevents a USE/USE_ON transaction from being split across two owners. */
     public boolean pin() {
-        synchronized (RotationHistory.class) {
+        synchronized (RotationManager.class) {
             if (!active()) return false;
             pinned = true;
             return true;
@@ -276,20 +324,20 @@ public final class RotationLease {
     }
 
     public void unpin() {
-        synchronized (RotationHistory.class) {
+        synchronized (RotationManager.class) {
             pinned = false;
             if (releasePending) release();
         }
     }
 
     public boolean pinned() {
-        synchronized (RotationHistory.class) {
+        synchronized (RotationManager.class) {
             return active() && pinned;
         }
     }
 
     public void release() {
-        synchronized (RotationHistory.class) {
+        synchronized (RotationManager.class) {
             if (pinned || submission != null && submission.lease() == this) {
                 releasePending = true;
                 return;
@@ -304,7 +352,7 @@ public final class RotationLease {
     }
 
     public static boolean busyFor(RotationLease lease) {
-        synchronized (RotationHistory.class) {
+        synchronized (RotationManager.class) {
             return manual != null
                     || submission != null && submission.lease() != lease
                     || holder != null
@@ -313,12 +361,16 @@ public final class RotationLease {
         }
     }
 
-    static void resetAll() {
-        if (holder != null) holder.clearLocal();
-        holder = null;
-        submission = null;
-        manual = null;
-        continuations.clear();
+    public static void resetAll() {
+        synchronized (RotationManager.class) {
+            if (holder != null) holder.clearLocal();
+            holder = null;
+            submission = null;
+            manual = null;
+            continuations.clear();
+            motionWindow = false;
+            window++;
+        }
     }
 
     private void clearLocal() {

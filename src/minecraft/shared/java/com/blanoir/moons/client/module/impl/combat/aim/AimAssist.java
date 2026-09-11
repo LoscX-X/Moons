@@ -4,17 +4,22 @@ import com.blanoir.moons.client.access.MinecraftClientAccess;
 import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.DoubleSetting;
+import com.blanoir.moons.client.config.settings.ModeSetting;
 import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.event.frame.FrameEvent;
 import com.blanoir.moons.client.management.input.MouseInputTracker;
 import com.blanoir.moons.client.management.targeting.Targeting;
-import com.blanoir.moons.client.module.impl.combat.CombatModuleCoordinator;
+import com.blanoir.moons.client.module.framework.ModuleRegistry;
+import com.blanoir.moons.client.utils.combat.CombatModuleCoordinator;
 import com.blanoir.moons.client.utils.math.MathUtils;
 import com.blanoir.moons.client.utils.math.Smoothing;
 import com.blanoir.moons.client.utils.prediction.AimPrediction;
 import com.blanoir.moons.client.utils.prediction.AimPrediction.AimForecast;
 import com.blanoir.moons.client.utils.prediction.TrajectoryPrediction;
+import com.blanoir.moons.client.utils.raytrace.RaytraceUtils;
 import com.blanoir.moons.client.utils.rotation.Rotation;
+import com.blanoir.moons.client.utils.rotation.aim.AimPointManager;
+import com.blanoir.moons.client.utils.rotation.aim.AimPointUtils;
 import com.blanoir.moons.client.utils.rotation.aim.RotationUtils;
 import com.blanoir.moons.client.utils.rotation.aim.VisibleAimPoints;
 
@@ -45,6 +50,16 @@ public final class AimAssist {
     private static int lockedEntityId = -1;
 
     private static Vec3 lockedAimPoint;
+    private static final AimPointManager AIM_POINTS = new AimPointManager();
+
+    private static final ModeSetting<Mode> MODE =
+            new ModeSetting.Builder<Mode>()
+                    .name("aimassist.mode")
+                    .defaultValue(Mode.LEGIT)
+                    .option(Mode.LEGIT, "legit")
+                    .option(Mode.CENTER, "center")
+                    .option(Mode.CLOSEST, "closest")
+                    .build();
 
     private static final BooleanSetting ENABLED =
             new BooleanSetting.Builder().name("aimassist.enabled").defaultValue(false).build();
@@ -72,10 +87,20 @@ public final class AimAssist {
 
     private AimAssist() {}
 
+    public static ModuleRegistry.Setting[] settings() {
+        return new ModuleRegistry.Setting[] {
+            MODE.describe("mode", "Mode", AimAssist::setMode),
+            RANGE.describe("range", "Range", .05D, AimAssist::setRange),
+            FOV.describe("fov", "FOV", 1.0D, AimAssist::setFov),
+            SMOOTH.describe("smooth", "Smooth", .01D, AimAssist::setSmooth)
+        };
+    }
+
     public static void init() {
         CombatModuleCoordinator.bindAimAssist(
                 AimAssist::isEnabled, (client, enabled) -> AimAssist.setEnabled(client, enabled));
         EventBus.FRAME.register("AimAssist.frame", AimAssist::frame);
+        EventBus.CLIENT_CONTEXT_CHANGED.register("AimAssist.context", event -> clearLock());
     }
 
     /**
@@ -104,7 +129,7 @@ public final class AimAssist {
             return;
         }
 
-        if (isCrosshairAlreadyAttackable(client)) {
+        if (MODE.get() == Mode.LEGIT && isCrosshairAlreadyAttackable(client)) {
             return;
         }
 
@@ -113,6 +138,24 @@ public final class AimAssist {
         if (target == null) {
             clearLock();
             return;
+        }
+
+        if (MODE.get() != Mode.LEGIT) {
+            Vec3 eye = currentPlayer.getEyePosition();
+            AABB box = target.entity().getBoundingBox();
+            Vec3 point =
+                    MODE.get() == Mode.CENTER
+                            ? AIM_POINTS.center(
+                                    client, target.entity(), eye, box, RANGE.get(), .45D, 9, true)
+                            : AIM_POINTS.closest(client, target.entity(), eye, box, RANGE.get(), 9);
+            if (eye.distanceToSqr(point) <= RANGE.get() * RANGE.get()
+                    && RaytraceUtils.canRayTraceTo(client, eye, point)) {
+                target = rotationAt(client, target.entity(), point);
+            }
+            if (!MathUtils.withinFov(target.angle(), FOV.get())) {
+                clearLock();
+                return;
+            }
         }
 
         lockedEntityId = target.entity().getId();
@@ -176,7 +219,12 @@ public final class AimAssist {
                 SMOOTH.get(),
                 RANGE.get(),
                 inputMultiplier,
-                MIN_CORRECTION_ANGLE_DEGREES);
+                MIN_CORRECTION_ANGLE_DEGREES,
+                switch (MODE.get()) {
+                    case LEGIT -> null;
+                    case CENTER -> AimPointUtils.Mode.CENTER;
+                    case CLOSEST -> AimPointUtils.Mode.CLOSEST;
+                });
     }
 
     /**
@@ -303,11 +351,38 @@ public final class AimAssist {
         Vec3 eyePos = client.player.getEyePosition();
 
         Vec3 aimPoint =
-                VisibleAimPoints.findVisibleAimPoint(
-                        client, entity, preferredAimPoint, range, AIM_POINT_HYSTERESIS_DEGREES);
+                MODE.get() == Mode.LEGIT
+                        ? VisibleAimPoints.findVisibleAimPoint(
+                                client,
+                                entity,
+                                preferredAimPoint,
+                                range,
+                                AIM_POINT_HYSTERESIS_DEGREES)
+                        : MODE.get() == Mode.CENTER
+                                ? AimPointUtils.centerTrackingPoint(eyePos, entity.getBoundingBox())
+                                : AimPointUtils.closestTrackingPoint(
+                                        eyePos, entity.getBoundingBox());
+        if (MODE.get() != Mode.LEGIT
+                && (eyePos.distanceToSqr(aimPoint) > range * range
+                        || !RaytraceUtils.canRayTraceTo(client, eyePos, aimPoint))) {
+            aimPoint =
+                    VisibleAimPoints.findBestVisibleSurfacePoint(
+                            client,
+                            entity.getBoundingBox(),
+                            client.player.getLookAngle(),
+                            range,
+                            .72D,
+                            false);
+        }
         if (aimPoint == null) {
             return null;
         }
+
+        return rotationAt(client, entity, aimPoint);
+    }
+
+    private static TargetRotation rotationAt(Minecraft client, LivingEntity entity, Vec3 aimPoint) {
+        Vec3 eyePos = client.player.getEyePosition();
 
         Rotation rotation = RotationUtils.rotationTo(eyePos, aimPoint);
 
@@ -348,6 +423,17 @@ public final class AimAssist {
     private static void clearLock() {
         lockedEntityId = -1;
         lockedAimPoint = null;
+        AIM_POINTS.reset();
+    }
+
+    public static String mode() {
+        return MODE.serialized();
+    }
+
+    public static int setMode(Minecraft client, String value) {
+        if (!MODE.tryDeserialize(value)) return 0;
+        clearLock();
+        return 1;
     }
 
     private static boolean isValidTarget(Minecraft client, LivingEntity entity) {
@@ -362,6 +448,8 @@ public final class AimAssist {
                 client,
                 "AimAssist: "
                         + statusText()
+                        + ", mode: "
+                        + mode()
                         + ", range: "
                         + format(range)
                         + ", smooth: "
@@ -454,4 +542,10 @@ public final class AimAssist {
             Rotation rotation,
             double angle,
             double distanceSquared) {}
+
+    private enum Mode {
+        LEGIT,
+        CENTER,
+        CLOSEST
+    }
 }

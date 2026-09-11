@@ -1,12 +1,12 @@
 package com.blanoir.moons.client.module.impl.combat.critical.mode;
 
-import com.blanoir.moons.client.management.combat.CombatDecisionEngine;
 import com.blanoir.moons.client.module.impl.combat.critical.Critical;
+import com.blanoir.moons.client.utils.combat.CombatDecisionEngine;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.Entity;
 
-/** Registers the microscopic downward-packet critical strategy. */
+/** Registers the grounded packet-hop critical strategy. */
 public final class PacketMode implements CriticalMode {
     private static final PacketMode INSTANCE = new PacketMode();
 

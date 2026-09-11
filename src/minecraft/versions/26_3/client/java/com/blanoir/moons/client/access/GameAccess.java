@@ -10,6 +10,7 @@ import net.minecraft.client.MouseHandler;
 import net.minecraft.client.gui.components.PlayerTabOverlay;
 import net.minecraft.client.input.MouseButtonInfo;
 import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.multiplayer.MultiPlayerGameMode;
 import net.minecraft.client.multiplayer.prediction.BlockStatePredictionHandler;
 import net.minecraft.client.player.ClientInput;
 import net.minecraft.client.renderer.LevelRenderer;
@@ -43,6 +44,7 @@ public final class GameAccess {
     private static final MethodHandle MOUSE_BUTTON;
     private static final MethodHandle START_ATTACK;
     private static final MethodHandle START_USE_ITEM;
+    private static final MethodHandle SYNC_CARRIED_ITEM;
     private static final VarHandle RIGHT_CLICK_DELAY;
     private static final VarHandle RENDER_NAME;
     private static final VarHandle RENDER_SETUP;
@@ -86,6 +88,12 @@ public final class GameAccess {
                             .findVirtual(
                                     Minecraft.class,
                                     "startUseItem",
+                                    java.lang.invoke.MethodType.methodType(void.class));
+            SYNC_CARRIED_ITEM =
+                    MethodHandles.privateLookupIn(MultiPlayerGameMode.class, MethodHandles.lookup())
+                            .findVirtual(
+                                    MultiPlayerGameMode.class,
+                                    "ensureHasSentCarriedItem",
                                     java.lang.invoke.MethodType.methodType(void.class));
             RIGHT_CLICK_DELAY =
                     MethodHandles.privateLookupIn(Minecraft.class, MethodHandles.lookup())
@@ -197,6 +205,15 @@ public final class GameAccess {
 
     public static int rightClickDelay(Minecraft client) {
         return (int) RIGHT_CLICK_DELAY.get(client);
+    }
+
+    public static void syncCarriedItem(MultiPlayerGameMode gameMode) {
+        try {
+            SYNC_CARRIED_ITEM.invokeExact(gameMode);
+        } catch (Throwable failure) {
+            throw new IllegalStateException(
+                    "Unable to synchronize Minecraft selected slot", failure);
+        }
     }
 
     public static void rightClickDelay(Minecraft client, int ticks) {

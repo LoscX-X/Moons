@@ -35,4 +35,11 @@ public final class CombatReach {
                 && range >= 0.0D
                 && EntityDistance.squaredToEntity(client, target) <= range * range;
     }
+
+    /** Rejection predicate shared by automatic attack timing and dispatch. */
+    public static boolean outsideVanillaRange(Minecraft client, Entity target) {
+        if (client == null || client.player == null || target == null) return true;
+        return !within(
+                client, target, Math.max(0.0D, vanillaEntityInteractionRange(client.player)));
+    }
 }

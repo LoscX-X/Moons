@@ -152,7 +152,7 @@ public final class TransformerVerification {
                     || scaleRead <= eventHook
                     || opcodeCountAfter(strafe, Opcodes.AALOAD, eventHook) < 2) {
                 throw new AssertionError(
-                        "StrafeEvent does not write scale and movement before moveRelative");
+                        "PlayerMove bridge does not write scale and movement before moveRelative");
             }
         }
     }

@@ -5,12 +5,12 @@ import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.DoubleSetting;
 import com.blanoir.moons.client.config.settings.IntSetting;
 import com.blanoir.moons.client.event.EventBus;
-import com.blanoir.moons.client.management.combat.CombatDecisionEngine;
 import com.blanoir.moons.client.management.input.CombatInputController;
 import com.blanoir.moons.client.management.rotation.SilentPacketRotation;
 import com.blanoir.moons.client.management.targeting.PostHitLandingWindow;
 import com.blanoir.moons.client.management.targeting.Targeting;
 import com.blanoir.moons.client.utils.client.ClientReady;
+import com.blanoir.moons.client.utils.combat.CombatDecisionEngine;
 import com.blanoir.moons.client.utils.math.MathUtils;
 import com.blanoir.moons.client.utils.math.RandomMath;
 import com.blanoir.moons.client.utils.player.HotbarQueries;
@@ -19,6 +19,7 @@ import com.blanoir.moons.client.utils.prediction.TrajectoryPrediction;
 import com.blanoir.moons.client.utils.rotation.aim.AimPointUtils;
 import com.blanoir.moons.client.utils.world.FluidQueries;
 import com.blanoir.moons.client.utils.world.placement.BlockPlacementUtils;
+import com.blanoir.moons.client.utils.world.placement.PlacementCoordinator;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
@@ -172,6 +173,8 @@ public final class AutoLava {
     private AutoLava() {}
 
     public static void init() {
+        EventBus.CLIENT_CONTEXT_CHANGED.register("AutoLava.context", event -> shutdown(null));
+        PlacementCoordinator.register(PlacementCoordinator.Owner.AUTO_LAVA, AutoLava::isBusy);
         EventBus.PLAYER_UPDATE.register("AutoLava.playerUpdate", event -> tick(event.client()));
     }
 
@@ -179,7 +182,7 @@ public final class AutoLava {
     public static boolean isCriticalTriggerEligible(Entity entity) {
         Minecraft client = Minecraft.getInstance();
         return entity instanceof Player target
-                && ready(client)
+                && ClientReady.aliveGameplay(client)
                 && (WALL_ENABLED.get() || GROUND_ENABLED.get())
                 && Targeting.isValidTargetPlayer(client, target)
                 && CombatDecisionEngine.canCriticalNow(client, target);
@@ -189,20 +192,17 @@ public final class AutoLava {
     public static void onAttackDispatched(Entity entity, boolean criticalEligibleBeforeAttack) {
         Minecraft client = Minecraft.getInstance();
         if (!ENABLED.get()
-                || !ready(client)
+                || !ClientReady.aliveGameplay(client)
                 || isBusy()
                 || cooldownTicks > 0
-                || AntiWeb.isBusy()
-                || AntiLava.isBusy()
-                || AutoWeb.isBusy()
-                || AutoBed.isBusy()
+                || PlacementCoordinator.busyFor(PlacementCoordinator.Owner.AUTO_LAVA)
                 || !(entity instanceof Player target)
                 || !Targeting.isValidTargetPlayer(client, target)
                 || target.isOnFire()
                 || (!WALL_ENABLED.get() && !GROUND_ENABLED.get())
                 || !criticalEligibleBeforeAttack
                 || !RandomMath.chance(CHANCE.get())
-                || findSlot(client, Items.LAVA_BUCKET) < 0) {
+                || HotbarQueries.firstItem(client, Items.LAVA_BUCKET) < 0) {
             return;
         }
         pendingTargetId = target.getId();
@@ -222,7 +222,7 @@ public final class AutoLava {
         if (cooldownTicks > 0) {
             cooldownTicks--;
         }
-        if (!ENABLED.get() || !ready(client)) {
+        if (!ENABLED.get() || !ClientReady.aliveGameplay(client)) {
             if (isBusy() || pendingTargetId >= 0) {
                 reset(client);
             }
@@ -300,7 +300,7 @@ public final class AutoLava {
         }
         int pending = pendingTargetId;
         clearPendingTrigger();
-        if (AntiWeb.isBusy() || AntiLava.isBusy() || AutoWeb.isBusy() || AutoBed.isBusy()) {
+        if (PlacementCoordinator.busyFor(PlacementCoordinator.Owner.AUTO_LAVA)) {
             TARGET_MOTION.reset();
             return;
         }
@@ -310,7 +310,7 @@ public final class AutoLava {
             TARGET_MOTION.reset();
             return;
         }
-        int slot = findSlot(client, Items.LAVA_BUCKET);
+        int slot = HotbarQueries.firstItem(client, Items.LAVA_BUCKET);
         if (slot < 0) {
             TARGET_MOTION.reset();
             return;
@@ -958,10 +958,6 @@ public final class AutoLava {
         return !support.getCollisionShape(client.level, supportPos).isEmpty();
     }
 
-    private static int findSlot(Minecraft client, net.minecraft.world.item.Item item) {
-        return HotbarQueries.firstItem(client.player.getInventory(), item);
-    }
-
     private static void selectSlot(Minecraft client, int slot) {
         if (slot >= 0 && slot < 9 && client.player.getInventory().getSelectedSlot() != slot) {
             client.player.getInventory().setSelectedSlot(slot);
@@ -978,11 +974,6 @@ public final class AutoLava {
                 MathUtils.viewAngle(client.player.getEyePosition(), look, point), FOV.get());
     }
 
-    private static boolean ready(Minecraft client) {
-        var currentPlayer = client == null ? null : client.player;
-        return ClientReady.aliveGameplay(client, currentPlayer);
-    }
-
     public static boolean isBusy() {
         // Waiting for a post-hit landing owns no slot, rotation, or input.
         // Only the active placement/pickup cycle participates in module
@@ -992,7 +983,7 @@ public final class AutoLava {
 
     private static void reset(Minecraft client) {
         var currentPlayer = client == null ? null : client.player;
-        SilentPacketRotation.reset();
+        if (isBusy()) SilentPacketRotation.reset();
         boolean deferredForCurrentCycle =
                 returnSwitchScheduled
                         && deferredOriginalSlot == originalSlot
@@ -1220,5 +1211,11 @@ public final class AutoLava {
                 + SilentPacketRotation.isUseInvocationDone()
                 + "/"
                 + SilentPacketRotation.isUseDone();
+    }
+
+    /** End this feature's pending work without changing its configured toggle. */
+    public static void shutdown(Minecraft client) {
+        reset(client);
+        cooldownTicks = 0;
     }
 }

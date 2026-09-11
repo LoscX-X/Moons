@@ -1,7 +1,7 @@
 package com.blanoir.moons.client.module.impl.combat.critical.mode;
 
-import com.blanoir.moons.client.management.combat.CombatDecisionEngine;
 import com.blanoir.moons.client.module.impl.combat.critical.Critical;
+import com.blanoir.moons.client.utils.combat.CombatDecisionEngine;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.Entity;

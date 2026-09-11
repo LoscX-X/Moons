@@ -103,7 +103,7 @@ public final class RandomFakeLag {
             }
 
             long now = LagUtils.nowMillis();
-            if (!ready(client)) {
+            if (!ClientReady.aliveGameplay(client)) {
                 finishLocked(now, false);
                 encounterActive = false;
                 encounterMissTicks = 0;
@@ -157,7 +157,7 @@ public final class RandomFakeLag {
 
             Minecraft client = Minecraft.getInstance();
             long now = LagUtils.nowMillis();
-            if (!ready(client)
+            if (!ClientReady.aliveGameplay(client)
                     || now - startedAtMs >= durationMs
                     || LagPacketPolicy.mustFlushBefore(packet)) {
                 finishLocked(now, true);
@@ -288,10 +288,6 @@ public final class RandomFakeLag {
         Vec3 horizontal = horizontal(value);
         double length = horizontal.length();
         return length < 1.0E-5D ? null : horizontal.scale(1.0D / length);
-    }
-
-    private static boolean ready(Minecraft client) {
-        return ClientReady.aliveGameplay(client);
     }
 
     private static long randomDelayMs() {

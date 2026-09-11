@@ -4,8 +4,8 @@ import com.blanoir.moons.client.management.targeting.Targeting;
 import com.blanoir.moons.client.utils.combat.CombatReach;
 import com.blanoir.moons.client.utils.entity.EntityDistance;
 import com.blanoir.moons.client.utils.math.MathUtils;
-import com.blanoir.moons.client.utils.math.RandomMath;
 import com.blanoir.moons.client.utils.raytrace.RaytraceUtils;
+import com.blanoir.moons.client.utils.rotation.aim.AimPointManager;
 import com.blanoir.moons.client.utils.rotation.aim.AimPointUtils;
 import com.blanoir.moons.client.utils.rotation.aim.RotationUtils;
 import com.blanoir.moons.client.utils.rotation.aim.VisibleAimPoints;
@@ -26,12 +26,6 @@ import java.util.List;
 
 /** Target tracking and box-surface aim-point resolution. */
 public final class SilentAuraTargetSelector {
-    /** Closest still aims near the eye-facing side, but never at a fragile box edge. */
-    private static final double CLOSEST_INSET = 0.055D;
-
-    /** Normal combat aim stays between the upper chest and the head. */
-    private static final double UPPER_BODY_FLOOR = 0.58D;
-
     private static final double UPPER_BODY_ANCHOR = 0.72D;
 
     private final boolean lockMode;
@@ -39,18 +33,7 @@ public final class SilentAuraTargetSelector {
 
     private int targetId = -1;
     private int selectionTick = Integer.MIN_VALUE;
-    private int anchorTargetId = -1;
-    private int nextAnchorTick = Integer.MIN_VALUE;
-    private double anchorFractionX = 0.5D;
-    private double anchorFractionY = 0.5D;
-    private double anchorFractionZ = 0.5D;
-    private Vec3 wanderFrom;
-    private int anchorStartTick;
-    private int closestAnchorTargetId = -1;
-    private int nextClosestAnchorTick = Integer.MIN_VALUE;
-    private double closestFractionX = 0.5D;
-    private double closestFractionY = UPPER_BODY_ANCHOR;
-    private double closestFractionZ = 0.5D;
+    private final AimPointManager aimPoints = new AimPointManager();
     private boolean reevaluateAfterAttack;
     private int reevaluateTick = Integer.MIN_VALUE;
 
@@ -159,11 +142,7 @@ public final class SilentAuraTargetSelector {
     public void clear() {
         targetId = -1;
         selectionTick = Integer.MIN_VALUE;
-        anchorTargetId = -1;
-        wanderFrom = null;
-        nextAnchorTick = Integer.MIN_VALUE;
-        closestAnchorTargetId = -1;
-        nextClosestAnchorTick = Integer.MIN_VALUE;
+        aimPoints.reset();
         reevaluateAfterAttack = false;
         reevaluateTick = Integer.MIN_VALUE;
     }
@@ -284,14 +263,25 @@ public final class SilentAuraTargetSelector {
 
         Vec3 preferred;
         if (SilentAuraConfig.closestAimPoint()) {
-            preferred = stableClosestPoint(client, target, eye, box);
+            preferred =
+                    aimPoints.closest(
+                            client,
+                            target,
+                            eye,
+                            box,
+                            scanRange(client),
+                            SilentAuraConfig.aimWanderTicks());
         } else {
-            // "Center" is the established humanized policy: the horizontal
-            // point is pulled inward while Y follows the local eye height.
-            Vec3 wander = wanderPoint(client, target, eye, box);
-            if (wander != null && eye.distanceToSqr(wander) <= trackingRange * trackingRange)
-                return wander;
-            preferred = centerTrackingPoint(eye, box);
+            preferred =
+                    aimPoints.center(
+                            client,
+                            target,
+                            eye,
+                            box,
+                            trackingRange,
+                            SilentAuraConfig.aimWander(),
+                            SilentAuraConfig.aimWanderTicks(),
+                            !lockMode);
         }
         if (eye.distanceToSqr(preferred) <= trackingRange * trackingRange
                 && RaytraceUtils.canRayTraceTo(client, eye, preferred)) {
@@ -322,8 +312,14 @@ public final class SilentAuraTargetSelector {
                 RaytraceUtils.traceEntity(client, eye, direction, attackRange, target);
         Vec3 policyPoint =
                 SilentAuraConfig.closestAimPoint()
-                        ? stableClosestPoint(client, target, eye, box)
-                        : centerTrackingPoint(eye, box);
+                        ? aimPoints.closest(
+                                client,
+                                target,
+                                eye,
+                                box,
+                                scanRange(client),
+                                SilentAuraConfig.aimWanderTicks())
+                        : AimPointUtils.centerTrackingPoint(eye, box);
 
         if (state == RaytraceUtils.EntityRayState.HIT) {
             var intersection = box.clip(eye, eye.add(direction.scale(attackRange)));
@@ -347,48 +343,6 @@ public final class SilentAuraTargetSelector {
                 : angularRecovery;
     }
 
-    /**
-     * Closest-point geometry is extremely sensitive to movement of the local
-     * eye: while circling a stationary box, a freshly resolved surface point
-     * copies that strafe one-for-one. Keep the nearest safe point in target-
-     * local coordinates for a short, irregular burst. The point still follows
-     * the target's box, but local movement no longer becomes a synchronized
-     * per-packet aim signal.
-     */
-    private Vec3 stableClosestPoint(Minecraft client, LivingEntity target, Vec3 eye, AABB box) {
-        AABB interior = MathUtils.inset(box, CLOSEST_INSET, 0.18D);
-        int tick = client.player.tickCount;
-        Vec3 held =
-                AimPointUtils.localPoint(box, closestFractionX, closestFractionY, closestFractionZ);
-        double trackingRange = scanRange(client);
-        boolean usableHeld =
-                closestAnchorTargetId == target.getId()
-                        && eye.distanceToSqr(held) <= trackingRange * trackingRange
-                        && RaytraceUtils.canRayTraceTo(client, eye, held);
-        if (!usableHeld || tick >= nextClosestAnchorTick) {
-            Vec3 closest = EntityDistance.closestPoint(eye, interior);
-            closestAnchorTargetId = target.getId();
-            closestFractionX = AimPointUtils.fraction(closest.x, box.minX, box.maxX);
-            closestFractionY = AimPointUtils.fraction(closest.y, box.minY, box.maxY);
-            closestFractionZ = AimPointUtils.fraction(closest.z, box.minZ, box.maxZ);
-            int minimumHold = Math.max(3, SilentAuraConfig.aimWanderTicks() / 2);
-            int maximumHold = Math.max(minimumHold + 1, SilentAuraConfig.aimWanderTicks());
-            nextClosestAnchorTick = tick + RandomMath.betweenInclusive(minimumHold, maximumHold);
-            held = closest;
-        }
-        return held;
-    }
-
-    private static Vec3 centerTrackingPoint(Vec3 eye, AABB box) {
-        // Preserve eye-height following: it removes artificial vertical head
-        // motion on level ground and is part of Center's humanized behaviour.
-        Vec3 closest = EntityDistance.closestPoint(eye, box);
-        Vec3 inset = closest.lerp(box.getCenter(), 0.18D);
-        double lowerAimY = Mth.lerp(UPPER_BODY_FLOOR, box.minY, box.maxY);
-        double upperAimY = Mth.lerp(0.92D, box.minY, box.maxY);
-        return new Vec3(inset.x, Mth.clamp(closest.y, lowerAimY, upperAimY), inset.z);
-    }
-
     /** Box-centre X/Z and 5%-75% vertical aim corridor. */
     private static Vec3 fullLockAimPoint(Vec3 eye, AABB box) {
         double height = box.maxY - box.minY;
@@ -398,67 +352,6 @@ public final class SilentAuraTargetSelector {
                 (box.minX + box.maxX) * 0.5D,
                 Mth.clamp(eye.y, minimumY, maximumY),
                 (box.minZ + box.maxZ) * 0.5D);
-    }
-
-    /**
-     * Redraws a random anchor inside the hitbox every few ticks so the tracked
-     * point wanders around the body instead of sliding along one deterministic
-     * surface track. Anchors that are out of range or occluded fall back to the
-     * deterministic closest-point resolution.
-     */
-    private Vec3 wanderPoint(Minecraft client, LivingEntity target, Vec3 eye, AABB box) {
-        double wander = SilentAuraConfig.aimWander();
-        if (wander <= 0.0D) return null;
-        int tick = client.player.tickCount;
-        if (anchorTargetId != target.getId() || tick >= nextAnchorTick) {
-            boolean changed = anchorTargetId != target.getId() || wanderFrom == null;
-            Vec3 previous = changed ? null : wanderFractions(tick);
-            anchorTargetId = target.getId();
-            double spread = 0.5D * Mth.clamp(wander, 0.0D, 1.0D);
-            anchorFractionX = RandomMath.between(0.5D - spread, 0.5D + spread);
-            // Centre vertical wander on the closest (normally horizontal)
-            // upper-body ray. It is an offset, not a random head-to-feet pick.
-            double rawEyeFractionY = (eye.y - box.minY) / Math.max(box.getYsize(), 0.1D);
-            double closestFractionY = Mth.clamp(rawEyeFractionY, UPPER_BODY_FLOOR, 0.90D);
-            double verticalSpread = spread * 0.18D;
-            boolean balanceCanStayLevel =
-                    !lockMode && rawEyeFractionY >= UPPER_BODY_FLOOR && rawEyeFractionY <= 0.90D;
-            anchorFractionY =
-                    balanceCanStayLevel
-                            ? closestFractionY
-                            : RandomMath.between(
-                                    Math.max(UPPER_BODY_FLOOR, closestFractionY - verticalSpread),
-                                    Math.min(0.90D, closestFractionY + verticalSpread));
-            anchorFractionZ = RandomMath.between(0.5D - spread, 0.5D + spread);
-            int duration = Math.max(2, SilentAuraConfig.aimWanderTicks());
-            anchorStartTick = tick;
-            nextAnchorTick =
-                    tick
-                            + RandomMath.betweenInclusive(
-                                    Math.max(2, (int) Math.round(duration * 0.65D)),
-                                    Math.max(3, (int) Math.round(duration * 1.35D)));
-            wanderFrom =
-                    changed
-                            ? new Vec3(anchorFractionX, anchorFractionY, anchorFractionZ)
-                            : previous;
-        }
-        Vec3 fractions = wanderFractions(tick);
-        Vec3 anchor = AimPointUtils.localPoint(box, fractions.x, fractions.y, fractions.z);
-        double trackingRange = scanRange(client);
-        if (eye.distanceToSqr(anchor) > trackingRange * trackingRange) return null;
-        return RaytraceUtils.canRayTraceTo(client, eye, anchor) ? anchor : null;
-    }
-
-    private Vec3 wanderFractions(int tick) {
-        double progress =
-                Mth.clamp(
-                        (double) (tick - anchorStartTick)
-                                / Math.max(1, nextAnchorTick - anchorStartTick),
-                        0.0D,
-                        1.0D);
-        double blend =
-                progress * progress * progress * (progress * (progress * 6.0D - 15.0D) + 10.0D);
-        return wanderFrom.lerp(new Vec3(anchorFractionX, anchorFractionY, anchorFractionZ), blend);
     }
 
     private double angle(Minecraft client, LivingEntity entity) {

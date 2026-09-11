@@ -7,11 +7,11 @@ public final class ModuleCatalog {
     private ModuleCatalog() {}
 
     public static void register() {
-        Player.initialize();
         ModuleRegistry.add(Combat.autoClicker());
         ModuleRegistry.add(Combat.reach());
         ModuleRegistry.add(Combat.sprintReset());
         ModuleRegistry.add(Combat.silentAura());
+        ModuleRegistry.add(Combat.autoBlock());
         ModuleRegistry.add(Combat.aimAssist());
         ModuleRegistry.add(Combat.triggerBot());
         ModuleRegistry.add(Combat.critical());
@@ -29,7 +29,7 @@ public final class ModuleCatalog {
         ModuleRegistry.add(World.fastPlace());
         ModuleRegistry.add(Player.autoTotem());
         ModuleRegistry.add(Player.autoHead());
-        ModuleRegistry.add(Player.noFall());
+        ModuleRegistry.add(Player.autoMlg());
         ModuleRegistry.add(Network.fakeLag());
         ModuleRegistry.add(Render.clickGui());
         ModuleRegistry.add(Render.blockAnimation());

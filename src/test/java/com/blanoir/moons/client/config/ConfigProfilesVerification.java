@@ -109,7 +109,7 @@ public final class ConfigProfilesVerification {
         amount[0] = 3;
         ConfigProfiles.load("Duel");
         check(
-                amount[0] == 60 && ConfigProfiles.list().size() == 2,
+                amount[0] == 60 && ConfigProfiles.list().equals(List.of("default", "Duel", "练习")),
                 "Save and multiple Unicode names must work");
         check(ConfigProfiles.selected().equals("Duel"), "Last used config must persist");
         JsonObject malformed =

@@ -420,7 +420,7 @@ public final class ModuleRegistry {
                 setter::apply);
     }
 
-    static Setting rangeValue(
+    public static Setting rangeValue(
             String id,
             String name,
             Supplier<Number> lowGetter,
@@ -449,7 +449,11 @@ public final class ModuleRegistry {
                     }
                     double low = value.getAsJsonArray().get(0).getAsDouble();
                     double high = value.getAsJsonArray().get(1).getAsDouble();
-                    if (low > high || low < min || high > max) {
+                    if (!Double.isFinite(low)
+                            || !Double.isFinite(high)
+                            || low > high
+                            || low < min
+                            || high > max) {
                         throw new IllegalArgumentException("Invalid " + name + " range");
                     }
                     setter.apply(client, low, high);

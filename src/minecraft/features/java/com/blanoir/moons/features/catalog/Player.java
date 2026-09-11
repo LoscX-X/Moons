@@ -10,11 +10,6 @@ import com.blanoir.moons.client.module.impl.player.*;
 final class Player {
     private Player() {}
 
-    static void initialize() {
-        AutoHead.init();
-        AutoBed.init();
-    }
-
     static ModuleRegistry.Module autoWeb() {
         return module(
                 "autoweb",
@@ -491,14 +486,14 @@ final class Player {
                         AutoTotem::setSwitchDelay));
     }
 
-    static ModuleRegistry.Module noFall() {
+    static ModuleRegistry.Module autoMlg() {
         return module(
                 "nofall",
                 "AutoMLG",
                 "Player",
                 cfgBool("nofall.enabled", false),
-                NoFall::setEnabled,
-                NoFall::statusTag,
+                AutoMLG::setEnabled,
+                AutoMLG::statusTag,
                 number(
                         "threshold",
                         "Fall distance",
@@ -507,7 +502,7 @@ final class Player {
                         1,
                         10,
                         .1,
-                        NoFall::setThreshold),
+                        AutoMLG::setThreshold),
                 integer(
                         "predict_ticks",
                         "Predict ticks",
@@ -516,13 +511,13 @@ final class Player {
                         1,
                         5,
                         1,
-                        NoFall::setPredictTicks),
+                        AutoMLG::setPredictTicks),
                 bool(
                         "solid_check",
                         "Solid check",
                         "nofall.solidCheck",
                         true,
-                        NoFall::setSolidCheck),
-                bool("recovery", "Recovery", "nofall.recovery", true, NoFall::setRecovery));
+                        AutoMLG::setSolidCheck),
+                bool("recovery", "Recovery", "nofall.recovery", true, AutoMLG::setRecovery));
     }
 }

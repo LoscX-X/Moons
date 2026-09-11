@@ -1,6 +1,5 @@
 package com.blanoir.moons.client.module.impl.player;
 
-import com.blanoir.moons.client.access.MinecraftClientAccess;
 import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.DoubleSetting;
@@ -10,9 +9,11 @@ import com.blanoir.moons.client.event.movement.PlayerUpdateEvent;
 import com.blanoir.moons.client.management.input.CombatInputController;
 import com.blanoir.moons.client.management.rotation.SilentPacketRotation;
 import com.blanoir.moons.client.management.targeting.Targeting;
+import com.blanoir.moons.client.utils.client.ClientReady;
 import com.blanoir.moons.client.utils.math.MathUtils;
 import com.blanoir.moons.client.utils.player.HotbarQueries;
 import com.blanoir.moons.client.utils.world.placement.BlockPlacementUtils;
+import com.blanoir.moons.client.utils.world.placement.PlacementCoordinator;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
@@ -128,6 +129,8 @@ public final class AntiWeb {
     private AntiWeb() {}
 
     public static void init() {
+        EventBus.CLIENT_CONTEXT_CHANGED.register("AntiWeb.context", event -> shutdown(null));
+        PlacementCoordinator.register(PlacementCoordinator.Owner.ANTI_WEB, AntiWeb::isBusy);
         EventBus.PLAYER_UPDATE.register("AntiWeb.playerUpdate", AntiWeb::tick);
     }
 
@@ -167,7 +170,7 @@ public final class AntiWeb {
 
     private static void tick(PlayerUpdateEvent event) {
         Minecraft client = event.client();
-        if (!ENABLED.get() || !ready(client)) {
+        if (!ENABLED.get() || !ClientReady.aliveGameplay(client)) {
             reset(client);
             clearPendingCounterEvent();
             return;
@@ -178,10 +181,7 @@ public final class AntiWeb {
             return;
         }
 
-        if (AutoLava.isBusy()
-                || AntiLava.isBusy()
-                || AutoWeb.isBusy()
-                || AutoBed.isBusy()
+        if (PlacementCoordinator.busyFor(PlacementCoordinator.Owner.ANTI_WEB)
                 || client.level.dimension() == Level.NETHER) {
             return;
         }
@@ -193,7 +193,7 @@ public final class AntiWeb {
         }
 
         WaterPlacementPlan waterPlan = findPlayerWaterPlan(client);
-        int waterSlot = findHotbarSlot(client, Items.WATER_BUCKET);
+        int waterSlot = HotbarQueries.firstItem(client, Items.WATER_BUCKET);
         if (waterPlan == null || waterSlot < 0) {
             clearPendingWeb();
             return;
@@ -254,7 +254,7 @@ public final class AntiWeb {
 
         WaterPlacementPlan waterPlan =
                 planCounterWaterOverwrite(client, event.source(), event.webPos());
-        int waterSlot = findHotbarSlot(client, Items.WATER_BUCKET);
+        int waterSlot = HotbarQueries.firstItem(client, Items.WATER_BUCKET);
         if (waterPlan == null || waterSlot < 0) {
             return false;
         }
@@ -492,7 +492,7 @@ public final class AntiWeb {
             return false;
         }
         if (!withinInteractionRange(client, Vec3.atCenterOf(source))) return false;
-        int emptyBucketSlot = findHotbarSlot(client, Items.BUCKET);
+        int emptyBucketSlot = HotbarQueries.firstItem(client, Items.BUCKET);
         if (emptyBucketSlot < 0) return false;
 
         activeWebPos = source.immutable();
@@ -774,20 +774,6 @@ public final class AntiWeb {
                         point.z, webPos.getZ() + BOX_EPSILON, webPos.getZ() + 1.0D - BOX_EPSILON));
     }
 
-    private static int findHotbarSlot(Minecraft client, net.minecraft.world.item.Item item) {
-        return HotbarQueries.firstItem(client.player.getInventory(), item);
-    }
-
-    private static boolean ready(Minecraft client) {
-        var currentPlayer = client == null ? null : client.player;
-        return client != null
-                && currentPlayer != null
-                && client.level != null
-                && client.gameMode != null
-                && MinecraftClientAccess.screen(client) == null
-                && !currentPlayer.isDeadOrDying();
-    }
-
     public static boolean isBusy() {
         return activeWaterSlot >= 0 || waterCyclePhase != WaterCyclePhase.IDLE;
     }
@@ -819,6 +805,7 @@ public final class AntiWeb {
     }
 
     private static void restoreSlot(Minecraft client) {
+        boolean ownedRotation = isBusy();
         var currentPlayer = client == null ? null : client.player;
         if (client != null
                 && currentPlayer != null
@@ -838,7 +825,7 @@ public final class AntiWeb {
         bucketSyncWaitTicks = 0;
         activeSmoothTicks = 0;
         CombatInputController.releaseAttack(client, CombatInputController.Owner.ANTI_WEB);
-        SilentPacketRotation.reset();
+        if (ownedRotation) SilentPacketRotation.reset();
     }
 
     public static String statusText() {
@@ -942,5 +929,11 @@ public final class AntiWeb {
         CLICKING_TO_COLLECT,
         TURNING_BACK_TO_CAMERA,
         WAITING_FOR_RETURN_ROTATION
+    }
+
+    /** End this feature's pending work without changing its configured toggle. */
+    public static void shutdown(Minecraft client) {
+        reset(client);
+        clearPendingCounterEvent();
     }
 }

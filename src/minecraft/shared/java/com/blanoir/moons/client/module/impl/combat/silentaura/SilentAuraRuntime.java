@@ -4,12 +4,12 @@ import com.blanoir.moons.client.access.PacketAccess;
 import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.event.network.PacketSendEvent;
 import com.blanoir.moons.client.management.input.CombatInputController;
-import com.blanoir.moons.client.management.rotation.RotationHistory;
-import com.blanoir.moons.client.management.rotation.RotationLease;
+import com.blanoir.moons.client.management.lease.RotationLease;
+import com.blanoir.moons.client.management.rotation.RotationManager;
 import com.blanoir.moons.client.management.rotation.RotationRequest;
 import com.blanoir.moons.client.management.rotation.SilentPacketRotation;
 import com.blanoir.moons.client.management.targeting.Targeting;
-import com.blanoir.moons.client.module.impl.render.Animations;
+import com.blanoir.moons.client.module.impl.combat.TriggerBot;
 import com.blanoir.moons.client.utils.client.ClientReady;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 
@@ -25,13 +25,18 @@ public final class SilentAuraRuntime {
     private static final SilentAuraRotationRouter ROTATION = new SilentAuraRotationRouter();
     private static boolean initialized;
     private static boolean running;
+    private static boolean stopping;
     private static String activeMode;
     private static boolean activeMatrix;
     private static SentRotation sent = SentRotation.invalid();
     private static final SilentAuraPacketRotationRouter PACKET_ROTATION =
             new SilentAuraPacketRotationRouter();
     private static final RotationLease ROTATION_LEASE =
-            new RotationLease("SilentAura", RotationLease.PRIORITY_CONTINUOUS_COMBAT);
+            new RotationLease(
+                    "SilentAura",
+                    RotationLease.PRIORITY_CONTINUOUS_COMBAT,
+                    SilentAuraRuntime::shouldApplyRotation,
+                    SilentAuraRuntime::committedRotation);
 
     private SilentAuraRuntime() {}
 
@@ -47,8 +52,17 @@ public final class SilentAuraRuntime {
     }
 
     private static void frame(Minecraft client, double deltaSeconds) {
+        if (stopping) {
+            if (!ClientReady.world(client) || externallyPreempted()) {
+                reset(client);
+            } else {
+                finishTracking(client, deltaSeconds);
+                if (!ROTATION.active()) reset(client);
+            }
+            return;
+        }
         if (!baseCanRun(client)) {
-            if (running) reset(client);
+            if (running) stop(client);
             return;
         }
         running = true;
@@ -77,7 +91,6 @@ public final class SilentAuraRuntime {
                         : client.player.getViewVector(1.0F);
         LivingEntity target = SELECTOR.select(client, referenceLook);
         if (target == null) {
-            Animations.setAuraBlocking(false);
             sent = SentRotation.invalid();
             ROTATION.returnToCamera(client, deltaSeconds);
             if (!ROTATION.active()) PACKET_ROTATION.reset();
@@ -96,7 +109,6 @@ public final class SilentAuraRuntime {
                         : referenceLook;
         Vec3 point = SELECTOR.aimPoint(client, target, aimReferenceLook);
         if (point == null) {
-            Animations.setAuraBlocking(false);
             SELECTOR.clear();
             sent = SentRotation.invalid();
             ROTATION.returnToCamera(client, deltaSeconds);
@@ -104,9 +116,6 @@ public final class SilentAuraRuntime {
             syncLease();
             return;
         }
-        // Holding the target owns the visual block pose. Attack range and
-        // cooldown only decide when a block-hit swing is fired.
-        Animations.setAuraBlocking(SilentAuraConfig.block());
         if (!ROTATION_LEASE.active()) {
             Rotation camera = new Rotation(client.player.getYRot(), client.player.getXRot());
             if (!ROTATION_LEASE.acquire(
@@ -124,7 +133,6 @@ public final class SilentAuraRuntime {
     }
 
     private static void finishTracking(Minecraft client, double deltaSeconds) {
-        Animations.setAuraBlocking(false);
         SELECTOR.clear();
         sent = SentRotation.invalid();
         ROTATION.returnToCamera(client, deltaSeconds);
@@ -163,7 +171,7 @@ public final class SilentAuraRuntime {
             return false;
         }
         if (RotationLease.hasSilentRotation()) return true;
-        RotationHistory.Sent previous = RotationHistory.latest();
+        RotationManager.Sent previous = RotationManager.latest();
         // A release may follow this tick's movement. Discard mismatched input;
         // never interrupt the return trajectory or replay a blocked click later.
         return previous.valid()
@@ -182,7 +190,7 @@ public final class SilentAuraRuntime {
                 && SilentAuraConfig.enabled()
                 && !SilentPacketRotation.isUseRotationLocked()
                 && !SilentPacketRotation.shouldApplyRotation()
-                && RotationHistory.latest().tick() != currentPlayer.tickCount) {
+                && RotationManager.latest().tick() != currentPlayer.tickCount) {
             // A vanilla USE_ITEM sent before LocalPlayer.tick must own the
             // exact float pair of the movement packet that closes this tick.
             // Even a sub-display-decimal mouse/GCD change trips BadPacketsJ.
@@ -193,9 +201,9 @@ public final class SilentAuraRuntime {
         if (!(event.packet() instanceof ServerboundMovePlayerPacket)) {
             return;
         }
-        if (!RotationHistory.observed(event.packet())) return;
-        RotationHistory.Sent previous = RotationHistory.latest();
-        if (RotationHistory.sentFor(ROTATION_LEASE, event.packet())) {
+        if (!RotationManager.observed(event.packet())) return;
+        RotationManager.Sent previous = RotationManager.latest();
+        if (RotationManager.sentFor(ROTATION_LEASE, event.packet())) {
             confirmOutgoingRotation(previous.yaw(), previous.pitch());
         }
     }
@@ -215,7 +223,6 @@ public final class SilentAuraRuntime {
     }
 
     private static void clearRotation() {
-        Animations.setAuraBlocking(false);
         SELECTOR.clear();
         ROTATION.clear();
         sent = SentRotation.invalid();
@@ -281,7 +288,7 @@ public final class SilentAuraRuntime {
         RotationLease.Submission existing = RotationLease.submission();
         if (existing != null && existing.lease() == ROTATION_LEASE) return existing.rotation();
         Rotation result = ROTATION_LEASE.commit(packetRotation(), false, true);
-        return result != null ? result : RotationHistory.start(Minecraft.getInstance());
+        return result != null ? result : RotationManager.start(Minecraft.getInstance());
     }
 
     public static SentRotation sentRotation() {
@@ -323,11 +330,8 @@ public final class SilentAuraRuntime {
         SELECTOR.onAttack(client, target);
     }
 
-    public static void clearVisualBlock() {
-        Animations.setAuraBlocking(false);
-    }
-
     public static void resetTargeting() {
+        TriggerBot.stopSilentAuraInput(Minecraft.getInstance());
         clearRotation();
     }
 
@@ -340,13 +344,27 @@ public final class SilentAuraRuntime {
     }
 
     public static void reset(Minecraft client) {
+        TriggerBot.stopSilentAuraInput(client);
         running = false;
-        Animations.setAuraBlocking(false);
+        stopping = false;
         SELECTOR.clear();
         ROTATION.clear();
         sent = SentRotation.invalid();
         PACKET_ROTATION.reset();
         ROTATION_LEASE.release();
+    }
+
+    /** Ordinary disable stops attacks now, but observes the return's actual movement send. */
+    public static void stop(Minecraft client) {
+        TriggerBot.stopSilentAuraInput(client);
+        running = false;
+        if (!ClientReady.world(client) || !ROTATION_LEASE.active() || !ROTATION.active()) {
+            reset(client);
+            return;
+        }
+        stopping = true;
+        finishTracking(client, 0.0D);
+        if (!ROTATION.active()) reset(client);
     }
 
     private static void syncLease() {
@@ -377,7 +395,7 @@ public final class SilentAuraRuntime {
     }
 
     private static boolean canApply(Minecraft client) {
-        return SilentAuraConfig.enabled()
+        return (SilentAuraConfig.enabled() || stopping)
                 && ClientReady.world(client)
                 && !SilentPacketRotation.shouldApplyRotation()
                 && !RotationLease.busyFor(ROTATION_LEASE);

@@ -1,6 +1,7 @@
 package com.blanoir.moons.client.config.settings;
 
 import com.blanoir.moons.client.config.Settings;
+import com.blanoir.moons.client.module.framework.ModuleRegistry;
 
 import net.minecraft.util.Mth;
 
@@ -32,6 +33,19 @@ public final class IntSetting {
     public void set(int value) {
         this.value = Mth.clamp(value, min, max);
         Settings.setInt(key, this.value);
+    }
+
+    public ModuleRegistry.Setting describe(
+            String id, String label, int step, ModuleRegistry.IntSetter setter) {
+        return ModuleRegistry.numeric(
+                id,
+                label,
+                "integer",
+                this::get,
+                min,
+                max,
+                step,
+                (client, value) -> setter.apply(client, (int) Math.round(value)));
     }
 
     public static final class Builder {

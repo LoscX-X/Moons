@@ -6,6 +6,8 @@ import com.blanoir.moons.client.config.settings.IntSetting;
 import com.blanoir.moons.client.config.settings.ModeSetting;
 import com.blanoir.moons.client.config.settings.StringSetting;
 import com.blanoir.moons.client.management.targeting.Targeting;
+import com.blanoir.moons.client.module.framework.ModuleRegistry;
+import com.blanoir.moons.client.module.impl.combat.SilentAura;
 import com.blanoir.moons.client.utils.prediction.MotionPrediction;
 
 import net.minecraft.resources.Identifier;
@@ -17,6 +19,15 @@ import java.util.Set;
 /** Settings only. Runtime state deliberately lives outside this class. */
 public final class SilentAuraConfig {
     private static final BooleanSetting ENABLED = bool("silentaura.enabled", false);
+    private static final ModeSetting<CombatMode> COMBAT_MODE =
+            new ModeSetting.Builder<CombatMode>()
+                    .name("silentaura.combatMode")
+                    .defaultValue(CombatMode.LATEST)
+                    .option(CombatMode.LEGACY, "legacy")
+                    .option(CombatMode.LATEST, "latest")
+                    .build();
+    private static final DoubleSetting MIN_CPS = decimal("silentaura.minCps", 10D, 1D, 20D);
+    private static final DoubleSetting MAX_CPS = decimal("silentaura.maxCps", 14D, 1D, 20D);
     private static final DoubleSetting RANGE = decimal("silentaura.range", 3.7D, 1.0D, 6.0D);
     private static final DoubleSetting SCAN_EXTRA =
             decimal("silentaura.scanExtra", 2.5D, 0.0D, 7.0D);
@@ -89,7 +100,6 @@ public final class SilentAuraConfig {
             decimal("silentaura.minCharge", 0.7D, 0.7D, 1.3D);
     private static final DoubleSetting MAX_CHARGE =
             decimal("silentaura.maxCharge", 1.0D, 0.7D, 1.3D);
-    private static final BooleanSetting BLOCK = bool("silentaura.block", true);
     private static final BooleanSetting TARGET_PLAYERS = bool("silentaura.target.player", true);
     private static final BooleanSetting TARGET_MOBS = bool("silentaura.target.mob", false);
     private static final StringSetting TARGET_ENTITIES = text();
@@ -98,8 +108,165 @@ public final class SilentAuraConfig {
 
     private SilentAuraConfig() {}
 
+    /** Feature-owned descriptors; keys, defaults, bounds and modes come from the settings above. */
+    public static ModuleRegistry.Setting[] settings() {
+        return Descriptors.ALL.clone();
+    }
+
+    private static final class Descriptors {
+        private static final ModuleRegistry.Setting[] ALL = {
+            COMBAT_MODE.describe("combat_mode", "Combat mode", SilentAura::setCombatMode),
+            MIN_CPS.describeRange("cps", "Clicks per second", MAX_CPS, .1, SilentAura::setCps)
+                    .visibleWhen(SilentAuraConfig::legacyCombat),
+            RANGE.describe("range", "Attack range", .05, SilentAura::setRange),
+            SCAN_EXTRA.describe("scan_extra", "Scan range increase", .1, SilentAura::setScanExtra),
+            FOV.describe("fov", "FOV", 1, SilentAura::setFov),
+            TARGET_MODE.describe("target_mode", "Target mode", SilentAura::setTargetMode),
+            HURT_TIME.describe("hurt_time", "Maximum hurt time", 1, SilentAura::setHurtTime),
+            AIM_MODE.describe("aim_mode", "Aim mode", SilentAura::setAimMode),
+            SMOOTH.describe("smooth", "Smooth", .01, SilentAura::setSmooth)
+                    .visibleWhen(() -> !SilentAuraConfig.fullLockMode()),
+            RETURN_ROTATION.describe(
+                    "return_rotation", "Return rotation", SilentAura::setReturnRotation),
+            RETURN_SMOOTH
+                    .describe("return_smooth", "Return smooth", .01, SilentAura::setReturnSmooth)
+                    .visibleWhen(SilentAuraConfig::returnRotation),
+            JITTER.describe("jitter", "Path jitter", .01, SilentAura::setJitter)
+                    .visibleWhen(() -> !SilentAuraConfig.fullLockMode()),
+            JITTER_SPEED
+                    .describe("jitter_speed", "Jitter speed", .05, SilentAura::setJitterSpeed)
+                    .visibleWhen(() -> !SilentAuraConfig.fullLockMode()),
+            SETTLED_JITTER
+                    .describe("settled_jitter", "Settled sway", .01, SilentAura::setSettledJitter)
+                    .visibleWhen(SilentAuraConfig::balanceMode),
+            AIM_WANDER
+                    .describe("aim_wander", "Aim wander", .01, SilentAura::setAimWander)
+                    .visibleWhen(() -> !SilentAuraConfig.fullLockMode()),
+            AIM_WANDER_TICKS
+                    .describe(
+                            "aim_wander_ticks", "Wander interval", 1, SilentAura::setAimWanderTicks)
+                    .visibleWhen(() -> !SilentAuraConfig.fullLockMode()),
+            PREDICTION_LEAD
+                    .describe(
+                            "prediction_lead", "Velocity lead", .05, SilentAura::setPredictionLead)
+                    .visibleWhen(() -> !SilentAuraConfig.fullLockMode()),
+            FULL_LOCK_ANGLE_STEP
+                    .describe(
+                            "full_lock_angle_step",
+                            "Full-lock angle step",
+                            1,
+                            SilentAura::setFullLockAngleStep)
+                    .visibleWhen(SilentAuraConfig::fullLockMode),
+            FULL_LOCK_SMOOTHING
+                    .describe(
+                            "full_lock_smoothing",
+                            "Full-lock smoothing",
+                            .01,
+                            SilentAura::setFullLockSmoothing)
+                    .visibleWhen(SilentAuraConfig::fullLockMode),
+            FULL_LOCK_PREDICTION
+                    .describe(
+                            "full_lock_prediction",
+                            "Full-lock lead ticks",
+                            .05,
+                            SilentAura::setFullLockPrediction)
+                    .visibleWhen(SilentAuraConfig::fullLockMode),
+            PREDICTION_MAX_SPEED.describe(
+                    "prediction_max_speed",
+                    "Max target speed (blocks/tick)",
+                    .05,
+                    SilentAura::setPredictionMaxSpeed),
+            PREDICTION_MAX_ACCELERATION.describe(
+                    "prediction_max_acceleration",
+                    "Max target acceleration",
+                    .01,
+                    SilentAura::setPredictionMaxAcceleration),
+            PREDICTION_MAX_HORIZON.describe(
+                    "prediction_max_horizon",
+                    "Max lead ticks",
+                    .05,
+                    SilentAura::setPredictionMaxHorizon),
+            PREDICTION_VERTICAL_SCALE
+                    .describe(
+                            "prediction_vertical_scale",
+                            "Vertical lead weight",
+                            .01,
+                            SilentAura::setPredictionVerticalScale)
+                    .visibleWhen(() -> !SilentAuraConfig.fullLockMode()),
+            PREDICTION_MAX_TURN_RATE.describe(
+                    "prediction_max_turn_rate",
+                    "Max movement turn (deg/tick)",
+                    1,
+                    SilentAura::setPredictionMaxTurnRate),
+            PREDICTION_MAX_TURN_ANGLE
+                    .describe(
+                            "prediction_max_turn_angle",
+                            "Max predicted turn (deg)",
+                            1,
+                            SilentAura::setPredictionMaxTurnAngle)
+                    .visibleWhen(SilentAuraConfig::predictionTurningEnabled),
+            PREDICTION_MIN_RESPONSE.describeRange(
+                    "prediction_response",
+                    "Prediction response ticks",
+                    PREDICTION_MAX_RESPONSE,
+                    .05,
+                    SilentAura::setPredictionResponse),
+            MATRIX_COMPATIBILITY
+                    .describe("matrix", "Matrix compatibility", SilentAura::setMatrixCompatibility)
+                    .visibleWhen(() -> !SilentAuraConfig.fullLockMode()),
+            CRITICAL_INTEGRATION
+                    .describe("critical", "Critical", SilentAura::setCriticalIntegration)
+                    .visibleWhen(() -> !SilentAuraConfig.legacyCombat()),
+            AIM_POINT
+                    .describe("aim_point", "Aim point", SilentAura::setAimPoint)
+                    .visibleWhen(() -> !SilentAuraConfig.fullLockMode()),
+            PREDICTION
+                    .describe(
+                            "prediction", "Turn prediction", .05, SilentAura::setPredictionStrength)
+                    .visibleWhen(() -> !SilentAuraConfig.fullLockMode()),
+            MIN_CHARGE
+                    .describeRange(
+                            "charge", "Attack charge", MAX_CHARGE, .01, SilentAura::setCharge)
+                    .visibleWhen(() -> !SilentAuraConfig.legacyCombat()),
+            TARGET_PLAYERS.describe(
+                    "target_players",
+                    "Target players",
+                    (client, value) -> SilentAura.setTargetCategory(client, "player", value)),
+            TARGET_MOBS.describe(
+                    "target_mobs",
+                    "Target mobs",
+                    (client, value) -> SilentAura.setTargetCategory(client, "mob", value)),
+            DEBUGGER.describe("debugger", "Debugger", SilentAura::setDebugger)
+        };
+    }
+
     public static boolean enabled() {
         return ENABLED.get();
+    }
+
+    public static boolean legacyCombat() {
+        return COMBAT_MODE.get() == CombatMode.LEGACY;
+    }
+
+    public static String combatMode() {
+        return COMBAT_MODE.serialized();
+    }
+
+    public static boolean combatMode(String value) {
+        return COMBAT_MODE.tryDeserialize(value);
+    }
+
+    public static double minCps() {
+        return MIN_CPS.get();
+    }
+
+    public static double maxCps() {
+        return MAX_CPS.get();
+    }
+
+    public static void cps(double min, double max) {
+        MIN_CPS.set(Math.min(min, max));
+        MAX_CPS.set(Math.max(min, max));
     }
 
     public static void enabled(boolean value) {
@@ -248,7 +415,7 @@ public final class SilentAuraConfig {
     }
 
     public static boolean criticalIntegration() {
-        return CRITICAL_INTEGRATION.get();
+        return !legacyCombat() && CRITICAL_INTEGRATION.get();
     }
 
     public static String aimMode() {
@@ -281,10 +448,6 @@ public final class SilentAuraConfig {
 
     public static double maxCharge() {
         return MAX_CHARGE.get();
-    }
-
-    public static boolean block() {
-        return BLOCK.get();
     }
 
     public static boolean targetPlayers() {
@@ -375,10 +538,6 @@ public final class SilentAuraConfig {
         PREDICTION.set(value);
     }
 
-    public static void block(boolean value) {
-        BLOCK.set(value);
-    }
-
     public static boolean aimMode(String value) {
         return AIM_MODE.tryDeserialize(value);
     }
@@ -434,6 +593,11 @@ public final class SilentAuraConfig {
     private enum TargetMode {
         SWITCH,
         SINGLE
+    }
+
+    private enum CombatMode {
+        LEGACY,
+        LATEST
     }
 
     private enum AimMode {

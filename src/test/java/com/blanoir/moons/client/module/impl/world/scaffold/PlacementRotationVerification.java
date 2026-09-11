@@ -1,10 +1,10 @@
-package com.blanoir.moons.client.module.world.scaffold;
+package com.blanoir.moons.client.module.impl.world.scaffold;
 
 public final class PlacementRotationVerification {
     private static int assertions;
 
     public static void main(String[] args) {
-        PlacementRotationHistory history = new PlacementRotationHistory();
+        ScaffoldManager.PlacementRotations history = new ScaffoldManager.PlacementRotations();
         history.rotationSent(0);
         history.rotationSent(45);
         require(!history.needsSettling(), "first placement has no repeated delta");

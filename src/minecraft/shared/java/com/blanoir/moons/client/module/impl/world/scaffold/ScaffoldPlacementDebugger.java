@@ -1,8 +1,8 @@
-package com.blanoir.moons.client.module.world.scaffold;
+package com.blanoir.moons.client.module.impl.world.scaffold;
 
 import com.blanoir.moons.client.access.PacketAccess;
 import com.blanoir.moons.client.event.network.PacketSendEvent;
-import com.blanoir.moons.client.management.rotation.RotationHistory;
+import com.blanoir.moons.client.management.rotation.RotationManager;
 import com.blanoir.moons.client.utils.math.RandomMath;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 
@@ -107,7 +107,7 @@ final class ScaffoldPlacementDebugger {
                 previousSupport != null
                         && (!previousSupport.equals(support) || previousFace != face);
         selection = "support=" + pos(support) + "/" + face + " switch=" + changed;
-        RotationHistory.Sent sent = RotationHistory.latest();
+        RotationManager.Sent sent = RotationManager.latest();
         add(
                 "ATTEMPT id="
                         + counter
@@ -179,7 +179,7 @@ final class ScaffoldPlacementDebugger {
             Vec3 eye = client.player.getEyePosition();
             Vec3 sentEye =
                     positionKnown ? lastSentPosition.add(0, eye.y - client.player.getY(), 0) : null;
-            var sent = RotationHistory.latest();
+            var sent = RotationManager.latest();
             double reach = client.player.blockInteractionRange();
             add(
                     "USE_ON seq="
@@ -225,7 +225,7 @@ final class ScaffoldPlacementDebugger {
                             hit.getBlockPos().immutable(),
                             planned));
         } else if (event.packet() instanceof ServerboundMovePlayerPacket move) {
-            RotationHistory.Sent sent = RotationHistory.latest();
+            RotationManager.Sent sent = RotationManager.latest();
             Rotation actual = sent.valid() ? sent.rotation() : null;
             add(
                     "MOVE t="
@@ -247,7 +247,7 @@ final class ScaffoldPlacementDebugger {
                 String matches =
                         use.planned() == null || actual == null
                                 ? "unknown"
-                                : Boolean.toString(RotationHistory.same(use.planned(), actual));
+                                : Boolean.toString(RotationManager.same(use.planned(), actual));
                 movement =
                         String.format(
                                 Locale.ROOT,

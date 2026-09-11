@@ -5,7 +5,7 @@ import static com.blanoir.moons.client.module.framework.ModuleRegistry.*;
 import com.blanoir.moons.client.module.framework.ModuleCategories;
 import com.blanoir.moons.client.module.framework.ModuleRegistry;
 import com.blanoir.moons.client.module.impl.world.*;
-import com.blanoir.moons.client.module.world.*;
+import com.blanoir.moons.client.module.impl.world.scaffold.Scaffold;
 
 /** Defines world module descriptors; ordering is owned by ModuleCatalog. */
 final class World {

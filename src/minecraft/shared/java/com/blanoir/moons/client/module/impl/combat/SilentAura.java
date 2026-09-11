@@ -4,13 +4,14 @@ import com.blanoir.moons.client.access.MinecraftClientAccess;
 import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.event.frame.HudRenderEvent;
-import com.blanoir.moons.client.management.combat.CombatDecisionEngine;
 import com.blanoir.moons.client.module.impl.combat.critical.Critical;
 import com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraConfig;
 import com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraPlacementDebugger;
 import com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraRuntime;
-import com.blanoir.moons.client.module.impl.render.Animations;
+import com.blanoir.moons.client.utils.combat.CombatDecisionEngine;
+import com.blanoir.moons.client.utils.combat.CombatModuleCoordinator;
 import com.blanoir.moons.client.utils.combat.CombatReach;
+import com.blanoir.moons.client.utils.math.NumberRange;
 import com.blanoir.moons.client.utils.raytrace.RaytraceUtils;
 
 import net.minecraft.client.Minecraft;
@@ -24,7 +25,6 @@ public final class SilentAura {
     private SilentAura() {}
 
     public static void init() {
-        Animations.bindAuraState(SilentAura::isEnabled, SilentAura::shouldRenderBlock);
         SilentAuraRuntime.init();
         SilentAuraPlacementDebugger.init();
         EventBus.HUD_RENDER.register("SilentAura.debugger", SilentAura::drawDebugger);
@@ -106,11 +106,6 @@ public final class SilentAura {
         return SilentAuraConfig.enabled();
     }
 
-    /** Render-time truth; avoids depending on FRAME vs hand-submit ordering. */
-    public static boolean shouldRenderBlock(Minecraft client) {
-        return SilentAuraConfig.block() && isActivationHeld(client) && hasLockedTarget(client);
-    }
-
     /** Visual blocking follows target ownership, not the attack cooldown/range gate. */
     public static boolean hasLockedTarget(Minecraft client) {
         if (client == null || client.player == null || client.level == null) return false;
@@ -119,12 +114,38 @@ public final class SilentAura {
     }
 
     public static int setEnabled(Minecraft client, boolean value) {
+        if (value == SilentAuraConfig.enabled()) return 1;
         if (value)
             CombatModuleCoordinator.beforeEnable(client, CombatModuleCoordinator.Role.SILENT_AURA);
+        AutoBlock.reset(client);
         SilentAuraConfig.enabled(value);
-        SilentAuraRuntime.reset(client);
+        if (value) SilentAuraRuntime.reset(client);
+        else SilentAuraRuntime.stop(client);
         ClientChat.send(client, "SilentAura " + (value ? "enabled" : "disabled") + ".");
         return 1;
+    }
+
+    public static int setCombatMode(Minecraft client, String value) {
+        if (!"legacy".equalsIgnoreCase(value) && !"latest".equalsIgnoreCase(value)) {
+            ClientChat.send(client, "Combat mode must be legacy or latest.");
+            return 0;
+        }
+        AutoBlock.reset(client);
+        SilentAuraRuntime.reset(client);
+        SilentAuraConfig.combatMode(value);
+        return 1;
+    }
+
+    public static int setCps(Minecraft client, String raw) {
+        try {
+            NumberRange range = NumberRange.parse(raw);
+            SilentAuraConfig.cps(range.min(), range.max());
+            TriggerBot.resetLegacyClicks();
+            return 1;
+        } catch (IllegalArgumentException failure) {
+            ClientChat.send(client, "CPS must be a number or min-max between 1 and 20.");
+            return 0;
+        }
     }
 
     public static int showStatus(Minecraft client) {
@@ -288,12 +309,6 @@ public final class SilentAura {
         return 1;
     }
 
-    public static int setBlock(Minecraft ignoredClient, boolean value) {
-        SilentAuraConfig.block(value);
-        if (!value) SilentAuraRuntime.clearVisualBlock();
-        return 1;
-    }
-
     public static int setMatrixCompatibility(Minecraft ignoredClient, boolean value) {
         SilentAuraConfig.matrixCompatibility(value);
         SilentAuraRuntime.resetTargeting();
@@ -365,7 +380,9 @@ public final class SilentAura {
     }
 
     public static String hudTag() {
-        return TriggerBot.attackChargePercent(Minecraft.getInstance()) + "%";
+        return SilentAuraConfig.legacyCombat()
+                ? "Legacy " + SilentAuraConfig.minCps() + "-" + SilentAuraConfig.maxCps() + " CPS"
+                : "Latest " + TriggerBot.attackChargePercent(Minecraft.getInstance()) + "%";
     }
 
     // Debug

@@ -7,8 +7,10 @@ import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.IntSetting;
 import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.management.rotation.SilentPacketRotation;
-import com.blanoir.moons.client.module.impl.world.Scaffold;
+import com.blanoir.moons.client.module.impl.world.scaffold.Scaffold;
 import com.blanoir.moons.client.utils.math.RandomMath;
+import com.blanoir.moons.client.utils.player.HotbarQueries;
+import com.blanoir.moons.client.utils.world.placement.PlacementCoordinator;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket;
@@ -60,7 +62,7 @@ public final class AutoHead {
                 || client.options.keyUse.isDown()
                 || client.gameMode.isDestroying()
                 || Scaffold.isEnabled()
-                || AntiWeb.isBusy()
+                || PlacementCoordinator.busy(PlacementCoordinator.Owner.ANTI_WEB)
                 || SilentPacketRotation.isBusy()
                 || client.player.getHealth() > HEALTH.get()
                 || client.player.getAbsorptionAmount() > 0) return;
@@ -68,14 +70,7 @@ public final class AutoHead {
         long now = System.nanoTime();
         if (now < nextUseNanos) return;
         var inventory = client.player.getInventory();
-        int slot = -1;
-        for (int i = 0; i < 9; i++) {
-            // Modern player heads are the equivalent of the UHC skull consumable.
-            if (inventory.getItem(i).is(Items.PLAYER_HEAD)) {
-                slot = i;
-                break;
-            }
-        }
+        int slot = HotbarQueries.firstItem(inventory, Items.PLAYER_HEAD);
         if (slot < 0) return;
 
         int min = Math.min(MIN_DELAY.get(), MAX_DELAY.get());

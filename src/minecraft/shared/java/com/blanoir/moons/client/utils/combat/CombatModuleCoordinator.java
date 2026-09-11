@@ -1,4 +1,7 @@
-package com.blanoir.moons.client.module.impl.combat;
+package com.blanoir.moons.client.utils.combat;
+
+import com.blanoir.moons.client.module.impl.combat.SilentAura;
+import com.blanoir.moons.client.module.impl.combat.TriggerBot;
 
 import net.minecraft.client.Minecraft;
 

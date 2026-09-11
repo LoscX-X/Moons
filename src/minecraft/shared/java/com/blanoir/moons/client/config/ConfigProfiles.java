@@ -25,6 +25,7 @@ import java.util.Map;
 
 /** Local named module presets. The GUI and commands use the same runtime application path. */
 public final class ConfigProfiles {
+    public static final String DEFAULT_NAME = "default";
     private static final String SELECTED_KEY = "config.profile";
     private static final String EXTENSION = ".json";
 
@@ -35,20 +36,26 @@ public final class ConfigProfiles {
     }
 
     public static String selected() {
-        return Settings.getString(SELECTED_KEY, "");
+        String name = Settings.getString(SELECTED_KEY, "").trim();
+        return name.isEmpty() || name.equalsIgnoreCase(DEFAULT_NAME) ? DEFAULT_NAME : name;
     }
 
     public static List<String> list() throws IOException {
-        if (!Files.isDirectory(directory())) return List.of();
+        ensureDefault();
+        List<String> result = new ArrayList<>();
+        result.add(DEFAULT_NAME);
         try (var files = Files.list(directory())) {
-            return files.filter(Files::isRegularFile)
-                    .map(path -> path.getFileName().toString())
-                    .filter(name -> name.endsWith(EXTENSION))
-                    .map(name -> name.substring(0, name.length() - EXTENSION.length()))
-                    .filter(ConfigProfiles::validName)
-                    .sorted(String.CASE_INSENSITIVE_ORDER)
-                    .toList();
+            result.addAll(
+                    files.filter(Files::isRegularFile)
+                            .map(path -> path.getFileName().toString())
+                            .filter(name -> name.endsWith(EXTENSION))
+                            .map(name -> name.substring(0, name.length() - EXTENSION.length()))
+                            .filter(ConfigProfiles::validName)
+                            .filter(name -> !name.equalsIgnoreCase(DEFAULT_NAME))
+                            .sorted(String.CASE_INSENSITIVE_ORDER)
+                            .toList());
         }
+        return List.copyOf(result);
     }
 
     public static void create(String name) throws IOException {
@@ -61,12 +68,32 @@ public final class ConfigProfiles {
 
     private static void write(String name, boolean replace) throws IOException {
         Path target = path(name);
-        Files.createDirectories(directory());
+        ensureDefault();
         if (replace && !Files.isRegularFile(target))
             throw new IOException("Config does not exist: " + name);
         if (!replace && Files.exists(target))
             throw new IOException("Config already exists: " + name);
         JsonObject snapshot = capture();
+        preserveDefault(name, snapshot);
+        writeSnapshot(target, snapshot, replace);
+        Settings.setString(SELECTED_KEY, canonicalName(name));
+    }
+
+    /** The original properties-backed state becomes a selectable preset before switching away. */
+    private static void ensureDefault() throws IOException {
+        Path target = path(DEFAULT_NAME);
+        if (!Files.exists(target)) writeSnapshot(target, capture(), false);
+    }
+
+    private static void preserveDefault(String next, JsonObject snapshot) throws IOException {
+        if (selected().equals(DEFAULT_NAME) && !canonicalName(next).equals(DEFAULT_NAME)) {
+            writeSnapshot(path(DEFAULT_NAME), snapshot, true);
+        }
+    }
+
+    private static void writeSnapshot(Path target, JsonObject snapshot, boolean replace)
+            throws IOException {
+        Files.createDirectories(directory());
         Path temporary = Files.createTempFile(directory(), ".config-", ".tmp");
         try {
             Files.writeString(
@@ -89,11 +116,11 @@ public final class ConfigProfiles {
         } finally {
             Files.deleteIfExists(temporary);
         }
-        Settings.setString(SELECTED_KEY, name.trim());
     }
 
     public static void load(String name) throws IOException {
         Path source = path(name);
+        ensureDefault();
         if (!Files.isRegularFile(source)) throw new IOException("Config does not exist: " + name);
         if (Files.size(source) > 2_000_000) throw new IOException("Config is too large");
         final Plan target;
@@ -102,11 +129,13 @@ public final class ConfigProfiles {
         } catch (RuntimeException failure) {
             throw new IOException("Invalid config: " + failure.getMessage(), failure);
         }
-        Plan previous = plan(capture());
+        JsonObject snapshot = capture();
+        Plan previous = plan(snapshot);
+        preserveDefault(name, snapshot);
         Settings.beginBatch();
         try {
             apply(target);
-            Settings.setString(SELECTED_KEY, name.trim());
+            Settings.setString(SELECTED_KEY, canonicalName(name));
         } catch (RuntimeException failure) {
             try {
                 apply(previous);
@@ -158,6 +187,25 @@ public final class ConfigProfiles {
         JsonObject bindings = root.getAsJsonObject("bindings");
         if (modules == null || bindings == null)
             throw new IllegalArgumentException("Missing modules or bindings");
+        migrateAuraBlock(modules);
+        // Profiles written before AimAssist had modes represent the original Legit behavior.
+        if (modules.has("aimassist")) {
+            JsonObject settings = modules.getAsJsonObject("aimassist").getAsJsonObject("settings");
+            if (settings != null && !settings.has("mode")) settings.addProperty("mode", "legit");
+        }
+        // The original zero-delay block phases now require separate client ticks.
+        if (modules.has("autoblock")) {
+            JsonObject settings = modules.getAsJsonObject("autoblock").getAsJsonObject("settings");
+            if (settings != null) {
+                for (String id : List.of("unblock_ticks", "reblock_ticks")) {
+                    JsonElement value = settings.get(id);
+                    if (value != null
+                            && value.isJsonPrimitive()
+                            && value.getAsJsonPrimitive().isNumber()
+                            && value.getAsDouble() == 0) settings.addProperty(id, 1);
+                }
+            }
+        }
         List<ModuleState> states = new ArrayList<>();
         for (Module module : ModuleRegistry.modules()) {
             if (module.id().equals("clickgui") || !modules.has(module.id())) continue;
@@ -190,6 +238,22 @@ public final class ConfigProfiles {
             keys.put(entry.getKey(), entry.getValue().getAsString());
         }
         return new Plan(states, keys);
+    }
+
+    /** Profiles predating AutoBlock stored its toggle among SilentAura's settings. */
+    private static void migrateAuraBlock(JsonObject modules) {
+        if (modules.has("autoblock") || !modules.has("silentaura")) return;
+        JsonObject aura = modules.getAsJsonObject("silentaura").getAsJsonObject("settings");
+        if (aura == null || !aura.has("block")) return;
+        JsonObject block = new JsonObject();
+        block.add("enabled", aura.get("block").deepCopy());
+        JsonObject settings = new JsonObject();
+        settings.addProperty("mode", "latest");
+        settings.addProperty("require_aura", true);
+        settings.addProperty("require_right_click", false);
+        block.add("settings", settings);
+        modules.add("autoblock", block);
+        if (!aura.has("combat_mode")) aura.addProperty("combat_mode", "latest");
     }
 
     private static void validate(Setting setting, JsonElement value) {
@@ -265,7 +329,11 @@ public final class ConfigProfiles {
         if (!validName(name))
             throw new IllegalArgumentException(
                     "Use 1–48 letters, numbers, spaces, _ or - for the config name");
-        return directory().resolve(name.trim() + EXTENSION);
+        return directory().resolve(canonicalName(name) + EXTENSION);
+    }
+
+    private static String canonicalName(String name) {
+        return name.trim().equalsIgnoreCase(DEFAULT_NAME) ? DEFAULT_NAME : name.trim();
     }
 
     private static boolean validName(String name) {

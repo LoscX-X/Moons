@@ -9,12 +9,12 @@
  */
 package com.blanoir.moons.client.module.impl.player;
 
-import com.blanoir.moons.client.access.MinecraftClientAccess;
 import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.IntSetting;
 import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.management.targeting.Targeting;
+import com.blanoir.moons.client.utils.client.ClientReady;
 import com.blanoir.moons.client.utils.player.HotbarQueries;
 
 import net.minecraft.client.Minecraft;
@@ -58,7 +58,9 @@ public final class AutoSword {
     /** Called from MultiPlayerGameMode#attack before the attack packet is sent. */
     public static void onAttack(Entity target) {
         Minecraft client = Minecraft.getInstance();
-        if (!ENABLED.get() || !ready(client) || !Targeting.isEnemyPlayer(client, target)) {
+        if (!ENABLED.get()
+                || !ClientReady.gameplay(client)
+                || !Targeting.isEnemyPlayer(client, target)) {
             return;
         }
 
@@ -84,7 +86,7 @@ public final class AutoSword {
     }
 
     private static void tick(Minecraft client) {
-        if (!ENABLED.get() || !ready(client)) {
+        if (!ENABLED.get() || !ClientReady.gameplay(client)) {
             restore(client);
             return;
         }
@@ -124,14 +126,6 @@ public final class AutoSword {
 
     private static boolean isSword(ItemStack stack) {
         return !stack.isEmpty() && stack.is(ItemTags.SWORDS);
-    }
-
-    private static boolean ready(Minecraft client) {
-        return client != null
-                && client.player != null
-                && client.level != null
-                && client.gameMode != null
-                && MinecraftClientAccess.screen(client) == null;
     }
 
     private static void restore(Minecraft client) {

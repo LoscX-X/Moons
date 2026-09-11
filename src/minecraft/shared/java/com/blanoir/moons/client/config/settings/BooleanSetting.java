@@ -1,6 +1,7 @@
 package com.blanoir.moons.client.config.settings;
 
 import com.blanoir.moons.client.config.Settings;
+import com.blanoir.moons.client.module.framework.ModuleRegistry;
 
 public final class BooleanSetting {
     private final String key;
@@ -18,6 +19,11 @@ public final class BooleanSetting {
     public void set(boolean value) {
         this.value = value;
         Settings.setBoolean(key, value);
+    }
+
+    public ModuleRegistry.Setting describe(
+            String id, String label, ModuleRegistry.BoolSetter setter) {
+        return ModuleRegistry.customBool(id, label, this::get, setter);
     }
 
     public static final class Builder {

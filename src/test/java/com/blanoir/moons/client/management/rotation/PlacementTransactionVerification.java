@@ -2,6 +2,7 @@ package com.blanoir.moons.client.management.rotation;
 
 import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.event.network.PacketSendEvent;
+import com.blanoir.moons.client.management.lease.RotationLease;
 import com.blanoir.moons.client.module.impl.player.AutoBed;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 
@@ -52,7 +53,7 @@ public final class PlacementTransactionVerification {
             pre.cancel();
             EventBus.PACKET_SEND_PRE.post(pre);
             require(lock.locked(), "cancelled movement cannot close the window");
-            require(!RotationHistory.latest().valid(), "PRE cannot confirm rotation");
+            require(!RotationManager.latest().valid(), "PRE cannot confirm rotation");
             post(new ServerboundMovePlayerPacket.Rot(42, 75, false, false));
             require(lock.locked(), "different closing angle cannot unlock");
             post(look);
@@ -98,7 +99,7 @@ public final class PlacementTransactionVerification {
                             "continuation sees a closed window");
                     require(restored[0], "continuation never reads temporary packet camera angles");
                     require(
-                            RotationHistory.latest().yaw() == 42,
+                            RotationManager.latest().yaw() == 42,
                             "continuation starts from the closing send");
                     calls[0]++;
                 };
@@ -166,7 +167,7 @@ public final class PlacementTransactionVerification {
 
         begin(lock);
         defer.invoke(null, (Runnable) () -> calls[0]++);
-        RotationHistory.reset();
+        RotationManager.reset();
         lock.clear();
         SilentPacketRotation.reset();
         RotationLease.finishMotion();
@@ -205,7 +206,7 @@ public final class PlacementTransactionVerification {
 
     private static void begin(RotationInteractionLock lock) throws Exception {
         lock.clear();
-        RotationHistory.reset();
+        RotationManager.reset();
         SilentPacketRotation.reset();
         RotationLease lease = (RotationLease) field("ROTATION_LEASE").get(null);
         require(
@@ -222,7 +223,7 @@ public final class PlacementTransactionVerification {
         RotationLease.beginPacketObservation();
         try {
             if (packet instanceof ServerboundMovePlayerPacket movement) {
-                RotationHistory.record(movement, 1);
+                RotationManager.record(movement, 1);
             }
             Method observer =
                     SilentPacketRotation.class.getDeclaredMethod(

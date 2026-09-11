@@ -26,6 +26,7 @@ import com.blanoir.moons.client.utils.player.HotbarQueries;
 import com.blanoir.moons.client.utils.prediction.TrajectoryPrediction;
 import com.blanoir.moons.client.utils.prediction.TrajectoryPrediction.TrajectoryStep;
 import com.blanoir.moons.client.utils.world.placement.BlockPlacementUtils;
+import com.blanoir.moons.client.utils.world.placement.PlacementCoordinator;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
@@ -157,6 +158,9 @@ public final class AutoWeb {
     private AutoWeb() {}
 
     public static void init() {
+        EventBus.CLIENT_CONTEXT_CHANGED.register("AutoWeb.context", event -> shutdown(null));
+        PlacementCoordinator.register(
+                PlacementCoordinator.Owner.AUTO_WEB, AutoWeb::isBusy, AutoWeb::resetPlan);
         EventBus.PLAYER_UPDATE.register(
                 "AutoWeb.playerUpdate",
                 event -> {
@@ -171,7 +175,7 @@ public final class AutoWeb {
             return;
         }
 
-        if (!ready(client)) {
+        if (!ClientReady.gameplay(client)) {
             resetAll(client);
             lastDecision = "not_ready";
             return;
@@ -195,7 +199,7 @@ public final class AutoWeb {
 
         observePlacementConfirmation(client);
 
-        if (AutoLava.isBusy() || AntiLava.isBusy() || AntiWeb.isBusy() || AutoBed.isBusy()) {
+        if (PlacementCoordinator.busyFor(PlacementCoordinator.Owner.AUTO_WEB)) {
             lastDecision = "other_placement";
             return;
         }
@@ -234,7 +238,7 @@ public final class AutoWeb {
     public static void onAttack(Entity target) {
         Minecraft client = Minecraft.getInstance();
         if (!ENABLED.get()
-                || !ready(client)
+                || !ClientReady.gameplay(client)
                 || !(target instanceof Player player)
                 || !Targeting.isValidTargetPlayer(client, player)
                 || isTrappedInWeb(client, player)
@@ -733,7 +737,7 @@ public final class AutoWeb {
             Minecraft client, Player target, boolean upperBodyOnly) {
         Vec3 velocity = TrajectoryPrediction.observedVelocity(target);
         int horizon =
-                clampInt(
+                Mth.clamp(
                         PREDICTION_TICKS.get(),
                         MIN_WALL_PREDICTION_TICKS,
                         MAX_WALL_PREDICTION_TICKS);
@@ -1203,10 +1207,6 @@ public final class AutoWeb {
                 stack -> !stack.isEmpty() && stack.getItem() == Items.COBWEB);
     }
 
-    private static boolean ready(Minecraft client) {
-        return ClientReady.gameplay(client);
-    }
-
     private static void resetPlan(Minecraft client) {
         if (isBusy()) {
             restoreHeldSlot(client);
@@ -1219,10 +1219,6 @@ public final class AutoWeb {
     private static void resetAll(Minecraft client) {
         resetPlan(client);
         remainingCooldownTicks = 0;
-    }
-
-    public static void yieldForAntiLava(Minecraft client) {
-        resetPlan(client);
     }
 
     public static boolean isBusy() {
@@ -1413,10 +1409,6 @@ public final class AutoWeb {
         return value == (long) value ? Long.toString((long) value) : Double.toString(value);
     }
 
-    private static int clampInt(int value, int min, int max) {
-        return Math.max(min, Math.min(max, value));
-    }
-
     private static int requiredServerSettleTicks(Minecraft client) {
         var currentPlayer = client == null ? null : client.player;
         var connectionSnapshot = client == null ? null : client.getConnection();
@@ -1427,7 +1419,7 @@ public final class AutoWeb {
                 latencyMs = Math.max(0, info.getLatency());
             }
         }
-        return clampInt((int) Math.ceil(latencyMs / 50.0D) + 3, 8, MAX_PLACE_CONFIRM_TICKS);
+        return Mth.clamp((int) Math.ceil(latencyMs / 50.0D) + 3, 8, MAX_PLACE_CONFIRM_TICKS);
     }
 
     private enum WebActionPhase {
@@ -1475,5 +1467,10 @@ public final class AutoWeb {
                 + SilentPacketRotation.isUseInvocationDone()
                 + "/"
                 + SilentPacketRotation.isUseDone();
+    }
+
+    /** End this feature's pending work without changing its configured toggle. */
+    public static void shutdown(Minecraft client) {
+        resetAll(client);
     }
 }

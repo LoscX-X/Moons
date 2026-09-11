@@ -6,12 +6,12 @@ import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.DoubleSetting;
 import com.blanoir.moons.client.config.settings.IntSetting;
 import com.blanoir.moons.client.event.EventBus;
-import com.blanoir.moons.client.management.combat.CombatDecisionEngine;
 import com.blanoir.moons.client.management.input.CombatInputController;
 import com.blanoir.moons.client.management.targeting.Targeting;
-import com.blanoir.moons.client.module.impl.combat.CombatModuleCoordinator;
-import com.blanoir.moons.client.module.impl.combat.TriggerBot;
 import com.blanoir.moons.client.module.impl.combat.critical.Critical;
+import com.blanoir.moons.client.utils.combat.CombatDecisionEngine;
+import com.blanoir.moons.client.utils.combat.CombatModuleCoordinator;
+import com.blanoir.moons.client.utils.combat.CombatReach;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.Entity;
@@ -110,7 +110,7 @@ public final class Predict {
                 clear(client);
                 return;
             }
-            if (!queuedManualIntent && TriggerBot.isWithinSafeAttackRange(client, target)) {
+            if (!queuedManualIntent && CombatReach.outsideVanillaRange(client, target)) {
                 clear(client);
                 return;
             }
@@ -179,7 +179,7 @@ public final class Predict {
                     clear(client);
                     return;
                 }
-                if (!queuedManualIntent && TriggerBot.isAttackRayReady(client, target)) {
+                if (!queuedManualIntent && (client == null || target == null)) {
                     clear(client);
                     return;
                 }
@@ -226,7 +226,7 @@ public final class Predict {
             boolean manualIntent,
             int earliestAttackTick,
             boolean throughBlock) {
-        if (!manualIntent && TriggerBot.isWithinSafeAttackRange(client, target)) {
+        if (!manualIntent && CombatReach.outsideVanillaRange(client, target)) {
             return Critical.AttackDecision.ABORTED;
         }
         int horizon = configuredHorizonTicks();

@@ -1,4 +1,4 @@
-package com.blanoir.moons.client.module.world.scaffold;
+package com.blanoir.moons.client.module.impl.world.scaffold;
 
 import java.util.ArrayDeque;
 import java.util.List;

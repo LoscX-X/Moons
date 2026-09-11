@@ -1,8 +1,5 @@
 package com.blanoir.moons.client.management.rotation;
 
-import com.blanoir.moons.client.module.impl.combat.SilentAura;
-import com.blanoir.moons.client.module.impl.world.Scaffold;
-
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 
@@ -15,17 +12,9 @@ import net.minecraft.client.player.LocalPlayer;
  * the server simulated against a different packet yaw.
  */
 public final class MoveFix {
-    public enum Source {
-        NONE,
-        MANUAL_USE,
-        BLOCK_INTERACTION,
-        SCAFFOLD,
-        SILENT_AURA
-    }
-
-    public record State(boolean active, float yaw, Source source, int playerTick) {
+    public record State(boolean active, float yaw, String owner, int playerTick) {
         private static State inactive(int tick) {
-            return new State(false, 0.0F, Source.NONE, tick);
+            return new State(false, 0.0F, "", tick);
         }
     }
 
@@ -58,29 +47,18 @@ public final class MoveFix {
     }
 
     private static State resolve(int tick) {
-        var manual = RotationLease.manualRotation();
-        if (manual != null) return new State(true, manual.yaw(), Source.MANUAL_USE, tick);
-        RotationLease.Submission committed = RotationLease.submission();
-        if (committed != null) {
-            Source source =
-                    switch (committed.lease().owner()) {
-                        case "SilentAura" -> Source.SILENT_AURA;
-                        case "Scaffold" -> Source.SCAFFOLD;
-                        default -> Source.BLOCK_INTERACTION;
-                    };
-            return new State(committed.correctMovement(), committed.rotation().yaw(), source, tick);
-        }
-        // Must exactly match RuntimeEventAdapter.applyPacketRotation precedence.
-        if (SilentPacketRotation.shouldCorrectMovement()) {
-            return new State(
-                    true, SilentPacketRotation.getMovementYaw(), Source.BLOCK_INTERACTION, tick);
-        }
-        if (Scaffold.shouldCorrectMovement()) {
-            return new State(true, Scaffold.getMovementYaw(), Source.SCAFFOLD, tick);
-        }
-        if (SilentAura.shouldCorrectMovement()) {
-            return new State(true, SilentAura.getMovementYaw(), Source.SILENT_AURA, tick);
-        }
-        return State.inactive(tick);
+        RotationManager.Decision decision = RotationManager.forMovement();
+        return decision == null
+                ? State.inactive(tick)
+                : new State(
+                        decision.correctMovement(),
+                        decision.rotation().yaw(),
+                        decision.owner(),
+                        tick);
+    }
+
+    public static void reset() {
+        sampledPlayer = null;
+        sampled = State.inactive(Integer.MIN_VALUE);
     }
 }

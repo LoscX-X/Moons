@@ -4,7 +4,10 @@ import com.blanoir.moons.client.utils.entity.EntityDistance;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 
 /**
@@ -14,6 +17,26 @@ import net.minecraft.world.phys.Vec3;
  */
 public final class BlockDistance {
     private BlockDistance() {}
+
+    /** Vertical collider ray from the player's feet; fluids do not count as ground. */
+    public static double toGround(Minecraft client, double maxDistance) {
+        Vec3 start =
+                new Vec3(
+                        client.player.getX(),
+                        client.player.getBoundingBox().minY,
+                        client.player.getZ());
+        BlockHitResult hit =
+                client.level.clip(
+                        new ClipContext(
+                                start,
+                                start.add(0.0D, -maxDistance, 0.0D),
+                                ClipContext.Block.COLLIDER,
+                                ClipContext.Fluid.NONE,
+                                client.player));
+        return hit.getType() == HitResult.Type.MISS
+                ? Double.POSITIVE_INFINITY
+                : start.y - hit.getLocation().y;
+    }
 
     public static double toBlock(Minecraft client, BlockPos pos) {
         return Math.sqrt(squaredToBlock(client, pos));

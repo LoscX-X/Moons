@@ -5,13 +5,14 @@ import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.DoubleSetting;
 import com.blanoir.moons.client.config.settings.IntSetting;
 import com.blanoir.moons.client.event.EventBus;
-import com.blanoir.moons.client.module.impl.player.nofall.AutoMlgNoFall;
+import com.blanoir.moons.client.module.impl.player.automlg.AutoMlgRuntime;
 import com.blanoir.moons.client.utils.client.ClientReady;
 
 import net.minecraft.client.Minecraft;
 
-public final class NoFall {
-    private static final AutoMlgNoFall AUTO_MLG = new AutoMlgNoFall();
+public final class AutoMLG {
+    // Legacy storage/module ids are retained for existing profiles and key bindings.
+    private static final AutoMlgRuntime AUTO_MLG = new AutoMlgRuntime();
     private static final BooleanSetting ENABLED =
             new BooleanSetting.Builder().name("nofall.enabled").defaultValue(false).build();
     private static final DoubleSetting THRESHOLD =
@@ -31,11 +32,12 @@ public final class NoFall {
     private static final BooleanSetting RECOVERY =
             new BooleanSetting.Builder().name("nofall.recovery").defaultValue(true).build();
 
-    private NoFall() {}
+    private AutoMLG() {}
 
     public static void init() {
+        EventBus.CLIENT_CONTEXT_CHANGED.register("AutoMLG.context", event -> AUTO_MLG.reset(null));
         EventBus.PLAYER_UPDATE.register(
-                "NoFall.playerUpdate",
+                "AutoMLG.playerUpdate",
                 event -> {
                     Minecraft client = event.client();
                     if (!ENABLED.get() || !ready(client)) {
@@ -69,10 +71,15 @@ public final class NoFall {
     }
 
     public static int setEnabled(Minecraft client, boolean enabled) {
+        if (ENABLED.get() == enabled) return 1;
         ENABLED.set(enabled);
         AUTO_MLG.reset(client);
         ClientChat.send(client, "AutoMLG " + statusText() + ".");
         return 1;
+    }
+
+    public static void shutdown(Minecraft client) {
+        AUTO_MLG.reset(client);
     }
 
     public static int setThreshold(Minecraft client, double value) {

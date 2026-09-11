@@ -1,5 +1,7 @@
 package com.blanoir.moons.client.config.settings;
 
+import com.blanoir.moons.client.module.framework.ModuleRegistry;
+
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -72,6 +74,13 @@ public final class ModeSetting<T> {
 
     public List<String> optionIds() {
         return optionIds;
+    }
+
+    public ModuleRegistry.Setting describe(
+            String id, String label, ModuleRegistry.TextSetter setter) {
+        return ModuleRegistry.customChoice(id, label, this::serialized, optionIds, setter)
+                .visibleWhen(this::isVisible)
+                .enabledWhen(this::isEnabled);
     }
 
     private void select(Option<T> option) {

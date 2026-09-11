@@ -11,6 +11,7 @@ import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.management.network.EntityLag;
 import com.blanoir.moons.client.management.network.PacketBlink;
 import com.blanoir.moons.client.management.targeting.Targeting;
+import com.blanoir.moons.client.utils.client.ClientReady;
 import com.blanoir.moons.client.utils.combat.CombatReach;
 import com.blanoir.moons.client.utils.entity.EntityDistance;
 import com.blanoir.moons.client.utils.math.RandomMath;
@@ -119,7 +120,7 @@ public final class Reach {
      * vanilla action because this module either sent or stored its packet pair.
      */
     public static boolean handleManualAttack(Minecraft client) {
-        if (!ready(client) || !ENABLED.get()) {
+        if (!ClientReady.gameplay(client) || !ENABLED.get()) {
             clearPending();
             return false;
         }
@@ -154,7 +155,7 @@ public final class Reach {
      * Range + 0.5 for the ray/block query that bounds that pick.
      */
     public static void applyNormalPick(Minecraft client) {
-        if (!ready(client) || !ENABLED.get() || advancedMode() || !expanding) {
+        if (!ClientReady.gameplay(client) || !ENABLED.get() || advancedMode() || !expanding) {
             return;
         }
         double entityRange = RANGE.get();
@@ -218,7 +219,7 @@ public final class Reach {
             }
             return;
         }
-        if (!ready(client) || !ENABLED.get() || !advancedMode()) {
+        if (!ClientReady.gameplay(client) || !ENABLED.get() || !advancedMode()) {
             clearPending();
             return;
         }
@@ -352,14 +353,6 @@ public final class Reach {
             } catch (Exception ignored) {
             }
         }
-    }
-
-    private static boolean ready(Minecraft client) {
-        return client != null
-                && client.player != null
-                && client.level != null
-                && client.gameMode != null
-                && MinecraftClientAccess.screen(client) == null;
     }
 
     public static boolean isEnabled() {

@@ -3,6 +3,7 @@ package com.blanoir.moons.client.management.rotation;
 import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.event.EventPriority;
 import com.blanoir.moons.client.event.network.PacketSendEvent;
+import com.blanoir.moons.client.management.lease.RotationLease;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 
 import net.minecraft.client.Minecraft;
@@ -12,8 +13,8 @@ import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
 import java.util.Map;
 import java.util.WeakHashMap;
 
-/** Connection-scoped local send history, shared by every silent rotation producer. */
-public final class RotationHistory {
+/** Owns shared rotation decisions, connection-scoped send records and packet confirmation. */
+public final class RotationManager {
     public record Sent(boolean valid, float yaw, float pitch, int tick, long sequence) {
         private static Sent empty() {
             return new Sent(false, 0, 0, Integer.MIN_VALUE, 0);
@@ -36,17 +37,17 @@ public final class RotationHistory {
     private static Object level;
     private static boolean initialized;
 
-    private RotationHistory() {}
+    private RotationManager() {}
 
     public static void init() {
         if (initialized) return;
         initialized = true;
         EventBus.CLIENT_CONTEXT_CHANGED.register(
-                "RotationHistory.context", EventPriority.HIGHEST, event -> reset());
+                "RotationManager.context", EventPriority.HIGHEST, event -> reset());
         EventBus.PACKET_SEND_PRE.register(
-                "RotationHistory.capture", EventPriority.HIGHEST, RotationHistory::capture);
+                "RotationManager.capture", EventPriority.HIGHEST, RotationManager::capture);
         EventBus.PACKET_SEND_POST.register(
-                "RotationHistory.sent", EventPriority.HIGHEST, RotationHistory::record);
+                "RotationManager.sent", EventPriority.HIGHEST, RotationManager::record);
     }
 
     public static synchronized Sent latest() {
@@ -81,7 +82,7 @@ public final class RotationHistory {
         if (client == null
                 || currentPlayer == null
                 || event.connection() != currentPlayer.connection.getConnection()) return;
-        synchronized (RotationHistory.class) {
+        synchronized (RotationManager.class) {
             synchronizeContext(client);
             record(movement, currentPlayer.tickCount);
         }
@@ -143,5 +144,39 @@ public final class RotationHistory {
         context = null;
         player = level = null;
         RotationLease.resetAll();
+        MoveFix.reset();
+    }
+
+    /** A result lasts through one action/movement window, not until a packet is confirmed. */
+    public record Decision(String owner, Rotation rotation, boolean correctMovement, long window) {
+        public boolean valid() {
+            return window == RotationLease.window();
+        }
+    }
+
+    public static Decision resolve() {
+        return resolve(false);
+    }
+
+    /** Do not commit a packet candidate early when the owner opted out of movement correction. */
+    public static Decision forMovement() {
+        return resolve(true);
+    }
+
+    private static Decision resolve(boolean forMovement) {
+        synchronized (RotationManager.class) {
+            Rotation manual = RotationLease.manualRotation();
+            if (manual != null) {
+                return new Decision("ManualUse", manual, true, RotationLease.window());
+            }
+            RotationLease.Submission output = RotationLease.resolveSubmission(forMovement);
+            return output == null
+                    ? null
+                    : new Decision(
+                            output.lease().owner(),
+                            output.rotation(),
+                            output.correctMovement(),
+                            RotationLease.window());
+        }
     }
 }

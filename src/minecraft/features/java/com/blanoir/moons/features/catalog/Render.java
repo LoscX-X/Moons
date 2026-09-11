@@ -47,7 +47,7 @@ final class Render {
                         Animations::setMode),
                 bool(
                         "silentaura_only",
-                        "SilentAura only",
+                        "Combat blocking only",
                         "blockanimation.silentAuraOnly",
                         false,
                         Animations::setSilentAuraOnly),
@@ -293,50 +293,50 @@ final class Render {
                 "scoreboardchanger",
                 "Scoreboard",
                 ModuleCategories.RENDER,
-                ScoreboardChanger::isEnabled,
-                ScoreboardChanger::setEnabled,
+                Scoreboard::isEnabled,
+                Scoreboard::setEnabled,
                 () -> "",
                 choice(
                         "mode",
                         "Mode",
                         "scoreboardchanger.mode",
                         "last_line",
-                        ScoreboardChanger.modeOptions(),
-                        ScoreboardChanger::setMode),
+                        Scoreboard.modeOptions(),
+                        Scoreboard::setMode),
                 text(
                                 "last_line",
                                 "Last line",
                                 "scoreboardchanger.lastLine",
                                 "<wave:#55c8ff:#b675ff:0.5>Moons Client</wave>",
-                                ScoreboardChanger::setLastLine)
-                        .visibleWhen(() -> !ScoreboardChanger.customMode()),
+                                Scoreboard::setLastLine)
+                        .visibleWhen(() -> !Scoreboard.customMode()),
                 text(
                                 "custom_lines",
                                 "Custom lines",
                                 "scoreboardchanger.customLines",
                                 "<#55c8ff>Moons Client</#55c8ff>|<wave:#55c8ff:#b675ff:0.5>play.example.net</wave>",
-                                ScoreboardChanger::setCustomLines)
-                        .visibleWhen(ScoreboardChanger::customMode),
+                                Scoreboard::setCustomLines)
+                        .visibleWhen(Scoreboard::customMode),
                 bool(
                         "replace_title",
                         "Replace title",
                         "scoreboardchanger.replaceTitle",
                         false,
-                        ScoreboardChanger::setReplaceTitle),
+                        Scoreboard::setReplaceTitle),
                 text(
                                 "title",
                                 "Custom title",
                                 "scoreboardchanger.title",
                                 "<gradient:#55c8ff:#b675ff>Moons</gradient>",
-                                ScoreboardChanger::setTitle)
+                                Scoreboard::setTitle)
                         .visibleWhen(cfgBool("scoreboardchanger.replaceTitle", false)),
                 bool(
                                 "show_scores",
                                 "Show scores",
                                 "scoreboardchanger.showScores",
                                 true,
-                                ScoreboardChanger::setShowScores)
-                        .visibleWhen(() -> !ScoreboardChanger.customMode()));
+                                Scoreboard::setShowScores)
+                        .visibleWhen(() -> !Scoreboard.customMode()));
     }
 
     static ModuleRegistry.Module inventory() {

@@ -19,7 +19,6 @@ import com.blanoir.moons.client.event.movement.MovementInputUpdatedEvent;
 import com.blanoir.moons.client.event.movement.PlayerMotionEvent;
 import com.blanoir.moons.client.event.movement.PlayerMoveEndEvent;
 import com.blanoir.moons.client.event.movement.PlayerUpdateEvent;
-import com.blanoir.moons.client.event.movement.StrafeEvent;
 import com.blanoir.moons.client.event.network.PacketReceiveEvent;
 import com.blanoir.moons.client.event.network.PacketSendEvent;
 import com.blanoir.moons.client.event.render.EntityRenderStateEvent;
@@ -65,8 +64,6 @@ public final class EventBus {
             new Event<>("action.use.post", EventThread.CLIENT);
 
     // Local-player movement. PLAYER_UPDATE remains the cancellable tick-head boundary.
-    public static final Event<StrafeEvent> STRAFE =
-            new Event<>("movement.strafe", EventThread.CLIENT);
     public static final Event<MoveInputEvent> MOVE_INPUT =
             new Event<>("input.move", EventThread.CLIENT);
     public static final Event<MovementInputUpdatedEvent> MOVEMENT_INPUT_UPDATED =

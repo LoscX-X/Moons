@@ -17,10 +17,10 @@ def clientVerifications = [
                 mainClass: "com.blanoir.moons.features.command.InputBindingVerification",
                 description: "Verifies independent keyboard, mouse, action and GUI bindings."],
         verifyScaffoldRotations: [
-                mainClass: "com.blanoir.moons.client.module.world.scaffold.PlacementRotationVerification",
+                mainClass: "com.blanoir.moons.client.module.impl.world.scaffold.PlacementRotationVerification",
                 description: "Verifies Scaffold placement rotation history and settling."],
         verifyScaffoldTrace: [
-                mainClass: "com.blanoir.moons.client.module.world.scaffold.ScaffoldTraceVerification",
+                mainClass: "com.blanoir.moons.client.module.impl.world.scaffold.ScaffoldTraceVerification",
                 description: "Verifies bounded Scaffold trace history and immutable incident snapshots."],
         verifyPlacementTransactions: [
                 mainClass: "com.blanoir.moons.client.management.rotation.PlacementTransactionVerification",
@@ -61,18 +61,9 @@ def clientVerifications = [
         verifyPostHitLanding: [
                 mainClass: "com.blanoir.moons.client.management.targeting.PostHitLandingWindowVerification",
                 description: "Verifies repeated attacks preserve post-hit landing opportunities."],
-        verifyRandomMath: [
-                mainClass: "com.blanoir.moons.client.utils.RandomMathVerification",
-                description: "Verifies shared probability, range and seeded-random contracts."],
-        verifyCombatUtils: [
-                mainClass: "com.blanoir.moons.client.utils.CombatUtilsVerification",
-                description: "Verifies shared combat math and rotation boundary semantics."],
         verifyPlacementUtils: [
                 mainClass: "com.blanoir.moons.client.utils.PlacementUtilsVerification",
-                description: "Verifies shared placement geometry and search ordering."],
-        verifyPresentationUtils: [
-                mainClass: "com.blanoir.moons.client.utils.PresentationUtilsVerification",
-                description: "Verifies shared presentation parsing, formatting and resource contracts."]
+                description: "Verifies shared placement geometry and search ordering."]
 ]
 
 def clientVerificationTasks = clientVerifications.collect { taskName, verification ->

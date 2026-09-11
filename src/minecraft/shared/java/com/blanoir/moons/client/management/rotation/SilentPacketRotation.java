@@ -6,6 +6,7 @@ import com.blanoir.moons.client.access.GameAccess;
 import com.blanoir.moons.client.access.PacketAccess;
 import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.event.network.PacketSendEvent;
+import com.blanoir.moons.client.management.lease.RotationLease;
 import com.blanoir.moons.client.utils.math.MathUtils;
 import com.blanoir.moons.client.utils.math.RandomMath;
 import com.blanoir.moons.client.utils.rotation.Rotation;
@@ -46,7 +47,11 @@ public final class SilentPacketRotation {
     private static final double TICKS_PER_SECOND = 20.0D;
     private static final double NANOS_PER_SECOND = 1_000_000_000.0D;
     private static final RotationLease ROTATION_LEASE =
-            new RotationLease("SilentPacketRotation", RotationLease.PRIORITY_BLOCK_INTERACTION);
+            new RotationLease(
+                    "SilentPacketRotation",
+                    RotationLease.PRIORITY_BLOCK_INTERACTION,
+                    SilentPacketRotation::shouldApplyRotation,
+                    () -> packetRotation(Minecraft.getInstance()));
     private static final RotationInteractionLock USE_LOCK = new RotationInteractionLock();
 
     private static boolean active;
@@ -86,8 +91,7 @@ public final class SilentPacketRotation {
         EventBus.CLIENT_CONTEXT_CHANGED.register(
                 "SilentPacketRotation.context",
                 event -> {
-                    USE_LOCK.clear();
-                    reset();
+                    discard();
                 });
         EventBus.FRAME.register("SilentPacketRotation.update", event -> update(event.client()));
         EventBus.PACKET_SEND_POST.register(
@@ -108,9 +112,9 @@ public final class SilentPacketRotation {
         if (!(event.packet() instanceof ServerboundMovePlayerPacket)) {
             return;
         }
-        RotationHistory.Sent sent = RotationHistory.latest();
-        if (!RotationHistory.observed(event.packet())) return;
-        if (RotationHistory.sentFor(ROTATION_LEASE, event.packet())) {
+        RotationManager.Sent sent = RotationManager.latest();
+        if (!RotationManager.observed(event.packet())) return;
+        if (RotationManager.sentFor(ROTATION_LEASE, event.packet())) {
             markOutgoing(sent.yaw(), sent.pitch());
         }
         if (USE_LOCK.confirmMovement(sent.yaw(), sent.pitch())) {
@@ -168,7 +172,7 @@ public final class SilentPacketRotation {
         }
         pendingRotation = null;
         ROTATION_LEASE.cancelPending();
-        Rotation start = RotationHistory.start(client);
+        Rotation start = RotationManager.start(client);
         packetYaw = start.yaw();
         packetPitch = start.pitch();
         active = true;
@@ -226,7 +230,7 @@ public final class SilentPacketRotation {
         }
         pendingRotation = null;
         ROTATION_LEASE.cancelPending();
-        Rotation start = RotationHistory.start(client);
+        Rotation start = RotationManager.start(client);
         packetYaw = start.yaw();
         packetPitch = start.pitch();
         returnYawOffset = Mth.wrapDegrees(packetYaw - currentPlayer.getYRot());
@@ -481,15 +485,15 @@ public final class SilentPacketRotation {
         packetPitch = currentPlayer.getXRot();
         if (!ROTATION_LEASE.acquire(new RotationRequest(packetYaw, packetPitch, 1, 0.35F, null)))
             return;
-        RotationHistory.Sent sent = RotationHistory.latest();
+        RotationManager.Sent sent = RotationManager.latest();
         rotationPacketSent =
                 sent.valid()
-                        && RotationHistory.same(
+                        && RotationManager.same(
                                 new Rotation(packetYaw, packetPitch), sent.rotation());
         holdingRotation = true;
     }
 
-    /** Handles a real send attributed to this request by RotationHistory. */
+    /** Handles a real send attributed to this request by RotationManager. */
     private static void markOutgoing(float yaw, float pitch) {
         if (active || holdingRotation) {
             // Freeze on the exact float pair that the server will compare with the
@@ -530,11 +534,11 @@ public final class SilentPacketRotation {
     }
 
     public static float getSentYaw() {
-        return RotationHistory.latest().yaw();
+        return RotationManager.latest().yaw();
     }
 
     public static float getSentPitch() {
-        return RotationHistory.latest().pitch();
+        return RotationManager.latest().pitch();
     }
 
     /** Quantized pair that the next movement packet will publish. */
@@ -550,7 +554,7 @@ public final class SilentPacketRotation {
     public static Rotation packetRotation(Minecraft client) {
         Rotation result =
                 ROTATION_LEASE.commit(new Rotation(getYaw(), getPitch()), USE_LOCK.locked(), true);
-        return result != null ? result : RotationHistory.start(client);
+        return result != null ? result : RotationManager.start(client);
     }
 
     public static Vec3 getInteractionLookVector(Minecraft client) {
@@ -695,5 +699,14 @@ public final class SilentPacketRotation {
         pendingRotation = null;
         USE_LOCK.clear();
         ROTATION_LEASE.release();
+    }
+
+    /** Context loss/unload cannot wait for a closing packet from the old connection. */
+    public static void discard() {
+        ROTATION_LEASE.cancelPending();
+        pendingRotation = null;
+        USE_LOCK.clear();
+        ROTATION_LEASE.unpin();
+        reset();
     }
 }

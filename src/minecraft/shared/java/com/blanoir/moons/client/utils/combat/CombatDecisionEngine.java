@@ -1,4 +1,4 @@
-package com.blanoir.moons.client.management.combat;
+package com.blanoir.moons.client.utils.combat;
 
 import com.blanoir.moons.client.management.input.CombatInputController;
 import com.blanoir.moons.client.management.targeting.Targeting;

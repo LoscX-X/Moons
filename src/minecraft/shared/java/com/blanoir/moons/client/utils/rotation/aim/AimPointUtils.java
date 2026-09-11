@@ -1,6 +1,7 @@
 package com.blanoir.moons.client.utils.rotation.aim;
 
 import com.blanoir.moons.client.utils.entity.EntityDistance;
+import com.blanoir.moons.client.utils.math.MathUtils;
 
 import net.minecraft.util.Mth;
 import net.minecraft.world.phys.AABB;
@@ -39,6 +40,21 @@ public final class AimPointUtils {
 
     public static Vec3 center(AABB box) {
         return center(box, 0.58D);
+    }
+
+    public static Vec3 centerTrackingPoint(Vec3 eye, AABB box) {
+        // Preserve eye-height following: it removes artificial vertical head
+        // motion on level ground and is part of Center's humanized behaviour.
+        Vec3 closest = EntityDistance.closestPoint(eye, box);
+        Vec3 inset = closest.lerp(box.getCenter(), 0.18D);
+        double lowerAimY = Mth.lerp(0.58D, box.minY, box.maxY);
+        double upperAimY = Mth.lerp(0.92D, box.minY, box.maxY);
+        return new Vec3(inset.x, Mth.clamp(closest.y, lowerAimY, upperAimY), inset.z);
+    }
+
+    /** Nearest eye-facing point with the shared Center/Closest policy's safe inset. */
+    public static Vec3 closestTrackingPoint(Vec3 eye, AABB box) {
+        return EntityDistance.closestPoint(eye, MathUtils.inset(box, 0.055D, 0.18D));
     }
 
     public static Vec3 center(AABB box, double verticalFactor) {

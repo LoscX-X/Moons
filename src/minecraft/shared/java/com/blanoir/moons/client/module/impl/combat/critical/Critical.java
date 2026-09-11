@@ -1,10 +1,10 @@
 package com.blanoir.moons.client.module.impl.combat.critical;
 
 import com.blanoir.moons.client.config.settings.StringSetting;
-import com.blanoir.moons.client.management.combat.CombatDecisionEngine;
 import com.blanoir.moons.client.module.impl.combat.critical.mode.CriticalMode;
 import com.blanoir.moons.client.module.impl.combat.critical.mode.PacketMode;
 import com.blanoir.moons.client.module.impl.combat.critical.mode.PredictMode;
+import com.blanoir.moons.client.utils.combat.CombatDecisionEngine;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.Entity;

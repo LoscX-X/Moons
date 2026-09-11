@@ -26,13 +26,12 @@ import net.minecraft.world.scores.PlayerScoreEntry;
 import net.minecraft.world.scores.PlayerTeam;
 import net.minecraft.world.scores.ScoreAccess;
 import net.minecraft.world.scores.ScoreHolder;
-import net.minecraft.world.scores.Scoreboard;
 
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
-public final class ScoreboardChanger {
+public final class Scoreboard {
     private enum Mode {
         LAST_LINE,
         ADD_LAST_LINE,
@@ -98,19 +97,18 @@ public final class ScoreboardChanger {
     private static Objective addedLineObjective;
     private static boolean addedLine;
 
-    private ScoreboardChanger() {}
+    private Scoreboard() {}
 
     public static void initPacketListeners() {
         EventBus.PACKET_RECEIVE_APPLY.register(
-                "ScoreboardChanger.packetApply",
-                event -> onScoreboardPacketApplied(event.packet()));
+                "Scoreboard.packetApply", event -> onScoreboardPacketApplied(event.packet()));
     }
 
     public static void init() {
         if (initialized) return;
         initialized = true;
         EventBus.HUD_RENDER.register(
-                "ScoreboardChanger.hudRender", event -> renderFallback(event.graphics()));
+                "Scoreboard.hudRender", event -> renderFallback(event.graphics()));
     }
 
     public static boolean render(GuiGraphicsExtractor graphics, Objective objective) {
@@ -176,7 +174,7 @@ public final class ScoreboardChanger {
         var currentPlayer = client == null ? null : client.player;
         var currentLevel = client == null ? null : client.level;
         if (currentLevel == null || currentPlayer == null) return null;
-        Scoreboard scoreboard = currentLevel.getScoreboard();
+        net.minecraft.world.scores.Scoreboard scoreboard = currentLevel.getScoreboard();
         PlayerTeam team = scoreboard.getPlayersTeam(currentPlayer.getScoreboardName());
         if (team != null) {
             DisplaySlot teamSlot = MinecraftClientAccess.teamDisplaySlot(team);
@@ -189,7 +187,7 @@ public final class ScoreboardChanger {
     }
 
     private static List<Line> originalLines(Objective objective) {
-        Scoreboard scoreboard = objective.getScoreboard();
+        net.minecraft.world.scores.Scoreboard scoreboard = objective.getScoreboard();
         NumberFormat numberFormat = objective.numberFormatOrDefault(StyledFormat.SIDEBAR_DEFAULT);
         return new ArrayList<>(
                 visibleEntries(objective).stream()
@@ -388,7 +386,7 @@ public final class ScoreboardChanger {
 
     private static void detachLineTeam() {
         if (!linePatched || dataObjective == null) return;
-        Scoreboard scoreboard = dataObjective.getScoreboard();
+        net.minecraft.world.scores.Scoreboard scoreboard = dataObjective.getScoreboard();
         PlayerTeam currentTeam = scoreboard.getPlayersTeam(lineOwner);
         if (currentTeam != null) {
             originalLineTeam = currentTeam;
@@ -398,7 +396,7 @@ public final class ScoreboardChanger {
 
     private static void restoreLineTeam() {
         if (!linePatched || dataObjective == null || originalLineTeam == null) return;
-        Scoreboard scoreboard = dataObjective.getScoreboard();
+        net.minecraft.world.scores.Scoreboard scoreboard = dataObjective.getScoreboard();
         if (scoreboard.getPlayersTeam(lineOwner) != null) return;
         PlayerTeam currentTeam = scoreboard.getPlayerTeam(originalLineTeam.getName());
         if (currentTeam != null) scoreboard.addPlayerToTeam(lineOwner, currentTeam);

@@ -24,6 +24,28 @@ public final class AimPrediction {
         return MathUtils.closestPoint(point.add(travel), bounds);
     }
 
+    /** Include pursuit response and turn time in a bounded, tick-domain lead. */
+    public static double turnLookaheadTicks(
+            double baseLead,
+            double yawError,
+            double maxYawPerTick,
+            double responsePerTick,
+            double maximumTicks) {
+        if (baseLead <= 0.0D || maximumTicks <= 0.0D) return 0.0D;
+        double turnTicks = Math.abs(yawError) / Math.max(maxYawPerTick, 1.0E-4D);
+        double responseTicks = 1.0D / Math.max(responsePerTick, 1.0E-4D);
+        return Mth.clamp(baseLead * (1.0D + responseTicks + turnTicks), 0.0D, maximumTicks);
+    }
+
+    /** Signed bearing velocity in degrees/tick; relative velocity is target minus observer. */
+    public static double yawRateDegrees(Vec3 eye, Vec3 point, Vec3 relativeVelocity) {
+        double x = point.x - eye.x;
+        double z = point.z - eye.z;
+        double distanceSquared = x * x + z * z;
+        if (distanceSquared < 1.0E-6D) return 0.0D;
+        return Math.toDegrees((x * relativeVelocity.z - z * relativeVelocity.x) / distanceSquared);
+    }
+
     public static AimForecast forecastAttack(
             Minecraft client,
             LivingEntity target,
@@ -33,7 +55,8 @@ public final class AimPrediction {
             double smooth,
             double range,
             double inputMultiplier,
-            double minimumAngle) {
+            double minimumAngle,
+            AimPointUtils.Mode pointMode) {
         var currentPlayer = client.player;
         int ticks = Math.max(0, ticksAhead);
 
@@ -43,7 +66,12 @@ public final class AimPrediction {
                 TrajectoryPrediction.linearBox(target.getBoundingBox(), targetMotion, ticks);
 
         Vec3 futureAimPoint =
-                AimPointUtils.closest(futureBox, futureEye, currentPlayer.getLookAngle(), range);
+                pointMode == null
+                        ? AimPointUtils.closest(
+                                futureBox, futureEye, currentPlayer.getLookAngle(), range)
+                        : pointMode == AimPointUtils.Mode.CENTER
+                                ? AimPointUtils.centerTrackingPoint(futureEye, futureBox)
+                                : AimPointUtils.closestTrackingPoint(futureEye, futureBox);
 
         boolean visible = RaytraceUtils.canRayTraceTo(client, futureEye, futureAimPoint);
 

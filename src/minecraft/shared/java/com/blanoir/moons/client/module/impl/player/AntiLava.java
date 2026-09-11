@@ -17,6 +17,7 @@ import com.blanoir.moons.client.utils.rotation.Rotation;
 import com.blanoir.moons.client.utils.rotation.aim.RotationUtils;
 import com.blanoir.moons.client.utils.world.FluidQueries;
 import com.blanoir.moons.client.utils.world.placement.BlockPlacementUtils;
+import com.blanoir.moons.client.utils.world.placement.PlacementCoordinator;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
@@ -101,6 +102,8 @@ public final class AntiLava {
 
     public static void init() {
         normalizeDelay();
+        EventBus.CLIENT_CONTEXT_CHANGED.register("AntiLava.context", event -> shutdown(null));
+        PlacementCoordinator.register(PlacementCoordinator.Owner.ANTI_LAVA, AntiLava::isBusy);
         EventBus.PLAYER_UPDATE.register("AntiLava.playerUpdate", AntiLava::tick);
     }
 
@@ -126,7 +129,7 @@ public final class AntiLava {
 
     private static void tick(PlayerUpdateEvent event) {
         Minecraft client = event.client();
-        if (!ENABLED.get() || !ready(client)) {
+        if (!ENABLED.get() || !ClientReady.aliveGameplay(client)) {
             if (isBusy()) {
                 reset(client);
             }
@@ -139,7 +142,7 @@ public final class AntiLava {
             return;
         }
 
-        if (AutoLava.isBusy() || AntiWeb.isBusy() || AutoBed.isBusy()) {
+        if (PlacementCoordinator.busyFor(PlacementCoordinator.Owner.ANTI_LAVA)) {
             return;
         }
         processPending(client);
@@ -174,7 +177,7 @@ public final class AntiLava {
 
     private static void beginPlacement(
             Minecraft client, PlacementPlan plan, PlacementMaterial material) {
-        AutoWeb.yieldForAntiLava(client);
+        PlacementCoordinator.yieldTo(PlacementCoordinator.Owner.ANTI_LAVA, client);
         activePlan = plan;
         activeHand = material.hand();
         activeHotbarSlot = material.hotbarSlot();
@@ -238,7 +241,7 @@ public final class AntiLava {
 
         PlacementPlan plan = activePlan;
         if (!ENABLED.get()
-                || !ready(client)
+                || !ClientReady.aliveGameplay(client)
                 || plan == null
                 || !isLavaSource(client, plan.source())
                 || isUnderPlayerFeet(client, plan.source())
@@ -441,11 +444,6 @@ public final class AntiLava {
                 FOV.get());
     }
 
-    private static boolean ready(Minecraft client) {
-        var currentPlayer = client == null ? null : client.player;
-        return ClientReady.aliveGameplay(client, currentPlayer);
-    }
-
     public static boolean isBusy() {
         return activePlan != null;
     }
@@ -554,5 +552,11 @@ public final class AntiLava {
         WAITING_FOR_PLACE_PACKET,
         TURNING_BACK_TO_CAMERA,
         WAITING_FOR_RETURN_ROTATION
+    }
+
+    /** End this feature's pending work without changing its configured toggle. */
+    public static void shutdown(Minecraft client) {
+        reset(client);
+        clearPending();
     }
 }

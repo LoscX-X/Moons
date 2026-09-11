@@ -11,10 +11,10 @@ import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.IntSetting;
 import com.blanoir.moons.client.config.settings.ModeSetting;
 import com.blanoir.moons.client.event.EventBus;
-import com.blanoir.moons.client.management.inventory.HotbarLease;
+import com.blanoir.moons.client.management.lease.HotbarLease;
 import com.blanoir.moons.client.management.targeting.Targeting;
-import com.blanoir.moons.client.module.impl.player.AntiWeb;
 import com.blanoir.moons.client.utils.client.ClientReady;
+import com.blanoir.moons.client.utils.world.placement.PlacementCoordinator;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.Holder;
@@ -81,7 +81,8 @@ public final class AutoTool {
     private static int combatLockTicks;
     private static int lastPlayerHurtTime;
     private static boolean manualOverride;
-    private static final HotbarLease HOTBAR = new HotbarLease("AutoTool", 10);
+    private static final HotbarLease HOTBAR =
+            new HotbarLease("AutoTool", HotbarLease.PRIORITY_TOOL);
 
     private AutoTool() {}
 
@@ -96,7 +97,7 @@ public final class AutoTool {
     }
 
     private static void tick(Minecraft client) {
-        if (!ENABLED.get() || !ready(client)) {
+        if (!ENABLED.get() || !ClientReady.gameplay(client)) {
             HOTBAR.release(client);
             manualOverride = false;
             combatLockTicks = 0;
@@ -104,7 +105,7 @@ public final class AutoTool {
             return;
         }
 
-        if (AntiWeb.isBusy()) {
+        if (PlacementCoordinator.busy(PlacementCoordinator.Owner.ANTI_WEB)) {
             HOTBAR.release(client);
             return;
         }
@@ -332,10 +333,6 @@ public final class AutoTool {
 
     private static void lockCombat() {
         combatLockTicks = Math.max(combatLockTicks, COMBAT_GRACE_TICKS.get());
-    }
-
-    private static boolean ready(Minecraft client) {
-        return ClientReady.gameplay(client);
     }
 
     public static String statusText() {

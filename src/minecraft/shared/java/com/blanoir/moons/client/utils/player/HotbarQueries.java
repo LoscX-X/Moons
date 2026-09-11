@@ -1,5 +1,6 @@
 package com.blanoir.moons.client.utils.player;
 
+import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -13,6 +14,10 @@ public final class HotbarQueries {
 
     public static int firstItem(Inventory inventory, Item item) {
         return firstMatch(inventory, stack -> stack.is(item));
+    }
+
+    public static int firstItem(Minecraft client, Item item) {
+        return firstItem(client.player.getInventory(), item);
     }
 
     public static int firstMatch(Inventory inventory, Predicate<ItemStack> matches) {

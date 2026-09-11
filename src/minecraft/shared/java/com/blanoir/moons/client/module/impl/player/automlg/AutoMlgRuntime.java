@@ -1,4 +1,4 @@
-package com.blanoir.moons.client.module.impl.player.nofall;
+package com.blanoir.moons.client.module.impl.player.automlg;
 
 import com.blanoir.moons.client.management.rotation.SilentPacketRotation;
 import com.blanoir.moons.client.utils.math.MathUtils;
@@ -6,15 +6,14 @@ import com.blanoir.moons.client.utils.math.RandomMath;
 import com.blanoir.moons.client.utils.player.HotbarQueries;
 import com.blanoir.moons.client.utils.prediction.LandingPrediction;
 import com.blanoir.moons.client.utils.rotation.Rotation;
+import com.blanoir.moons.client.utils.world.BlockDistance;
 import com.blanoir.moons.client.utils.world.FluidQueries;
 import com.blanoir.moons.client.utils.world.placement.BlockPlacementUtils;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
-import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.ClipContext;
-import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.level.material.Fluids;
 import net.minecraft.world.phys.BlockHitResult;
@@ -22,7 +21,7 @@ import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 
 /** AutoMLG timing, placement and recovery state machine. */
-public final class AutoMlgNoFall {
+public final class AutoMlgRuntime {
     private float accumulatedFall;
     private double lastY;
     private Integer slotToRestore;
@@ -93,7 +92,7 @@ public final class AutoMlgNoFall {
                 return;
             }
             if (waterBucketSlot == null) {
-                int slot = findHotbarSlot(client, Items.BUCKET);
+                int slot = HotbarQueries.firstItem(client, Items.BUCKET);
                 if (slot < 0) {
                     recoveryActive = false;
                     return;
@@ -114,7 +113,9 @@ public final class AutoMlgNoFall {
                 return;
             }
             Rotation rotation = rotationToBlock(client, placedWaterPos);
-            BlockHitResult hit = raycast(client, rotation, 4.5D, ClipContext.Fluid.SOURCE_ONLY);
+            BlockHitResult hit =
+                    BlockPlacementUtils.traceOutline(
+                            client, rotation, 4.5D, ClipContext.Fluid.SOURCE_ONLY);
             if (hit.getType() == HitResult.Type.MISS || !hit.getBlockPos().equals(placedWaterPos)) {
                 recoveryActive = false;
                 waterBucketSlot = null;
@@ -138,11 +139,13 @@ public final class AutoMlgNoFall {
                 && postPlaceCooldown == 0
                 && postActionCooldown == 0
                 && accumulatedFall <= 0.5F
-                && findHotbarSlot(client, Items.WATER_BUCKET) < 0
-                && (emptyBucketSlot = findHotbarSlot(client, Items.BUCKET)) >= 0
+                && HotbarQueries.firstItem(client, Items.WATER_BUCKET) < 0
+                && (emptyBucketSlot = HotbarQueries.firstItem(client, Items.BUCKET)) >= 0
                 && (bucketPos = findBucketPos(client)) != null) {
             Rotation rotation = rotationToBlock(client, bucketPos);
-            BlockHitResult hit = raycast(client, rotation, 4.5D, ClipContext.Fluid.SOURCE_ONLY);
+            BlockHitResult hit =
+                    BlockPlacementUtils.traceOutline(
+                            client, rotation, 4.5D, ClipContext.Fluid.SOURCE_ONLY);
             if (hit.getType() != HitResult.Type.MISS && hit.getBlockPos().equals(bucketPos)) {
                 startSilentUse(
                         client,
@@ -156,17 +159,18 @@ public final class AutoMlgNoFall {
         }
 
         if (waterPlaced && !readyToPlace && currentPlayer.getDeltaMovement().y < 0.0D) {
-            double distance = distanceToGround(client, 2.5D);
+            double distance = BlockDistance.toGround(client, 2.5D);
             if (distance > 0.0D && distance <= 1.05D) readyToPlace = true;
         }
         if (waterPlaced || accumulatedFall < triggerDistance) return;
 
-        int waterSlot = findHotbarSlot(client, Items.WATER_BUCKET);
+        int waterSlot = HotbarQueries.firstItem(client, Items.WATER_BUCKET);
         if (waterSlot < 0 || ticksUntilGround(client) > predictTicks + 1) return;
         if (solidCheck && !hasSolidBelow(client, currentPlayer.blockPosition())) return;
 
         Rotation down = new Rotation(currentPlayer.getYRot(), 90.0F);
-        BlockHitResult hit = raycast(client, down, 5.0D, ClipContext.Fluid.NONE);
+        BlockHitResult hit =
+                BlockPlacementUtils.traceOutline(client, down, 5.0D, ClipContext.Fluid.NONE);
         if (hit.getType() == HitResult.Type.MISS) return;
         placeWaterBucket(client, waterSlot, hit, recovery);
     }
@@ -199,7 +203,7 @@ public final class AutoMlgNoFall {
         if (client.player.getDeltaMovement().y >= 0.0D) return 999;
         int ticks =
                 LandingPrediction.ticksUntilGround(
-                        client.player.getDeltaMovement().y, distanceToGround(client, 30.0D));
+                        client.player.getDeltaMovement().y, BlockDistance.toGround(client, 30.0D));
         return ticks == Integer.MAX_VALUE ? 999 : ticks;
     }
 
@@ -256,7 +260,8 @@ public final class AutoMlgNoFall {
                                 SilentPacketRotation.getInteractionYaw(client),
                                 SilentPacketRotation.getInteractionPitch(client));
                 double range = silentUseAction == SilentUseAction.PLACE_WATER ? 5.0D : 4.5D;
-                BlockHitResult currentHit = raycast(client, sent, range, silentUseFluid);
+                BlockHitResult currentHit =
+                        BlockPlacementUtils.traceOutline(client, sent, range, silentUseFluid);
                 if (currentHit.getType() == HitResult.Type.MISS
                         || silentUseHit == null
                         || !currentHit.getBlockPos().equals(silentUseHit.getBlockPos())) {
@@ -344,7 +349,8 @@ public final class AutoMlgNoFall {
                     if (distance >= closestDistance) continue;
                     Rotation rotation = rotationToBlock(client, candidate);
                     BlockHitResult hit =
-                            raycast(client, rotation, 4.5D, ClipContext.Fluid.SOURCE_ONLY);
+                            BlockPlacementUtils.traceOutline(
+                                    client, rotation, 4.5D, ClipContext.Fluid.SOURCE_ONLY);
                     if (hit.getType() == HitResult.Type.MISS
                             || !hit.getBlockPos().equals(candidate)) continue;
                     closest = candidate;
@@ -368,49 +374,14 @@ public final class AutoMlgNoFall {
                 + RandomMath.nextDouble(0.05D, 0.08D) * (RandomMath.nextDouble() * 2.0D - 1.0D);
     }
 
-    private static BlockHitResult raycast(
-            Minecraft client, Rotation rotation, double range, ClipContext.Fluid fluid) {
-        Vec3 eye = client.player.getEyePosition(1.0F);
-        Vec3 direction = Vec3.directionFromRotation(rotation.pitch(), rotation.yaw());
-        return BlockPlacementUtils.traceOutline(client, eye, direction, range, fluid);
-    }
-
     private static boolean isWaterSource(Minecraft client, BlockPos pos) {
         FluidState fluid = client.level.getFluidState(pos);
         return FluidQueries.isSource(fluid, Fluids.WATER);
     }
 
     private static boolean hasSolidBelow(Minecraft client, BlockPos pos) {
-        return isSolidNonMenu(client, pos.below()) || isSolidNonMenu(client, pos.below(2));
-    }
-
-    private static boolean isSolidNonMenu(Minecraft client, BlockPos pos) {
-        BlockState state = client.level.getBlockState(pos);
-        return !state.getCollisionShape(client.level, pos).isEmpty()
-                && state.getMenuProvider(client.level, pos) == null;
-    }
-
-    private static double distanceToGround(Minecraft client, double maxDistance) {
-        Vec3 start =
-                new Vec3(
-                        client.player.getX(),
-                        client.player.getBoundingBox().minY,
-                        client.player.getZ());
-        BlockHitResult hit =
-                client.level.clip(
-                        new ClipContext(
-                                start,
-                                start.add(0.0D, -maxDistance, 0.0D),
-                                ClipContext.Block.COLLIDER,
-                                ClipContext.Fluid.NONE,
-                                client.player));
-        return hit.getType() == HitResult.Type.MISS
-                ? Double.POSITIVE_INFINITY
-                : start.y - hit.getLocation().y;
-    }
-
-    private static int findHotbarSlot(Minecraft client, Item item) {
-        return HotbarQueries.firstSlot(slot -> client.player.getInventory().getItem(slot).is(item));
+        return BlockPlacementUtils.solidWithoutMenu(client, pos.below())
+                || BlockPlacementUtils.solidWithoutMenu(client, pos.below(2));
     }
 
     private void selectSlot(Minecraft client, int slot) {

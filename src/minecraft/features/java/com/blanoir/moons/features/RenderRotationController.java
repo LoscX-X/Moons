@@ -2,7 +2,7 @@ package com.blanoir.moons.features;
 
 import com.blanoir.moons.client.management.rotation.SilentPacketRotation;
 import com.blanoir.moons.client.module.impl.combat.SilentAura;
-import com.blanoir.moons.client.module.impl.world.Scaffold;
+import com.blanoir.moons.client.module.impl.world.scaffold.Scaffold;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.entity.state.AvatarRenderState;
@@ -70,7 +70,12 @@ final class RenderRotationController {
                 rotation.fullLockRenderTick = Integer.MIN_VALUE;
             }
             boolean aggressiveBody = aura && SilentAura.isLockMode();
-            if (aura && SilentAura.isCrossingTarget()) {
+            if (scaffold) {
+                // Scaffold already smooths this yaw per frame. Share it with
+                // the body instead of adding another response curve and dead zone.
+                rotation.bodyYaw += Mth.wrapDegrees(silentYaw - rotation.bodyYaw);
+                rotation.velocity = 0.0F;
+            } else if (aura && SilentAura.isCrossingTarget()) {
                 // While the eye is inside the opponent, keep the absolute head
                 // at its entry angle and let the body perform the horizontal
                 // turn. This avoids the characteristic head-down/head-flip

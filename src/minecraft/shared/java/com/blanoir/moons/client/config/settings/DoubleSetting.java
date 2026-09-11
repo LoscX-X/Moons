@@ -1,6 +1,7 @@
 package com.blanoir.moons.client.config.settings;
 
 import com.blanoir.moons.client.config.Settings;
+import com.blanoir.moons.client.module.framework.ModuleRegistry;
 
 import net.minecraft.util.Mth;
 
@@ -30,8 +31,37 @@ public final class DoubleSetting {
     }
 
     public void set(double value) {
+        if (!Double.isFinite(value))
+            throw new IllegalArgumentException("Setting value must be finite: " + key);
         this.value = Mth.clamp(value, min, max);
         Settings.setDouble(key, this.value);
+    }
+
+    /** GUI/config metadata reads the same value and bounds as the feature. */
+    public ModuleRegistry.Setting describe(
+            String id, String label, double step, ModuleRegistry.DoubleSetter setter) {
+        return ModuleRegistry.numeric(
+                id, label, "number", this::get, min, max, step, setter::apply);
+    }
+
+    public ModuleRegistry.Setting describeRange(
+            String id,
+            String label,
+            DoubleSetting upper,
+            double step,
+            ModuleRegistry.TextSetter setter) {
+        if (min != upper.min || max != upper.max)
+            throw new IllegalArgumentException("Range bounds differ: " + key);
+        return ModuleRegistry.rangeValue(
+                id,
+                label,
+                this::get,
+                upper::get,
+                min,
+                max,
+                step,
+                (client, low, high) ->
+                        setter.apply(client, Double.toString(low) + "-" + Double.toString(high)));
     }
 
     public static final class Builder {

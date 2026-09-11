@@ -70,6 +70,8 @@ The same operations are available through local commands:
 
 Presets are stored as JSON in the `profiles` folder beside the active `moons.properties` file. Names may contain letters, numbers, spaces, `_` and `-`. Create refuses duplicate names; Save updates an existing preset. Loading keeps ClickGUI open and restores module modes before their dependent options, including options hidden from the compact editor.
 
+The original properties-backed settings appear as `default`. Use `.config load default` to return to them or `.config save default` to update that preset. The default state is saved before switching to another preset. AimAssist keeps its original behavior as `Legit`, with `Center` and `Closest` sharing SilentAura's target-point policies.
+
 Backtrack retains **Attack**, **Range** and **Intent** target modes. Its compact editor exposes Mode, Time, Max range and ESP; other saved policy values remain in the config. Its HUD suffix shows the configured millisecond interval.
 
 ## GitHub Actions

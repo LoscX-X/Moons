@@ -1,5 +1,7 @@
 package com.blanoir.moons.client.utils.world.placement;
 
+import com.blanoir.moons.client.utils.rotation.Rotation;
+
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -74,6 +76,22 @@ public final class BlockPlacementUtils {
         Vec3 end = eye.add(look.scale(range));
         return client.level.clip(
                 new ClipContext(eye, end, ClipContext.Block.OUTLINE, fluid, client.player));
+    }
+
+    public static BlockHitResult traceOutline(
+            Minecraft client, Rotation rotation, double range, ClipContext.Fluid fluid) {
+        return traceOutline(
+                client,
+                client.player.getEyePosition(1.0F),
+                Vec3.directionFromRotation(rotation.pitch(), rotation.yaw()),
+                range,
+                fluid);
+    }
+
+    public static boolean solidWithoutMenu(Minecraft client, BlockPos pos) {
+        BlockState state = client.level.getBlockState(pos);
+        return !state.getCollisionShape(client.level, pos).isEmpty()
+                && state.getMenuProvider(client.level, pos) == null;
     }
 
     public static boolean matchesBlock(BlockHitResult hit, BlockPos block) {

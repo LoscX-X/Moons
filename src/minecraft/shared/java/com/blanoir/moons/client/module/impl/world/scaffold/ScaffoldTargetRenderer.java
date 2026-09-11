@@ -1,4 +1,4 @@
-package com.blanoir.moons.client.module.world.scaffold;
+package com.blanoir.moons.client.module.impl.world.scaffold;
 
 import com.blanoir.moons.client.render.WorldOverlayRenderer.ColoredBox;
 
@@ -9,7 +9,7 @@ import net.minecraft.world.phys.Vec3;
 
 import java.util.List;
 
-/** Small shared overlay geometry; all placement decisions remain in ScaffoldEngine. */
+/** Small shared overlay geometry; all placement decisions remain in ScaffoldManager. */
 final class ScaffoldTargetRenderer {
     private static final int TARGET_COLOR = 0x75CFFF;
     private static final int PLACED_COLOR = 0x8EE4CC;

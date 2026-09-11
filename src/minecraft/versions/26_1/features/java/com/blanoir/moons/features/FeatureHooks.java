@@ -11,8 +11,8 @@ import com.blanoir.moons.client.event.movement.LocalPlayerLivingTickEvent;
 import com.blanoir.moons.client.event.movement.MovementInputUpdatedEvent;
 import com.blanoir.moons.client.event.render.LivingRenderEvent;
 import com.blanoir.moons.client.management.input.CombatInputController;
+import com.blanoir.moons.client.management.lease.RotationLease;
 import com.blanoir.moons.client.management.rotation.MoveFix;
-import com.blanoir.moons.client.management.rotation.RotationLease;
 import com.blanoir.moons.client.module.impl.combat.Reach;
 import com.blanoir.moons.client.module.impl.combat.SilentAura;
 import com.blanoir.moons.client.module.impl.misc.AntiNick;
@@ -28,10 +28,10 @@ import com.blanoir.moons.client.module.impl.render.Clip;
 import com.blanoir.moons.client.module.impl.render.FullBright;
 import com.blanoir.moons.client.module.impl.render.Nametags;
 import com.blanoir.moons.client.module.impl.render.Nickname;
-import com.blanoir.moons.client.module.impl.render.ScoreboardChanger;
+import com.blanoir.moons.client.module.impl.render.Scoreboard;
 import com.blanoir.moons.client.module.impl.render.Trim;
 import com.blanoir.moons.client.module.impl.render.xray.XrayTerrain;
-import com.blanoir.moons.client.module.impl.world.Scaffold;
+import com.blanoir.moons.client.module.impl.world.scaffold.Scaffold;
 import com.blanoir.moons.client.ui.compose.ComposeRenderBridge;
 import com.blanoir.moons.client.utils.render.SodiumQuadAlpha;
 import com.blanoir.moons.features.command.ClientCommands;
@@ -92,9 +92,9 @@ public final class FeatureHooks {
                     Clip.isEnabled();
             case "render.full-bright" -> FullBright.isEnabled();
             case "render.static-fov" -> StaticFov.isEnabled();
-            case "render.scoreboard" -> ScoreboardChanger.isEnabled();
+            case "render.scoreboard" -> Scoreboard.isEnabled();
             case "render.silent-aura-animation", "render.silent-aura-animation.replace-vanilla" ->
-                    Animations.isEnabled();
+                    Animations.renderingEnabled();
             case "render.trim", "render.trim.direct" -> Trim.isEnabled();
             case "render.armor-hide" -> ArmorHide.isEnabled();
             case "render.player-nametag" -> Nametags.isEnabled();
@@ -180,7 +180,7 @@ public final class FeatureHooks {
                         && values.length == 2
                         && values[0] instanceof GuiGraphicsExtractor graphics
                         && values[1] instanceof Objective objective) {
-                    hook.value(ScoreboardChanger.render(graphics, objective));
+                    hook.value(Scoreboard.render(graphics, objective));
                 }
             }
             case "render.scaffold-item-spoof", "render.scaffold-hud-item-spoof" -> {

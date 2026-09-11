@@ -1,4 +1,4 @@
-package com.blanoir.moons.client.module.world;
+package com.blanoir.moons.client.module.impl.world;
 
 import com.blanoir.moons.client.access.GameAccess;
 import com.blanoir.moons.client.chat.ClientChat;

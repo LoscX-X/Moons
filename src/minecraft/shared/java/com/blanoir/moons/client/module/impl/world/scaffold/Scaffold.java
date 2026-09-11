@@ -1,6 +1,4 @@
-package com.blanoir.moons.client.module.impl.world;
-
-import com.blanoir.moons.client.module.world.scaffold.ScaffoldEngine;
+package com.blanoir.moons.client.module.impl.world.scaffold;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.item.ItemStack;
@@ -11,195 +9,195 @@ public final class Scaffold {
     private Scaffold() {}
 
     public static void init() {
-        ScaffoldEngine.init();
+        ScaffoldManager.init();
     }
 
     public static boolean isEnabled() {
-        return ScaffoldEngine.enabled();
+        return ScaffoldManager.enabled();
     }
 
     public static int setEnabled(Minecraft c, boolean v) {
-        return ScaffoldEngine.setEnabled(c, v);
+        return ScaffoldManager.setEnabled(c, v);
     }
 
     public static int showStatus(Minecraft c) {
-        return ScaffoldEngine.showStatus(c);
+        return ScaffoldManager.showStatus(c);
     }
 
     public static String statusTag() {
-        return ScaffoldEngine.statusTag();
+        return ScaffoldManager.statusTag();
     }
 
     public static int setMode(Minecraft c, String v) {
-        return ScaffoldEngine.setMode(c, v);
+        return ScaffoldManager.setMode(c, v);
     }
 
     public static List<String> modeOptions() {
-        return ScaffoldEngine.modeOptions();
+        return ScaffoldManager.modeOptions();
     }
 
     public static boolean legitSelected() {
-        return ScaffoldEngine.legitSelected();
+        return ScaffoldManager.legitSelected();
     }
 
     public static boolean tellySelected() {
-        return ScaffoldEngine.tellySelected();
+        return ScaffoldManager.tellySelected();
     }
 
     public static boolean smoothTellySelected() {
-        return ScaffoldEngine.smoothTellySelected();
+        return ScaffoldManager.smoothTellySelected();
     }
 
     public static boolean tellyBpsLimitSelected() {
-        return ScaffoldEngine.tellyBpsLimitSelected();
+        return ScaffoldManager.tellyBpsLimitSelected();
     }
 
     public static int setLegitDelay(Minecraft c, int min, int max) {
-        return ScaffoldEngine.setLegitDelay(c, min, max);
+        return ScaffoldManager.setLegitDelay(c, min, max);
     }
 
     public static int setTellyStartSpeed(Minecraft c, double v) {
-        return ScaffoldEngine.setTellyStartSpeed(c, v);
+        return ScaffoldManager.setTellyStartSpeed(c, v);
     }
 
     public static int setTellyTrackSpeed(Minecraft c, double v) {
-        return ScaffoldEngine.setTellyTrackSpeed(c, v);
+        return ScaffoldManager.setTellyTrackSpeed(c, v);
     }
 
     public static int setTellyRotation(Minecraft c, String v) {
-        return ScaffoldEngine.setTellyRotation(c, v);
+        return ScaffoldManager.setTellyRotation(c, v);
     }
 
     public static List<String> tellyRotationOptions() {
-        return ScaffoldEngine.tellyRotationOptions();
+        return ScaffoldManager.tellyRotationOptions();
     }
 
     public static int setTellyDelayMode(Minecraft c, String v) {
-        return ScaffoldEngine.setTellyDelayMode(c, v);
+        return ScaffoldManager.setTellyDelayMode(c, v);
     }
 
     public static List<String> tellyDelayModeOptions() {
-        return ScaffoldEngine.tellyDelayModeOptions();
+        return ScaffoldManager.tellyDelayModeOptions();
     }
 
     public static int setFaceSampling(Minecraft c, String v) {
-        return ScaffoldEngine.setFaceSampling(c, v);
+        return ScaffoldManager.setFaceSampling(c, v);
     }
 
     public static List<String> faceSamplingOptions() {
-        return ScaffoldEngine.faceSamplingOptions();
+        return ScaffoldManager.faceSamplingOptions();
     }
 
     public static int setTellyPlaceAngle(Minecraft c, double v) {
-        return ScaffoldEngine.setTellyPlaceAngle(c, v);
+        return ScaffoldManager.setTellyPlaceAngle(c, v);
     }
 
     public static int setTellyMaxForwardBlocks(Minecraft c, int v) {
-        return ScaffoldEngine.setTellyMaxForwardBlocks(c, v);
+        return ScaffoldManager.setTellyMaxForwardBlocks(c, v);
     }
 
     public static int setTellyPlaceDelay(Minecraft c, int v) {
-        return ScaffoldEngine.setTellyPlaceDelay(c, v);
+        return ScaffoldManager.setTellyPlaceDelay(c, v);
     }
 
     public static int setTellyBlocksPerSecondEnabled(Minecraft c, boolean v) {
-        return ScaffoldEngine.setTellyBlocksPerSecondEnabled(c, v);
+        return ScaffoldManager.setTellyBlocksPerSecondEnabled(c, v);
     }
 
     public static int setTellyBlocksPerSecond(Minecraft c, int min, int max) {
-        return ScaffoldEngine.setTellyBlocksPerSecond(c, min, max);
+        return ScaffoldManager.setTellyBlocksPerSecond(c, min, max);
     }
 
     public static int setTellyFlat(Minecraft c, boolean v) {
-        return ScaffoldEngine.setTellyFlat(c, v);
+        return ScaffoldManager.setTellyFlat(c, v);
     }
 
     public static int setTellyFallRescue(Minecraft c, boolean v) {
-        return ScaffoldEngine.setTellyFallRescue(c, v);
+        return ScaffoldManager.setTellyFallRescue(c, v);
     }
 
     public static int setMoveFix(Minecraft c, String v) {
-        return ScaffoldEngine.setMoveFix(c, v);
+        return ScaffoldManager.setMoveFix(c, v);
     }
 
     public static List<String> moveFixOptions() {
-        return ScaffoldEngine.moveFixOptions();
+        return ScaffoldManager.moveFixOptions();
     }
 
     public static int setSprintMode(Minecraft c, String v) {
-        return ScaffoldEngine.setSprintMode(c, v);
+        return ScaffoldManager.setSprintMode(c, v);
     }
 
     public static List<String> sprintModeOptions() {
-        return ScaffoldEngine.sprintModeOptions();
+        return ScaffoldManager.sprintModeOptions();
     }
 
     public static int setTower(Minecraft c, String v) {
-        return ScaffoldEngine.setTower(c, v);
+        return ScaffoldManager.setTower(c, v);
     }
 
     public static List<String> towerOptions() {
-        return ScaffoldEngine.towerOptions();
+        return ScaffoldManager.towerOptions();
     }
 
     public static int setBlockCounter(Minecraft c, boolean v) {
-        return ScaffoldEngine.setBlockCounter(c, v);
+        return ScaffoldManager.setBlockCounter(c, v);
     }
 
     public static boolean shouldApplyRotation() {
-        return ScaffoldEngine.shouldApplyRotation();
+        return ScaffoldManager.shouldApplyRotation();
     }
 
     public static boolean shouldCorrectMovement() {
-        return ScaffoldEngine.shouldCorrectMovement();
+        return ScaffoldManager.shouldCorrectMovement();
     }
 
     public static boolean shouldSuppressSprint(Minecraft c) {
-        return ScaffoldEngine.shouldSuppressSprint(c);
+        return ScaffoldManager.shouldSuppressSprint(c);
     }
 
     public static float getYaw() {
-        return ScaffoldEngine.yaw();
+        return ScaffoldManager.yaw();
     }
 
     public static float getPitch() {
-        return ScaffoldEngine.pitch();
+        return ScaffoldManager.pitch();
     }
 
     public static float getRenderYaw() {
-        return ScaffoldEngine.renderYaw();
+        return ScaffoldManager.renderYaw();
     }
 
     public static float getRenderPitch() {
-        return ScaffoldEngine.renderPitch();
+        return ScaffoldManager.renderPitch();
     }
 
     public static float getMovementYaw() {
-        return ScaffoldEngine.movementYaw();
+        return ScaffoldManager.movementYaw();
     }
 
     public static com.blanoir.moons.client.utils.rotation.Rotation getPacketRotation() {
-        return ScaffoldEngine.packetRotation();
+        return ScaffoldManager.packetRotation();
     }
 
     public static boolean cancelManualActions() {
-        return ScaffoldEngine.cancelManualActions();
+        return ScaffoldManager.cancelManualActions();
     }
 
     public static boolean cancelUseAction() {
-        return ScaffoldEngine.cancelUseAction();
+        return ScaffoldManager.cancelUseAction();
     }
 
     public static boolean handleHotbarSwap(int slot, int offset) {
-        return ScaffoldEngine.handleHotbarSwap(slot, offset);
+        return ScaffoldManager.handleHotbarSwap(slot, offset);
     }
 
     public static ItemStack spoofedItem(ItemStack original) {
-        return ScaffoldEngine.spoofedItem(original);
+        return ScaffoldManager.spoofedItem(original);
     }
 
     // Debug
     public static int setDebugger(Minecraft c, boolean v) {
-        return ScaffoldEngine.setDebugger(c, v);
+        return ScaffoldManager.setDebugger(c, v);
     }
 }

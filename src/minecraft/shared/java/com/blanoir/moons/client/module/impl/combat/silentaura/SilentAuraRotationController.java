@@ -1,7 +1,6 @@
 package com.blanoir.moons.client.module.impl.combat.silentaura;
 
 import static com.blanoir.moons.client.utils.math.MathUtils.approach;
-import static com.blanoir.moons.client.utils.math.MathUtils.approachWrapped;
 
 import com.blanoir.moons.client.module.impl.combat.silentaura.aim.BalanceSilentAimType;
 import com.blanoir.moons.client.module.impl.combat.silentaura.aim.LockSilentAimType;
@@ -56,6 +55,7 @@ public final class SilentAuraRotationController {
     private float pitch;
     private float yawVelocity;
     private float pitchVelocity;
+    private double yawFeedForward;
     private float pathJitterBlend;
     private long motionSeed;
     private double stickyAimY = Double.NaN;
@@ -74,6 +74,7 @@ public final class SilentAuraRotationController {
     private float crossingHeadYaw;
     private float crossingHeadPitch;
     private float crossingBodyYaw;
+    private float crossingTurnDirection;
     private int crossingRecoveryUntilTick = Integer.MIN_VALUE;
     private double lastTargetMinY = Double.NaN;
     private float returnYaw;
@@ -110,6 +111,7 @@ public final class SilentAuraRotationController {
         boolean targetChanged = targetId != target.getId();
         if (targetChanged) {
             crossingTarget = false;
+            crossingTurnDirection = 0.0F;
             crossingRecoveryUntilTick = Integer.MIN_VALUE;
             yawVelocity = pitchVelocity = 0.0F;
             pathJitterBlend = 0.0F;
@@ -149,6 +151,12 @@ public final class SilentAuraRotationController {
         double time = noiseTime;
         Vec3 eye = currentPlayer.getEyePosition();
         AABB targetBox = target.getBoundingBox();
+        Vec3 relativeVelocity = prediction.velocity().subtract(currentPlayer.getDeltaMovement());
+        double targetYawRate =
+                AimPrediction.yawRateDegrees(eye, targetBox.getCenter(), relativeVelocity);
+        if (!crossingTarget && Math.abs(targetYawRate) > 0.01D) {
+            crossingTurnDirection = (float) Math.signum(targetYawRate);
+        }
         double bodyFloorFraction = bodyFloorFraction(point, targetBox);
         boolean lowerBodyFallback = bodyFloorFraction < UPPER_BODY_FLOOR;
         boolean enteringCrossing =
@@ -159,6 +167,9 @@ public final class SilentAuraRotationController {
             crossingHeadYaw = yaw;
             crossingHeadPitch = pitch;
             crossingBodyYaw = yaw;
+            if (crossingTurnDirection == 0.0F) {
+                crossingTurnDirection = yawVelocity == 0.0F ? 1.0F : Math.signum(yawVelocity);
+            }
             yawVelocity = pitchVelocity = 0.0F;
             heldOrbitOffset = null;
         } else if (crossingTarget
@@ -223,7 +234,13 @@ public final class SilentAuraRotationController {
             float yawLimit = (float) (crossingYawRate * crossingDelta);
             float previousCrossingYaw = crossingHeadYaw;
             float previousCrossingPitch = crossingHeadPitch;
-            crossingHeadYaw = approachWrapped(crossingHeadYaw, crossingBodyYaw, yawLimit);
+            float crossingTurn = MathUtils.wrappedAngleDifference(crossingHeadYaw, crossingBodyYaw);
+            // Keep the approach side through the ambiguous half-turn seam.
+            // Tiny position changes must not alternate a 180-degree turn's direction.
+            if (Math.abs(crossingTurn) >= 175.0F && crossingTurn * crossingTurnDirection < 0.0F) {
+                crossingTurn += Math.copySign(360.0F, crossingTurnDirection);
+            }
+            crossingHeadYaw += Mth.clamp(crossingTurn, -yawLimit, yawLimit);
             boolean eyeInsideTarget = targetBox.inflate(CROSSING_ENTER_MARGIN).contains(eye);
             // Inside the body, preserve valid pitch. Above it, use actual exit
             // geometry; a fixed 2-5 degree yaw-coupled pitch had no geometric basis.
@@ -310,10 +327,18 @@ public final class SilentAuraRotationController {
         Vec3 anchoredPoint =
                 stabilizeAimHeight(
                         target, jitteredPoint, deltaSeconds, targetChanged, bodyFloorFraction);
-        Vec3 movingPoint =
-                leadAimPoint(
-                        client, target, anchoredPoint, deltaSeconds, aimType, lowerBodyFallback);
-        double assist = accelerationAssist(client, target, movingPoint);
+        Vec3 movingPoint = leadAimPoint(client, target, anchoredPoint, lowerBodyFallback);
+        double predictionStrength = Mth.clamp(SilentAuraConfig.prediction(), 0.0D, 3.0D);
+        double assist = Mth.clamp(Math.abs(targetYawRate) / 8.0D * predictionStrength, 0.0D, 1.0D);
+        // Motion feed-forward follows the changing bearing even when the
+        // positional lead has reached the edge of the current hitbox.
+        yawFeedForward =
+                lowerBodyFallback
+                        ? 0.0D
+                        : Mth.clamp(
+                                targetYawRate * 20.0D * Math.min(predictionStrength, 1.0D),
+                                -aimType.maxYawSpeed(),
+                                aimType.maxYawSpeed());
         double jitter = effectiveJitter;
         long seed = motionSeed;
         double responseVariation =
@@ -486,6 +511,8 @@ public final class SilentAuraRotationController {
         var currentPlayer = client == null ? null : client.player;
         targetId = -1;
         crossingTarget = false;
+        yawFeedForward = 0.0D;
+        crossingTurnDirection = 0.0F;
         if (!active || client == null || currentPlayer == null) {
             clear();
             return;
@@ -585,6 +612,7 @@ public final class SilentAuraRotationController {
                 Math.abs(yawDifference) <= ANGLE_DEADZONE
                         ? 0.0F
                         : (float) Mth.clamp(yawDifference * responseFraction, -yawCap, yawCap);
+        yawStep = (float) Mth.clamp(yawStep + yawFeedForward * delta, -yawCap, yawCap);
         float pitchStep =
                 Math.abs(pitchDifference) <= ANGLE_DEADZONE
                         ? 0.0F
@@ -619,45 +647,39 @@ public final class SilentAuraRotationController {
         pitch = Mth.clamp(pitch + pitchStep, -90.0F, 90.0F);
     }
 
-    /** Prediction affects turning acceleration only; it never moves the hitbox target point. */
-    private double accelerationAssist(Minecraft client, LivingEntity target, Vec3 point) {
-        if (SilentAuraConfig.prediction() <= 0.0D) return 0.0D;
-        // The eye position already contains local-player movement. Subtracting
-        // our velocity here counts circling twice and creates a turn-rate boost
-        // perfectly synchronized with strafing around a stationary target.
-        Vec3 relative = prediction.velocity();
-        double distance = Math.max(client.player.getEyePosition().distanceTo(point), 0.25D);
-        double angularDemand = Math.toDegrees(relative.length() / distance);
-        return Mth.clamp(angularDemand / 8.0D * SilentAuraConfig.prediction(), 0.0D, 1.0D);
-    }
-
     /**
-     * The opponent's predicted velocity becomes an aim weight: instead of only
-     * boosting acceleration, the smoothed relative velocity pulls the aim point
-     * ahead of the target's current position, so tracking a strafing player
-     * curves toward where the body is heading instead of chasing it in a line.
+     * Anticipate the relative bearing over the time needed to respond and turn.
+     * Current eye/target positions are the origin; only future travel is subtracted.
      */
     private Vec3 leadAimPoint(
-            Minecraft ignoredClient,
-            LivingEntity target,
-            Vec3 point,
-            double deltaSeconds,
-            SilentAimType aimType,
-            boolean lowerBodyFallback) {
-        double leadTicks =
+            Minecraft client, LivingEntity target, Vec3 point, boolean lowerBodyFallback) {
+        double baseLead =
                 SilentAuraConfig.predictionLead()
                         * SilentAuraConfig.prediction()
                         * (aimType.lock() ? 1.15D : 0.85D);
         // Prediction is useful on an open hitbox, but when only a leg-sized
         // opening is exposed it can move an otherwise visible point behind the
         // cover. The live selector already follows the moving entity.
-        if (leadTicks <= 0.0D || lowerBodyFallback) return point;
+        if (baseLead <= 0.0D || lowerBodyFallback) return point;
+        Rotation currentBearing = RotationUtils.rotationTo(client.player.getEyePosition(), point);
+        double leadTicks =
+                AimPrediction.turnLookaheadTicks(
+                        baseLead,
+                        MathUtils.wrappedAngleDifference(yaw, currentBearing.yaw()),
+                        aimType.maxYawSpeed() / 20.0D,
+                        aimType.response(SilentAuraConfig.smooth()) / 20.0D,
+                        prediction.parameters().maxHorizonTicks());
+        Vec3 localVelocity = client.player.getDeltaMovement();
+        Vec3 relativeTravel =
+                prediction
+                        .displacement(leadTicks)
+                        .subtract(localVelocity.x * leadTicks, 0.0D, localVelocity.z * leadTicks);
         AABB box = target.getBoundingBox();
         double upperBodyFloor = Mth.lerp(UPPER_BODY_FLOOR, box.minY, box.maxY);
         double upperBodyCeiling = Mth.lerp(UPPER_BODY_CEILING, box.minY, box.maxY);
         return AimPrediction.clampedLead(
                 point,
-                prediction.displacement(leadTicks),
+                relativeTravel,
                 new AABB(box.minX, upperBodyFloor, box.minZ, box.maxX, upperBodyCeiling, box.maxZ));
     }
 
@@ -947,6 +969,7 @@ public final class SilentAuraRotationController {
         active = returning = false;
         targetId = -1;
         yawVelocity = pitchVelocity = 0.0F;
+        yawFeedForward = 0.0D;
         pathJitterBlend = 0.0F;
         motionSeed = 0L;
         stickyAimY = Double.NaN;
@@ -961,6 +984,7 @@ public final class SilentAuraRotationController {
         accelNoise = 1.0D;
         crossingTarget = false;
         crossingHeadYaw = crossingHeadPitch = crossingBodyYaw = 0.0F;
+        crossingTurnDirection = 0.0F;
         crossingRecoveryUntilTick = Integer.MIN_VALUE;
         lastTargetMinY = Double.NaN;
         returnYaw = returnPitch = 0.0F;

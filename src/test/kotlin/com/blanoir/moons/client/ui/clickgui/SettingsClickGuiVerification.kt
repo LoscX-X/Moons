@@ -58,7 +58,7 @@ object SettingsClickGuiVerification {
                     "Sprint" to "Movement",
                     "NoSlow" to "Movement",
                     "AutoTool" to "Player",
-                    "NoFall" to "Player",
+                    "AutoMLG" to "Player",
                     "ESP" to "Render",
                     "Fullbright" to "Render",
                     "Scaffold" to "World",
@@ -253,7 +253,7 @@ object SettingsClickGuiVerification {
                 click(description("Configs"))
                 type("Duel")
                 click(text("Create"))
-                check(ConfigProfiles.list() == listOf("Duel"))
+                check(ConfigProfiles.list() == listOf("default", "Duel"))
                 distance = 5.2
                 click(text("Save"))
                 distance = 2.7

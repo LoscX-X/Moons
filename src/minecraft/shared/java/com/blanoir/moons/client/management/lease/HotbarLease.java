@@ -1,11 +1,18 @@
-package com.blanoir.moons.client.management.inventory;
+package com.blanoir.moons.client.management.lease;
+
+import com.blanoir.moons.client.event.EventBus;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.item.ItemStack;
 
 /** Arbitrates temporary hotbar ownership and restores the user's latest slot. */
 public final class HotbarLease {
+    public static final int PRIORITY_TOOL = 10;
+    public static final int PRIORITY_PLACEMENT = 20;
     private static HotbarLease holder;
+    private static boolean initialized;
+    private LocalPlayer player;
 
     private final String owner;
     private final int priority;
@@ -19,6 +26,17 @@ public final class HotbarLease {
         this.priority = priority;
     }
 
+    public static void init() {
+        if (initialized) return;
+        initialized = true;
+        EventBus.CLIENT_CONTEXT_CHANGED.register("HotbarLease.context", event -> resetAll(null));
+    }
+
+    /** Restore on unload; a lost context passes null and only abandons its old chain. */
+    public static void resetAll(Minecraft client) {
+        while (holder != null) holder.release(client);
+    }
+
     public synchronized boolean acquire(Minecraft client, int slot) {
         var currentPlayer = client == null ? null : client.player;
         if (client == null || currentPlayer == null || slot < 0 || slot > 8) return false;
@@ -28,6 +46,7 @@ public final class HotbarLease {
             holder = this;
         }
         cancelled = false;
+        player = currentPlayer;
         if (restoreSlot < 0) restoreSlot = currentPlayer.getInventory().getSelectedSlot();
         leasedSlot = slot;
         select(client, slot);
@@ -64,7 +83,10 @@ public final class HotbarLease {
 
     public synchronized void release(Minecraft client) {
         var currentPlayer = client == null ? null : client.player;
-        if (holder == this && client != null && currentPlayer != null && restoreSlot >= 0) {
+        if (holder == this
+                && currentPlayer != null
+                && currentPlayer == player
+                && restoreSlot >= 0) {
             int current = currentPlayer.getInventory().getSelectedSlot();
             if (current == leasedSlot) select(client, restoreSlot);
         }
@@ -90,6 +112,7 @@ public final class HotbarLease {
         if (owned) previous = null;
         restoreSlot = -1;
         leasedSlot = -1;
+        player = null;
     }
 
     private static void select(Minecraft client, int slot) {

@@ -15,6 +15,7 @@ import com.blanoir.moons.client.utils.entity.EntityDistance;
 import com.blanoir.moons.client.utils.math.MathUtils;
 import com.blanoir.moons.client.utils.player.HotbarQueries;
 import com.blanoir.moons.client.utils.world.placement.BlockPlacementUtils;
+import com.blanoir.moons.client.utils.world.placement.PlacementCoordinator;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
@@ -178,6 +179,8 @@ public final class AutoBed {
             return;
         }
         initialized = true;
+        EventBus.CLIENT_CONTEXT_CHANGED.register("AutoBed.context", event -> shutdown(null));
+        PlacementCoordinator.register(PlacementCoordinator.Owner.AUTO_BED, AutoBed::isBusy);
         EventBus.PLAYER_UPDATE.register("AutoBed.playerUpdate", event -> tick(event.client()));
         EventBus.PACKET_SEND_POST.register(
                 "AutoBed.useSent",
@@ -196,7 +199,7 @@ public final class AutoBed {
             }
             return;
         }
-        if (!ready(client)) {
+        if (!ClientReady.aliveGameplay(client)) {
             return;
         }
 
@@ -1880,12 +1883,7 @@ public final class AutoBed {
     }
 
     private static boolean otherRotationOwnerBusy() {
-        return AutoLava.isBusy() || AutoWeb.isBusy() || AntiLava.isBusy() || AntiWeb.isBusy();
-    }
-
-    private static boolean ready(Minecraft client) {
-        var currentPlayer = client == null ? null : client.player;
-        return ClientReady.aliveGameplay(client, currentPlayer);
+        return PlacementCoordinator.busyFor(PlacementCoordinator.Owner.AUTO_BED);
     }
 
     private static boolean isTurningPhase(Phase current) {
@@ -2138,5 +2136,10 @@ public final class AutoBed {
         Phase(String label) {
             this.label = label;
         }
+    }
+
+    /** End this feature's pending work without changing its configured toggle. */
+    public static void shutdown(Minecraft client) {
+        cleanup(client, false, null);
     }
 }

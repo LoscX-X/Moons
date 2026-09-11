@@ -19,6 +19,7 @@ import org.joml.Quaternionf;
 import java.util.List;
 import java.util.Locale;
 import java.util.function.BooleanSupplier;
+import java.util.function.DoubleSupplier;
 import java.util.function.Predicate;
 
 /** Purely visual replacement for the first-person attack swing. */
@@ -38,7 +39,7 @@ public final class Animations {
 
     private static final BooleanSetting ENABLED =
             new BooleanSetting.Builder().name("blockanimation.enabled").defaultValue(false).build();
-    private static final BooleanSetting SILENT_AURA_ONLY =
+    private static final BooleanSetting COMBAT_ONLY =
             new BooleanSetting.Builder()
                     .name("blockanimation.silentAuraOnly")
                     .defaultValue(false)
@@ -63,11 +64,10 @@ public final class Animations {
     private static long lastSpinUpdate = System.currentTimeMillis();
     private static volatile long attackStartedNanos = Long.MIN_VALUE;
 
-    /** Pure render state: SilentAura currently owns an in-range target. */
-    private static volatile boolean auraBlocking;
-
-    private static BooleanSupplier auraEnabled = () -> false;
-    private static Predicate<Minecraft> auraRenderCheck = client -> false;
+    private static BooleanSupplier combatEnabled = () -> false;
+    private static Predicate<Minecraft> combatRenderCheck = client -> false;
+    private static BooleanSupplier combatAttackOnly = () -> false;
+    private static DoubleSupplier combatSwingProgress = () -> 0;
 
     /** The transformer asks separately whether vanilla swing transforms should be skipped. */
     private static final ThreadLocal<Boolean> REPLACE_CURRENT_RENDER =
@@ -106,9 +106,15 @@ public final class Animations {
         }
     }
 
-    public static void bindAuraState(BooleanSupplier enabled, Predicate<Minecraft> renderCheck) {
-        auraEnabled = enabled;
-        auraRenderCheck = renderCheck;
+    public static void bindCombatState(
+            BooleanSupplier enabled,
+            Predicate<Minecraft> renderCheck,
+            BooleanSupplier attackOnly,
+            DoubleSupplier swingProgress) {
+        combatEnabled = enabled;
+        combatRenderCheck = renderCheck;
+        combatAttackOnly = attackOnly;
+        combatSwingProgress = swingProgress;
     }
 
     /**
@@ -127,11 +133,21 @@ public final class Animations {
 
         // ItemInHandRenderer raises equipProgress while its high-version hand
         // state settles. Feeding that value into the old first-person transform
-        // lowers the sword instead of producing a block-hit. Aura blocking is
+        // lowers the sword instead of producing a block-hit. AutoBlock is
         // a held visual pose, so keep the item fully equipped and let only the
         // swing curve move it.
-        if (auraBlocking || auraRenderCheck.test(Minecraft.getInstance())) {
+        if (combatBlocking(Minecraft.getInstance())) {
             equipProgress = 0.0F;
+        }
+
+        // AutoBlock works on its own; Animations adds the configured visual preset.
+        if (!ENABLED.get()) {
+            firstPerson(pose, equipProgress, swingProgress);
+            block(pose);
+            rotate(pose, -45.0F, 0.0F, 1.0F, 0.0F);
+            pose.scale(
+                    MODERN_BLOCK_MODEL_SCALE, MODERN_BLOCK_MODEL_SCALE, MODERN_BLOCK_MODEL_SCALE);
+            return;
         }
 
         float progress = Math.clamp(swingProgress * (float) SWING_SPEED.get(), 0.0F, 1.0F);
@@ -514,8 +530,7 @@ public final class Animations {
     public static void applyThirdPerson(Avatar avatar, AvatarRenderState state) {
         Minecraft client = Minecraft.getInstance();
         var currentPlayer = client == null ? null : client.player;
-        if (!ENABLED.get()
-                || currentPlayer == null
+        if (currentPlayer == null
                 || avatar == null
                 || state == null
                 || avatar.getId() != currentPlayer.getId()
@@ -524,12 +539,9 @@ public final class Animations {
             return;
         }
 
-        boolean auraOwnsAnimation =
-                auraEnabled.getAsBoolean()
-                        && (auraBlocking
-                                || auraRenderCheck.test(client)
-                                || auraAttackAnimationActive());
-        boolean active = SILENT_AURA_ONLY.get() ? auraOwnsAnimation : true;
+        boolean active =
+                combatBlocking(client)
+                        || !combatAttackOnly.getAsBoolean() && ENABLED.get() && !COMBAT_ONLY.get();
         if (!active) return;
 
         if (state.mainArm == HumanoidArm.LEFT) {
@@ -541,12 +553,7 @@ public final class Animations {
 
     /** Called by the common attack entry for both physical and SilentAura attacks. */
     public static void onAttack() {
-        if (ENABLED.get()) attackStartedNanos = System.nanoTime();
-    }
-
-    /** Holds the visual block pose without starting item use or sending packets. */
-    public static void setAuraBlocking(boolean blocking) {
-        auraBlocking = blocking;
+        if (renderingEnabled()) attackStartedNanos = System.nanoTime();
     }
 
     /** Ends the transformer-scoped render decision so it cannot leak into the next hand. */
@@ -555,6 +562,7 @@ public final class Animations {
     }
 
     private static float visualSwingProgress(float vanillaSwingProgress) {
+        if (combatAttackOnly.getAsBoolean()) return (float) combatSwingProgress.getAsDouble();
         long started = attackStartedNanos;
         long elapsed = started == Long.MIN_VALUE ? -1L : System.nanoTime() - started;
         float explicit =
@@ -569,27 +577,21 @@ public final class Animations {
         var currentPlayer = client == null ? null : client.player;
         boolean mainHandSword =
                 currentPlayer != null && currentPlayer.getMainHandItem().is(ItemTags.SWORDS);
-        boolean auraOwnsAnimation =
-                auraEnabled.getAsBoolean()
-                        && (auraBlocking
-                                || auraRenderCheck.test(client)
-                                || auraAttackAnimationActive());
-        return ENABLED.get()
-                && renderedHand == InteractionHand.MAIN_HAND
+        return renderedHand == InteractionHand.MAIN_HAND
                 && currentPlayer != null
-                // In-range Aura holds the visual block pose. A real attack
-                // supplies swingProgress and turns it into a block-hit motion.
-                // Neither state requires or synthesizes item use.
-                && (SILENT_AURA_ONLY.get()
-                        ? auraOwnsAnimation
-                        : mainHandSword || auraOwnsAnimation || swingProgress > 0.0001F);
+                && (combatBlocking(client)
+                        || !combatAttackOnly.getAsBoolean()
+                                && ENABLED.get()
+                                && !COMBAT_ONLY.get()
+                                && (mainHandSword || swingProgress > 0.0001F));
     }
 
-    private static boolean auraAttackAnimationActive() {
-        long started = attackStartedNanos;
-        if (started == Long.MIN_VALUE) return false;
-        long elapsed = System.nanoTime() - started;
-        return elapsed >= 0L && elapsed < ATTACK_ANIMATION_NANOS;
+    private static boolean combatBlocking(Minecraft client) {
+        return combatEnabled.getAsBoolean() && combatRenderCheck.test(client);
+    }
+
+    public static boolean renderingEnabled() {
+        return ENABLED.get() || combatEnabled.getAsBoolean();
     }
 
     private static void firstPerson(PoseStack pose, float equipProgress, float swingProgress) {
@@ -665,7 +667,7 @@ public final class Animations {
     }
 
     public static int setSilentAuraOnly(Minecraft ignoredClient, boolean value) {
-        SILENT_AURA_ONLY.set(value);
+        COMBAT_ONLY.set(value);
         return 1;
     }
 

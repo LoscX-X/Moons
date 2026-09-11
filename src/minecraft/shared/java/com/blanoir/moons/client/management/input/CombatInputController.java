@@ -24,7 +24,7 @@ public final class CombatInputController {
         SILENT_AURA,
         JUMP_RESET,
         JUMP_FLY,
-        NO_FALL,
+        AUTO_MLG,
         AUTO_WEB,
         AUTO_LAVA,
         AUTO_BED,
@@ -42,6 +42,7 @@ public final class CombatInputController {
     private static int syntheticAttackTicks;
     private static Entity pendingAttackTarget;
     private static boolean invokingTargetAttack;
+    private static long completedTargetAttacks;
 
     private CombatInputController() {}
 
@@ -50,9 +51,17 @@ public final class CombatInputController {
             return;
         }
         initialized = true;
+        EventBus.CLIENT_CONTEXT_CHANGED.register(
+                "CombatInputController.context", event -> reset(event.client()));
         EventBus.TICK.register(
                 "CombatInputController.tickSyntheticAttack",
                 event -> tickSyntheticAttack(event.client()));
+        EventBus.ATTACK_ENTITY_POST.register(
+                "CombatInputController.attackCompleted",
+                event -> {
+                    if (invokingTargetAttack && event.attacker() == Minecraft.getInstance().player)
+                        completedTargetAttacks++;
+                });
     }
 
     public static void suppressForward(Minecraft client, Owner owner) {
@@ -158,6 +167,29 @@ public final class CombatInputController {
         releaseJump(client, owner);
     }
 
+    /** Context loss/unload clears synthetic state without generating a new input callback. */
+    public static void reset(Minecraft client) {
+        forwardSuppressors.clear();
+        sprintSuppressors.clear();
+        attackSuppressors.clear();
+        jumpForcers.clear();
+        syntheticAttackDown = false;
+        syntheticAttackTicks = 0;
+        pendingAttackTarget = null;
+        invokingTargetAttack = false;
+        if (client == null || client.options == null) return;
+        client.options.keyUp.setDown(false);
+        client.options.keySprint.setDown(false);
+        client.options.keyAttack.setDown(false);
+        client.options.keyJump.setDown(false);
+        if (valid(client)) {
+            restorePhysicalState(client, client.options.keyUp);
+            restorePhysicalState(client, client.options.keySprint);
+            restorePhysicalState(client, client.options.keyAttack);
+            restorePhysicalState(client, client.options.keyJump);
+        }
+    }
+
     public static boolean isPhysicallyDown(Minecraft client, KeyMapping mapping) {
         if (!valid(client) || mapping == null) {
             return false;
@@ -258,20 +290,14 @@ public final class CombatInputController {
         while (client.options.keyAttack.consumeClick()) {
             // startAttack is invoked below; do not leave a duplicate click queued.
         }
-        // Minecraft.startAttack() does not report whether an entity attack was
-        // dispatched. Its boolean is the block-breaking `endAttack` flag and
-        // is false after an ordinary entity hit. Treating it as success kept
-        // Aura on the same cooldown sample forever and retried every tick.
-        // MultiPlayerGameMode.attack resets the ticker synchronously after it
-        // sends ServerboundAttackPacket, so this is the authoritative outcome
-        // for every charged combat caller of this entry point.
-        float chargeBefore = client.player.getAttackStrengthScale(0.0F);
+        // startAttack's boolean describes block breaking. Observe the entity
+        // attack itself so Legacy clicks also work when charge was already zero.
+        long completedBefore = completedTargetAttacks;
         boolean previousInvocation = invokingTargetAttack;
         invokingTargetAttack = true;
         try {
             GameAccess.invokeStartAttack(client);
-            float chargeAfter = client.player.getAttackStrengthScale(0.0F);
-            return chargeAfter + 1.0E-4F < chargeBefore;
+            return completedTargetAttacks != completedBefore;
         } finally {
             invokingTargetAttack = previousInvocation;
             // The ATTACK action hook normally consumes this at method HEAD.

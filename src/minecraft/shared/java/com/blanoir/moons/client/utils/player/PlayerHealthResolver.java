@@ -75,8 +75,7 @@ public final class PlayerHealthResolver {
             return true;
         }
         String id = objective.getName();
-        String display =
-            objective.getDisplayName().getString();
+        String display = objective.getDisplayName().getString();
         return HEALTH_WORD.matcher(id + " " + display).find() || isHoplite(client);
     }
 

@@ -1,6 +1,5 @@
-/* Java payload and fixture archives. Public task names and archive paths are stable. */
+/* Production Java payload archives. */
 def versionedPayloadDirectory = moonsBuild.payloadDirectory
-def versionedTestDirectory = moonsBuild.testDirectory
 def moonsJarOutputDirectory = moonsBuild.jarOutputDirectory
 
 jar {
@@ -37,36 +36,6 @@ def featuresJar = tasks.register("featuresJar", Jar) {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     from sourceSets.features.output
     from sourceSets.client.output
-}
-
-tasks.register("loaderFixtureJar", Jar) {
-    archiveFileName = "moons-loader-fixture.jar"
-    destinationDirectory = layout.buildDirectory.dir(versionedTestDirectory)
-    dependsOn tasks.named("loaderTestClasses")
-    from sourceSets.loaderTest.output
-    manifest {
-        attributes("Main-Class": "com.blanoir.moons.fixture.AttachTarget")
-    }
-}
-
-def nativeAgentFixtureJar = tasks.register("nativeAgentFixtureJar", Jar) {
-    archiveFileName = "moons-native-agent-fixture.jar"
-    destinationDirectory = layout.buildDirectory.dir(versionedTestDirectory)
-    dependsOn tasks.named("loaderTestClasses")
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-    from sourceSets.loaderTest.output
-    from({
-        configurations.agentRuntimeClasspath
-                .findAll { it.isFile() }
-                .collect { zipTree(it) }
-    }) {
-        exclude "META-INF/MANIFEST.MF"
-        exclude "META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA"
-        exclude "module-info.class"
-    }
-    manifest {
-        attributes("Main-Class": "com.blanoir.moons.nativebridge.NativeAgentVerification")
-    }
 }
 
 tasks.register("moonsJar", Jar) {

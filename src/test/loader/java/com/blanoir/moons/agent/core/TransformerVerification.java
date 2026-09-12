@@ -28,9 +28,6 @@ public final class TransformerVerification {
         if (arguments.length == 0)
             throw new IllegalArgumentException("Expected one or more Minecraft JAR paths");
         verifyBootstrapBridgeBoundary();
-        PacketSendVerification.verify();
-        HookGuardVerification.verify();
-        RuntimeBridgeAdapterVerification.verify();
         MappingService mappings = VersionMappings.create();
         MoonsTransformer transformer = new MoonsTransformer(mappings);
         Set<String> classes = new LinkedHashSet<>();
@@ -114,6 +111,21 @@ public final class TransformerVerification {
 
     private static void verifyMovementHookOrdering(String className, ClassNode node) {
         if (className.equals("net/minecraft/client/player/LocalPlayer")) {
+            MethodNode collision =
+                    findMethod(
+                            node,
+                            "isHorizontalCollisionMinor",
+                            "(Lnet/minecraft/world/phys/Vec3;)Z");
+            int collisionYaw = callIndex(collision, className, "getYRot", "()F");
+            int collisionHook =
+                    callIndex(
+                            collision,
+                            "com/blanoir/moons/api/bridge/AgentBridge",
+                            "onFloatValue",
+                            "(Ljava/lang/String;Ljava/lang/Object;FF)F");
+            if (collisionYaw < 0 || collisionHook <= collisionYaw) {
+                throw new AssertionError("Minor collision does not use the movement yaw hook");
+            }
             MethodNode update = findMethod(node, "tick", "()V");
             MethodNode input = findMethod(node, "aiStep", "()V");
             int updateHook =

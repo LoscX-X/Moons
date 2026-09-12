@@ -44,6 +44,7 @@ import com.blanoir.moons.client.config.Settings
 import com.blanoir.moons.client.module.framework.ModuleCategories
 import com.blanoir.moons.client.module.framework.ModuleRegistry
 import com.blanoir.moons.client.module.framework.ModuleRegistry.Module
+import com.blanoir.moons.client.utils.ui.ColorEditor
 
 /** Settings-window layout sharing the existing module and setting mutation paths. */
 @Composable
@@ -638,6 +639,12 @@ private fun GeneralSettingsPage(
                         }
                         .semantics { contentDescription = "Accent $hex" }
                 )
+            }
+        }
+        Box(Modifier.widthIn(max = 280.dp)) {
+            ColorEditor(guiThemeValue()) {
+                Settings.setString(GUI_THEME_KEY, it)
+                onMutated()
             }
         }
         Box(Modifier.fillMaxWidth().height(1.dp).background(PanelStyle.border))

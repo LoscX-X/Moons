@@ -187,7 +187,7 @@ public final class SilentAuraTargetSelector {
                 client,
                 entity,
                 SilentAuraConfig.targetPlayers(),
-                SilentAuraConfig.targetMobs(),
+                false,
                 SilentAuraConfig.targetEntityTypes())) return false;
         if (EntityDistance.squaredToEntity(client, entity) > range * range) return false;
         // FOV is a camera-space ownership boundary, not merely an acquisition
@@ -221,7 +221,13 @@ public final class SilentAuraTargetSelector {
         if (!validClient(client) || target == null || range <= 0.0D) return null;
         AABB aimBox = target.getBoundingBox();
         return VisibleAimPoints.findBestVisibleSurfacePoint(
-                client, aimBox, look, range, UPPER_BODY_ANCHOR, lockMode);
+                client,
+                aimBox,
+                look,
+                range,
+                UPPER_BODY_ANCHOR,
+                lockMode,
+                SilentAuraConfig.throughBlocks());
     }
 
     private Vec3 trackingAimPoint(Minecraft client, LivingEntity target, Vec3 look) {
@@ -239,7 +245,8 @@ public final class SilentAuraTargetSelector {
                                     <= attackRange * attackRange;
             double activeRange = attackReach ? attackRange : trackingRange;
             if (eye.distanceToSqr(preferred) <= activeRange * activeRange
-                    && RaytraceUtils.canRayTraceTo(client, eye, preferred)) {
+                    && RaytraceUtils.canRayTraceTo(
+                            client, eye, preferred, SilentAuraConfig.throughBlocks())) {
                 return preferred;
             }
             // FULL-Lock uses the centre corridor until it is covered. Re-scan the
@@ -270,7 +277,8 @@ public final class SilentAuraTargetSelector {
                             eye,
                             box,
                             scanRange(client),
-                            SilentAuraConfig.aimWanderTicks());
+                            SilentAuraConfig.aimWanderTicks(),
+                            SilentAuraConfig.throughBlocks());
         } else {
             preferred =
                     aimPoints.center(
@@ -281,10 +289,12 @@ public final class SilentAuraTargetSelector {
                             trackingRange,
                             SilentAuraConfig.aimWander(),
                             SilentAuraConfig.aimWanderTicks(),
-                            !lockMode);
+                            !lockMode,
+                            SilentAuraConfig.throughBlocks());
         }
         if (eye.distanceToSqr(preferred) <= trackingRange * trackingRange
-                && RaytraceUtils.canRayTraceTo(client, eye, preferred)) {
+                && RaytraceUtils.canRayTraceTo(
+                        client, eye, preferred, SilentAuraConfig.throughBlocks())) {
             return preferred;
         }
         // The preferred upper-body point can be covered while a leg remains
@@ -309,7 +319,13 @@ public final class SilentAuraTargetSelector {
 
         Vec3 direction = look.normalize();
         RaytraceUtils.EntityRayState state =
-                RaytraceUtils.traceEntity(client, eye, direction, attackRange, target);
+                RaytraceUtils.traceEntity(
+                        client,
+                        eye,
+                        direction,
+                        attackRange,
+                        target,
+                        SilentAuraConfig.throughBlocks());
         Vec3 policyPoint =
                 SilentAuraConfig.closestAimPoint()
                         ? aimPoints.closest(
@@ -318,14 +334,16 @@ public final class SilentAuraTargetSelector {
                                 eye,
                                 box,
                                 scanRange(client),
-                                SilentAuraConfig.aimWanderTicks())
+                                SilentAuraConfig.aimWanderTicks(),
+                                SilentAuraConfig.throughBlocks())
                         : AimPointUtils.centerTrackingPoint(eye, box);
 
         if (state == RaytraceUtils.EntityRayState.HIT) {
             var intersection = box.clip(eye, eye.add(direction.scale(attackRange)));
             if (intersection.isEmpty()) return null;
             Vec3 retained = intersection.get().lerp(policyPoint, 0.20D);
-            return RaytraceUtils.canRayTraceTo(client, eye, retained)
+            return RaytraceUtils.canRayTraceTo(
+                            client, eye, retained, SilentAuraConfig.throughBlocks())
                     ? retained
                     : intersection.get();
         }
@@ -338,7 +356,8 @@ public final class SilentAuraTargetSelector {
         // only the angularly-nearest surface X/Z from the recovery sampler.
         Vec3 policyRecovery = new Vec3(angularRecovery.x, policyPoint.y, angularRecovery.z);
         return eye.distanceToSqr(policyRecovery) <= attackRange * attackRange
-                        && RaytraceUtils.canRayTraceTo(client, eye, policyRecovery)
+                        && RaytraceUtils.canRayTraceTo(
+                                client, eye, policyRecovery, SilentAuraConfig.throughBlocks())
                 ? policyRecovery
                 : angularRecovery;
     }

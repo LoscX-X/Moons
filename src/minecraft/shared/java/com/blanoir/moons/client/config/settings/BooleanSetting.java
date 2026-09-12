@@ -5,10 +5,12 @@ import com.blanoir.moons.client.module.framework.ModuleRegistry;
 
 public final class BooleanSetting {
     private final String key;
+    private final boolean defaultValue;
     private volatile boolean value;
 
     private BooleanSetting(String key, boolean defaultValue) {
         this.key = key;
+        this.defaultValue = defaultValue;
         this.value = Settings.getBoolean(key, defaultValue);
     }
 
@@ -23,7 +25,7 @@ public final class BooleanSetting {
 
     public ModuleRegistry.Setting describe(
             String id, String label, ModuleRegistry.BoolSetter setter) {
-        return ModuleRegistry.customBool(id, label, this::get, setter);
+        return ModuleRegistry.customBool(id, label, this::get, setter).withDefault(defaultValue);
     }
 
     public static final class Builder {
@@ -32,6 +34,7 @@ public final class BooleanSetting {
 
         public Builder name(String key) {
             this.key = key;
+            this.defaultValue = defaultValue;
             return this;
         }
 

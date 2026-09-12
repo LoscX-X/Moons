@@ -1,12 +1,33 @@
 package com.blanoir.moons.client.module.impl.world.scaffold;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.world.entity.player.Input;
 import net.minecraft.world.item.ItemStack;
 
 import java.util.List;
 
 public final class Scaffold {
     private Scaffold() {}
+
+    public static Input filterMovementInput(Minecraft client, Input input) {
+        return ScaffoldManager.filterMovementInput(client, input);
+    }
+
+    public static boolean returningTellySelected() {
+        return ScaffoldManager.returningTellySelected();
+    }
+
+    public static int setTellyReturnSpeed(Minecraft client, double value) {
+        return ScaffoldManager.setTellyReturnSpeed(client, value);
+    }
+
+    public static int setLegitSneakCheck(Minecraft client, boolean value) {
+        return ScaffoldManager.setLegitSneakCheck(client, value);
+    }
+
+    public static int setLegitEdgeOffset(Minecraft client, double value) {
+        return ScaffoldManager.setLegitEdgeOffset(client, value);
+    }
 
     public static void init() {
         ScaffoldManager.init();
@@ -62,14 +83,6 @@ public final class Scaffold {
 
     public static int setTellyTrackSpeed(Minecraft c, double v) {
         return ScaffoldManager.setTellyTrackSpeed(c, v);
-    }
-
-    public static int setTellyRotation(Minecraft c, String v) {
-        return ScaffoldManager.setTellyRotation(c, v);
-    }
-
-    public static List<String> tellyRotationOptions() {
-        return ScaffoldManager.tellyRotationOptions();
     }
 
     public static int setTellyDelayMode(Minecraft c, String v) {

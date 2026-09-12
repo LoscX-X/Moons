@@ -57,7 +57,7 @@ The outputs are `build/dist/agent/26_1/moons.jar`, `build/dist/agent/26_2/moons.
 
 ## Local Configs
 
-Open **ClickGUI → Configs** to create a named preset from the current modules, settings and key bindings. Select a preset, then use **Save** to replace its saved values or **Load** to apply it. The panel layout also has a **Configs** entry.
+Open **ClickGUI → Configs** to create and load a named preset with default module settings and key bindings. Select a preset, then use **Save** to replace its saved values or **Load** to apply it. The panel layout also has a **Configs** entry.
 
 The same operations are available through local commands:
 
@@ -70,7 +70,7 @@ The same operations are available through local commands:
 
 Presets are stored as JSON in the `profiles` folder beside the active `moons.properties` file. Names may contain letters, numbers, spaces, `_` and `-`. Create refuses duplicate names; Save updates an existing preset. Loading keeps ClickGUI open and restores module modes before their dependent options, including options hidden from the compact editor.
 
-The original properties-backed settings appear as `default`. Use `.config load default` to return to them or `.config save default` to update that preset. The default state is saved before switching to another preset. AimAssist keeps its original behavior as `Legit`, with `Center` and `Closest` sharing SilentAura's target-point policies.
+The `default` preset is initially generated from declared defaults. Only Save overwrites an existing preset. Missing or invalid settings use their declared defaults, unknown modes reset to the default mode, and obsolete fields are ignored without version migrations. Loading a preset does not retain missing fields from the previous preset.
 
 Backtrack retains **Attack**, **Range** and **Intent** target modes. Its compact editor exposes Mode, Time, Max range and ESP; other saved policy values remain in the config. Its HUD suffix shows the configured millisecond interval.
 
@@ -84,11 +84,11 @@ Open **Actions → Project checks and packages → Run workflow** and select:
 
 Daily CI compiles production sources for every supported version with `compileAllVersions`; it does not run custom `verify` tasks or style checks. Pushes to the main branch also build packages and create a prerelease. Pull requests compile only. Selecting `ui-runtime` manually skips Minecraft compilation. The workflow configures the lightweight launcher's dependency download URL automatically.
 
-Enable the optional `verify` checkbox in **Run workflow** to run `checkAllVersions` and, when building `all`, `verifyLauncherPackages`. These tasks remain available locally for manual regression checks.
+Enable the optional `verify` checkbox in **Run workflow** to run `checkAllVersions`: production compilation plus Minecraft mapping/injection-point validation. For one selected version, run `verifyMinecraftTransformers`. Other regression verifiers have been removed.
 
 ## Development and License
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines in Chinese and [native-agent/README.md](native-agent/README.md) for native startup-agent tests.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines in Chinese.
 
 See [LICENSE](LICENSE) for the license.
 

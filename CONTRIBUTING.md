@@ -26,7 +26,7 @@
 .\gradlew.bat compileAllVersions
 ```
 
-需要完整回归检查时，在 Actions 手动运行工作流并勾选 `verify`，或在本地运行：
+目前只保留 Minecraft 映射和注入点验证；其他自定义验证程序已移除。在 Actions 手动运行工作流并勾选 `verify`，或在本地运行以下命令，编译正式源码并验证各版本映射：
 
 ```powershell
 .\gradlew.bat checkAllVersions

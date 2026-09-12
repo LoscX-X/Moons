@@ -65,11 +65,11 @@ $env:JAVA_HOME = 'C:\Program Files\Java\jdk-25'
 
 日常 CI 通过 `compileAllVersions` 编译全部受支持版本的正式源码，不运行自定义 `verify` 任务或格式检查。主分支推送还会自动打包并创建预发布版本；Pull Request 仅编译。手动选择 `ui-runtime` 时跳过 Minecraft 编译。轻量版的依赖下载地址由工作流自动配置。
 
-需要完整回归检查时，在 **Run workflow** 勾选可选的 `verify`，执行 `checkAllVersions`；选择 `all` 打包时还会执行 `verifyLauncherPackages`。这些任务仍可在本地手动运行。
+在 **Run workflow** 勾选 `verify` 会执行 `checkAllVersions`，编译各版本正式源码并验证 Minecraft 映射和注入点。单个版本可运行 `verifyMinecraftTransformers`。其他回归验证程序已移除。
 
 ## 开发与许可
 
-开发约定见 [CONTRIBUTING.md](CONTRIBUTING.md)，原生启动代理测试见 [native-agent/README.zh-CN.md](native-agent/README.zh-CN.md)。
+开发约定见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 许可证见 [LICENSE](LICENSE)。
 

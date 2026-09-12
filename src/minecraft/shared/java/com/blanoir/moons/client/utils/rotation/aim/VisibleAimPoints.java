@@ -93,6 +93,18 @@ public final class VisibleAimPoints {
             double range,
             double preferredHeight,
             boolean precise) {
+        return findBestVisibleSurfacePoint(
+                client, box, referenceLook, range, preferredHeight, precise, false);
+    }
+
+    public static Vec3 findBestVisibleSurfacePoint(
+            Minecraft client,
+            AABB box,
+            Vec3 referenceLook,
+            double range,
+            double preferredHeight,
+            boolean precise,
+            boolean throughBlocks) {
         var currentPlayer = client == null ? null : client.player;
         if (client == null
                 || currentPlayer == null
@@ -124,7 +136,7 @@ public final class VisibleAimPoints {
         double preferredY = Mth.lerp(Mth.clamp(preferredHeight, 0.0D, 1.0D), box.minY, box.maxY);
         for (Vec3 point : points) {
             if (eye.distanceToSqr(point) > rangeSquared
-                    || !RaytraceUtils.canRayTraceTo(client, eye, point)) {
+                    || !RaytraceUtils.canRayTraceTo(client, eye, point, throughBlocks)) {
                 continue;
             }
             Vec3 direction = point.subtract(eye).normalize();

@@ -4,6 +4,7 @@ import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.module.framework.ModuleRegistry;
 import com.blanoir.moons.client.module.framework.ModuleRegistry.Module;
 import com.blanoir.moons.client.module.framework.ModuleRegistry.Setting;
+import com.blanoir.moons.client.utils.registry.RegistryLists;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -59,36 +60,24 @@ public final class ConfigProfiles {
     }
 
     public static void create(String name) throws IOException {
-        write(name, false);
+        Path target = path(name);
+        if (Files.exists(target)) throw new IOException("Config already exists: " + name);
+        writeSnapshot(target, defaults(), false);
+        load(name);
     }
 
     public static void save(String name) throws IOException {
-        write(name, true);
-    }
-
-    private static void write(String name, boolean replace) throws IOException {
         Path target = path(name);
         ensureDefault();
-        if (replace && !Files.isRegularFile(target))
-            throw new IOException("Config does not exist: " + name);
-        if (!replace && Files.exists(target))
-            throw new IOException("Config already exists: " + name);
-        JsonObject snapshot = capture();
-        preserveDefault(name, snapshot);
-        writeSnapshot(target, snapshot, replace);
+        if (!Files.isRegularFile(target)) throw new IOException("Config does not exist: " + name);
+        writeSnapshot(target, capture(), true);
         Settings.setString(SELECTED_KEY, canonicalName(name));
     }
 
-    /** The original properties-backed state becomes a selectable preset before switching away. */
+    /** The built-in preset is created from declared defaults, never live state. */
     private static void ensureDefault() throws IOException {
         Path target = path(DEFAULT_NAME);
-        if (!Files.exists(target)) writeSnapshot(target, capture(), false);
-    }
-
-    private static void preserveDefault(String next, JsonObject snapshot) throws IOException {
-        if (selected().equals(DEFAULT_NAME) && !canonicalName(next).equals(DEFAULT_NAME)) {
-            writeSnapshot(path(DEFAULT_NAME), snapshot, true);
-        }
+        if (!Files.exists(target)) writeSnapshot(target, defaults(), false);
     }
 
     private static void writeSnapshot(Path target, JsonObject snapshot, boolean replace)
@@ -131,7 +120,6 @@ public final class ConfigProfiles {
         }
         JsonObject snapshot = capture();
         Plan previous = plan(snapshot);
-        preserveDefault(name, snapshot);
         Settings.beginBatch();
         try {
             apply(target);
@@ -152,6 +140,14 @@ public final class ConfigProfiles {
     }
 
     private static JsonObject capture() {
+        return capture(false);
+    }
+
+    private static JsonObject defaults() {
+        return capture(true);
+    }
+
+    private static JsonObject capture(boolean defaults) {
         JsonObject root = new JsonObject();
         root.addProperty("format", 1);
         JsonObject modules = new JsonObject();
@@ -159,21 +155,25 @@ public final class ConfigProfiles {
             // Opening a preset must not close the editor or change its current layout.
             if (module.id().equals("clickgui")) continue;
             JsonObject state = new JsonObject();
-            state.addProperty("enabled", module.enabled().getAsBoolean());
+            state.addProperty(
+                    "enabled",
+                    defaults ? module.defaultEnabled() : module.enabled().getAsBoolean());
             JsonObject values = new JsonObject();
             for (Setting setting : module.settings())
-                values.add(setting.id(), setting.value().get().deepCopy());
+                values.add(
+                        setting.id(),
+                        (defaults ? setting.defaultValue() : setting.value().get()).deepCopy());
             state.add("settings", values);
             modules.add(module.id(), state);
         }
         root.add("modules", modules);
         JsonObject bindings = new JsonObject();
-        Settings.snapshotPrefix("keybind.").forEach(bindings::addProperty);
+        if (!defaults) Settings.snapshotPrefix("keybind.").forEach(bindings::addProperty);
         root.add("bindings", bindings);
         return root;
     }
 
-    private record Change(Setting setting, JsonElement value) {}
+    private record Change(Setting setting, JsonElement value, boolean configured) {}
 
     private record ModuleState(Module module, boolean enabled, List<Change> settings) {}
 
@@ -187,76 +187,61 @@ public final class ConfigProfiles {
         JsonObject bindings = root.getAsJsonObject("bindings");
         if (modules == null || bindings == null)
             throw new IllegalArgumentException("Missing modules or bindings");
-        migrateAuraBlock(modules);
-        // Profiles written before AimAssist had modes represent the original Legit behavior.
-        if (modules.has("aimassist")) {
-            JsonObject settings = modules.getAsJsonObject("aimassist").getAsJsonObject("settings");
-            if (settings != null && !settings.has("mode")) settings.addProperty("mode", "legit");
-        }
-        // The original zero-delay block phases now require separate client ticks.
-        if (modules.has("autoblock")) {
-            JsonObject settings = modules.getAsJsonObject("autoblock").getAsJsonObject("settings");
-            if (settings != null) {
-                for (String id : List.of("unblock_ticks", "reblock_ticks")) {
-                    JsonElement value = settings.get(id);
-                    if (value != null
-                            && value.isJsonPrimitive()
-                            && value.getAsJsonPrimitive().isNumber()
-                            && value.getAsDouble() == 0) settings.addProperty(id, 1);
-                }
-            }
-        }
         List<ModuleState> states = new ArrayList<>();
         for (Module module : ModuleRegistry.modules()) {
-            if (module.id().equals("clickgui") || !modules.has(module.id())) continue;
-            JsonObject state = modules.getAsJsonObject(module.id());
+            if (module.id().equals("clickgui")) continue;
+            JsonElement stored = modules.get(module.id());
+            JsonObject state =
+                    stored != null && stored.isJsonObject()
+                            ? stored.getAsJsonObject()
+                            : new JsonObject();
             JsonElement enabled = state.get("enabled");
-            if (enabled == null
-                    || !enabled.isJsonPrimitive()
-                    || !enabled.getAsJsonPrimitive().isBoolean()) {
-                throw new IllegalArgumentException("Invalid enabled state: " + module.name());
-            }
-            JsonObject values = state.getAsJsonObject("settings");
-            if (values == null)
-                throw new IllegalArgumentException("Missing settings: " + module.name());
+            boolean active =
+                    enabled != null
+                                    && enabled.isJsonPrimitive()
+                                    && enabled.getAsJsonPrimitive().isBoolean()
+                            ? enabled.getAsBoolean()
+                            : module.defaultEnabled();
+            JsonElement settings = state.get("settings");
+            JsonObject values =
+                    settings != null && settings.isJsonObject()
+                            ? settings.getAsJsonObject()
+                            : new JsonObject();
             List<Change> changes = new ArrayList<>();
             for (Setting setting : module.settings()) {
-                if (!values.has(setting.id())) continue;
                 JsonElement value = values.get(setting.id());
-                validate(setting, value);
-                changes.add(new Change(setting, value.deepCopy()));
+                if (module.id().equals("cheststealer")
+                        && setting.id().equals("delay_ms")
+                        && value != null
+                        && value.isJsonPrimitive()
+                        && value.getAsJsonPrimitive().isNumber()) {
+                    var range = new com.google.gson.JsonArray();
+                    range.add(value.deepCopy());
+                    range.add(value.deepCopy());
+                    value = range;
+                }
+                boolean configured = valid(setting, value);
+                changes.add(
+                        new Change(
+                                setting,
+                                (configured ? value : setting.defaultValue()).deepCopy(),
+                                configured));
             }
-            states.add(new ModuleState(module, enabled.getAsBoolean(), changes));
+            states.add(new ModuleState(module, active, changes));
         }
         Map<String, String> keys = new LinkedHashMap<>();
         for (var entry : bindings.entrySet()) {
             if (!entry.getKey().startsWith("keybind.")
                     || !entry.getValue().isJsonPrimitive()
                     || !entry.getValue().getAsJsonPrimitive().isString()) {
-                throw new IllegalArgumentException("Invalid key binding");
+                continue;
             }
             keys.put(entry.getKey(), entry.getValue().getAsString());
         }
         return new Plan(states, keys);
     }
 
-    /** Profiles predating AutoBlock stored its toggle among SilentAura's settings. */
-    private static void migrateAuraBlock(JsonObject modules) {
-        if (modules.has("autoblock") || !modules.has("silentaura")) return;
-        JsonObject aura = modules.getAsJsonObject("silentaura").getAsJsonObject("settings");
-        if (aura == null || !aura.has("block")) return;
-        JsonObject block = new JsonObject();
-        block.add("enabled", aura.get("block").deepCopy());
-        JsonObject settings = new JsonObject();
-        settings.addProperty("mode", "latest");
-        settings.addProperty("require_aura", true);
-        settings.addProperty("require_right_click", false);
-        block.add("settings", settings);
-        modules.add("autoblock", block);
-        if (!aura.has("combat_mode")) aura.addProperty("combat_mode", "latest");
-    }
-
-    private static void validate(Setting setting, JsonElement value) {
+    private static boolean valid(Setting setting, JsonElement value) {
         boolean valid = value != null && !value.isJsonNull();
         if (valid) {
             valid =
@@ -285,10 +270,12 @@ public final class ConfigProfiles {
                                         && value.getAsString().matches("#[0-9a-fA-F]{6}");
                         case "text" ->
                                 value.isJsonPrimitive() && value.getAsJsonPrimitive().isString();
+                        case "item_list", "block_list", "entity_list", "mob_list" ->
+                                RegistryLists.valid(setting.type(), value);
                         default -> false;
                     };
         }
-        if (!valid) throw new IllegalArgumentException("Invalid value for " + setting.name());
+        return valid;
     }
 
     private static boolean validNumber(Setting setting, JsonElement value) {
@@ -310,17 +297,22 @@ public final class ConfigProfiles {
                     // Restore modes first, then all their options, including currently hidden
                     // options.
                     for (boolean choices : new boolean[] {true, false}) {
-                        for (ModuleState state : plan.modules()) {
-                            for (Change change : state.settings()) {
-                                if (change.setting().type().equals("choice") == choices) {
-                                    change.setting().apply().apply(client, change.value());
+                        // A stored value wins over defaults for settings shared by modules.
+                        for (boolean configured : new boolean[] {false, true}) {
+                            for (ModuleState state : plan.modules()) {
+                                for (Change change : state.settings()) {
+                                    if (change.setting().type().equals("choice") == choices
+                                            && change.configured() == configured) {
+                                        change.setting().apply().apply(client, change.value());
+                                    }
                                 }
                             }
                         }
                     }
                     Settings.replacePrefix("keybind.", plan.bindings());
                     for (ModuleState state : plan.modules()) {
-                        state.module().toggle().apply(client, state.enabled());
+                        if (state.module().enabled().getAsBoolean() != state.enabled())
+                            state.module().toggle().apply(client, state.enabled());
                     }
                 });
     }

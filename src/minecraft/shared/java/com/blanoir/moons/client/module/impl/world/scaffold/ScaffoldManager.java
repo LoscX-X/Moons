@@ -1,6 +1,5 @@
 package com.blanoir.moons.client.module.impl.world.scaffold;
 
-import com.blanoir.moons.client.access.GameAccess;
 import com.blanoir.moons.client.access.MinecraftClientAccess;
 import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
@@ -44,14 +43,11 @@ import net.minecraft.world.level.block.FallingBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
-import net.minecraft.world.phys.Vec2;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.Deque;
 import java.util.List;
 import java.util.Locale;
 
@@ -86,7 +82,7 @@ public final class ScaffoldManager {
                     .defaultValue(ScaffoldMode.LEGIT)
                     .option(ScaffoldMode.LEGIT, "legit")
                     .option(ScaffoldMode.TELLY, "telly")
-                    .option(ScaffoldMode.INTAVE_TELLY, "intave-telly")
+                    .option(ScaffoldMode.JUMP, "jump")
                     .build();
     private static final ModeSetting<MoveFix> MOVE_FIX =
             new ModeSetting.Builder<MoveFix>()
@@ -94,13 +90,6 @@ public final class ScaffoldManager {
                     .defaultValue(MoveFix.SILENT)
                     .option(MoveFix.NONE, "none")
                     .option(MoveFix.SILENT, "silent")
-                    .build();
-    private static final ModeSetting<TellyRotation> TELLY_ROTATION =
-            new ModeSetting.Builder<TellyRotation>()
-                    .name("scaffold.tellyRotation")
-                    .defaultValue(TellyRotation.INSTANT)
-                    .option(TellyRotation.INSTANT, "instant")
-                    .option(TellyRotation.SMOOTH, "smooth")
                     .build();
     private static final ModeSetting<TellyDelay> TELLY_DELAY_MODE =
             new ModeSetting.Builder<TellyDelay>()
@@ -135,6 +124,8 @@ public final class ScaffoldManager {
 
     private static final DoubleSetting TELLY_START_SPEED =
             decimal("scaffold.tellyStartSpeed", 85.0D, 1.0D, 180.0D);
+    private static final DoubleSetting TELLY_RETURN_SPEED =
+            decimal("scaffold.tellyReturnSpeed", 45.0D, 1.0D, 90.0D);
     private static final DoubleSetting TELLY_TRACK_SPEED =
             decimal("scaffold.tellyTrackSpeed", 45.0D, 1.0D, 180.0D);
     private static final DoubleSetting TELLY_PLACE_ANGLE =
@@ -144,6 +135,7 @@ public final class ScaffoldManager {
     private static final DoubleSetting LEGIT_EDGE_OFFSET =
             decimal("scaffold.legitEdgeOffset", 0.0D, 0.0D, 0.3D);
 
+    private static final BooleanSetting LEGIT_SNEAK_CHECK = bool("scaffold.legitSneakCheck", false);
     private static final BooleanSetting KEEP_Y_ON_PRESS = bool("scaffold.keepYOnPress", false);
     private static final BooleanSetting SWING = bool("scaffold.swing", true);
     private static final BooleanSetting ITEM_SPOOF = bool("scaffold.itemSpoof", false);
@@ -157,8 +149,10 @@ public final class ScaffoldManager {
     private static final BooleanSetting TELLY_FALL_RESCUE = bool("scaffold.tellyFallRescue", false);
 
     private static final IntSetting TOWER_FLAT_TICKS = integer("scaffold.towerFlatTicks", 4, 0, 20);
-    private static final IntSetting LEGIT_DELAY_MIN = integer("scaffold.legitDelayMin", 2, 0, 10);
-    private static final IntSetting LEGIT_DELAY_MAX = integer("scaffold.legitDelayMax", 3, 0, 10);
+    private static final IntSetting LEGIT_DELAY_MIN =
+            integer("scaffold.legitDelayMinMs", 100, 0, 500);
+    private static final IntSetting LEGIT_DELAY_MAX =
+            integer("scaffold.legitDelayMaxMs", 150, 0, 500);
     private static final IntSetting TELLY_MAX_FORWARD_BLOCKS =
             integer("scaffold.tellyMaxForwardBlocks", 3, 1, 6);
     private static final IntSetting TELLY_PLACE_DELAY =
@@ -168,7 +162,6 @@ public final class ScaffoldManager {
     private static final IntSetting TELLY_BLOCKS_PER_SECOND_MAX =
             integer("scaffold.tellyBlocksPerSecondMax", 4, 1, 20);
     private static final List<PlacedMark> PLACED = new ArrayList<>();
-    private static final Deque<Long> PLACEMENT_TIMES = new ArrayDeque<>();
     private static boolean initialized;
     private static BlockPos renderTarget;
     private static BlockHitResult renderHit;
@@ -196,8 +189,8 @@ public final class ScaffoldManager {
     private static boolean canRotate;
     private static boolean onAirPlace;
     private static boolean legitSneaking;
-    private static int legitUnsneakStartTick = -1;
-    private static int legitUnsneakTicks = -1;
+    private static long legitUnsneakStartedNanos = -1;
+    private static int legitUnsneakDelayMillis = -1;
     private static int tellyBlocksThisJump;
     private static int tellyAirTicks;
     private static BlockPos lastTellyPlacePos;
@@ -213,15 +206,12 @@ public final class ScaffoldManager {
     private static double lastServerY;
     private static double lastServerZ;
     private static boolean serverPositionValid;
-    private static final Deque<HorizontalTravel> TELLY_HORIZONTAL_TRAVEL = new ArrayDeque<>();
-    private static boolean tellyTravelPositionKnown;
-    private static double lastTellyTravelX;
-    private static double lastTellyTravelZ;
-    private static double tellyTravelInLastSecond;
-    private static int tellyTargetBlocksPerSecond;
-    private static double tellyBpsInputScale = 1.0D;
-    private static double tellyBpsKeyAccumulator = 1.0D;
-    private static int tellyTakeoffInputGraceTicks;
+    private static final ForwardSpeedLimiter FORWARD_SPEED = new ForwardSpeedLimiter();
+    private static int forwardSampleTick = Integer.MIN_VALUE;
+    private static double forwardSampleX;
+    private static double forwardSampleZ;
+    private static double forwardBps;
+    private static int lastTellyReturnTick = Integer.MIN_VALUE;
     private static boolean tellyFlatStarted;
     private static TellyPhase tellyPhase = TellyPhase.SELECT_POINT;
     private static ScaffoldPath scaffoldPath = ScaffoldPath.IDLE;
@@ -274,11 +264,17 @@ public final class ScaffoldManager {
         return ENABLED.get();
     }
 
+    private static boolean placementSuspended() {
+        return com.blanoir.moons.client.utils.world.placement.PlacementCoordinator.busy(
+                com.blanoir.moons.client.utils.world.placement.PlacementCoordinator.Owner.BLOCK_IN);
+    }
+
     public static boolean shouldApplyRotation() {
         Minecraft client = Minecraft.getInstance();
         return enabled()
+                && !placementSuspended()
                 && tellyMode()
-                && (intaveTellyMode() || canRotate)
+                && (jumpMode() || canRotate)
                 && rotationInitialized
                 && ROTATION.active()
                 && ClientReady.gameplay(client)
@@ -344,7 +340,7 @@ public final class ScaffoldManager {
     }
 
     public static boolean cancelManualActions() {
-        return enabled() && tellyMode();
+        return enabled() && !placementSuspended() && tellyMode();
     }
 
     public static boolean cancelUseAction() {
@@ -352,7 +348,11 @@ public final class ScaffoldManager {
     }
 
     public static boolean shouldSuppressSprint(Minecraft client) {
-        return enabled() && tellyMode() && ClientReady.gameplay(client) && shouldStopSprint();
+        return enabled()
+                && !placementSuspended()
+                && tellyMode()
+                && ClientReady.gameplay(client)
+                && shouldStopSprint();
     }
 
     /**
@@ -424,8 +424,6 @@ public final class ScaffoldManager {
                         + (enabled() ? "enabled" : "disabled")
                         + " | "
                         + scaffoldMode().configName()
-                        + " | rotation "
-                        + TELLY_ROTATION.get().configName()
                         + " | tower "
                         + towerMode().configName()
                         + " | "
@@ -440,7 +438,7 @@ public final class ScaffoldManager {
                 : String.format(
                         Locale.ROOT,
                         "%s %.1f BPS %s",
-                        intaveTellyMode() ? "intave-telly" : "telly",
+                        jumpMode() ? "jump" : "telly",
                         currentBps(),
                         towerMode().configName());
     }
@@ -474,10 +472,6 @@ public final class ScaffoldManager {
         return MODE.optionIds();
     }
 
-    public static List<String> tellyRotationOptions() {
-        return TELLY_ROTATION.optionIds();
-    }
-
     public static List<String> tellyDelayModeOptions() {
         return TELLY_DELAY_MODE.optionIds();
     }
@@ -507,11 +501,31 @@ public final class ScaffoldManager {
     }
 
     public static boolean smoothTellySelected() {
-        return tellySelected() && TELLY_ROTATION.get() == TellyRotation.SMOOTH;
+        return tellySelected();
     }
 
     public static boolean tellyBpsLimitSelected() {
         return TELLY_BPS_LIMIT.get();
+    }
+
+    public static boolean returningTellySelected() {
+        return scaffoldMode() == ScaffoldMode.TELLY;
+    }
+
+    public static int setTellyReturnSpeed(Minecraft client, double value) {
+        TELLY_RETURN_SPEED.set(value);
+        return 1;
+    }
+
+    public static int setLegitSneakCheck(Minecraft client, boolean value) {
+        releaseLegitSneaking(client);
+        LEGIT_SNEAK_CHECK.set(value);
+        return 1;
+    }
+
+    public static int setLegitEdgeOffset(Minecraft client, double value) {
+        LEGIT_EDGE_OFFSET.set(value);
+        return 1;
     }
 
     public static int setTellyStartSpeed(Minecraft c, double v) {
@@ -523,11 +537,6 @@ public final class ScaffoldManager {
     public static int setTellyTrackSpeed(Minecraft c, double v) {
         TELLY_TRACK_SPEED.set(v);
         normalizeRanges();
-        return 1;
-    }
-
-    public static int setTellyRotation(Minecraft c, String v) {
-        TELLY_ROTATION.deserialize(v);
         return 1;
     }
 
@@ -566,7 +575,7 @@ public final class ScaffoldManager {
         TELLY_BLOCKS_PER_SECOND_MIN.set(min);
         TELLY_BLOCKS_PER_SECOND_MAX.set(max);
         normalizeRanges();
-        tellyTargetBlocksPerSecond = 0;
+        resetTellyBpsState(c);
         return 1;
     }
 
@@ -595,6 +604,10 @@ public final class ScaffoldManager {
 
     private static void tick(Minecraft client) {
         if (!enabled()) return;
+        if (placementSuspended()) {
+            shutdown(client);
+            return;
+        }
         if (!ClientReady.gameplay(client)) {
             renderTarget = null;
             renderHit = null;
@@ -614,7 +627,36 @@ public final class ScaffoldManager {
 
         updateGroundState(client);
         updateBlockSlot(client);
-        tickTelly(client);
+        if (jumpMode() && !towerRequested(client) && !tellyBelowRowRescue) tickJump(client);
+        else tickTelly(client);
+    }
+
+    /** Jump keeps the placement view through takeoff, covered cells and landing. */
+    private static void tickJump(Minecraft client) {
+        if (TELLY_FALL_RESCUE.get() && !client.player.onGround() && belowTellyTargetRow(client)) {
+            enterBelowRowRescue();
+            tickTelly(client);
+            return;
+        }
+        if (scaffoldPath == ScaffoldPath.TOWER) rotationInitialized = false;
+        scaffoldPath = ScaffoldPath.TELLY;
+        towerRotationInitialized = false;
+        tellyTriggered = true;
+        if (!acquireRotation(client)) return;
+        if (!rotationInitialized) {
+            publishTellyRotation(client, client.player.getYRot() + 180.0F, 80.0F);
+        }
+        ROTATION.acquire(new RotationRequest(outgoingYaw, outgoingPitch, 1, .35F, null));
+        if (blockCount <= 0 || tellyFeetCovered(client)) {
+            clearTellyAim();
+            transitionTelly(TellyPhase.SELECT_POINT, "jump; holding backward view");
+            return;
+        }
+        attemptTellyPlacement(
+                client,
+                new PlacementIntent(nextTellyPlacementPos(client, client.player.position()), false),
+                false,
+                0);
     }
 
     /** Telly jump state; target, rotation and placement are rebuilt every tick. */
@@ -852,7 +894,7 @@ public final class ScaffoldManager {
         float pubYaw = step.rotation().yaw();
         float pubPitch = step.rotation().pitch();
         BlockHitResult hit = step.hit();
-        if (!verticalTower && !intaveTellyMode()) {
+        if (!verticalTower && !jumpMode()) {
             double traceRange = client.player.blockInteractionRange();
             float jitteredYaw =
                     SilentPacketRotation.quantizePacketYaw(
@@ -1056,9 +1098,41 @@ public final class ScaffoldManager {
         // Missing a placeable cell between jumps must not turn Tower back to
         // the camera. Exiting Tower clears its initialization before cleanup.
         if (scaffoldPath == ScaffoldPath.TOWER && towerRotationInitialized) return;
+        if (jumpMode() && ROTATION.active() && rotationInitialized) {
+            canRotate = true;
+            return;
+        }
+        Minecraft client = Minecraft.getInstance();
+        if (ROTATION.active() && rotationInitialized && ClientReady.gameplay(client)) {
+            returnTellyRotation(client);
+            return;
+        }
+        releaseTellyRotation();
+    }
+
+    private static void returnTellyRotation(Minecraft client) {
+        if (lastTellyReturnTick == client.player.tickCount) return;
+        lastTellyReturnTick = client.player.tickCount;
+        Rotation camera = new Rotation(client.player.getYRot(), client.player.getXRot());
+        if (rotationDistance(camera, sentYaw(), sentPitch()) < .5D
+                && rotationDistance(camera, renderYaw, renderPitch) < 1.0D) {
+            releaseTellyRotation();
+            return;
+        }
+        Rotation next =
+                ScaffoldTurn.step(
+                        new Rotation(outgoingYaw, outgoingPitch), camera, TELLY_RETURN_SPEED.get());
+        float yaw = SilentPacketRotation.quantizePacketYaw(outgoingYaw, next.yaw());
+        float pitch = SilentPacketRotation.quantizePacketPitch(outgoingPitch, next.pitch());
+        publishTellyRotation(client, yaw, pitch);
+        ROTATION.acquire(new RotationRequest(yaw, pitch, 1, .35F, null));
+        placementRotationStarted = false;
+    }
+
+    private static void releaseTellyRotation() {
         ROTATION.release();
         canRotate = false;
-        if (!intaveTellyMode()) rotationInitialized = placementRotationStarted = false;
+        rotationInitialized = placementRotationStarted = false;
     }
 
     private static void playerUpdate(PlayerUpdateEvent event) {
@@ -1080,7 +1154,7 @@ public final class ScaffoldManager {
 
     private static void moveInput(MoveInputEvent event) {
         Minecraft client = Minecraft.getInstance();
-        if (!enabled() || !ClientReady.gameplay(client)) {
+        if (!enabled() || placementSuspended() || !ClientReady.gameplay(client)) {
             silentInputAllowsSprint = true;
             return;
         }
@@ -1103,100 +1177,55 @@ public final class ScaffoldManager {
                 scaffoldPath = ScaffoldPath.TELLY;
                 transitionTelly(TellyPhase.SELECT_POINT, "jump requested");
             }
-            tellyTakeoffInputGraceTicks = 2;
         }
 
-        if (tellyMode() && TELLY_BPS_LIMIT.get()) {
-            double inputScale = tellyForwardSpeedScale(client);
-            boolean unsupportedFall =
-                    !client.player.onGround()
-                            && client.player.getDeltaMovement().y <= 0.0D
-                            && !hasCollisionBelow(client);
-            if (inputScale < 0.999D && tellyTakeoffInputGraceTicks <= 0 && !unsupportedFall) {
-                gateTellyMovementInput(client, inputScale);
-            } else {
-                tellyBpsKeyAccumulator = 1.0D;
-            }
-        }
         if (tellyTakeoff) {
             client.player.input.makeJump();
         }
-        if (tellyTakeoffInputGraceTicks > 0) tellyTakeoffInputGraceTicks--;
     }
 
-    /** Limits horizontal travel by varying how much forward input each jump receives. */
-    private static void gateTellyMovementInput(Minecraft client, double duty) {
-        tellyBpsKeyAccumulator += Mth.clamp(duty, 0.0D, 1.0D);
-        if (tellyBpsKeyAccumulator >= 1.0D) {
-            tellyBpsKeyAccumulator -= 1.0D;
-            return;
+    /** Runs before MoveFix, so releasing forward preserves independently requested strafing. */
+    public static Input filterMovementInput(Minecraft client, Input requested) {
+        if (!enabled() || placementSuspended() || !tellyMode() || !ClientReady.gameplay(client)) {
+            resetTellyBpsState(client);
+            return requested;
         }
-        Input input = client.player.input.keyPresses;
-        client.player.input.keyPresses =
-                new Input(false, false, false, false, input.jump(), input.shift(), false);
-        GameAccess.moveVector(client.player.input, Vec2.ZERO);
-        silentInputAllowsSprint = false;
-        if (client.player.isSprinting()) client.player.setSprinting(false);
-    }
-
-    private static double tellyForwardSpeedScale(Minecraft client) {
-        var currentPlayer = client == null ? null : client.player;
-        if (currentPlayer == null) return 1.0D;
-        long now = System.currentTimeMillis();
-        double x = currentPlayer.getX();
-        double z = currentPlayer.getZ();
-        if (tellyTravelPositionKnown) {
-            double travelled = Math.hypot(x - lastTellyTravelX, z - lastTellyTravelZ);
-            if (travelled > 0.0D && travelled < 4.0D) {
-                TELLY_HORIZONTAL_TRAVEL.addLast(new HorizontalTravel(now, travelled));
-                tellyTravelInLastSecond += travelled;
-            }
+        int tick = client.player.tickCount;
+        if (forwardSampleTick != tick) {
+            Vec3 travel =
+                    forwardSampleTick == tick - 1
+                            ? new Vec3(
+                                    client.player.getX() - forwardSampleX,
+                                    0,
+                                    client.player.getZ() - forwardSampleZ)
+                            : client.player.getDeltaMovement();
+            double yaw = Math.toRadians(client.player.getYRot());
+            forwardBps = (travel.x * -Math.sin(yaw) + travel.z * Math.cos(yaw)) * 20.0D;
+            forwardSampleTick = tick;
+            forwardSampleX = client.player.getX();
+            forwardSampleZ = client.player.getZ();
         }
-        lastTellyTravelX = x;
-        lastTellyTravelZ = z;
-        tellyTravelPositionKnown = true;
-        while (!TELLY_HORIZONTAL_TRAVEL.isEmpty()
-                && now - TELLY_HORIZONTAL_TRAVEL.peekFirst().time() > 1000L) {
-            tellyTravelInLastSecond -= TELLY_HORIZONTAL_TRAVEL.removeFirst().distance();
+        if (!TELLY_BPS_LIMIT.get() || towerRequested(client)) {
+            FORWARD_SPEED.reset();
+            return requested;
         }
-        tellyTravelInLastSecond = Math.max(0.0D, tellyTravelInLastSecond);
-
-        if (tellyTargetBlocksPerSecond <= 0) {
-            tellyTargetBlocksPerSecond =
-                    randomIntInclusive(
-                            TELLY_BLOCKS_PER_SECOND_MIN.get(), TELLY_BLOCKS_PER_SECOND_MAX.get());
+        Input filtered =
+                FORWARD_SPEED.filter(
+                        requested,
+                        forwardBps,
+                        TELLY_BLOCKS_PER_SECOND_MIN.get(),
+                        TELLY_BLOCKS_PER_SECOND_MAX.get());
+        if (filtered != requested) {
+            silentInputAllowsSprint = false;
+            client.player.setSprinting(false);
         }
-        double lower = TELLY_BLOCKS_PER_SECOND_MIN.get();
-        double upper = Math.max(lower + 0.25D, tellyTargetBlocksPerSecond);
-        double softenFrom = lower * 0.72D;
-        double pressure =
-                Mth.clamp(
-                        (tellyTravelInLastSecond - softenFrom) / (upper - softenFrom), 0.0D, 1.0D);
-        double desiredScale = Mth.lerp(pressure, 1.0D, 0.28D);
-        double adjustment = Mth.clamp(desiredScale - tellyBpsInputScale, -0.12D, 0.08D);
-        tellyBpsInputScale = Mth.clamp(tellyBpsInputScale + adjustment, 0.28D, 1.0D);
-        if (pressure <= 0.0D && tellyBpsInputScale >= 0.995D) {
-            tellyBpsInputScale = 1.0D;
-            tellyTargetBlocksPerSecond =
-                    randomIntInclusive(
-                            TELLY_BLOCKS_PER_SECOND_MIN.get(), TELLY_BLOCKS_PER_SECOND_MAX.get());
-        }
-        return tellyBpsInputScale;
+        return filtered;
     }
 
     private static void resetTellyBpsState(Minecraft client) {
-        var currentPlayer = client == null ? null : client.player;
-        TELLY_HORIZONTAL_TRAVEL.clear();
-        tellyTravelInLastSecond = 0.0D;
-        tellyTargetBlocksPerSecond = 0;
-        tellyBpsInputScale = 1.0D;
-        tellyBpsKeyAccumulator = 1.0D;
-        tellyTakeoffInputGraceTicks = 0;
-        tellyTravelPositionKnown = client != null && currentPlayer != null;
-        if (client != null && currentPlayer != null) {
-            lastTellyTravelX = currentPlayer.getX();
-            lastTellyTravelZ = currentPlayer.getZ();
-        }
+        FORWARD_SPEED.reset();
+        forwardSampleTick = Integer.MIN_VALUE;
+        forwardBps = 0.0D;
     }
 
     /**
@@ -1238,7 +1267,11 @@ public final class ScaffoldManager {
     private static void updateLegitSneaking(Minecraft client) {
         boolean physicalSneak =
                 CombatInputController.isPhysicallyDown(client, client.options.keyShift);
-        if (physicalSneak) {
+        if (LEGIT_SNEAK_CHECK.get() && !physicalSneak) {
+            releaseLegitSneaking(client);
+            return;
+        }
+        if (!LEGIT_SNEAK_CHECK.get() && physicalSneak) {
             resetLegitSneakState();
             return;
         }
@@ -1247,6 +1280,9 @@ public final class ScaffoldManager {
             return;
         }
 
+        // With Sneak check, the physical key activates the helper; the helper owns its
+        // effective sneak state instead of leaving the player permanently crouched.
+        if (LEGIT_SNEAK_CHECK.get()) setInputSneaking(client, legitSneaking);
         double edgeDistance = legitEdgeDistance(client, TrajectoryPrediction.nextInputBox(client));
         boolean jumping = client.player.input.keyPresses.jump();
         boolean needsSneak =
@@ -1263,17 +1299,18 @@ public final class ScaffoldManager {
     private static void startLegitSneaking(Minecraft client) {
         setInputSneaking(client, true);
         legitSneaking = true;
-        legitUnsneakStartTick = -1;
-        legitUnsneakTicks = -1;
+        legitUnsneakStartedNanos = -1;
+        legitUnsneakDelayMillis = -1;
     }
 
     private static void continueOrEndLegitSneaking(Minecraft client) {
-        int tick = client.player.tickCount;
-        if (legitUnsneakStartTick == -1) {
-            legitUnsneakStartTick = tick;
-            legitUnsneakTicks = randomIntInclusive(LEGIT_DELAY_MIN.get(), LEGIT_DELAY_MAX.get());
+        long now = System.nanoTime();
+        if (legitUnsneakStartedNanos == -1) {
+            legitUnsneakStartedNanos = now;
+            legitUnsneakDelayMillis =
+                    randomIntInclusive(LEGIT_DELAY_MIN.get(), LEGIT_DELAY_MAX.get());
         }
-        if (tick - legitUnsneakStartTick < legitUnsneakTicks) {
+        if (now - legitUnsneakStartedNanos < legitUnsneakDelayMillis * 1_000_000L) {
             setInputSneaking(client, true);
             return;
         }
@@ -1292,8 +1329,8 @@ public final class ScaffoldManager {
 
     private static void resetLegitSneakState() {
         legitSneaking = false;
-        legitUnsneakStartTick = -1;
-        legitUnsneakTicks = -1;
+        legitUnsneakStartedNanos = -1;
+        legitUnsneakDelayMillis = -1;
     }
 
     private static void setInputSneaking(Minecraft client, boolean sneaking) {
@@ -1434,9 +1471,6 @@ public final class ScaffoldManager {
         if (!client.player.getAbilities().instabuild) blockCount--;
         MinecraftClientAccess.animatePlacement(client.player, hand, SWING.get());
         PLACED.add(new PlacedMark(target.placePos(), System.currentTimeMillis()));
-        long placedAt = System.currentTimeMillis();
-        PLACEMENT_TIMES.addLast(placedAt);
-        prunePlacementTimes(placedAt);
         if (towerActive(client)) {
             startY = Math.max(startY, target.placePos().getY() + 1);
         }
@@ -1517,15 +1551,7 @@ public final class ScaffoldManager {
     }
 
     private static double currentBps() {
-        long now = System.currentTimeMillis();
-        prunePlacementTimes(now);
-        return PLACEMENT_TIMES.size();
-    }
-
-    private static void prunePlacementTimes(long now) {
-        while (!PLACEMENT_TIMES.isEmpty() && now - PLACEMENT_TIMES.peekFirst() > 1000L) {
-            PLACEMENT_TIMES.removeFirst();
-        }
+        return Math.max(0.0D, forwardBps);
     }
 
     private static InteractionHand placementHand(Minecraft client) {
@@ -1763,18 +1789,12 @@ public final class ScaffoldManager {
     /** Use the remaining air delay for turning; the placement deadline stays unchanged. */
     private static PlacementStep resolvePlacementStep(
             Minecraft client, Vec3 eye, PlacementAim exact, boolean rescue, int remainingAirDelay) {
-        boolean instant = TELLY_ROTATION.get() == TellyRotation.INSTANT;
-        if (rescue || instant && remainingAirDelay == 0) {
+        if (rescue) {
             return PlacementStep.ready(exact);
         }
         float baseYaw = placementBaseYaw(client);
         float basePitch = placementBasePitch(client);
-        double speed =
-                instant
-                        ? 180.0D
-                        : placementRotationStarted
-                                ? TELLY_TRACK_SPEED.get()
-                                : TELLY_START_SPEED.get();
+        double speed = placementRotationStarted ? TELLY_TRACK_SPEED.get() : TELLY_START_SPEED.get();
         float steps = remainingAirDelay + 1.0F;
         float yawDelta = Mth.wrapDegrees(exact.rotation().yaw() - baseYaw) / steps;
         float pitchDelta = (exact.rotation().pitch() - basePitch) / steps;
@@ -1918,7 +1938,7 @@ public final class ScaffoldManager {
         tellyBelowRowRescue = false;
         towerRotationInitialized = false;
         resetTellyBpsState(client);
-        PLACEMENT_TIMES.clear();
+        lastTellyReturnTick = Integer.MIN_VALUE;
         PLACED.clear();
     }
 
@@ -1943,8 +1963,8 @@ public final class ScaffoldManager {
         tellyBelowRowRescue = false;
         towerRotationInitialized = false;
         resetTellyBpsState(client);
+        lastTellyReturnTick = Integer.MIN_VALUE;
         silentInputAllowsSprint = true;
-        PLACEMENT_TIMES.clear();
     }
 
     public static void shutdown(Minecraft client) {
@@ -1971,11 +1991,11 @@ public final class ScaffoldManager {
     }
 
     private static boolean tellyMode() {
-        return scaffoldMode() == ScaffoldMode.TELLY || intaveTellyMode();
+        return scaffoldMode() == ScaffoldMode.TELLY || jumpMode();
     }
 
-    private static boolean intaveTellyMode() {
-        return scaffoldMode() == ScaffoldMode.INTAVE_TELLY;
+    private static boolean jumpMode() {
+        return scaffoldMode() == ScaffoldMode.JUMP;
     }
 
     private static MoveFix moveFix() {
@@ -2024,8 +2044,6 @@ public final class ScaffoldManager {
 
     private record PlacedMark(BlockPos pos, long time) {}
 
-    private record HorizontalTravel(long time, double distance) {}
-
     private enum ScaffoldPath {
         IDLE,
         TELLY,
@@ -2060,7 +2078,7 @@ public final class ScaffoldManager {
     private enum ScaffoldMode {
         LEGIT,
         TELLY,
-        INTAVE_TELLY;
+        JUMP;
 
         String configName() {
             return name().toLowerCase(Locale.ROOT);
@@ -2070,15 +2088,6 @@ public final class ScaffoldManager {
     private enum MoveFix {
         NONE,
         SILENT;
-    }
-
-    private enum TellyRotation {
-        INSTANT,
-        SMOOTH;
-
-        String configName() {
-            return name().toLowerCase(Locale.ROOT);
-        }
     }
 
     private enum TellyDelay {

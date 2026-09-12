@@ -6,6 +6,7 @@ import com.blanoir.moons.client.module.framework.ModuleCategories;
 import com.blanoir.moons.client.module.framework.ModuleRegistry;
 import com.blanoir.moons.client.module.impl.world.*;
 import com.blanoir.moons.client.module.impl.world.scaffold.Scaffold;
+import com.blanoir.moons.client.utils.registry.RegistryLists;
 
 /** Defines world module descriptors; ordering is owned by ModuleCatalog. */
 final class World {
@@ -109,25 +110,34 @@ final class World {
                         Scaffold.modeOptions(),
                         Scaffold::setMode),
                 rangeInts(
-                                "legit_delay",
-                                "Sneak delay (ticks)",
-                                "scaffold.legitDelayMin",
-                                "scaffold.legitDelayMax",
-                                2,
-                                3,
+                                "legit_delay_ms",
+                                "Sneak delay (ms)",
+                                "scaffold.legitDelayMinMs",
+                                "scaffold.legitDelayMaxMs",
+                                100,
+                                150,
                                 0,
-                                10,
-                                1,
+                                500,
+                                5,
                                 Scaffold::setLegitDelay)
                         .visibleWhen(Scaffold::legitSelected),
-                choice(
-                                "telly_rotation",
-                                "Telly rotation",
-                                "scaffold.tellyRotation",
-                                "instant",
-                                Scaffold.tellyRotationOptions(),
-                                Scaffold::setTellyRotation)
-                        .visibleWhen(Scaffold::tellySelected),
+                bool(
+                                "legit_sneak_check",
+                                "Sneak check",
+                                "scaffold.legitSneakCheck",
+                                false,
+                                Scaffold::setLegitSneakCheck)
+                        .visibleWhen(Scaffold::legitSelected),
+                number(
+                                "legit_edge_offset",
+                                "Edge offset (blocks)",
+                                "scaffold.legitEdgeOffset",
+                                0,
+                                0,
+                                .3,
+                                .01,
+                                Scaffold::setLegitEdgeOffset)
+                        .visibleWhen(Scaffold::legitSelected),
                 choice(
                                 "face_sampling",
                                 "Face sampling",
@@ -166,6 +176,16 @@ final class World {
                                 .5,
                                 Scaffold::setTellyPlaceAngle)
                         .visibleWhen(Scaffold::tellySelected),
+                number(
+                                "telly_return_speed",
+                                "Return turn limit",
+                                "scaffold.tellyReturnSpeed",
+                                45,
+                                1,
+                                90,
+                                .5,
+                                Scaffold::setTellyReturnSpeed)
+                        .visibleWhen(Scaffold::returningTellySelected),
                 choice(
                                 "telly_delay_mode",
                                 "Air delay mode",
@@ -173,7 +193,7 @@ final class World {
                                 "fixed",
                                 Scaffold.tellyDelayModeOptions(),
                                 Scaffold::setTellyDelayMode)
-                        .visibleWhen(Scaffold::tellySelected),
+                        .visibleWhen(Scaffold::returningTellySelected),
                 integer(
                                 "telly_place_delay",
                                 "Air delay (ticks)",
@@ -183,7 +203,7 @@ final class World {
                                 8,
                                 1,
                                 Scaffold::setTellyPlaceDelay)
-                        .visibleWhen(Scaffold::tellySelected),
+                        .visibleWhen(Scaffold::returningTellySelected),
                 bool(
                                 "telly_bps_limit",
                                 "Limit forward BPS",
@@ -272,18 +292,41 @@ final class World {
                 ModuleCategories.PLAYER,
                 cfgBool("cheststealer.enabled", false),
                 ChestStealer::setEnabled,
-                ChestStealer::statusText,
-                range(
-                        "miss",
-                        "Miss delay (ms)",
-                        "cheststealer.miss.min",
-                        "cheststealer.miss.max",
-                        0,
-                        0,
-                        0,
-                        5000,
-                        1,
-                        ChestStealer::setMiss));
+                ChestStealer::modeName,
+                customChoice(
+                                "mode",
+                                "Mode",
+                                ChestStealer::modeName,
+                                java.util.List.of("legit", "blatant"),
+                                ChestStealer::setMode)
+                        .withDefault("legit"),
+                bool("all", "All", "cheststealer.all", true, ChestStealer::setAll),
+                bool(
+                        "auto_close",
+                        "Auto close",
+                        "cheststealer.autoClose",
+                        true,
+                        ChestStealer::setAutoClose),
+                rangeValue(
+                                "delay_ms",
+                                "Delay (ms)",
+                                ChestStealer::delayMinMs,
+                                ChestStealer::delayMaxMs,
+                                0,
+                                1000,
+                                1,
+                                (client, low, high) ->
+                                        ChestStealer.setDelayRange(client, (int) low, (int) high))
+                        .withDefault(100, 150)
+                        .visibleWhen(ChestStealer::legitMode),
+                RegistryLists.setting(
+                                "items",
+                                "Items",
+                                "item",
+                                ChestStealer::selectedItems,
+                                ChestStealer::setSelectedItems,
+                                new com.google.gson.JsonArray())
+                        .visibleWhen(() -> !ChestStealer.allItems()));
     }
 
     static ModuleRegistry.Module lightningTracker() {

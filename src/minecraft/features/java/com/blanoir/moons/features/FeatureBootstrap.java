@@ -19,7 +19,7 @@ import com.blanoir.moons.client.module.impl.combat.TriggerBot;
 import com.blanoir.moons.client.module.impl.combat.Velocity;
 import com.blanoir.moons.client.module.impl.combat.aim.AimAssist;
 import com.blanoir.moons.client.module.impl.combat.critical.Critical;
-import com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraConfig;
+import com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraBlock;
 import com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraRuntime;
 import com.blanoir.moons.client.module.impl.misc.AntiNick;
 import com.blanoir.moons.client.module.impl.misc.antibot.AntiBot;
@@ -38,6 +38,7 @@ import com.blanoir.moons.client.module.impl.player.AutoMLG;
 import com.blanoir.moons.client.module.impl.player.AutoSword;
 import com.blanoir.moons.client.module.impl.player.AutoTotem;
 import com.blanoir.moons.client.module.impl.player.AutoWeb;
+import com.blanoir.moons.client.module.impl.player.blockin.BlockInRuntime;
 import com.blanoir.moons.client.module.impl.render.Animations;
 import com.blanoir.moons.client.module.impl.render.Caver;
 import com.blanoir.moons.client.module.impl.render.Chams;
@@ -97,17 +98,25 @@ final class FeatureBootstrap {
         AutoClicker.init();
         SprintReset.init();
         SilentAura.init();
-        AutoBlock.bindAura(
-                SilentAura::isEnabled,
-                SilentAuraConfig::legacyCombat,
-                SilentAura::isActivationHeld,
-                SilentAura::currentTarget);
         Animations.bindCombatState(
-                AutoBlock::isEnabled,
-                AutoBlock::shouldRenderBlock,
-                AutoBlock::attackAnimationOnly,
-                AutoBlock::animationProgress);
+                () -> AutoBlock.isEnabled() || SilentAuraBlock.isEnabled(),
+                client ->
+                        SilentAuraBlock.controls(client)
+                                ? SilentAuraBlock.shouldRenderBlock(client)
+                                : AutoBlock.shouldRenderBlock(client),
+                () ->
+                        SilentAuraBlock.controls(Minecraft.getInstance())
+                                ? SilentAuraBlock.attackAnimationOnly()
+                                : AutoBlock.attackAnimationOnly(),
+                () ->
+                        SilentAuraBlock.controls(Minecraft.getInstance())
+                                ? SilentAuraBlock.animationProgress()
+                                : AutoBlock.animationProgress(),
+                () ->
+                        SilentAuraBlock.controls(Minecraft.getInstance())
+                                && SilentAuraBlock.attackAnimationOnly());
         AutoBlock.init();
+        SilentAuraBlock.init();
         CombatModuleCoordinator.reconcileConfiguredState(Minecraft.getInstance());
         Scoreboard.init();
         InventorySee.init();
@@ -135,6 +144,7 @@ final class FeatureBootstrap {
         AntiWeb.init();
         AntiLava.init();
         AutoWeb.init();
+        BlockInRuntime.init();
         LowHealthFakeLag.init();
         RandomFakeLag.init();
         FakeLag.init();
@@ -165,10 +175,12 @@ final class FeatureBootstrap {
         RotationManager.reset();
         Minecraft client = Minecraft.getInstance();
         AutoBlock.reset(client);
+        SilentAuraBlock.reset(client);
         SilentAuraRuntime.reset(client);
         AutoMLG.shutdown(client);
         AutoBed.shutdown(client);
         AutoWeb.shutdown(client);
+        BlockInRuntime.shutdown(client);
         AutoLava.shutdown(client);
         AntiLava.shutdown(client);
         AntiWeb.shutdown(client);

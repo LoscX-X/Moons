@@ -1,7 +1,6 @@
 package com.blanoir.moons.client.module.impl.combat;
 
 import com.blanoir.moons.client.chat.ClientChat;
-import com.blanoir.moons.client.config.Settings;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.DoubleSetting;
 import com.blanoir.moons.client.config.settings.IntSetting;
@@ -29,11 +28,7 @@ import net.minecraft.tags.ItemTags;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 
-import java.util.function.BooleanSupplier;
-import java.util.function.Function;
-import java.util.function.Predicate;
-
-/** Blocking and release run before movement; completed entity attacks start one visual pulse. */
+/** Standalone combat support: Latest is visual only; Legacy releases and reblocks around attacks. */
 public final class AutoBlock {
     private enum Mode {
         LEGACY,
@@ -47,8 +42,7 @@ public final class AutoBlock {
         REBLOCKING
     }
 
-    private static final BooleanSetting ENABLED =
-            bool("autoblock.enabled", Settings.getBoolean("silentaura.block", true));
+    private static final BooleanSetting ENABLED = bool("autoblock.enabled", false);
     private static final ModeSetting<Mode> MODE =
             new ModeSetting.Builder<Mode>()
                     .name("autoblock.mode")
@@ -56,7 +50,6 @@ public final class AutoBlock {
                     .option(Mode.LEGACY, "legacy")
                     .option(Mode.LATEST, "latest")
                     .build();
-    private static final BooleanSetting REQUIRE_AURA = bool("autoblock.requireAura", true);
     private static final BooleanSetting REQUIRE_RIGHT_CLICK =
             bool("autoblock.requireRightClick", false);
     private static final BooleanSetting VISUAL = bool("autoblock.visual", true);
@@ -87,10 +80,6 @@ public final class AutoBlock {
     private static final BlockingUse USE = new BlockingUse();
     private static final AnimationPulse BLOCK_HIT = new AnimationPulse(120);
     private static Entity pendingAnimationTarget;
-    private static BooleanSupplier auraEnabled = () -> false;
-    private static BooleanSupplier auraLegacy = () -> false;
-    private static Predicate<Minecraft> auraActive = client -> false;
-    private static Function<Minecraft, LivingEntity> auraTarget = client -> null;
     private static Phase phase = Phase.IDLE;
     private static int readyTick;
     private static int attackWindowExpires;
@@ -99,17 +88,6 @@ public final class AutoBlock {
     private static boolean lastLegacy;
 
     private AutoBlock() {}
-
-    public static void bindAura(
-            BooleanSupplier enabled,
-            BooleanSupplier legacy,
-            Predicate<Minecraft> active,
-            Function<Minecraft, LivingEntity> target) {
-        auraEnabled = enabled;
-        auraLegacy = legacy;
-        auraActive = active;
-        auraTarget = target;
-    }
 
     public static void init() {
         EventBus.CLIENT_CONTEXT_CHANGED.register("AutoBlock.context", event -> discard());
@@ -157,6 +135,10 @@ public final class AutoBlock {
                 "AutoBlock.use",
                 EventPriority.HIGHEST,
                 event -> {
+                    if (!legacy() || SilentAura.isActivationHeld(event.client())) {
+                        reset(event.client());
+                        return;
+                    }
                     if (SilentPacketRotation.isInvokingSimulatedUse()
                             || USE.owned() && !USE.matches(event.client())) {
                         reset(event.client());
@@ -171,7 +153,7 @@ public final class AutoBlock {
     }
 
     private static boolean legacy() {
-        return auraEnabled.getAsBoolean() ? auraLegacy.getAsBoolean() : MODE.get() == Mode.LEGACY;
+        return MODE.get() == Mode.LEGACY;
     }
 
     private static boolean canRun(Minecraft client) {
@@ -180,21 +162,11 @@ public final class AutoBlock {
                 && client.player.getMainHandItem().is(ItemTags.SWORDS)
                 && (!REQUIRE_RIGHT_CLICK.get()
                         || CombatInputController.isPhysicallyDown(client, client.options.keyUse))
-                && (!REQUIRE_AURA.get() || auraActive.test(client));
+                && !SilentAura.isActivationHeld(client);
     }
 
     private static LivingEntity target(Minecraft client) {
         if (!canRun(client)) return null;
-        if (auraActive.test(client)) {
-            LivingEntity target = auraTarget.apply(client);
-            return target != null
-                            && target.isAlive()
-                            && client.level.getEntity(target.getId()) == target
-                            && CombatReach.within(client, target, RANGE.get())
-                    ? target
-                    : null;
-        }
-        if (REQUIRE_AURA.get()) return null;
         LivingEntity closest = null;
         double distance = RANGE.get() * RANGE.get();
         for (var player : client.level.players()) {
@@ -225,7 +197,7 @@ public final class AutoBlock {
                 || client.player.isUsingItem()
                 || SilentPacketRotation.isBusy()
                 || PlacementCoordinator.busy()
-                || RotationLease.hasSilentRotation() && !auraActive.test(client)) {
+                || RotationLease.hasSilentRotation()) {
             reset(client);
             return false;
         }
@@ -240,6 +212,7 @@ public final class AutoBlock {
         Minecraft client = event.client();
         if (event.isCancelled()) return;
         boolean active = refresh(client);
+        if (!legacy() || SilentAura.isActivationHeld(client)) return;
         if (ClientReady.world(client) && releasedTick == client.player.tickCount) {
             event.cancel();
             return;
@@ -274,7 +247,6 @@ public final class AutoBlock {
         if (!USE.canStart(client)) return;
         // Resolve the current action/movement window, never the preceding sent rotation.
         RotationManager.Decision decision = RotationManager.resolve();
-        if (auraActive.test(client) && decision == null) return;
         Rotation rotation =
                 decision != null
                         ? decision.rotation()
@@ -343,20 +315,11 @@ public final class AutoBlock {
     private static final class Descriptors {
         private static final ModuleRegistry.Setting[] ALL = {
             MODE.describe(
-                            "mode",
-                            "Mode",
-                            (client, value) -> {
-                                reset(client);
-                                MODE.deserialize(value);
-                                return 1;
-                            })
-                    .visibleWhen(() -> !auraEnabled.getAsBoolean()),
-            REQUIRE_AURA.describe(
-                    "require_aura",
-                    "Require SilentAura",
+                    "mode",
+                    "Mode",
                     (client, value) -> {
                         reset(client);
-                        REQUIRE_AURA.set(value);
+                        MODE.deserialize(value);
                         return 1;
                     }),
             REQUIRE_RIGHT_CLICK.describe(
@@ -386,15 +349,14 @@ public final class AutoBlock {
                         return 1;
                     }),
             FOV.describe(
-                            "fov",
-                            "FOV",
-                            1,
-                            (client, value) -> {
-                                reset(client);
-                                FOV.set(value);
-                                return 1;
-                            })
-                    .visibleWhen(() -> !REQUIRE_AURA.get()),
+                    "fov",
+                    "FOV",
+                    1,
+                    (client, value) -> {
+                        reset(client);
+                        FOV.set(value);
+                        return 1;
+                    }),
             UNBLOCK_TICKS
                     .describe(
                             "unblock_ticks",

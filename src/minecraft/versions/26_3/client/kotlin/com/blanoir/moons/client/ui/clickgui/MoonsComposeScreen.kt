@@ -39,10 +39,12 @@ import androidx.compose.ui.unit.sp
 import com.blanoir.moons.client.config.ClientBranding
 import com.blanoir.moons.client.config.Settings
 import com.blanoir.moons.client.module.framework.ModuleKeybinds
+import com.blanoir.moons.client.module.impl.render.xray.PluginBlockPreviews
 import com.blanoir.moons.client.ui.MinecraftScreenAccess
 import com.blanoir.moons.client.ui.compose.FinalFrameSurface
 import com.blanoir.moons.client.ui.compose.SdlComposeEvents
 import com.blanoir.moons.client.ui.hud.HudLayoutController
+import com.blanoir.moons.client.utils.render.NativeItemIcons
 import com.mojang.blaze3d.platform.InputConstants
 import com.mojang.blaze3d.systems.RenderSystem
 import java.awt.event.KeyEvent as AwtKeyEvent
@@ -124,6 +126,8 @@ class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} Cl
         ensureScene(frameWidth, frameHeight)
 
         val scene = composeScene ?: return
+        NativeItemIcons.prepareFrame()
+        PluginBlockPreviews.prepareFrame()
         // Keep compositing every game frame, but only rasterize/upload when the UI changes.
         // Compose invalidations include animation frame awaiters, so this adds no frame cap.
         frameSurface.render(
@@ -163,6 +167,8 @@ class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} Cl
         composeScene = null
         sceneDirty = true
         frameSurface.close()
+        NativeItemIcons.clear()
+        PluginBlockPreviews.clear()
     }
 
     @OptIn(ExperimentalComposeUiApi::class)
@@ -175,6 +181,8 @@ class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} Cl
         bindingModuleId = null
         hudLayoutEditing = false
         nextRegistrySyncNanos = 0L
+        NativeItemIcons.clear()
+        PluginBlockPreviews.clear()
         super.removed()
     }
 

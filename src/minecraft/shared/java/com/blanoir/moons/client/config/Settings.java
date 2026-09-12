@@ -84,7 +84,9 @@ public final class Settings {
     public static boolean getBoolean(String key, boolean defaultValue) {
         ensureLoaded();
         String value = PROPERTIES.getProperty(key);
-        return value == null ? defaultValue : Boolean.parseBoolean(value);
+        if ("true".equalsIgnoreCase(value)) return true;
+        if ("false".equalsIgnoreCase(value)) return false;
+        return defaultValue;
     }
 
     public static void setBoolean(String key, boolean value) {
@@ -111,7 +113,8 @@ public final class Settings {
         String value = PROPERTIES.getProperty(key);
         if (value == null) return defaultValue;
         try {
-            return Double.parseDouble(value);
+            double parsed = Double.parseDouble(value);
+            return Double.isFinite(parsed) ? parsed : defaultValue;
         } catch (NumberFormatException exception) {
             return defaultValue;
         }

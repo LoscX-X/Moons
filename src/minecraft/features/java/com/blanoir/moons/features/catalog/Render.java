@@ -8,6 +8,7 @@ import com.blanoir.moons.client.module.framework.ModuleRegistry;
 import com.blanoir.moons.client.module.impl.render.*;
 import com.blanoir.moons.client.ui.clickgui.ModuleGui;
 import com.blanoir.moons.client.ui.hud.HudOptions;
+import com.blanoir.moons.client.utils.registry.RegistryLists;
 
 /** Defines render module descriptors; ordering is owned by ModuleCatalog. */
 final class Render {
@@ -136,156 +137,172 @@ final class Render {
 
     static ModuleRegistry.Module hud() {
         return module(
-                "hud",
-                "Text GUI",
-                "Render",
-                HudOptions::isVisible,
-                HudOptions::setVisible,
-                () -> "",
-                bool(
-                        "show_title",
-                        "Show title bar",
-                        "featurehud.showTitle",
-                        true,
-                        HudOptions::setShowTitle),
-                text("title", "Custom title", HudOptions::titleText, HudOptions::setTitle)
-                        .visibleWhen(cfgBool("featurehud.showTitle", true)),
-                colorText(
-                                "title_color",
-                                "Title color",
-                                "featurehud.titleColor",
+                        "hud",
+                        "Text GUI",
+                        "Render",
+                        HudOptions::isVisible,
+                        HudOptions::setVisible,
+                        () -> "",
+                        bool(
+                                "show_title",
+                                "Show title bar",
+                                "featurehud.showTitle",
+                                true,
+                                HudOptions::setShowTitle),
+                        text("title", "Custom title", HudOptions::titleText, HudOptions::setTitle)
+                                .withDefault(
+                                        com.blanoir.moons.client.config.ClientBranding.DEFAULT_NAME)
+                                .visibleWhen(cfgBool("featurehud.showTitle", true)),
+                        colorText(
+                                        "title_color",
+                                        "Title color",
+                                        "featurehud.titleColor",
+                                        "#ffffff",
+                                        HudOptions::setTitleColor)
+                                .visibleWhen(cfgBool("featurehud.showTitle", true)),
+                        bool(
+                                        "show_fps",
+                                        "Show FPS",
+                                        "featurehud.showFps",
+                                        true,
+                                        HudOptions::setShowFps)
+                                .visibleWhen(cfgBool("featurehud.showTitle", true)),
+                        choice(
+                                "font_mode",
+                                "Font",
+                                "featurehud.fontMode",
+                                "smooth",
+                                HudOptions.fontModeOptions(),
+                                HudOptions::setFontMode),
+                        bool(
+                                "text_shadow",
+                                "Text shadow",
+                                "featurehud.textShadow",
+                                true,
+                                HudOptions::setTextShadowEnabled),
+                        integer(
+                                "panel_opacity",
+                                "Panel opacity",
+                                "featurehud.panelOpacity",
+                                35,
+                                0,
+                                100,
+                                1,
+                                HudOptions::setPanelOpacity),
+                        bool(
+                                "theme_background",
+                                "Use theme background",
+                                "featurehud.useThemeBackground",
+                                true,
+                                HudOptions::setUseThemeBackground),
+                        colorText(
+                                "background_color",
+                                "Background color",
+                                "featurehud.backgroundColor",
+                                "#2d2723",
+                                HudOptions::setBackgroundColor),
+                        number(
+                                "scale",
+                                "Scale",
+                                "featurehud.scale",
+                                .78,
+                                .5,
+                                2,
+                                .01,
+                                HudOptions::setScale),
+                        integer(
+                                "x",
+                                "Position X",
+                                "featurehud.x",
+                                -1,
+                                -1,
+                                10000,
+                                1,
+                                HudOptions::setPositionX),
+                        integer(
+                                "y",
+                                "Position Y",
+                                "featurehud.y",
+                                5,
+                                0,
+                                10000,
+                                1,
+                                HudOptions::setPositionY),
+                        bool(
+                                "theme_color",
+                                "Use theme color",
+                                "featurehud.useThemeColor",
+                                true,
+                                HudOptions::setUseThemeColor),
+                        choice(
+                                "name_color_mode",
+                                "Name color mode",
+                                "featurehud.nameColorMode",
+                                "gradient",
+                                HudOptions.nameColorModeOptions(),
+                                HudOptions::setNameColorMode),
+                        choice(
+                                "gradient_direction",
+                                "Gradient direction",
+                                "featurehud.gradientDirection",
+                                "horizontal",
+                                HudOptions.gradientDirectionOptions(),
+                                HudOptions::setGradientDirection),
+                        colorText(
+                                "color",
+                                "Primary name color",
+                                "featurehud.color",
+                                "#c49a6c",
+                                HudOptions::setColor),
+                        colorText(
+                                "gradient_color",
+                                "Secondary name color",
+                                "featurehud.gradientColor",
+                                "#765cff",
+                                HudOptions::setGradientColor),
+                        colorText(
+                                "parameter_color",
+                                "Parameter color",
+                                "featurehud.parameterColor",
                                 "#ffffff",
-                                HudOptions::setTitleColor)
-                        .visibleWhen(cfgBool("featurehud.showTitle", true)),
-                bool("show_fps", "Show FPS", "featurehud.showFps", true, HudOptions::setShowFps)
-                        .visibleWhen(cfgBool("featurehud.showTitle", true)),
-                choice(
-                        "font_mode",
-                        "Font",
-                        "featurehud.fontMode",
-                        "smooth",
-                        HudOptions.fontModeOptions(),
-                        HudOptions::setFontMode),
-                bool(
-                        "text_shadow",
-                        "Text shadow",
-                        "featurehud.textShadow",
-                        true,
-                        HudOptions::setTextShadowEnabled),
-                integer(
-                        "panel_opacity",
-                        "Panel opacity",
-                        "featurehud.panelOpacity",
-                        35,
-                        0,
-                        100,
-                        1,
-                        HudOptions::setPanelOpacity),
-                bool(
-                        "theme_background",
-                        "Use theme background",
-                        "featurehud.useThemeBackground",
-                        true,
-                        HudOptions::setUseThemeBackground),
-                colorText(
-                        "background_color",
-                        "Background color",
-                        "featurehud.backgroundColor",
-                        "#2d2723",
-                        HudOptions::setBackgroundColor),
-                number("scale", "Scale", "featurehud.scale", .78, .5, 2, .01, HudOptions::setScale),
-                integer(
-                        "x",
-                        "Position X",
-                        "featurehud.x",
-                        -1,
-                        -1,
-                        10000,
-                        1,
-                        HudOptions::setPositionX),
-                integer(
-                        "y",
-                        "Position Y",
-                        "featurehud.y",
-                        5,
-                        0,
-                        10000,
-                        1,
-                        HudOptions::setPositionY),
-                bool(
-                        "theme_color",
-                        "Use theme color",
-                        "featurehud.useThemeColor",
-                        true,
-                        HudOptions::setUseThemeColor),
-                choice(
-                        "name_color_mode",
-                        "Name color mode",
-                        "featurehud.nameColorMode",
-                        "gradient",
-                        HudOptions.nameColorModeOptions(),
-                        HudOptions::setNameColorMode),
-                choice(
-                        "gradient_direction",
-                        "Gradient direction",
-                        "featurehud.gradientDirection",
-                        "horizontal",
-                        HudOptions.gradientDirectionOptions(),
-                        HudOptions::setGradientDirection),
-                colorText(
-                        "color",
-                        "Primary name color",
-                        "featurehud.color",
-                        "#c49a6c",
-                        HudOptions::setColor),
-                colorText(
-                        "gradient_color",
-                        "Secondary name color",
-                        "featurehud.gradientColor",
-                        "#765cff",
-                        HudOptions::setGradientColor),
-                colorText(
-                        "parameter_color",
-                        "Parameter color",
-                        "featurehud.parameterColor",
-                        "#ffffff",
-                        HudOptions::setParameterColor),
-                number(
-                        "color_speed",
-                        "Color speed",
-                        "featurehud.colorSpeed",
-                        .35,
-                        0,
-                        3,
-                        .01,
-                        HudOptions::setColorSpeed),
-                number(
-                        "color_spread",
-                        "Color row spread",
-                        "featurehud.colorSpread",
-                        .025,
-                        0,
-                        1,
-                        .005,
-                        HudOptions::setColorSpread),
-                number(
-                        "character_color_spread",
-                        "Character color spread",
-                        "featurehud.characterColorSpread",
-                        .004,
-                        0,
-                        .05,
-                        .001,
-                        HudOptions::setCharacterColorSpread),
-                integer(
-                        "alpha",
-                        "Alpha",
-                        "featurehud.alpha",
-                        100,
-                        0,
-                        100,
-                        1,
-                        HudOptions::setAlpha));
+                                HudOptions::setParameterColor),
+                        number(
+                                "color_speed",
+                                "Color speed",
+                                "featurehud.colorSpeed",
+                                .35,
+                                0,
+                                3,
+                                .01,
+                                HudOptions::setColorSpeed),
+                        number(
+                                "color_spread",
+                                "Color row spread",
+                                "featurehud.colorSpread",
+                                .025,
+                                0,
+                                1,
+                                .005,
+                                HudOptions::setColorSpread),
+                        number(
+                                "character_color_spread",
+                                "Character color spread",
+                                "featurehud.characterColorSpread",
+                                .004,
+                                0,
+                                .05,
+                                .001,
+                                HudOptions::setCharacterColorSpread),
+                        integer(
+                                "alpha",
+                                "Alpha",
+                                "featurehud.alpha",
+                                100,
+                                0,
+                                100,
+                                1,
+                                HudOptions::setAlpha))
+                .withDefaultEnabled(true);
     }
 
     static ModuleRegistry.Module scoreboard() {
@@ -329,6 +346,7 @@ final class Render {
                                 "scoreboardchanger.title",
                                 "<gradient:#55c8ff:#b675ff>Moons</gradient>",
                                 Scoreboard::setTitle)
+                        .withDefault(com.blanoir.moons.client.config.ClientBranding.DEFAULT_NAME)
                         .visibleWhen(cfgBool("scoreboardchanger.replaceTitle", false)),
                 bool(
                                 "show_scores",
@@ -360,99 +378,131 @@ final class Render {
 
     static ModuleRegistry.Module targetInfo() {
         return module(
-                "targetinfo",
-                "TargetInfo",
-                ModuleCategories.RENDER,
-                TargetInfoHud::isEnabled,
-                TargetInfoHud::setEnabled,
-                HitEstimateSettings::statusText,
-                number(
-                        "scale",
-                        "Scale",
-                        "targetinfo.scale",
-                        1,
-                        .25,
-                        2,
-                        .05,
-                        TargetInfoHud::setScale),
-                customChoice(
-                        "hit_estimate",
-                        "Hit estimate",
-                        HitEstimateSettings::mode,
-                        HitEstimateSettings.modeOptions(),
-                        HitEstimateSettings::setMode),
-                customChoice(
-                                "critical_source",
-                                "Critical percent source",
-                                HitEstimateSettings::criticalSource,
-                                HitEstimateSettings.criticalSourceOptions(),
-                                HitEstimateSettings::setCriticalSource)
-                        .visibleWhen(HitEstimateSettings::criticalEstimate),
-                number(
-                                "critical_percent",
-                                "Critical percent",
-                                "hitestimate.customCriticalPercent",
-                                50,
-                                0,
-                                100,
+                        "targetinfo",
+                        "TargetInfo",
+                        ModuleCategories.RENDER,
+                        TargetInfoHud::isEnabled,
+                        TargetInfoHud::setEnabled,
+                        HitEstimateSettings::statusText,
+                        number(
+                                "scale",
+                                "Scale",
+                                "targetinfo.scale",
                                 1,
-                                HitEstimateSettings::setCustomCriticalPercent)
-                        .visibleWhen(
-                                () ->
-                                        HitEstimateSettings.criticalEstimate()
-                                                && !HitEstimateSettings.recordedSource()));
+                                .25,
+                                2,
+                                .05,
+                                TargetInfoHud::setScale),
+                        customChoice(
+                                        "hit_estimate",
+                                        "Hit estimate",
+                                        HitEstimateSettings::mode,
+                                        HitEstimateSettings.modeOptions(),
+                                        HitEstimateSettings::setMode)
+                                .withDefault("normal_estimate"),
+                        customChoice(
+                                        "critical_source",
+                                        "Critical percent source",
+                                        HitEstimateSettings::criticalSource,
+                                        HitEstimateSettings.criticalSourceOptions(),
+                                        HitEstimateSettings::setCriticalSource)
+                                .withDefault("recorded")
+                                .visibleWhen(HitEstimateSettings::criticalEstimate),
+                        number(
+                                        "critical_percent",
+                                        "Critical percent",
+                                        "hitestimate.customCriticalPercent",
+                                        50,
+                                        0,
+                                        100,
+                                        1,
+                                        HitEstimateSettings::setCustomCriticalPercent)
+                                .visibleWhen(
+                                        () ->
+                                                HitEstimateSettings.criticalEstimate()
+                                                        && !HitEstimateSettings.recordedSource()))
+                .withDefaultEnabled(true);
     }
 
     static ModuleRegistry.Module nametags() {
         return module(
-                "nametags",
-                "Nametags",
-                "Render",
-                Nametags::isEnabled,
-                Nametags::setEnabled,
-                () -> "",
-                number("range", "Range", "nametags.range", 128, 8, 256, 1, Nametags::setRange),
-                number("scale", "Scale", "nametags.scale", 1, .5, 4, .05, Nametags::setScale),
-                bool(
-                        "show_distance",
-                        "Show distance",
-                        "nametags.distance",
-                        true,
-                        Nametags::setShowDistance),
-                bool("safe_mode", "Safe mode", "nametags.safeMode", false, Nametags::setSafeMode),
-                customChoice(
-                        "hit_estimate",
-                        "Hit estimate",
-                        HitEstimateSettings::mode,
-                        HitEstimateSettings.modeOptions(),
-                        HitEstimateSettings::setMode),
-                customChoice(
-                                "critical_source",
-                                "Critical percent source",
-                                HitEstimateSettings::criticalSource,
-                                HitEstimateSettings.criticalSourceOptions(),
-                                HitEstimateSettings::setCriticalSource)
-                        .visibleWhen(HitEstimateSettings::criticalEstimate),
-                number(
-                                "critical_percent",
-                                "Critical percent",
-                                "hitestimate.customCriticalPercent",
-                                50,
-                                0,
-                                100,
+                        "nametags",
+                        "Nametags",
+                        "Render",
+                        Nametags::isEnabled,
+                        Nametags::setEnabled,
+                        () -> "",
+                        number(
+                                "range",
+                                "Range",
+                                "nametags.range",
+                                128,
+                                8,
+                                256,
                                 1,
-                                HitEstimateSettings::setCustomCriticalPercent)
-                        .visibleWhen(
-                                () ->
-                                        HitEstimateSettings.criticalEstimate()
-                                                && !HitEstimateSettings.recordedSource()),
-                bool(
-                        "highlighter",
-                        "Highlighter",
-                        "chams.players.highlighter.enabled",
-                        true,
-                        Nametags::setHighlighterEnabled),
-                bool("chams", "Chams", "chams.players.enabled", true, Nametags::setChamsEnabled));
+                                Nametags::setRange),
+                        number(
+                                "scale",
+                                "Scale",
+                                "nametags.scale",
+                                1,
+                                .5,
+                                4,
+                                .05,
+                                Nametags::setScale),
+                        bool(
+                                "show_distance",
+                                "Show distance",
+                                "nametags.distance",
+                                true,
+                                Nametags::setShowDistance),
+                        bool(
+                                "safe_mode",
+                                "Safe mode",
+                                "nametags.safeMode",
+                                false,
+                                Nametags::setSafeMode),
+                        customChoice(
+                                        "hit_estimate",
+                                        "Hit estimate",
+                                        HitEstimateSettings::mode,
+                                        HitEstimateSettings.modeOptions(),
+                                        HitEstimateSettings::setMode)
+                                .withDefault("normal_estimate"),
+                        customChoice(
+                                        "critical_source",
+                                        "Critical percent source",
+                                        HitEstimateSettings::criticalSource,
+                                        HitEstimateSettings.criticalSourceOptions(),
+                                        HitEstimateSettings::setCriticalSource)
+                                .withDefault("recorded")
+                                .visibleWhen(HitEstimateSettings::criticalEstimate),
+                        number(
+                                        "critical_percent",
+                                        "Critical percent",
+                                        "hitestimate.customCriticalPercent",
+                                        50,
+                                        0,
+                                        100,
+                                        1,
+                                        HitEstimateSettings::setCustomCriticalPercent)
+                                .visibleWhen(
+                                        () ->
+                                                HitEstimateSettings.criticalEstimate()
+                                                        && !HitEstimateSettings.recordedSource()),
+                        bool(
+                                "highlighter",
+                                "Highlighter",
+                                "chams.players.highlighter.enabled",
+                                true,
+                                Nametags::setHighlighterEnabled),
+                        bool(
+                                "chams",
+                                "Chams",
+                                "chams.players.enabled",
+                                true,
+                                Nametags::setChamsEnabled))
+                .withDefaultEnabled(true);
     }
 
     static ModuleRegistry.Module chams() {
@@ -516,15 +566,16 @@ final class Render {
 
     static ModuleRegistry.Module caver() {
         return module(
-                "caver",
-                "Caver",
-                "Render",
-                Caver::isEnabled,
-                (client, value) -> {
-                    Caver.setEnabled(client, value);
-                    return 1;
-                },
-                Caver::statusText);
+                        "caver",
+                        "Caver",
+                        "Render",
+                        Caver::isEnabled,
+                        (client, value) -> {
+                            Caver.setEnabled(client, value);
+                            return 1;
+                        },
+                        Caver::statusText)
+                .withDefaultEnabled(true);
     }
 
     static ModuleRegistry.Module clip() {
@@ -534,13 +585,44 @@ final class Render {
 
     static ModuleRegistry.Module uhcFinder() {
         return module(
-                "uhcfinder",
-                "UhcFinder",
-                "Render",
-                UhcFinder::isEnabled,
-                UhcFinder::setEnabled,
-                () -> "",
-                number("range", "Range", "uhcfinder.range", 256, 8, 1024, 8, UhcFinder::setRange));
+                        "uhcfinder",
+                        "UhcFinder",
+                        "Render",
+                        UhcFinder::isEnabled,
+                        UhcFinder::setEnabled,
+                        () -> "",
+                        number(
+                                "range",
+                                "Range",
+                                "uhcfinder.range",
+                                256,
+                                8,
+                                1024,
+                                8,
+                                UhcFinder::setRange),
+                        RegistryLists.setting(
+                                "targets",
+                                "Entities",
+                                "entity",
+                                UhcFinder::selectedTargets,
+                                UhcFinder::setTargets,
+                                UhcFinder.defaultTargets()),
+                        color(
+                                        "offline_color",
+                                        "Offline player color",
+                                        () ->
+                                                String.format(
+                                                        "#%06x",
+                                                        com.blanoir.moons.client.config.Settings
+                                                                .getInt(
+                                                                        "uhcfinder.offlineColor",
+                                                                        0xff00ff)),
+                                        (client, rgb) ->
+                                                com.blanoir.moons.client.config.Settings.setInt(
+                                                        "uhcfinder.offlineColor",
+                                                        rgb[0] << 16 | rgb[1] << 8 | rgb[2]))
+                                .withDefault("#ff00ff"))
+                .withDefaultEnabled(true);
     }
 
     static ModuleRegistry.Module trim() {
@@ -553,31 +635,35 @@ final class Render {
                 Trim::setEnabled,
                 Trim::hudTag,
                 customChoice(
-                        "trim",
-                        "Hoplite trim",
-                        Trim::patternId,
-                        Trim.patternOptions(),
-                        Trim::setPattern),
+                                "trim",
+                                "Hoplite trim",
+                                Trim::patternId,
+                                Trim.patternOptions(),
+                                Trim::setPattern)
+                        .withDefault("frost"),
                 customChoice(
-                        "material",
-                        "Trim material",
-                        Trim::materialId,
-                        Trim.materialOptions(),
-                        Trim::setMaterial),
+                                "material",
+                                "Trim material",
+                                Trim::materialId,
+                                Trim.materialOptions(),
+                                Trim::setMaterial)
+                        .withDefault("diamond"),
                 customBool(
-                        "override",
-                        "Override other trims",
-                        Trim::overrideOtherTrims,
-                        Trim::setOverrideOtherTrims));
+                                "override",
+                                "Override other trims",
+                                Trim::overrideOtherTrims,
+                                Trim::setOverrideOtherTrims)
+                        .withDefault(false));
     }
 
     static ModuleRegistry.Module offlinePlayerDetect() {
         return module(
-                "offlineplayerdetect",
-                "DetectOfflinePlayer",
-                ModuleCategories.MISC,
-                OfflinePlayerDetect::isEnabled,
-                OfflinePlayerDetect::setEnabled,
-                () -> "Hoplite");
+                        "offlineplayerdetect",
+                        "DetectOfflinePlayer",
+                        ModuleCategories.MISC,
+                        OfflinePlayerDetect::isEnabled,
+                        OfflinePlayerDetect::setEnabled,
+                        () -> "Hoplite")
+                .withDefaultEnabled(true);
     }
 }

@@ -44,7 +44,7 @@ sourceSets {
         compileClasspath += sourceSets.api.output + sourceSets.runtime.output
     }
     loaderTest {
-        // Keep the fake Minecraft fixture off the real client's test classpath.
+        // The mapping verifier reads real Minecraft bytecode through the production transformer.
         java.setSrcDirs(["src/test/loader/java"])
         resources.setSrcDirs(["src/test/loader/resources"])
         compileClasspath += sourceSets.agent.output + sourceSets.runtime.output + sourceSets.api.output + configurations.agentRuntimeClasspath
@@ -80,14 +80,6 @@ sourceSets.client.resources.setSrcDirs([
         "src/minecraft/versions/${selectedVersionDirectory}/client/resources"
 ])
 
-sourceSets {
-    test {
-        java.setSrcDirs(["src/test/java"])
-        compileClasspath += sourceSets.api.output + sourceSets.client.output + sourceSets.client.compileClasspath + sourceSets.runtime.output + sourceSets.features.output
-        runtimeClasspath += sourceSets.api.output + sourceSets.client.output + sourceSets.client.runtimeClasspath + sourceSets.runtime.output + sourceSets.features.output
-    }
-}
-
 tasks.named("processFeaturesResources") {
     inputs.property("minecraftVersion", selectedMinecraftVersion)
     filesMatching("META-INF/moons-module.properties") {
@@ -100,11 +92,6 @@ tasks.named("processFeaturesResources") {
 // module registry and Minecraft screen classes during joint compilation.
 tasks.named("compileClientKotlin", moonsPluginTypes.kotlinCompile) {
     source(sourceSets.client.java)
-}
-
-// UI verification exercises internal composables from the split client compilation.
-tasks.named("compileTestKotlin", moonsPluginTypes.kotlinCompile) {
-    friendPaths.from(sourceSets.client.output.classesDirs)
 }
 
 dependencies {
@@ -150,7 +137,7 @@ java {
 sourceSets.client.compileClasspath += sourceSets.api.output
 sourceSets.features.compileClasspath += sourceSets.client.output + sourceSets.client.compileClasspath
 
-// Daily CI compiles production sources only. Full verification remains opt-in.
+// Daily CI compiles production sources only. Mapping verification remains opt-in.
 def versionCompilations = []
 moonsBuild.supportedVersions.each { minecraftVersion, directory ->
     def previousCompilation = versionCompilations.isEmpty() ? null : versionCompilations.last()

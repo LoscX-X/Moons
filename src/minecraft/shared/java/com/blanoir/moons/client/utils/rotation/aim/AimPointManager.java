@@ -41,7 +41,30 @@ public final class AimPointManager {
             double wander,
             int wanderTicks,
             boolean keepLevel) {
-        Vec3 anchor = wanderPoint(client, target, eye, box, range, wander, wanderTicks, keepLevel);
+        return center(client, target, eye, box, range, wander, wanderTicks, keepLevel, false);
+    }
+
+    public Vec3 center(
+            Minecraft client,
+            LivingEntity target,
+            Vec3 eye,
+            AABB box,
+            double range,
+            double wander,
+            int wanderTicks,
+            boolean keepLevel,
+            boolean throughBlocks) {
+        Vec3 anchor =
+                wanderPoint(
+                        client,
+                        target,
+                        eye,
+                        box,
+                        range,
+                        wander,
+                        wanderTicks,
+                        keepLevel,
+                        throughBlocks);
         return anchor != null ? anchor : AimPointUtils.centerTrackingPoint(eye, box);
     }
 
@@ -52,6 +75,17 @@ public final class AimPointManager {
             AABB box,
             double trackingRange,
             int wanderTicks) {
+        return closest(client, target, eye, box, trackingRange, wanderTicks, false);
+    }
+
+    public Vec3 closest(
+            Minecraft client,
+            LivingEntity target,
+            Vec3 eye,
+            AABB box,
+            double trackingRange,
+            int wanderTicks,
+            boolean throughBlocks) {
 
         int tick = client.player.tickCount;
         Vec3 held =
@@ -59,7 +93,7 @@ public final class AimPointManager {
         boolean usableHeld =
                 closestAnchorTargetId == target.getId()
                         && eye.distanceToSqr(held) <= trackingRange * trackingRange
-                        && RaytraceUtils.canRayTraceTo(client, eye, held);
+                        && RaytraceUtils.canRayTraceTo(client, eye, held, throughBlocks);
         if (!usableHeld || tick >= nextClosestAnchorTick) {
             Vec3 closest = AimPointUtils.closestTrackingPoint(eye, box);
             closestAnchorTargetId = target.getId();
@@ -82,7 +116,8 @@ public final class AimPointManager {
             double trackingRange,
             double wander,
             int wanderTicks,
-            boolean keepLevel) {
+            boolean keepLevel,
+            boolean throughBlocks) {
         if (wander <= 0.0D) return null;
         int tick = client.player.tickCount;
         if (anchorTargetId != target.getId() || tick >= nextAnchorTick) {
@@ -120,7 +155,7 @@ public final class AimPointManager {
         Vec3 fractions = wanderFractions(tick);
         Vec3 anchor = AimPointUtils.localPoint(box, fractions.x, fractions.y, fractions.z);
         if (eye.distanceToSqr(anchor) > trackingRange * trackingRange) return null;
-        return RaytraceUtils.canRayTraceTo(client, eye, anchor) ? anchor : null;
+        return RaytraceUtils.canRayTraceTo(client, eye, anchor, throughBlocks) ? anchor : null;
     }
 
     private Vec3 wanderFractions(int tick) {

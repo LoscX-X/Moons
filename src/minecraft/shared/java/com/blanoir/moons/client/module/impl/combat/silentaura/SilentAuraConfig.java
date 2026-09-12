@@ -9,6 +9,9 @@ import com.blanoir.moons.client.management.targeting.Targeting;
 import com.blanoir.moons.client.module.framework.ModuleRegistry;
 import com.blanoir.moons.client.module.impl.combat.SilentAura;
 import com.blanoir.moons.client.utils.prediction.MotionPrediction;
+import com.blanoir.moons.client.utils.registry.RegistryLists;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 
 import net.minecraft.resources.Identifier;
 
@@ -19,6 +22,10 @@ import java.util.Set;
 /** Settings only. Runtime state deliberately lives outside this class. */
 public final class SilentAuraConfig {
     private static final BooleanSetting ENABLED = bool("silentaura.enabled", false);
+    private static final BooleanSetting BLOCK = bool("silentaura.block", true);
+    private static final BooleanSetting BLOCK_VISUAL = bool("silentaura.block.visual", true);
+    private static final DoubleSetting BLOCK_RANGE =
+            decimal("silentaura.block.range", 4.5D, 1D, 8D);
     private static final ModeSetting<CombatMode> COMBAT_MODE =
             new ModeSetting.Builder<CombatMode>()
                     .name("silentaura.combatMode")
@@ -29,6 +36,7 @@ public final class SilentAuraConfig {
     private static final DoubleSetting MIN_CPS = decimal("silentaura.minCps", 10D, 1D, 20D);
     private static final DoubleSetting MAX_CPS = decimal("silentaura.maxCps", 14D, 1D, 20D);
     private static final DoubleSetting RANGE = decimal("silentaura.range", 3.7D, 1.0D, 6.0D);
+    private static final BooleanSetting THROUGH_BLOCKS = bool("silentaura.throughBlocks", false);
     private static final DoubleSetting SCAN_EXTRA =
             decimal("silentaura.scanExtra", 2.5D, 0.0D, 7.0D);
     private static final DoubleSetting FOV = decimal("silentaura.fov", 180.0D, 1.0D, 360.0D);
@@ -101,7 +109,6 @@ public final class SilentAuraConfig {
     private static final DoubleSetting MAX_CHARGE =
             decimal("silentaura.maxCharge", 1.0D, 0.7D, 1.3D);
     private static final BooleanSetting TARGET_PLAYERS = bool("silentaura.target.player", true);
-    private static final BooleanSetting TARGET_MOBS = bool("silentaura.target.mob", false);
     private static final StringSetting TARGET_ENTITIES = text();
     private static final Set<Identifier> targetEntityTypes =
             Targeting.parseEntityTypeIds(TARGET_ENTITIES.get());
@@ -116,9 +123,40 @@ public final class SilentAuraConfig {
     private static final class Descriptors {
         private static final ModuleRegistry.Setting[] ALL = {
             COMBAT_MODE.describe("combat_mode", "Combat mode", SilentAura::setCombatMode),
+            BLOCK.describe(
+                    "block",
+                    "Auto block",
+                    (client, value) -> {
+                        SilentAuraBlock.reset(client);
+                        BLOCK.set(value);
+                        return 1;
+                    }),
+            BLOCK_VISUAL
+                    .describe(
+                            "block_visual",
+                            "Visual blocking",
+                            (client, value) -> {
+                                SilentAuraBlock.reset(client);
+                                BLOCK_VISUAL.set(value);
+                                return 1;
+                            })
+                    .visibleWhen(() -> block() && legacyCombat()),
+            BLOCK_RANGE
+                    .describe(
+                            "block_range",
+                            "Block range",
+                            .1,
+                            (client, value) -> {
+                                SilentAuraBlock.reset(client);
+                                BLOCK_RANGE.set(value);
+                                return 1;
+                            })
+                    .visibleWhen(SilentAuraConfig::block),
             MIN_CPS.describeRange("cps", "Clicks per second", MAX_CPS, .1, SilentAura::setCps)
                     .visibleWhen(SilentAuraConfig::legacyCombat),
             RANGE.describe("range", "Attack range", .05, SilentAura::setRange),
+            THROUGH_BLOCKS.describe(
+                    "through_blocks", "Through blocks", SilentAura::setThroughBlocks),
             SCAN_EXTRA.describe("scan_extra", "Scan range increase", .1, SilentAura::setScanExtra),
             FOV.describe("fov", "FOV", 1, SilentAura::setFov),
             TARGET_MODE.describe("target_mode", "Target mode", SilentAura::setTargetMode),
@@ -212,7 +250,7 @@ public final class SilentAuraConfig {
                     .05,
                     SilentAura::setPredictionResponse),
             MATRIX_COMPATIBILITY
-                    .describe("matrix", "Matrix compatibility", SilentAura::setMatrixCompatibility)
+                    .describe("matrix", "Limitation", SilentAura::setMatrixCompatibility)
                     .visibleWhen(() -> !SilentAuraConfig.fullLockMode()),
             CRITICAL_INTEGRATION
                     .describe("critical", "Critical", SilentAura::setCriticalIntegration)
@@ -232,16 +270,34 @@ public final class SilentAuraConfig {
                     "target_players",
                     "Target players",
                     (client, value) -> SilentAura.setTargetCategory(client, "player", value)),
-            TARGET_MOBS.describe(
-                    "target_mobs",
-                    "Target mobs",
-                    (client, value) -> SilentAura.setTargetCategory(client, "mob", value)),
+            RegistryLists.setting(
+                    "target_entities",
+                    "Other entities",
+                    "mob",
+                    SilentAuraConfig::selectedEntities,
+                    (client, value) -> {
+                        setEntities(value);
+                        SilentAuraRuntime.resetTargeting();
+                    },
+                    new JsonArray()),
             DEBUGGER.describe("debugger", "Debugger", SilentAura::setDebugger)
         };
     }
 
     public static boolean enabled() {
         return ENABLED.get();
+    }
+
+    public static boolean block() {
+        return BLOCK.get();
+    }
+
+    public static boolean blockVisual() {
+        return BLOCK_VISUAL.get();
+    }
+
+    public static double blockRange() {
+        return BLOCK_RANGE.get();
     }
 
     public static boolean legacyCombat() {
@@ -276,6 +332,14 @@ public final class SilentAuraConfig {
     /** Requested combat distance; runtime caps it to the player's safe attack reach. */
     public static double aimRange() {
         return RANGE.get();
+    }
+
+    public static boolean throughBlocks() {
+        return THROUGH_BLOCKS.get();
+    }
+
+    public static void throughBlocks(boolean value) {
+        THROUGH_BLOCKS.set(value);
     }
 
     public static double scanExtra() {
@@ -454,8 +518,15 @@ public final class SilentAuraConfig {
         return TARGET_PLAYERS.get();
     }
 
-    public static boolean targetMobs() {
-        return TARGET_MOBS.get();
+    public static JsonArray selectedEntities() {
+        return RegistryLists.entityIds(targetEntityTypes);
+    }
+
+    private static void setEntities(JsonElement value) {
+        var next = RegistryLists.readEntityIds(value);
+        targetEntityTypes.clear();
+        targetEntityTypes.addAll(next);
+        TARGET_ENTITIES.set(Targeting.serializeEntityTypeIds(targetEntityTypes));
     }
 
     public static Set<Identifier> targetEntityTypes() {
@@ -561,14 +632,14 @@ public final class SilentAuraConfig {
             return true;
         }
         if ("mob".equalsIgnoreCase(category)) {
-            TARGET_MOBS.set(value);
+            setEntities(RegistryLists.entityIds(value ? RegistryLists.allMobIds() : Set.of()));
             return true;
         }
         return false;
     }
 
     public static String targetStatus() {
-        return Targeting.configuredTargetStatus(targetPlayers(), targetMobs(), targetEntityTypes());
+        return Targeting.configuredTargetStatus(targetPlayers(), false, targetEntityTypes());
     }
 
     private static BooleanSetting bool(String key, boolean value) {

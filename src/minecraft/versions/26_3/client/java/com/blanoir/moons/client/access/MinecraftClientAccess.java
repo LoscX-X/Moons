@@ -21,6 +21,14 @@ import net.minecraft.world.scores.PlayerTeam;
 public final class MinecraftClientAccess {
     private MinecraftClientAccess() {}
 
+    public static net.minecraft.server.packs.PackResources vanillaResources(Minecraft client) {
+        return client.getVanillaPackResources().fullResources();
+    }
+
+    public static boolean hasOverlay(Minecraft client) {
+        return client.gui.overlay() != null;
+    }
+
     public static Screen screen(Minecraft client) {
         return client.gui.screen();
     }

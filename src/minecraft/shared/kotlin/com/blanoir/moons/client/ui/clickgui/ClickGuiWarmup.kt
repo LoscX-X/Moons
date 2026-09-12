@@ -64,6 +64,7 @@ object ClickGuiWarmup {
                         { _, _ -> 1 },
                         { "" },
                         emptyList(),
+                        false,
                     )
                 }
             }

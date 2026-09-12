@@ -104,7 +104,7 @@ internal fun ConfigProfilesPage(onMutated: () -> Unit) {
             }
         }
         Text(
-            "Create captures your current modules, options and key bindings.",
+            "Create starts with default settings and key bindings. Save stores your current settings.",
             fontSize = 11.sp,
             lineHeight = 16.sp,
             color = PanelStyle.muted,

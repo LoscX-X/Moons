@@ -23,6 +23,14 @@ public final class MinecraftClientAccess {
 
     private MinecraftClientAccess() {}
 
+    public static net.minecraft.server.packs.PackResources vanillaResources(Minecraft client) {
+        return client.getVanillaPackResources();
+    }
+
+    public static boolean hasOverlay(Minecraft client) {
+        return client.gui.overlay() != null;
+    }
+
     public static Screen screen(Minecraft client) {
         return client.gui.screen();
     }

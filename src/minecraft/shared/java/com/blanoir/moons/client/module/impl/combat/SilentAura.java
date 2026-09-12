@@ -5,6 +5,7 @@ import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.event.frame.HudRenderEvent;
 import com.blanoir.moons.client.module.impl.combat.critical.Critical;
+import com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraBlock;
 import com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraConfig;
 import com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraPlacementDebugger;
 import com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraRuntime;
@@ -117,7 +118,7 @@ public final class SilentAura {
         if (value == SilentAuraConfig.enabled()) return 1;
         if (value)
             CombatModuleCoordinator.beforeEnable(client, CombatModuleCoordinator.Role.SILENT_AURA);
-        AutoBlock.reset(client);
+        SilentAuraBlock.reset(client);
         SilentAuraConfig.enabled(value);
         if (value) SilentAuraRuntime.reset(client);
         else SilentAuraRuntime.stop(client);
@@ -130,7 +131,7 @@ public final class SilentAura {
             ClientChat.send(client, "Combat mode must be legacy or latest.");
             return 0;
         }
-        AutoBlock.reset(client);
+        SilentAuraBlock.reset(client);
         SilentAuraRuntime.reset(client);
         SilentAuraConfig.combatMode(value);
         return 1;
@@ -174,6 +175,13 @@ public final class SilentAura {
 
     public static int setRange(Minecraft ignoredClient, double value) {
         SilentAuraConfig.range(value);
+        SilentAuraRuntime.resetTargeting();
+        return 1;
+    }
+
+    public static int setThroughBlocks(Minecraft client, boolean value) {
+        SilentAuraConfig.throughBlocks(value);
+        SilentAuraBlock.reset(client);
         SilentAuraRuntime.resetTargeting();
         return 1;
     }
@@ -502,7 +510,8 @@ public final class SilentAura {
             double reach) {
         if (target == null) return "no-target";
         if (!valid || targetId != target.getId()) return "waiting";
-        return RaytraceUtils.traceEntity(client, eye, look, reach, target)
+        return RaytraceUtils.traceEntity(
+                        client, eye, look, reach, target, SilentAuraConfig.throughBlocks())
                 .name()
                 .toLowerCase(Locale.ROOT);
     }

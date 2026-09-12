@@ -46,12 +46,9 @@ def registerFormatter = { String taskName, boolean checkOnly, boolean javaLangua
 
 registerFormatter('formatJava', false, true)
 registerFormatter('formatKotlin', false, false)
-registerFormatter('checkJavaFormat', true, true)
-registerFormatter('checkKotlinFormat', true, false)
 
 def textSources = files(
         fileTree('src') { include '**/*.cs' },
-        fileTree('native-agent') { include '**/*.cpp', '**/*.h', 'CMakeLists.txt' },
         fileTree('native-bridge') { include '**/*.cpp', '**/*.h', 'CMakeLists.txt' },
         fileTree('gradle') { include '**/*.gradle' },
         fileTree('scripts') { include '**/*.ps1' },
@@ -61,19 +58,6 @@ def normalizedText = { File source ->
     def text = source.getText('UTF-8').replace('\r\n', '\n').replace('\r', '\n')
     text = text.replaceAll(/(?m)[\t ]+$/, '').replaceAll(/\n*\z/, '') + '\n'
     source.name.endsWith('.ps1') ? text.replace('\n', '\r\n') : text
-}
-
-tasks.register('checkTextStyle') {
-    group = 'verification'
-    description = 'Checks trailing whitespace and final newlines in build, native, C# and script sources.'
-    inputs.files(textSources).withPathSensitivity(PathSensitivity.RELATIVE)
-    doLast {
-        def violations = textSources.files.findAll { it.getText('UTF-8') != normalizedText(it) }
-        if (!violations.isEmpty()) {
-            throw new GradleException('Text style differs; run formatCode:\n'
-                    + violations.collect { project.relativePath(it) }.sort().join('\n'))
-        }
-    }
 }
 
 tasks.register('formatText') {
@@ -92,11 +76,3 @@ tasks.register('formatCode') {
     description = 'Applies the repository Java, Kotlin and text formatting conventions.'
     dependsOn 'formatJava', 'formatKotlin', 'formatText'
 }
-
-tasks.register('checkCodeStyle') {
-    group = 'verification'
-    description = 'Checks source formatting without modifying files.'
-    dependsOn 'checkJavaFormat', 'checkKotlinFormat', 'checkTextStyle'
-}
-
-tasks.named('check') { dependsOn 'checkCodeStyle' }

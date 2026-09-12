@@ -13,6 +13,7 @@ import net.minecraft.tags.ItemTags;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Avatar;
 import net.minecraft.world.entity.HumanoidArm;
+import net.minecraft.world.entity.LivingEntity;
 
 import org.joml.Quaternionf;
 
@@ -68,6 +69,7 @@ public final class Animations {
     private static Predicate<Minecraft> combatRenderCheck = client -> false;
     private static BooleanSupplier combatAttackOnly = () -> false;
     private static DoubleSupplier combatSwingProgress = () -> 0;
+    private static BooleanSupplier combatDamageOnly = () -> false;
 
     /** The transformer asks separately whether vanilla swing transforms should be skipped. */
     private static final ThreadLocal<Boolean> REPLACE_CURRENT_RENDER =
@@ -110,11 +112,13 @@ public final class Animations {
             BooleanSupplier enabled,
             Predicate<Minecraft> renderCheck,
             BooleanSupplier attackOnly,
-            DoubleSupplier swingProgress) {
+            DoubleSupplier swingProgress,
+            BooleanSupplier damageOnly) {
         combatEnabled = enabled;
         combatRenderCheck = renderCheck;
         combatAttackOnly = attackOnly;
         combatSwingProgress = swingProgress;
+        combatDamageOnly = damageOnly;
     }
 
     /**
@@ -543,6 +547,17 @@ public final class Animations {
                 combatBlocking(client)
                         || !combatAttackOnly.getAsBoolean() && ENABLED.get() && !COMBAT_ONLY.get();
         if (!active) return;
+
+        if (combatDamageOnly.getAsBoolean()) {
+            state.swingAnimation = (float) combatSwingProgress.getAsDouble();
+            // Feedback can arrive after vanilla's attempted swing has already ended.
+            var animation = state.getMainHandItemStack().getAttackAnimation();
+            state.currentSwing =
+                    state.swingAnimation > 0.0F
+                            ? new LivingEntity.SwingDescription(
+                                    InteractionHand.MAIN_HAND, animation, animation.duration())
+                            : null;
+        }
 
         if (state.mainArm == HumanoidArm.LEFT) {
             state.leftArmPose = HumanoidModel.ArmPose.BLOCK;

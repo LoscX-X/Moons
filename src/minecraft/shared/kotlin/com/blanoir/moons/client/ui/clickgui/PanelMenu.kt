@@ -22,10 +22,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -37,12 +35,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -51,6 +47,7 @@ import androidx.compose.ui.unit.sp
 import com.blanoir.moons.client.config.ClientBranding
 import com.blanoir.moons.client.module.framework.ModuleCategories
 import com.blanoir.moons.client.module.framework.ModuleRegistry
+import com.blanoir.moons.client.utils.ui.ColorEditor
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -251,13 +248,10 @@ private fun GuiSettings(
             "#a4a6a9",
             "#f06aa6",
         )
-    val savedTheme = guiThemeValue()
     val clientModules = remember {
         ModuleRegistry.modules().filter { it.id() in CLIENT_SETTINGS_MODULE_IDS }
     }
     val expandedClientModules = remember { mutableStateMapOf<String, Boolean>() }
-    var customTheme by remember { mutableStateOf(savedTheme) }
-    LaunchedEffect(savedTheme) { customTheme = savedTheme }
     Column(Modifier.fillMaxWidth()) {
         SettingsSectionHeader("APPEARANCE")
         ControlMenuRow(
@@ -293,29 +287,7 @@ private fun GuiSettings(
                     )
                 }
             }
-            BasicTextField(
-                value = customTheme,
-                onValueChange = { raw ->
-                    customTheme = raw.take(7)
-                    if (isCompleteColor(customTheme))
-                        onThemeChange(customTheme.lowercase(Locale.ROOT))
-                },
-                singleLine = true,
-                textStyle =
-                    TextStyle(
-                        color = PanelStyle.muted,
-                        fontSize = 7.sp,
-                        fontFamily = PanelFontFamily,
-                    ),
-                cursorBrush = SolidColor(PanelStyle.accent),
-                modifier =
-                    Modifier.fillMaxWidth()
-                        .height(24.dp)
-                        .clip(PanelStyle.controlShape)
-                        .background(PanelStyle.field)
-                        .border(1.dp, PanelStyle.border, PanelStyle.controlShape)
-                        .padding(horizontal = 7.dp, vertical = 5.dp),
-            )
+            ColorEditor(guiThemeValue(), onThemeChange)
         }
         Box(Modifier.fillMaxWidth().height(1.dp).background(PanelStyle.border))
         SettingsSectionHeader("HUD")

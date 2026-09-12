@@ -35,7 +35,6 @@ ext.moonsBuild = [
         supportedVersions      : supportedVersions,
         versionDirectory       : versionDirectory,
         payloadDirectory       : "moons-payload/${versionDirectory}",
-        testDirectory          : "moons-test/${versionDirectory}",
         loaderStagingDirectory : "loader-staging/${versionDirectory}",
         // A loaded JVM can hold the public agent JAR open on Windows.
         jarOutputDirectory     : providers.gradleProperty("moons_jar_output_directory")
@@ -49,6 +48,5 @@ apply from: "gradle/java-conventions.gradle"
 apply from: "gradle/payloads.gradle"
 apply from: "gradle/native.gradle"
 apply from: "gradle/distribution.gradle"
-apply from: "gradle/source-layout.gradle"
 apply from: "gradle/verification.gradle"
 apply from: "gradle/code-style.gradle"

@@ -19,13 +19,15 @@ final class Misc {
 
     static ModuleRegistry.Module chatPrefix() {
         return module(
-                "chatprefix",
-                "ChatPrefix",
-                ModuleCategories.EXPERIMENT,
-                ClientChat::isPrefixEnabled,
-                ClientChat::setPrefixEnabled,
-                ClientChat::prefix,
-                text("prefix", "Client name", ClientBranding::name, ClientChat::setPrefix));
+                        "chatprefix",
+                        "ChatPrefix",
+                        ModuleCategories.EXPERIMENT,
+                        ClientChat::isPrefixEnabled,
+                        ClientChat::setPrefixEnabled,
+                        ClientChat::prefix,
+                        text("prefix", "Client name", ClientBranding::name, ClientChat::setPrefix)
+                                .withDefault(ClientBranding.DEFAULT_NAME))
+                .withDefaultEnabled(true);
     }
 
     static ModuleRegistry.Module chatFilter() {
@@ -47,21 +49,22 @@ final class Misc {
 
     static ModuleRegistry.Module premiumCheck() {
         return module(
-                "premiumcheck",
-                "CheckPremium",
-                ModuleCategories.EXPERIMENT,
-                PremiumCheckCommand::isEnabled,
-                PremiumCheckCommand::setEnabled,
-                PremiumCheckCommand::statusText,
-                integer(
-                        "interval",
-                        "Query interval (s)",
-                        "premiumcheck.intervalSeconds",
-                        60,
-                        30,
-                        600,
-                        5,
-                        PremiumCheckCommand::setIntervalSeconds));
+                        "premiumcheck",
+                        "CheckPremium",
+                        ModuleCategories.EXPERIMENT,
+                        PremiumCheckCommand::isEnabled,
+                        PremiumCheckCommand::setEnabled,
+                        PremiumCheckCommand::statusText,
+                        integer(
+                                "interval",
+                                "Query interval (s)",
+                                "premiumcheck.intervalSeconds",
+                                60,
+                                30,
+                                600,
+                                5,
+                                PremiumCheckCommand::setIntervalSeconds))
+                .withDefaultEnabled(true);
     }
 
     static ModuleRegistry.Module staticFov() {
@@ -126,6 +129,11 @@ final class Misc {
                 AntiBot::setEnabled,
                 AntiBot::hudTag,
                 customChoice(
-                        "mode", "Mode", AntiBot::hudTag, AntiBot.modeOptions(), AntiBot::setMode));
+                                "mode",
+                                "Mode",
+                                AntiBot::hudTag,
+                                AntiBot.modeOptions(),
+                                AntiBot::setMode)
+                        .withDefault("advanced"));
     }
 }

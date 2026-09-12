@@ -5,6 +5,7 @@ import com.blanoir.moons.client.config.Settings;
 
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 
 import java.util.Arrays;
 
@@ -27,6 +28,8 @@ public enum XrayBlockTarget implements XrayTarget {
 
     private final String commandName;
     private final Block[] blocks;
+    private final boolean defaultEnabled;
+    private final String defaultColor;
     private boolean enabled;
     private int red;
     private int green;
@@ -40,6 +43,8 @@ public enum XrayBlockTarget implements XrayTarget {
             int blue,
             Block... blocks) {
         this.commandName = commandName;
+        this.defaultEnabled = defaultEnabled;
+        this.defaultColor = String.format("#%02x%02x%02x", red, green, blue);
         this.enabled = Settings.getBoolean(configKey(commandName, "enabled"), defaultEnabled);
         this.red = Settings.getInt(configKey(commandName, "red"), red);
         this.green = Settings.getInt(configKey(commandName, "green"), green);
@@ -53,6 +58,14 @@ public enum XrayBlockTarget implements XrayTarget {
 
     public boolean isEnabled() {
         return enabled;
+    }
+
+    public boolean defaultEnabled() {
+        return defaultEnabled;
+    }
+
+    public String defaultColor() {
+        return defaultColor;
     }
 
     public void setEnabled(boolean enabled) {
@@ -101,14 +114,23 @@ public enum XrayBlockTarget implements XrayTarget {
         return enabled ? "enabled" : "disabled";
     }
 
+    public static XrayTarget findEnabledTarget(BlockState state) {
+        XrayTarget plugin = PluginXrayTargets.find(state);
+        if (plugin != null) return plugin;
+        if (PluginXrayTargets.isRecognized(state)) return null;
+        return findEnabledTarget(state.getBlock());
+    }
+
     public static XrayTarget findEnabledTarget(Block block) {
+        XrayTarget custom = CustomXrayTargets.findEnabledTarget(block);
+        if (custom != null) return custom;
         for (XrayBlockTarget target : values()) {
             if (target.enabled && target.matches(block)) {
                 return target;
             }
         }
 
-        return CustomXrayTargets.findEnabledTarget(block);
+        return null;
     }
 
     public static void setAllEnabled(boolean enabled) {

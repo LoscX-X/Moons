@@ -5,6 +5,7 @@ import com.blanoir.moons.client.config.MoonsConfig;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.block.state.BlockState;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -125,6 +126,15 @@ public final class OreCache {
                                             return true;
                                         }
 
+                                        BlockState current = client.level.getBlockState(pos);
+                                        if (PluginXrayTargets.isRecognized(current)
+                                                && PluginXrayTargets.find(current) != target)
+                                            return true;
+
+                                        if (target.requiresCurrentState()) {
+                                            return !target.matches(client.level.getBlockState(pos));
+                                        }
+
                                         /*
                                          * Keep a detected block rendered until the server/client state becomes air.
                                          * Some servers temporarily mask ores as another non-air block; removing only
@@ -141,6 +151,18 @@ public final class OreCache {
     public static void removePosition(BlockPos pos) {
         synchronized (XRAY_POSITIONS) {
             if (XRAY_POSITIONS.remove(pos) != null) {
+                cachedEntries = null;
+            }
+        }
+    }
+
+    public static void removeStaleStateTarget(BlockPos pos, BlockState state) {
+        synchronized (XRAY_POSITIONS) {
+            XrayTarget target = XRAY_POSITIONS.get(pos);
+            if (target != null
+                    && target.requiresCurrentState()
+                    && (!target.isEnabled() || !target.matches(state))) {
+                XRAY_POSITIONS.remove(pos);
                 cachedEntries = null;
             }
         }

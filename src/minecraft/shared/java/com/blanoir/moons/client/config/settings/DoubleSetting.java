@@ -7,15 +7,21 @@ import net.minecraft.util.Mth;
 
 public final class DoubleSetting {
     private final String key;
+    private final double defaultValue;
     private final double min;
     private final double max;
     private double value;
 
     private DoubleSetting(String key, double defaultValue, double min, double max) {
         this.key = key;
+        this.defaultValue = defaultValue;
         this.min = min;
         this.max = max;
-        this.value = Mth.clamp(Settings.getDouble(key, defaultValue), min, max);
+        double configured = Settings.getDouble(key, defaultValue);
+        this.value =
+                Double.isFinite(configured) && configured >= min && configured <= max
+                        ? configured
+                        : defaultValue;
     }
 
     public double get() {
@@ -40,8 +46,8 @@ public final class DoubleSetting {
     /** GUI/config metadata reads the same value and bounds as the feature. */
     public ModuleRegistry.Setting describe(
             String id, String label, double step, ModuleRegistry.DoubleSetter setter) {
-        return ModuleRegistry.numeric(
-                id, label, "number", this::get, min, max, step, setter::apply);
+        return ModuleRegistry.numeric(id, label, "number", this::get, min, max, step, setter::apply)
+                .withDefault(defaultValue);
     }
 
     public ModuleRegistry.Setting describeRange(
@@ -53,15 +59,17 @@ public final class DoubleSetting {
         if (min != upper.min || max != upper.max)
             throw new IllegalArgumentException("Range bounds differ: " + key);
         return ModuleRegistry.rangeValue(
-                id,
-                label,
-                this::get,
-                upper::get,
-                min,
-                max,
-                step,
-                (client, low, high) ->
-                        setter.apply(client, Double.toString(low) + "-" + Double.toString(high)));
+                        id,
+                        label,
+                        this::get,
+                        upper::get,
+                        min,
+                        max,
+                        step,
+                        (client, low, high) ->
+                                setter.apply(
+                                        client, Double.toString(low) + "-" + Double.toString(high)))
+                .withDefault(defaultValue, upper.defaultValue);
     }
 
     public static final class Builder {
@@ -72,6 +80,7 @@ public final class DoubleSetting {
 
         public Builder name(String key) {
             this.key = key;
+            this.defaultValue = defaultValue;
             return this;
         }
 

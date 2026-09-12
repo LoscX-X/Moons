@@ -79,6 +79,7 @@ public final class ModeSetting<T> {
     public ModuleRegistry.Setting describe(
             String id, String label, ModuleRegistry.TextSetter setter) {
         return ModuleRegistry.customChoice(id, label, this::serialized, optionIds, setter)
+                .withDefault(optionForValue(defaultValue).id())
                 .visibleWhen(this::isVisible)
                 .enabledWhen(this::isEnabled);
     }

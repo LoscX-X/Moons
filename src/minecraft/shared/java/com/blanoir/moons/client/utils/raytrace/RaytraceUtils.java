@@ -67,6 +67,11 @@ public final class RaytraceUtils {
     }
 
     public static boolean canRayTraceTo(Minecraft client, Vec3 eyePos, Vec3 point) {
+        return canRayTraceTo(client, eyePos, point, false);
+    }
+
+    public static boolean canRayTraceTo(
+            Minecraft client, Vec3 eyePos, Vec3 point, boolean throughBlocks) {
         if (client == null
                 || client.level == null
                 || client.player == null
@@ -74,8 +79,9 @@ public final class RaytraceUtils {
                 || point == null) {
             return false;
         }
-        return clipBlocks(client, eyePos, point).getType() == HitResult.Type.MISS
-                && firstCobwebHit(client, eyePos, point).isEmpty();
+        return throughBlocks
+                || (clipBlocks(client, eyePos, point).getType() == HitResult.Type.MISS
+                        && firstCobwebHit(client, eyePos, point).isEmpty());
     }
 
     public static HitResult clipBlocks(Minecraft client, Vec3 start, Vec3 end) {
@@ -139,6 +145,16 @@ public final class RaytraceUtils {
 
     public static EntityRayState traceEntity(
             Minecraft client, Vec3 start, Vec3 look, double reach, Entity target) {
+        return traceEntity(client, start, look, reach, target, false);
+    }
+
+    public static EntityRayState traceEntity(
+            Minecraft client,
+            Vec3 start,
+            Vec3 look,
+            double reach,
+            Entity target,
+            boolean throughBlocks) {
         if (client == null
                 || client.player == null
                 || client.level == null
@@ -157,6 +173,9 @@ public final class RaytraceUtils {
         if (!box.contains(start) && entityHit.isEmpty()) {
             return EntityRayState.AIM;
         }
+
+        // Ignoring cover never bypasses the range and ray/hitbox intersection checks above.
+        if (throughBlocks) return EntityRayState.HIT;
 
         Optional<Vec3> cobwebHit = firstCobwebHit(client, start, end);
         if (cobwebHit.isPresent()

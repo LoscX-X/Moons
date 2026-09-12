@@ -18,6 +18,9 @@ import com.blanoir.moons.client.utils.combat.CombatReach;
 import com.blanoir.moons.client.utils.math.RandomMath;
 import com.blanoir.moons.client.utils.prediction.CooldownPrediction;
 import com.blanoir.moons.client.utils.raytrace.RaytraceUtils;
+import com.blanoir.moons.client.utils.registry.RegistryLists;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.Identifier;
@@ -90,9 +93,6 @@ public final class TriggerBot {
                     .name("triggerbot.target.player")
                     .defaultValue(true)
                     .build();
-
-    private static final BooleanSetting TARGET_MOBS =
-            new BooleanSetting.Builder().name("triggerbot.target.mob").defaultValue(false).build();
 
     private TriggerBot() {}
 
@@ -251,7 +251,7 @@ public final class TriggerBot {
                                         && living.isAlive()
                                         && living.isAttackable()
                                         && !living.isSpectator(),
-                        false);
+                        SilentAuraConfig.throughBlocks());
         LivingEntity target = intercepted instanceof LivingEntity living ? living : intended;
         if (isConfiguredSilentTarget(client, target)) {
             rejectSilentRay(client, "ray blocked");
@@ -263,7 +263,13 @@ public final class TriggerBot {
         }
 
         RaytraceUtils.EntityRayState ray =
-                RaytraceUtils.traceEntity(client, rotation.eye(), rotation.look(), range, target);
+                RaytraceUtils.traceEntity(
+                        client,
+                        rotation.eye(),
+                        rotation.look(),
+                        range,
+                        target,
+                        SilentAuraConfig.throughBlocks());
         if (ray != RaytraceUtils.EntityRayState.HIT) {
             rejectSilentRay(client, ray.name().toLowerCase(Locale.ROOT));
             return null;
@@ -276,7 +282,7 @@ public final class TriggerBot {
                 client,
                 target,
                 SilentAuraConfig.targetPlayers(),
-                SilentAuraConfig.targetMobs(),
+                false,
                 SilentAuraConfig.targetEntityTypes());
     }
 
@@ -471,13 +477,13 @@ public final class TriggerBot {
                         client,
                         entityHitResult.getEntity(),
                         TARGET_PLAYERS.get(),
-                        TARGET_MOBS.get(),
+                        false,
                         targetEntityTypes)) {
             return entityHitResult.getEntity();
         }
         return THROUGH_BLOCK_ENABLED.get()
                 ? Targeting.findConfiguredTargetOnViewRay(
-                        client, TARGET_PLAYERS.get(), TARGET_MOBS.get(), targetEntityTypes, true)
+                        client, TARGET_PLAYERS.get(), false, targetEntityTypes, true)
                 : null;
     }
 
@@ -556,24 +562,34 @@ public final class TriggerBot {
         return 1;
     }
 
+    public static JsonArray selectedEntities() {
+        return RegistryLists.entityIds(targetEntityTypes);
+    }
+
+    public static void setSelectedEntities(Minecraft client, JsonElement value) {
+        var next = RegistryLists.readEntityIds(value);
+        targetEntityTypes.clear();
+        targetEntityTypes.addAll(next);
+        TARGET_ENTITIES.set(Targeting.serializeEntityTypeIds(targetEntityTypes));
+        rejectCameraRay(client);
+    }
+
     private static int showTargetStatus(Minecraft client) {
         ClientChat.send(
                 client,
                 "TriggerBot targets: "
                         + Targeting.configuredTargetStatus(
-                                TARGET_PLAYERS.get(), TARGET_MOBS.get(), targetEntityTypes)
+                                TARGET_PLAYERS.get(), false, targetEntityTypes)
                         + ". Usage: .moons triggerbot target <add|remove> <player|mob|all|entity id>.");
         return 1;
     }
 
     public static int setTargetCategory(Minecraft client, String category, boolean add) {
         if ("player".equals(category) || "all".equals(category)) TARGET_PLAYERS.set(add);
-        if ("mob".equals(category) || "all".equals(category)) TARGET_MOBS.set(add);
-        if ("all".equals(category) && !add) {
-            targetEntityTypes.clear();
-            TARGET_ENTITIES.set(Targeting.serializeEntityTypeIds(targetEntityTypes));
-        }
-        markMissedCrosshair();
+        if ("mob".equals(category) || "all".equals(category))
+            setSelectedEntities(
+                    client, RegistryLists.entityIds(add ? RegistryLists.allMobIds() : Set.of()));
+        rejectCameraRay(client);
         return showTargetStatus(client);
     }
 

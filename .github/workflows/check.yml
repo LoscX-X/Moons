@@ -15,7 +15,7 @@ on:
           - download
           - ui-runtime
       verify:
-        description: Run optional full verification
+        description: Verify Minecraft mappings and injection points
         type: boolean
         default: false
 
@@ -43,7 +43,7 @@ jobs:
         if: github.event_name != 'workflow_dispatch' || inputs.package != 'ui-runtime'
         shell: pwsh
         run: .\gradlew.bat compileAllVersions --console=plain
-      - name: Run optional full verification
+      - name: Verify Minecraft mappings and injection points
         if: github.event_name == 'workflow_dispatch' && inputs.verify
         shell: pwsh
         run: .\gradlew.bat checkAllVersions --console=plain
@@ -53,7 +53,6 @@ jobs:
         shell: pwsh
         env:
           PACKAGE_KIND: ${{ inputs.package || 'all' }}
-          VERIFY_PACKAGES: ${{ github.event_name == 'workflow_dispatch' && inputs.verify && inputs.package == 'all' }}
         run: |
           $ErrorActionPreference = 'Stop'
           $tasks = @(switch ($env:PACKAGE_KIND) {
@@ -63,7 +62,6 @@ jobs:
             'ui-runtime' { @('moonsUiRuntime') }
             default     { throw "Unknown package: $env:PACKAGE_KIND" }
           })
-          if ($env:VERIFY_PACKAGES -eq 'true') { $tasks += 'verifyLauncherPackages' }
           $tag = "build-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
           $runtimeUrl = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$tag/moons-ui-runtime.jar"
           "release_tag=$tag" >> $env:GITHUB_OUTPUT

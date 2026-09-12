@@ -135,7 +135,7 @@ public final class FeatureHooks {
                                     || (!Sprint.shouldSprint(player) && vanilla));
                 }
             }
-            case "movement.jump-yaw" -> silentYaw(hook);
+            case "movement.jump-yaw", "movement.collision-yaw" -> silentYaw(hook);
 
             case "combat.reach.pick" -> publishPickResult();
             case "combat.block-break-start" -> {
@@ -421,6 +421,16 @@ public final class FeatureHooks {
             return;
         }
 
+        Input filtered = Scaffold.filterMovementInput(client, keyboard.keyPresses);
+        if (filtered != keyboard.keyPresses) {
+            keyboard.keyPresses = filtered;
+            GameAccess.moveVector(
+                    (ClientInput) keyboard,
+                    new Vec2(
+                                    impulse(filtered.left(), filtered.right()),
+                                    impulse(filtered.forward(), filtered.backward()))
+                            .normalized());
+        }
         MoveFix.State movementFix = MoveFix.capture(client);
         boolean correctMovement = movementFix.active();
         boolean suppressSprint = Scaffold.shouldSuppressSprint(client);

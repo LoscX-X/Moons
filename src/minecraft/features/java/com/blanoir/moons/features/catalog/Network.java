@@ -23,40 +23,44 @@ final class Network {
                 Backtrack::setEnabled,
                 Backtrack::hudStats,
                 customChoice(
-                        "target_mode",
-                        "Mode",
-                        Backtrack::targetModeName,
-                        Backtrack.targetModeOptions(),
-                        Backtrack::setTargetMode),
+                                "target_mode",
+                                "Mode",
+                                Backtrack::targetModeName,
+                                Backtrack.targetModeOptions(),
+                                Backtrack::setTargetMode)
+                        .withDefault("attack"),
                 new Setting(
-                        "delay",
-                        "Time (ms)",
-                        "range",
-                        () -> {
-                            var value = new com.google.gson.JsonArray();
-                            value.add(Backtrack.minDelayMillis());
-                            value.add(Backtrack.delayMillis());
-                            return value;
-                        },
-                        0.0,
-                        1000.0,
-                        1.0,
-                        java.util.List.of(),
-                        (client, value) ->
-                                Backtrack.setDelay(
-                                        client,
-                                        value.getAsJsonArray().get(0).getAsInt()
-                                                + "-"
-                                                + value.getAsJsonArray().get(1).getAsInt())),
+                                "delay",
+                                "Time (ms)",
+                                "range",
+                                () -> {
+                                    var value = new com.google.gson.JsonArray();
+                                    value.add(Backtrack.minDelayMillis());
+                                    value.add(Backtrack.delayMillis());
+                                    return value;
+                                },
+                                0.0,
+                                1000.0,
+                                1.0,
+                                java.util.List.of(),
+                                (client, value) ->
+                                        Backtrack.setDelay(
+                                                client,
+                                                value.getAsJsonArray().get(0).getAsInt()
+                                                        + "-"
+                                                        + value.getAsJsonArray().get(1).getAsInt()))
+                        .withDefault(100, 150),
                 numeric(
-                        "range",
-                        "Max range",
-                        "number",
-                        Backtrack::maxRange,
-                        0,
-                        10,
-                        .1,
-                        (client, value) -> Backtrack.setRange(client, Double.toString(value))),
+                                "range",
+                                "Max range",
+                                "number",
+                                Backtrack::maxRange,
+                                0,
+                                10,
+                                .1,
+                                (client, value) ->
+                                        Backtrack.setRange(client, Double.toString(value)))
+                        .withDefault(6.0),
                 choice(
                         "esp",
                         "ESP",
@@ -117,6 +121,7 @@ final class Network {
                         (client, value) -> {
                             Settings.setInt(key, (int) Math.round(value));
                         })
+                .withDefault(fallback)
                 .visibleWhen(() -> false);
     }
 
@@ -136,6 +141,7 @@ final class Network {
                         (client, value) -> {
                             Settings.setDouble(key, value);
                         })
+                .withDefault(fallback)
                 .visibleWhen(() -> false);
     }
 
@@ -236,6 +242,7 @@ final class Network {
                                 60,
                                 .5,
                                 LowHealthFakeLag::setCooldownSeconds)
+                        .withDefault(10.0)
                         .visibleWhen(FakeLag::lowHealthMode),
                 number(
                                 "random_chance",
@@ -280,6 +287,7 @@ final class Network {
                                 60,
                                 .5,
                                 RandomFakeLag::setCooldownSeconds)
+                        .withDefault(5.0)
                         .visibleWhen(FakeLag::randomMode));
     }
 }

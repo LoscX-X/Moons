@@ -4,6 +4,8 @@ import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.module.impl.render.xray.CustomXrayTargets;
 import com.blanoir.moons.client.module.impl.render.xray.OreCache;
 import com.blanoir.moons.client.module.impl.render.xray.OreScanner;
+import com.blanoir.moons.client.module.impl.render.xray.PluginXrayTargets;
+import com.blanoir.moons.client.utils.plugin.PluginClientContext;
 
 import net.minecraft.client.Minecraft;
 
@@ -28,7 +30,29 @@ final class XrayCommand {
 
     static boolean handle(String tail) {
         String[] parts = tail.split("\\s+", 4);
+        if (parts[0].equalsIgnoreCase("inspect")) {
+            Minecraft client = Minecraft.getInstance();
+            try {
+                var selector = PluginClientContext.lookingAt(client);
+                ClientChat.send(client, selector.key());
+                var hit = (net.minecraft.world.phys.BlockHitResult) client.hitResult;
+                ClientChat.send(
+                        client,
+                        PluginXrayTargets.describe(client.level.getBlockState(hit.getBlockPos())));
+            } catch (IllegalArgumentException exception) {
+                ClientChat.send(client, exception.getMessage());
+            }
+            return true;
+        }
+        if (parts[0].equalsIgnoreCase("plugin")) {
+            plugin(parts);
+            return true;
+        }
         if (parts.length >= 3 && parts[0].equalsIgnoreCase("ore")) {
+            if (parts[2].equalsIgnoreCase("looking") || parts[2].contains("[")) {
+                plugin(parts);
+                return true;
+            }
             if (parts[1].equalsIgnoreCase("add")) {
                 add(parts[2], parts.length == 4 ? parseColor(parts[3]) : DEFAULT_COLOR);
                 return true;
@@ -39,8 +63,76 @@ final class XrayCommand {
             }
         }
         ClientChat.send(
-                Minecraft.getInstance(), "Usage: .xray ore <add block [color]|remove block>");
+                Minecraft.getInstance(),
+                "Usage: .xray ore <add block [color]|remove block> | .xray plugin <on|off|list|add looking [color]|remove looking|clear> | .xray inspect");
         return true;
+    }
+
+    private static void plugin(String[] parts) {
+        Minecraft client = Minecraft.getInstance();
+        try {
+            String operation = parts.length > 1 ? parts[1].toLowerCase(Locale.ROOT) : "list";
+            switch (operation) {
+                case "on", "off" -> {
+                    PluginXrayTargets.setEnabled(client, operation.equals("on"));
+                    ClientChat.send(
+                            client,
+                            "Plugin compatibility "
+                                    + (PluginXrayTargets.isEnabled() ? "enabled" : "disabled")
+                                    + ".");
+                }
+                case "list" -> {
+                    ClientChat.send(
+                            client,
+                            "Plugin compatibility: "
+                                    + (PluginXrayTargets.isEnabled() ? "on" : "off")
+                                    + ". Automatic states: "
+                                    + PluginXrayTargets.automaticCount()
+                                    + ". Manual targets:");
+                    var targets = PluginXrayTargets.list(client);
+                    if (targets.isEmpty())
+                        ClientChat.send(client, "None. Automatic recognition needs no sampling.");
+                    else targets.forEach(target -> ClientChat.send(client, target));
+                }
+                case "add" -> {
+                    if (parts.length < 3)
+                        throw new IllegalArgumentException(
+                                "Use .xray plugin add looking [color] or add block[properties] [color].");
+                    var color = parts.length == 4 ? parseColor(parts[3]) : DEFAULT_COLOR;
+                    if (color == null)
+                        throw new IllegalArgumentException(
+                                "Invalid color. Use #RRGGBB, r,g,b or a preset.");
+                    String target = PluginXrayTargets.add(client, parts[2], color);
+                    ClientChat.send(
+                            client,
+                            "Plugin appearance added: "
+                                    + target
+                                    + "."
+                                    + (PluginXrayTargets.isEnabled()
+                                            ? ""
+                                            : " Enable Plugin compatibility to scan it."));
+                }
+                case "remove" -> {
+                    if (parts.length != 3)
+                        throw new IllegalArgumentException(
+                                "Use .xray plugin remove looking or block[properties].");
+                    ClientChat.send(
+                            client,
+                            PluginXrayTargets.remove(client, parts[2])
+                                    ? "Manual plugin target removed. Automatic recognition still applies."
+                                    : "Manual plugin target not found.");
+                }
+                case "clear" -> {
+                    PluginXrayTargets.clear(client);
+                    ClientChat.send(client, "Manual plugin targets cleared for this server/world.");
+                }
+                default ->
+                        throw new IllegalArgumentException(
+                                "Use .xray plugin on|off|list|add|remove|clear.");
+            }
+        } catch (IllegalArgumentException exception) {
+            ClientChat.send(client, exception.getMessage());
+        }
     }
 
     private static void add(String blockName, CustomXrayTargets.ColorValue color) {

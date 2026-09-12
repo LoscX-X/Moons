@@ -425,7 +425,8 @@ public final class SilentAuraRotationController {
                         Mth.clamp(desiredPoint.x, aimBox.minX + insetX, aimBox.maxX - insetX),
                         Mth.clamp(desiredY, bodyFloor, upperBodyCeiling),
                         Mth.clamp(desiredPoint.z, aimBox.minZ + insetZ, aimBox.maxZ - insetZ));
-        if (!RaytraceUtils.canRayTraceTo(client, eye, desiredPoint)) {
+        if (!RaytraceUtils.canRayTraceTo(
+                client, eye, desiredPoint, SilentAuraConfig.throughBlocks())) {
             // Prediction/jitter can move an originally visible top-edge point
             // behind the ledge when attacking downward. Recover the selector's
             // ray and inset it only as far as visibility permits, giving the
@@ -504,7 +505,9 @@ public final class SilentAuraRotationController {
                                 point.y,
                                 box.maxZ - insetZ));
         Vec3 eye = client.player.getEyePosition();
-        return RaytraceUtils.canRayTraceTo(client, eye, predicted) ? predicted : point;
+        return RaytraceUtils.canRayTraceTo(client, eye, predicted, SilentAuraConfig.throughBlocks())
+                ? predicted
+                : point;
     }
 
     public void returnToCamera(Minecraft client, double deltaSeconds) {
@@ -813,7 +816,9 @@ public final class SilentAuraRotationController {
                                 + Mth.square(box.getZsize()));
         double length = eye.distanceTo(box.getCenter()) + diagonal + 1.0D;
         var hit = box.clip(eye, eye.add(look.scale(length)));
-        if (hit.isEmpty() || !RaytraceUtils.canRayTraceTo(client, eye, hit.get())) {
+        if (hit.isEmpty()
+                || !RaytraceUtils.canRayTraceTo(
+                        client, eye, hit.get(), SilentAuraConfig.throughBlocks())) {
             return 0.0D;
         }
         double height = Math.max(box.getYsize(), 0.1D);
@@ -919,7 +924,8 @@ public final class SilentAuraRotationController {
         double[] insetFractions = {0.20D, 0.14D, 0.09D, 0.05D, 0.02D, 0.0D};
         for (double fraction : insetFractions) {
             Vec3 candidate = surfacePoint.lerp(center, fraction);
-            if (RaytraceUtils.canRayTraceTo(client, eye, candidate)) {
+            if (RaytraceUtils.canRayTraceTo(
+                    client, eye, candidate, SilentAuraConfig.throughBlocks())) {
                 return candidate;
             }
         }

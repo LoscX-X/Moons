@@ -5,10 +5,23 @@ import static com.blanoir.moons.client.module.framework.ModuleRegistry.*;
 import com.blanoir.moons.client.module.framework.ModuleCategories;
 import com.blanoir.moons.client.module.framework.ModuleRegistry;
 import com.blanoir.moons.client.module.impl.player.*;
+import com.blanoir.moons.client.module.impl.player.blockin.BlockInConfig;
+import com.blanoir.moons.client.module.impl.player.blockin.BlockInRuntime;
 
 /** Defines player module descriptors; ordering is owned by ModuleCatalog. */
 final class Player {
     private Player() {}
+
+    static ModuleRegistry.Module blockIn() {
+        return module(
+                "blockin",
+                "BlockIn",
+                ModuleCategories.EXPERIMENT,
+                BlockInConfig::enabled,
+                BlockInRuntime::setEnabled,
+                BlockInRuntime::statusText,
+                BlockInConfig.settings());
+    }
 
     static ModuleRegistry.Module autoWeb() {
         return module(
@@ -291,7 +304,7 @@ final class Player {
                         1,
                         AntiLava::setDelay),
                 number("range", "Range", "antilava.range", 4.5, 1, 6, .1, AntiLava::setRange),
-                number("fov", "FOV", "antilava.fov", 90, 1, 360, 1, AntiLava::setFov));
+                number("fov", "FOV", "antilava.fov", 180, 1, 360, 1, AntiLava::setFov));
     }
 
     static ModuleRegistry.Module antiWeb() {

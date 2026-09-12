@@ -6,7 +6,7 @@ import net.minecraft.client.player.LocalPlayer;
 /**
  * One tick-domain movement view for every server-only rotation producer.
  *
- * <p>Input remapping, moveRelative and jump impulse must use the same owner and
+ * <p>Input remapping, moveRelative, jump impulse and minor-collision detection must use the same owner and
  * yaw. Resolving those independently allowed a higher-priority block action to
  * preempt SilentAura between hooks, producing a locally valid direction that
  * the server simulated against a different packet yaw.

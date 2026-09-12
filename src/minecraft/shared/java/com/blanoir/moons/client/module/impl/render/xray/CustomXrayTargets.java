@@ -1,6 +1,7 @@
 package com.blanoir.moons.client.module.impl.render.xray;
 
 import com.blanoir.moons.client.config.Settings;
+import com.blanoir.moons.client.utils.registry.RegistryLists;
 
 import net.minecraft.IdentifierException;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -93,6 +94,51 @@ public final class CustomXrayTargets {
 
     public static synchronized List<CustomTarget> snapshot() {
         return new ArrayList<>(TARGETS.values());
+    }
+
+    public static synchronized com.google.gson.JsonArray selectedTargets() {
+        var result = new com.google.gson.JsonArray();
+        for (CustomTarget target : TARGETS.values()) {
+            var entry =
+                    RegistryLists.entry(
+                            target.id().toString(),
+                            String.format(
+                                    "#%02x%02x%02x", target.red(), target.green(), target.blue()));
+            entry.addProperty("enabled", target.isEnabled());
+            result.add(entry);
+        }
+        return result;
+    }
+
+    public static synchronized void setTargets(
+            net.minecraft.client.Minecraft client, com.google.gson.JsonElement value) {
+        if (!RegistryLists.valid("block_list", value))
+            throw new IllegalArgumentException("Invalid block list");
+        Map<Identifier, CustomTarget> next = new LinkedHashMap<>();
+        boolean changed = false;
+        for (var element : value.getAsJsonArray()) {
+            var entry = element.getAsJsonObject();
+            Identifier id = Identifier.parse(entry.get("id").getAsString());
+            int color = Integer.parseInt(entry.get("color").getAsString().substring(1), 16);
+            CustomTarget target = TARGETS.get(id);
+            changed |= target == null || target.isEnabled() != entry.get("enabled").getAsBoolean();
+            if (target == null) target = new CustomTarget(id, blockById(id), true, 0, 0, 0);
+            target.setEnabled(entry.get("enabled").getAsBoolean());
+            target.setColor(color >> 16 & 255, color >> 8 & 255, color & 255);
+            next.put(id, target);
+        }
+        changed |= !TARGETS.keySet().equals(next.keySet());
+        TARGETS.forEach(
+                (id, target) -> {
+                    if (!next.containsKey(id)) target.setEnabled(false);
+                });
+        TARGETS.clear();
+        TARGETS.putAll(next);
+        saveTargets();
+        if (changed && client != null && client.level != null) {
+            OreCache.removeInvalidPositions(client);
+            OreScanner.requestFullRescan(client);
+        }
     }
 
     public static synchronized void setAllEnabled(boolean enabled) {

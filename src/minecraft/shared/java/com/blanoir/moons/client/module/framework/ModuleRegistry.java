@@ -204,7 +204,14 @@ public final class ModuleRegistry {
                             return 1;
                         }));
         return new Module(
-                normalized, name, category, enabled, toggle, tag, List.copyOf(allSettings));
+                normalized,
+                name,
+                category,
+                enabled,
+                toggle,
+                tag,
+                List.copyOf(allSettings),
+                enabled instanceof ConfiguredBoolean configured && configured.defaultValue());
     }
 
     private record HudCandidate(Module module, String hiddenKey) {}
@@ -219,6 +226,11 @@ public final class ModuleRegistry {
             throw new IllegalStateException(
                     "Modules may only be added while the catalog initializes");
         }
+        for (Setting setting : module.settings()) {
+            Objects.requireNonNull(
+                    setting.defaultValue(),
+                    "Missing declared default: " + module.id() + "." + setting.id());
+        }
         if (BY_ID.putIfAbsent(module.id(), module) != null) {
             throw new IllegalStateException("Duplicate module id " + module.id());
         }
@@ -227,7 +239,8 @@ public final class ModuleRegistry {
 
     public static Setting bool(
             String id, String name, String key, boolean fallback, BoolSetter setter) {
-        return customBool(id, name, () -> Settings.getBoolean(key, fallback), setter);
+        return customBool(id, name, () -> Settings.getBoolean(key, fallback), setter)
+                .withDefault(fallback);
     }
 
     public static Setting customBool(
@@ -254,14 +267,15 @@ public final class ModuleRegistry {
             double step,
             DoubleSetter setter) {
         return numeric(
-                id,
-                name,
-                "number",
-                () -> Settings.getDouble(key, fallback),
-                min,
-                max,
-                step,
-                (client, value) -> setter.apply(client, value));
+                        id,
+                        name,
+                        "number",
+                        () -> Settings.getDouble(key, fallback),
+                        min,
+                        max,
+                        step,
+                        (client, value) -> setter.apply(client, value))
+                .withDefault(fallback);
     }
 
     public static Setting numberText(
@@ -274,14 +288,15 @@ public final class ModuleRegistry {
             double step,
             TextSetter setter) {
         return numeric(
-                id,
-                name,
-                "number",
-                () -> Settings.getDouble(key, fallback),
-                min,
-                max,
-                step,
-                (client, value) -> setter.apply(client, format(value)));
+                        id,
+                        name,
+                        "number",
+                        () -> Settings.getDouble(key, fallback),
+                        min,
+                        max,
+                        step,
+                        (client, value) -> setter.apply(client, format(value)))
+                .withDefault(fallback);
     }
 
     public static Setting integer(
@@ -294,14 +309,15 @@ public final class ModuleRegistry {
             int step,
             IntSetter setter) {
         return numeric(
-                id,
-                name,
-                "integer",
-                () -> Settings.getInt(key, fallback),
-                min,
-                max,
-                step,
-                (client, value) -> setter.apply(client, (int) Math.round(value)));
+                        id,
+                        name,
+                        "integer",
+                        () -> Settings.getInt(key, fallback),
+                        min,
+                        max,
+                        step,
+                        (client, value) -> setter.apply(client, (int) Math.round(value)))
+                .withDefault(fallback);
     }
 
     public static Setting integerText(
@@ -314,14 +330,16 @@ public final class ModuleRegistry {
             int step,
             TextSetter setter) {
         return numeric(
-                id,
-                name,
-                "integer",
-                () -> Settings.getInt(key, fallback),
-                min,
-                max,
-                step,
-                (client, value) -> setter.apply(client, Integer.toString((int) Math.round(value))));
+                        id,
+                        name,
+                        "integer",
+                        () -> Settings.getInt(key, fallback),
+                        min,
+                        max,
+                        step,
+                        (client, value) ->
+                                setter.apply(client, Integer.toString((int) Math.round(value))))
+                .withDefault(fallback);
     }
 
     public static Setting numeric(
@@ -388,14 +406,15 @@ public final class ModuleRegistry {
             int step,
             IntRangeSetter setter) {
         return rangeValue(
-                id,
-                name,
-                () -> Settings.getInt(minKey, minFallback),
-                () -> Settings.getInt(maxKey, maxFallback),
-                min,
-                max,
-                step,
-                (client, low, high) -> setter.apply(client, (int) low, (int) high));
+                        id,
+                        name,
+                        () -> Settings.getInt(minKey, minFallback),
+                        () -> Settings.getInt(maxKey, maxFallback),
+                        min,
+                        max,
+                        step,
+                        (client, low, high) -> setter.apply(client, (int) low, (int) high))
+                .withDefault(minFallback, maxFallback);
     }
 
     public static Setting rangeDoubles(
@@ -410,14 +429,15 @@ public final class ModuleRegistry {
             double step,
             DoubleRangeSetter setter) {
         return rangeValue(
-                id,
-                name,
-                () -> Settings.getDouble(minKey, minFallback),
-                () -> Settings.getDouble(maxKey, maxFallback),
-                min,
-                max,
-                step,
-                setter::apply);
+                        id,
+                        name,
+                        () -> Settings.getDouble(minKey, minFallback),
+                        () -> Settings.getDouble(maxKey, maxFallback),
+                        min,
+                        max,
+                        step,
+                        setter::apply)
+                .withDefault(minFallback, maxFallback);
     }
 
     public static Setting rangeValue(
@@ -468,11 +488,16 @@ public final class ModuleRegistry {
             List<String> choices,
             TextSetter setter) {
         return customChoice(
-                id,
-                name,
-                () -> Settings.getString(key, fallback).toLowerCase(Locale.ROOT),
-                choices,
-                setter);
+                        id,
+                        name,
+                        () -> {
+                            String value =
+                                    Settings.getString(key, fallback).toLowerCase(Locale.ROOT);
+                            return choices.contains(value) ? value : fallback;
+                        },
+                        choices,
+                        setter)
+                .withDefault(fallback);
     }
 
     public static Setting customChoice(
@@ -502,15 +527,16 @@ public final class ModuleRegistry {
     public static Setting text(
             String id, String name, String key, String fallback, TextSetter setter) {
         return new Setting(
-                normalizeId(id),
-                name,
-                "text",
-                () -> new JsonPrimitive(Settings.getString(key, fallback)),
-                null,
-                null,
-                null,
-                List.of(),
-                (client, value) -> setter.apply(client, value.getAsString()));
+                        normalizeId(id),
+                        name,
+                        "text",
+                        () -> new JsonPrimitive(Settings.getString(key, fallback)),
+                        null,
+                        null,
+                        null,
+                        List.of(),
+                        (client, value) -> setter.apply(client, value.getAsString()))
+                .withDefault(fallback);
     }
 
     public static Setting text(String id, String name, Supplier<String> getter, TextSetter setter) {
@@ -529,15 +555,16 @@ public final class ModuleRegistry {
     public static Setting colorText(
             String id, String name, String key, String fallback, TextSetter setter) {
         return new Setting(
-                normalizeId(id),
-                name,
-                "color",
-                () -> new JsonPrimitive(Settings.getString(key, fallback)),
-                null,
-                null,
-                null,
-                List.of(),
-                (client, value) -> setter.apply(client, value.getAsString()));
+                        normalizeId(id),
+                        name,
+                        "color",
+                        () -> new JsonPrimitive(Settings.getString(key, fallback)),
+                        null,
+                        null,
+                        null,
+                        List.of(),
+                        (client, value) -> setter.apply(client, value.getAsString()))
+                .withDefault(fallback);
     }
 
     public static Setting color(
@@ -555,7 +582,14 @@ public final class ModuleRegistry {
     }
 
     public static BooleanSupplier cfgBool(String key, boolean fallback) {
-        return () -> Settings.getBoolean(key, fallback);
+        return new ConfiguredBoolean(key, fallback);
+    }
+
+    private record ConfiguredBoolean(String key, boolean defaultValue) implements BooleanSupplier {
+        @Override
+        public boolean getAsBoolean() {
+            return Settings.getBoolean(key, defaultValue);
+        }
     }
 
     private static boolean safeEnabled(BooleanSupplier supplier) {
@@ -660,7 +694,12 @@ public final class ModuleRegistry {
             BooleanSupplier enabled,
             Toggle toggle,
             Supplier<String> tag,
-            List<Setting> settings) {
+            List<Setting> settings,
+            boolean defaultEnabled) {
+        public Module withDefaultEnabled(boolean value) {
+            return new Module(id, name, category, enabled, toggle, tag, settings, value);
+        }
+
         public String displayText() {
             String currentTag = tag.get();
             return currentTag == null || currentTag.isBlank() ? name : name + " " + currentTag;
@@ -693,7 +732,8 @@ public final class ModuleRegistry {
             List<String> options,
             BooleanSupplier visibleWhen,
             BooleanSupplier enabledWhen,
-            SettingApply apply) {
+            SettingApply apply,
+            JsonElement defaultValue) {
         public Setting(
                 String id,
                 String name,
@@ -704,17 +744,86 @@ public final class ModuleRegistry {
                 Double step,
                 List<String> options,
                 SettingApply apply) {
-            this(id, name, type, value, min, max, step, options, () -> true, () -> true, apply);
+            this(
+                    id,
+                    name,
+                    type,
+                    value,
+                    min,
+                    max,
+                    step,
+                    options,
+                    () -> true,
+                    () -> true,
+                    apply,
+                    null);
+        }
+
+        public Setting withDefault(JsonElement value) {
+            return new Setting(
+                    id,
+                    name,
+                    type,
+                    this.value,
+                    min,
+                    max,
+                    step,
+                    options,
+                    visibleWhen,
+                    enabledWhen,
+                    apply,
+                    Objects.requireNonNull(value).deepCopy());
+        }
+
+        public Setting withDefault(boolean value) {
+            return withDefault(new JsonPrimitive(value));
+        }
+
+        public Setting withDefault(Number value) {
+            return withDefault(new JsonPrimitive(value));
+        }
+
+        public Setting withDefault(String value) {
+            return withDefault(new JsonPrimitive(value));
+        }
+
+        public Setting withDefault(Number low, Number high) {
+            JsonArray range = new JsonArray();
+            range.add(low);
+            range.add(high);
+            return withDefault(range);
         }
 
         public Setting visibleWhen(BooleanSupplier condition) {
             return new Setting(
-                    id, name, type, value, min, max, step, options, condition, enabledWhen, apply);
+                    id,
+                    name,
+                    type,
+                    value,
+                    min,
+                    max,
+                    step,
+                    options,
+                    condition,
+                    enabledWhen,
+                    apply,
+                    defaultValue);
         }
 
         public Setting enabledWhen(BooleanSupplier condition) {
             return new Setting(
-                    id, name, type, value, min, max, step, options, visibleWhen, condition, apply);
+                    id,
+                    name,
+                    type,
+                    value,
+                    min,
+                    max,
+                    step,
+                    options,
+                    visibleWhen,
+                    condition,
+                    apply,
+                    defaultValue);
         }
 
         public boolean isVisible() {

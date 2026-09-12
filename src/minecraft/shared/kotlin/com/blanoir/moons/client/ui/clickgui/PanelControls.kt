@@ -72,6 +72,10 @@ import com.blanoir.moons.client.module.framework.ModuleKeybinds
 import com.blanoir.moons.client.module.framework.ModuleRegistry
 import com.blanoir.moons.client.module.framework.ModuleRegistry.Module
 import com.blanoir.moons.client.module.framework.ModuleRegistry.Setting
+import com.blanoir.moons.client.module.impl.render.xray.PluginBlocksSetting
+import com.blanoir.moons.client.utils.ui.ColorEditor
+import com.blanoir.moons.client.utils.ui.RegistryListSetting
+import com.blanoir.moons.client.utils.ui.SettingInput
 import com.google.gson.JsonArray
 import com.google.gson.JsonPrimitive
 import com.mojang.blaze3d.platform.InputConstants
@@ -202,6 +206,7 @@ internal fun ModuleRow(
                         CompactSetting(module, setting, refreshSettings)
                     }
                 }
+                if (module.id() == "xray") PluginBlocksSetting(refreshSettings)
             }
         }
     }
@@ -243,6 +248,10 @@ internal fun CompactSetting(module: Module, setting: Setting, onMutated: () -> U
         "integer" -> NumberSetting(module, setting, onMutated)
         "range" -> RangeSetting(module, setting, onMutated)
         "choice" -> ChoiceSetting(module, setting, onMutated)
+        "item_list",
+        "block_list",
+        "mob_list",
+        "entity_list" -> RegistryListSetting(module, setting, onMutated)
         "text",
         "color" -> TextSetting(module, setting, onMutated)
         else ->
@@ -677,40 +686,21 @@ private fun TextSetting(module: Module, setting: Setting, onMutated: () -> Unit)
     ) {
         Text(settingLabel(setting), color = PanelStyle.muted, fontSize = 7.sp)
         Spacer(Modifier.height(4.dp))
-        BasicTextField(
-            value = value,
-            onValueChange = {
-                value = it.take(128)
-                if (setting.type() != "color" || isCompleteColor(value)) {
+        if (setting.type() == "color") {
+            ColorEditor(current) {
+                ModuleRegistry.setValue(module.id(), setting.id(), JsonPrimitive(it))
+                onMutated()
+            }
+        } else {
+            SettingInput(
+                value,
+                {
+                    value = it.take(128)
                     ModuleRegistry.setValue(module.id(), setting.id(), JsonPrimitive(value))
                     onMutated()
-                }
-            },
-            singleLine = true,
-            textStyle =
-                TextStyle(
-                    color = PanelStyle.text,
-                    fontSize = 7.sp,
-                    fontFamily = PanelFontFamily,
-                ),
-            cursorBrush = SolidColor(PanelStyle.controlActive),
-            modifier = Modifier.fillMaxWidth().height(22.dp),
-            decorationBox = { input ->
-                Row(
-                    Modifier.fillMaxSize()
-                        .clip(PanelStyle.controlShape)
-                        .background(PanelStyle.field)
-                        .border(1.dp, PanelStyle.border, PanelStyle.controlShape)
-                        .padding(horizontal = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(Modifier.weight(1f)) { input() }
-                    if (setting.type() == "color") {
-                        Box(Modifier.size(9.dp).clip(CircleShape).background(parseColor(value)))
-                    }
-                }
-            },
-        )
+                },
+            )
+        }
     }
 }
 

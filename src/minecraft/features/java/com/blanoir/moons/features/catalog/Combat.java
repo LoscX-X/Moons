@@ -10,6 +10,7 @@ import com.blanoir.moons.client.module.impl.combat.critical.Critical;
 import com.blanoir.moons.client.module.impl.combat.critical.mode.Predict;
 import com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraConfig;
 import com.blanoir.moons.client.module.impl.movement.JumpReset;
+import com.blanoir.moons.client.utils.registry.RegistryLists;
 
 /** Defines combat module descriptors; ordering is owned by ModuleCatalog. */
 final class Combat {
@@ -222,12 +223,13 @@ final class Combat {
                         "triggerbot.target.player",
                         true,
                         (client, value) -> TriggerBot.setTargetCategory(client, "player", value)),
-                bool(
-                        "target_mobs",
-                        "Target mobs",
-                        "triggerbot.target.mob",
-                        false,
-                        (client, value) -> TriggerBot.setTargetCategory(client, "mob", value)));
+                RegistryLists.setting(
+                        "target_entities",
+                        "Other entities",
+                        "mob",
+                        TriggerBot::selectedEntities,
+                        TriggerBot::setSelectedEntities,
+                        new com.google.gson.JsonArray()));
     }
 
     static ModuleRegistry.Module critical() {

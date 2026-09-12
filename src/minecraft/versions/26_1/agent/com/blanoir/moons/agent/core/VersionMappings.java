@@ -278,6 +278,12 @@ final class VersionMappings {
                                 "()V",
                                 TargetMethod.HookKind.SPRINT_DECISIONS),
                         new TargetMethod(
+                                "movement.collision-yaw",
+                                List.of("net/minecraft/client/player/LocalPlayer"),
+                                List.of("isHorizontalCollisionMinor"),
+                                "(Lnet/minecraft/world/phys/Vec3;)Z",
+                                TargetMethod.HookKind.YAW_RESULT),
+                        new TargetMethod(
                                 "movement.jump-yaw",
                                 List.of("net/minecraft/world/entity/LivingEntity"),
                                 List.of("jumpFromGround"),

@@ -7,15 +7,18 @@ import net.minecraft.util.Mth;
 
 public final class IntSetting {
     private final String key;
+    private final int defaultValue;
     private final int min;
     private final int max;
     private int value;
 
     private IntSetting(String key, int defaultValue, int min, int max) {
         this.key = key;
+        this.defaultValue = defaultValue;
         this.min = min;
         this.max = max;
-        this.value = Mth.clamp(Settings.getInt(key, defaultValue), min, max);
+        int configured = Settings.getInt(key, defaultValue);
+        this.value = configured >= min && configured <= max ? configured : defaultValue;
     }
 
     public int get() {
@@ -38,14 +41,15 @@ public final class IntSetting {
     public ModuleRegistry.Setting describe(
             String id, String label, int step, ModuleRegistry.IntSetter setter) {
         return ModuleRegistry.numeric(
-                id,
-                label,
-                "integer",
-                this::get,
-                min,
-                max,
-                step,
-                (client, value) -> setter.apply(client, (int) Math.round(value)));
+                        id,
+                        label,
+                        "integer",
+                        this::get,
+                        min,
+                        max,
+                        step,
+                        (client, value) -> setter.apply(client, (int) Math.round(value)))
+                .withDefault(defaultValue);
     }
 
     public static final class Builder {
@@ -56,6 +60,7 @@ public final class IntSetting {
 
         public Builder name(String key) {
             this.key = key;
+            this.defaultValue = defaultValue;
             return this;
         }
 

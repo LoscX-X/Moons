@@ -14,7 +14,6 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.ChunkPos;
-import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
 
@@ -77,12 +76,14 @@ public final class OreScanner {
                 event -> {
                     resetScannerState();
                     OreCache.clear();
+                    PluginXrayTargets.updateContext(event.client());
                 });
 
         EventBus.TICK_END.register(
                 "OreScanner.tickEnd",
                 event -> {
                     Minecraft client = event.client();
+                    PluginXrayTargets.tick(client);
                     if (AUTO_SCAN.get()) {
                         tickAutoScan(client);
                     } else {
@@ -247,9 +248,7 @@ public final class OreScanner {
                     mutablePos.set(worldX, y, worldZ);
 
                     BlockState state = chunk.getBlockState(mutablePos);
-                    Block block = state.getBlock();
-
-                    if (XrayBlockTarget.findEnabledTarget(block) != null) {
+                    if (XrayBlockTarget.findEnabledTarget(state) != null) {
                         positions.add(mutablePos.immutable());
                     }
                 }
@@ -280,7 +279,7 @@ public final class OreScanner {
                 continue;
             }
             BlockPos pos = currentScan.positions().get(currentScanIndex++);
-            recordTargetIfPresent(client, pos, level.getBlockState(pos).getBlock());
+            recordTargetIfPresent(client, pos, level.getBlockState(pos));
             processed++;
         }
     }
@@ -288,8 +287,9 @@ public final class OreScanner {
     private record ScanBatch(
             ClientLevel level, int generation, long chunkKey, List<BlockPos> positions) {}
 
-    private static void recordTargetIfPresent(Minecraft client, BlockPos pos, Block block) {
-        XrayTarget target = XrayBlockTarget.findEnabledTarget(block);
+    private static void recordTargetIfPresent(Minecraft client, BlockPos pos, BlockState state) {
+        OreCache.removeStaleStateTarget(pos, state);
+        XrayTarget target = XrayBlockTarget.findEnabledTarget(state);
 
         if (target == null) {
             return;
@@ -408,7 +408,7 @@ public final class OreScanner {
             return;
         }
 
-        recordTargetIfPresent(client, pos, state.getBlock());
+        recordTargetIfPresent(client, pos, state);
 
         BlockPos.MutableBlockPos neighbor = new BlockPos.MutableBlockPos();
 
@@ -417,7 +417,7 @@ public final class OreScanner {
             BlockState neighborState = client.level.getBlockState(neighbor);
 
             if (!neighborState.isAir()) {
-                recordTargetIfPresent(client, neighbor, neighborState.getBlock());
+                recordTargetIfPresent(client, neighbor, neighborState);
             }
         }
     }
@@ -453,6 +453,7 @@ public final class OreScanner {
     /** Stops the module-owned worker so its class loader can be reclaimed. */
     public static void shutdown() {
         resetScannerState();
+        PluginXrayTargets.resetIndex();
         OreCache.clear();
         SCAN_EXECUTOR.shutdownNow();
         try {

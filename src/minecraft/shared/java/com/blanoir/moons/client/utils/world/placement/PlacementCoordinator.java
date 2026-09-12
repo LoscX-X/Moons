@@ -16,7 +16,8 @@ public final class PlacementCoordinator {
         AUTO_LAVA,
         ANTI_WEB,
         ANTI_LAVA,
-        AUTO_BED
+        AUTO_BED,
+        BLOCK_IN
     }
 
     private record Participant(BooleanSupplier busy, Consumer<Minecraft> yield) {}

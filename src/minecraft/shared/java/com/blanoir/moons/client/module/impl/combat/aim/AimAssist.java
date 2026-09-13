@@ -11,17 +11,19 @@ import com.blanoir.moons.client.management.input.MouseInputTracker;
 import com.blanoir.moons.client.management.targeting.Targeting;
 import com.blanoir.moons.client.module.framework.ModuleRegistry;
 import com.blanoir.moons.client.utils.combat.CombatModuleCoordinator;
+import com.blanoir.moons.client.utils.input.MouseInfluenceA;
 import com.blanoir.moons.client.utils.math.MathUtils;
-import com.blanoir.moons.client.utils.math.Smoothing;
 import com.blanoir.moons.client.utils.prediction.AimPrediction;
 import com.blanoir.moons.client.utils.prediction.AimPrediction.AimForecast;
 import com.blanoir.moons.client.utils.prediction.TrajectoryPrediction;
 import com.blanoir.moons.client.utils.raytrace.RaytraceUtils;
-import com.blanoir.moons.client.utils.rotation.Rotation;
-import com.blanoir.moons.client.utils.rotation.aim.AimPointManager;
-import com.blanoir.moons.client.utils.rotation.aim.AimPointUtils;
-import com.blanoir.moons.client.utils.rotation.aim.RotationUtils;
-import com.blanoir.moons.client.utils.rotation.aim.VisibleAimPoints;
+import com.blanoir.moons.client.utils.rotation.aim.AimGeometry;
+import com.blanoir.moons.client.utils.rotation.aim.AimPointsA;
+import com.blanoir.moons.client.utils.rotation.aim.AimPointsB;
+import com.blanoir.moons.client.utils.rotation.aim.AimPointsC;
+import com.blanoir.moons.client.utils.rotation.aim.AimSolverA;
+import com.blanoir.moons.client.utils.rotation.aim.TargetSelectorB;
+import com.blanoir.moons.client.utils.rotation.smooth.SmoothC;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.util.Mth;
@@ -32,25 +34,15 @@ import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 
-import java.util.Comparator;
-import java.util.List;
-
 public final class AimAssist {
 
     private static final double MIN_CORRECTION_ANGLE_DEGREES = 0.6D;
-    private static final double TARGET_SWITCH_HYSTERESIS_DEGREES = 3.0D;
-    private static final double AIM_POINT_HYSTERESIS_DEGREES = 2.0D;
-
-    private static final double MOUSE_VELOCITY_RAMP = 250.0D;
-    private static final double MOUSE_ACCELERATION_RAMP = 2000.0D;
-    private static final double MAX_MOUSE_OVERRIDE = 0.65D;
-
-    private static final double TICKS_PER_SECOND = 20.0D;
 
     private static int lockedEntityId = -1;
 
     private static Vec3 lockedAimPoint;
-    private static final AimPointManager AIM_POINTS = new AimPointManager();
+    private static final AimPointsA.State CENTER_POINTS = new AimPointsA.State();
+    private static final AimPointsB.State CLOSEST_POINTS = new AimPointsB.State();
 
     private static final ModeSetting<Mode> MODE =
             new ModeSetting.Builder<Mode>()
@@ -133,7 +125,7 @@ public final class AimAssist {
             return;
         }
 
-        TargetRotation target = findTarget(client);
+        AimSolverA.Result target = findTarget(client);
 
         if (target == null) {
             clearLock();
@@ -145,12 +137,27 @@ public final class AimAssist {
             AABB box = target.entity().getBoundingBox();
             Vec3 point =
                     MODE.get() == Mode.CENTER
-                            ? AIM_POINTS.center(
-                                    client, target.entity(), eye, box, RANGE.get(), .45D, 9, true)
-                            : AIM_POINTS.closest(client, target.entity(), eye, box, RANGE.get(), 9);
+                            ? AimPointsA.resolve(
+                                    CENTER_POINTS,
+                                    client,
+                                    target.entity(),
+                                    eye,
+                                    box,
+                                    RANGE.get(),
+                                    .45D,
+                                    9,
+                                    true)
+                            : AimPointsB.resolve(
+                                    CLOSEST_POINTS,
+                                    client,
+                                    target.entity(),
+                                    eye,
+                                    box,
+                                    RANGE.get(),
+                                    9);
             if (eye.distanceToSqr(point) <= RANGE.get() * RANGE.get()
                     && RaytraceUtils.canRayTraceTo(client, eye, point)) {
-                target = rotationAt(client, target.entity(), point);
+                target = AimSolverA.solve(client, target.entity(), point);
             }
             if (!MathUtils.withinFov(target.angle(), FOV.get())) {
                 clearLock();
@@ -171,12 +178,10 @@ public final class AimAssist {
         double frameSmooth = smoothForFrame(event.deltaSeconds()) * mouseSmoothMultiplier(motion);
 
         float nextYaw =
-                RotationUtils.smoothRotation(
-                        currentPlayer.getYRot(), target.rotation().yaw(), frameSmooth);
+                SmoothC.blendAngle(currentPlayer.getYRot(), target.rotation().yaw(), frameSmooth);
 
         float nextPitch =
-                RotationUtils.smoothRotation(
-                        currentPlayer.getXRot(), target.rotation().pitch(), frameSmooth);
+                SmoothC.blendAngle(currentPlayer.getXRot(), target.rotation().pitch(), frameSmooth);
 
         currentPlayer.setYRot(nextYaw);
 
@@ -222,8 +227,8 @@ public final class AimAssist {
                 MIN_CORRECTION_ANGLE_DEGREES,
                 switch (MODE.get()) {
                     case LEGIT -> null;
-                    case CENTER -> AimPointUtils.Mode.CENTER;
-                    case CLOSEST -> AimPointUtils.Mode.CLOSEST;
+                    case CENTER -> AimGeometry.Mode.CENTER;
+                    case CLOSEST -> AimGeometry.Mode.CLOSEST;
                 });
     }
 
@@ -232,8 +237,7 @@ public final class AimAssist {
      * coefficient, keeping the response approximately independent of FPS.
      */
     private static double smoothForFrame(double frameDeltaSeconds) {
-        double smooth = SMOOTH.get();
-        return Smoothing.coefficientForElapsedTicks(smooth, frameDeltaSeconds * TICKS_PER_SECOND);
+        return SmoothC.frameCoefficient(SMOOTH.get(), frameDeltaSeconds);
     }
 
     private static boolean isCrosshairAlreadyAttackable(Minecraft client) {
@@ -248,7 +252,7 @@ public final class AimAssist {
             if (target instanceof LivingEntity livingTarget
                     && isValidTarget(client, livingTarget)
                     && Targeting.isWithinInteractionRange(client, target)
-                    && VisibleAimPoints.hasVisiblePoint(client, livingTarget, range)) {
+                    && AimPointsC.hasVisiblePoint(client, livingTarget, range)) {
                 return true;
             }
         }
@@ -269,161 +273,35 @@ public final class AimAssist {
                 != null;
     }
 
-    private static TargetRotation findTarget(Minecraft client) {
-        double range = RANGE.get();
-        double fov = FOV.get();
-        AABB searchBox = client.player.getBoundingBox().inflate(range);
-
-        List<LivingEntity> candidates =
-                client.level.getEntitiesOfClass(
-                        LivingEntity.class, searchBox, entity -> isValidTarget(client, entity));
-
-        TargetRotation best =
-                candidates.stream()
-                        .map(
-                                entity ->
-                                        targetRotation(
-                                                client,
-                                                entity,
-                                                lockedEntityId == entity.getId()
-                                                        ? lockedAimPoint
-                                                        : null))
-                        .filter(
-                                target ->
-                                        target != null && target.distanceSquared() <= range * range)
-                        .filter(target -> MathUtils.withinFov(target.angle(), fov))
-                        .min(
-                                Comparator.comparingDouble(
-                                        target -> targetSelectionScore(client, target)))
-                        .orElse(null);
-
-        if (best == null || lockedEntityId == -1) {
-            return best;
-        }
-
-        Entity lockedEntity = client.level.getEntity(lockedEntityId);
-
-        if (lockedEntity instanceof LivingEntity livingLocked
-                && isValidTarget(client, livingLocked)) {
-
-            TargetRotation lockedRotation = targetRotation(client, livingLocked, lockedAimPoint);
-
-            if (lockedRotation != null
-                    && lockedRotation.distanceSquared() <= range * range
-                    && MathUtils.withinFov(lockedRotation.angle(), fov)
-                    && lockedRotation.angle() <= best.angle() + TARGET_SWITCH_HYSTERESIS_DEGREES) {
-                return lockedRotation;
-            }
-        }
-
-        return best;
-    }
-
-    private static double targetSelectionScore(Minecraft client, TargetRotation target) {
-        LivingEntity entity = target.entity();
-
-        double distance = Math.sqrt(target.distanceSquared());
-
-        double healthRatio =
-                (entity.getHealth() + entity.getAbsorptionAmount())
-                        / Math.max(1.0D, entity.getMaxHealth());
-
-        double hurtFramePenalty = entity.hurtTime > 0 ? 0.8D : 0.0D;
-
-        Vec3 towardPlayer = client.player.getEyePosition().subtract(entity.getEyePosition());
-
-        double threatBonus =
-                towardPlayer.lengthSqr() > 1.0E-6D
-                                && entity.getLookAngle().dot(towardPlayer.normalize()) > 0.72D
-                        ? -0.65D
-                        : 0.0D;
-
-        return target.angle()
-                + distance * 0.32D
-                + Mth.clamp(healthRatio, 0.0D, 1.5D) * 1.15D
-                + hurtFramePenalty
-                + threatBonus;
-    }
-
-    private static TargetRotation targetRotation(
-            Minecraft client, LivingEntity entity, Vec3 preferredAimPoint) {
-        double range = RANGE.get();
-        Vec3 eyePos = client.player.getEyePosition();
-
-        Vec3 aimPoint =
-                MODE.get() == Mode.LEGIT
-                        ? VisibleAimPoints.findVisibleAimPoint(
-                                client,
-                                entity,
-                                preferredAimPoint,
-                                range,
-                                AIM_POINT_HYSTERESIS_DEGREES)
-                        : MODE.get() == Mode.CENTER
-                                ? AimPointUtils.centerTrackingPoint(eyePos, entity.getBoundingBox())
-                                : AimPointUtils.closestTrackingPoint(
-                                        eyePos, entity.getBoundingBox());
-        if (MODE.get() != Mode.LEGIT
-                && (eyePos.distanceToSqr(aimPoint) > range * range
-                        || !RaytraceUtils.canRayTraceTo(client, eyePos, aimPoint))) {
-            aimPoint =
-                    VisibleAimPoints.findBestVisibleSurfacePoint(
-                            client,
-                            entity.getBoundingBox(),
-                            client.player.getLookAngle(),
-                            range,
-                            .72D,
-                            false);
-        }
-        if (aimPoint == null) {
-            return null;
-        }
-
-        return rotationAt(client, entity, aimPoint);
-    }
-
-    private static TargetRotation rotationAt(Minecraft client, LivingEntity entity, Vec3 aimPoint) {
-        Vec3 eyePos = client.player.getEyePosition();
-
-        Rotation rotation = RotationUtils.rotationTo(eyePos, aimPoint);
-
-        float yawDifference = Math.abs(Mth.wrapDegrees(rotation.yaw() - client.player.getYRot()));
-
-        float pitchDifference = Math.abs(rotation.pitch() - client.player.getXRot());
-
-        return new TargetRotation(
-                entity,
-                aimPoint,
-                rotation,
-                Math.hypot(yawDifference, pitchDifference),
-                eyePos.distanceToSqr(aimPoint));
+    private static AimSolverA.Result findTarget(Minecraft client) {
+        return TargetSelectorB.select(
+                client,
+                RANGE.get(),
+                FOV.get(),
+                switch (MODE.get()) {
+                    case LEGIT -> null;
+                    case CENTER -> AimGeometry.Mode.CENTER;
+                    case CLOSEST -> AimGeometry.Mode.CLOSEST;
+                },
+                lockedEntityId,
+                lockedAimPoint);
     }
 
     /**
      * Reduces assistance while the player is actively moving the mouse.
      */
     private static double mouseSmoothMultiplier(MouseInputTracker.Motion motion) {
-        if (!motion.recentlyMoved()) {
-            return 1.0D;
-        }
-
-        double velocityInfluence =
-                Mth.clamp(motion.velocityPxPerSecond() / MOUSE_VELOCITY_RAMP, 0.0D, 1.0D);
-
-        double accelerationInfluence =
-                Mth.clamp(
-                        motion.accelerationPxPerSecondSquared() / MOUSE_ACCELERATION_RAMP,
-                        0.0D,
-                        1.0D);
-
-        double influence = Math.max(velocityInfluence, accelerationInfluence);
-
-        return 1.0D - MAX_MOUSE_OVERRIDE * influence;
+        return MouseInfluenceA.mouseMultiplier(
+                motion.recentlyMoved(),
+                motion.velocityPxPerSecond(),
+                motion.accelerationPxPerSecondSquared());
     }
 
     private static void clearLock() {
         lockedEntityId = -1;
         lockedAimPoint = null;
-        AIM_POINTS.reset();
+        CENTER_POINTS.reset();
+        CLOSEST_POINTS.reset();
     }
 
     public static String mode() {
@@ -535,13 +413,6 @@ public final class AimAssist {
 
         return Double.toString(value);
     }
-
-    private record TargetRotation(
-            LivingEntity entity,
-            Vec3 aimPoint,
-            Rotation rotation,
-            double angle,
-            double distanceSquared) {}
 
     private enum Mode {
         LEGIT,

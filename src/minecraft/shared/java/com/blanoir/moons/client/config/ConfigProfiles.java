@@ -187,6 +187,44 @@ public final class ConfigProfiles {
         JsonObject bindings = root.getAsJsonObject("bindings");
         if (modules == null || bindings == null)
             throw new IllegalArgumentException("Missing modules or bindings");
+        // Older profiles stored the armor feature inside InvManager.
+        if (!modules.has("autoarmor")
+                && modules.has("invmanager")
+                && modules.get("invmanager").isJsonObject()) {
+            var previous = modules.getAsJsonObject("invmanager");
+            var previousSettings = previous.get("settings");
+            if (previousSettings != null && previousSettings.isJsonObject()) {
+                var values = previousSettings.getAsJsonObject();
+                var armor = new JsonObject();
+                var armorValues = new JsonObject();
+                boolean inventoryEnabled =
+                        previous.has("enabled")
+                                && previous.get("enabled").isJsonPrimitive()
+                                && previous.getAsJsonPrimitive("enabled").isBoolean()
+                                && previous.get("enabled").getAsBoolean();
+                boolean armorEnabled =
+                        values.has("auto_armor")
+                                && values.get("auto_armor").isJsonPrimitive()
+                                && values.getAsJsonPrimitive("auto_armor").isBoolean()
+                                && values.get("auto_armor").getAsBoolean();
+                armor.addProperty("enabled", inventoryEnabled && armorEnabled);
+                for (String key :
+                        List.of(
+                                "keep_elytra",
+                                "protect_special",
+                                "open_delay",
+                                "manual_delay",
+                                "delay_ms",
+                                "armor_lock_0",
+                                "armor_lock_1",
+                                "armor_lock_2",
+                                "armor_lock_3"))
+                    if (values.has(key)) armorValues.add(key, values.get(key).deepCopy());
+                armor.add("settings", armorValues);
+                modules = modules.deepCopy();
+                modules.add("autoarmor", armor);
+            }
+        }
         List<ModuleState> states = new ArrayList<>();
         for (Module module : ModuleRegistry.modules()) {
             if (module.id().equals("clickgui")) continue;

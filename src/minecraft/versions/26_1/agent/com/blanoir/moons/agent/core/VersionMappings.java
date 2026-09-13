@@ -14,6 +14,31 @@ final class VersionMappings {
         return new MappingService(
                 List.of(
                         new TargetMethod(
+                                "client.timer-speed",
+                                List.of("net/minecraft/client/Minecraft"),
+                                List.of("getTickTargetMillis"),
+                                "(F)F",
+                                TargetMethod.HookKind.FLOAT_RETURN_ARG),
+                        new TargetMethod(
+                                "render.antidebuff.blend",
+                                List.of("net/minecraft/world/entity/LivingEntity"),
+                                List.of("getEffectBlendFactor"),
+                                "(Lnet/minecraft/core/Holder;F)F",
+                                TargetMethod.HookKind.FLOAT_RETURN_OBJECT_ARG),
+                        new TargetMethod(
+                                "render.antidebuff.fog",
+                                List.of(
+                                        "net/minecraft/client/renderer/fog/environment/MobEffectFogEnvironment"),
+                                List.of("isApplicable"),
+                                "(Lnet/minecraft/world/level/material/FogType;Lnet/minecraft/world/entity/Entity;)Z",
+                                TargetMethod.HookKind.BOOLEAN_RETURN_ARG),
+                        new TargetMethod(
+                                "render.antidebuff.sky",
+                                List.of("net/minecraft/client/renderer/GameRenderer"),
+                                List.of("extract"),
+                                "(Lnet/minecraft/client/DeltaTracker;Z)V",
+                                TargetMethod.HookKind.VOID_RETURN),
+                        new TargetMethod(
                                 "client.tick",
                                 List.of("net/minecraft/client/Minecraft"),
                                 List.of("tick"),

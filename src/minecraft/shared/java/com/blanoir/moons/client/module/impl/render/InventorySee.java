@@ -5,18 +5,14 @@ import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.DoubleSetting;
 import com.blanoir.moons.client.config.settings.IntSetting;
-import com.blanoir.moons.client.event.EventBus;
-import com.blanoir.moons.client.event.frame.HudRenderEvent;
 import com.blanoir.moons.client.ui.MinecraftScreenAccess;
 import com.blanoir.moons.client.ui.clickgui.MoonsComposeScreen;
 import com.blanoir.moons.client.ui.layout.Bounds;
-import com.blanoir.moons.client.ui.render.SmoothGui;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.world.item.ItemStack;
 
-/** Inventory HUD rendered through Minecraft's native item-model pipeline. */
+/** Inventory data and editor settings for the independent final-frame Skia HUD. */
 public final class InventorySee {
     private static final int WIDTH = 188;
     private static final int HEIGHT = 68;
@@ -44,46 +40,41 @@ public final class InventorySee {
 
     private InventorySee() {}
 
+    private static java.util.List<ItemStack> previous = java.util.List.of();
+
     public static void init() {
-        EventBus.HUD_RENDER.register("InventorySee.hud", InventorySee::render);
+        // Final-frame Skia owns drawing; no native HUD extraction callback is registered.
     }
 
-    private static void render(HudRenderEvent event) {
+    public record Snapshot(
+            boolean visible, Bounds bounds, double scale, java.util.List<ItemStack> items) {
+        public static final Snapshot HIDDEN =
+                new Snapshot(false, new Bounds(0, 0, 0, 0), 1, java.util.List.of());
+    }
+
+    /** Copies only changed inventory contents. Snapshots are never modified by the renderer. */
+    public static Snapshot snapshot(boolean editing) {
         Minecraft client = Minecraft.getInstance();
-        var currentPlayer = client == null ? null : client.player;
-        if (currentPlayer == null || client.level == null) return;
-
-        Object currentScreen = MinecraftScreenAccess.current(client);
-        boolean editing =
-                currentScreen instanceof MoonsComposeScreen screen && screen.isHudLayoutEditing();
-        if (currentScreen instanceof MoonsComposeScreen && !editing) return;
-        if (!editing && (!isEnabled() || MinecraftClientAccess.isHudHidden(client))) return;
-
-        GuiGraphicsExtractor graphics = event.graphics();
-        Bounds bounds = currentBounds();
-        float scale = (float) scale();
-        graphics.pose().pushMatrix();
-        try {
-            graphics.pose().translate((float) bounds.x(), (float) bounds.y());
-            graphics.pose().scale(scale, scale);
-            SmoothGui.roundedRect(graphics, 0, 0, WIDTH, HEIGHT, 6, 0xD80C0D10);
-
-            for (int row = 0; row < 3; row++) {
-                for (int column = 0; column < 9; column++) {
-                    int slotX = 5 + column * 20;
-                    int slotY = 5 + row * 20;
-                    SmoothGui.roundedRect(
-                            graphics, slotX, slotY, slotX + 18, slotY + 18, 3, 0x761F2025);
-
-                    ItemStack stack = currentPlayer.getInventory().getItem(9 + row * 9 + column);
-                    if (stack.isEmpty()) continue;
-                    graphics.item(stack, slotX + 1, slotY + 1);
-                    graphics.itemDecorations(client.font, stack, slotX + 1, slotY + 1);
-                }
-            }
-        } finally {
-            graphics.pose().popMatrix();
+        if (client == null || client.player == null || client.level == null) {
+            previous = java.util.List.of();
+            return Snapshot.HIDDEN;
         }
+        if (!editing
+                && (!isEnabled()
+                        || MinecraftClientAccess.isHudHidden(client)
+                        || MinecraftScreenAccess.current(client) instanceof MoonsComposeScreen))
+            return Snapshot.HIDDEN;
+        var inventory = client.player.getInventory();
+        boolean changed = previous.size() != 27;
+        for (int slot = 0; !changed && slot < 27; slot++) {
+            changed = !ItemStack.matches(previous.get(slot), inventory.getItem(9 + slot));
+        }
+        if (changed) {
+            var next = new java.util.ArrayList<ItemStack>(27);
+            for (int slot = 9; slot < 36; slot++) next.add(inventory.getItem(slot).copy());
+            previous = java.util.List.copyOf(next);
+        }
+        return new Snapshot(true, currentBounds(), scale(), previous);
     }
 
     public static boolean isEnabled() {

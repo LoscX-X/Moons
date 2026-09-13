@@ -198,11 +198,43 @@ internal fun PluginBlocksSetting(onMutated: () -> Unit) {
                             fontSize = 6.sp,
                         )
                     }
-                    ColorEditor("#%06x".format(focused.rgb())) {
+                    PluginBlockColorEditor("#%06x".format(focused.rgb())) {
                         edit(focused, rgb = it.removePrefix("#").toInt(16))
                     }
                 }
             error?.let { Text(it, color = Color(0xffff7c7c), fontSize = 7.sp) }
+            if (PluginXrayTargets.configurationProblem().isNotEmpty()) {
+                Text(
+                    PluginXrayTargets.configurationProblem(),
+                    color = Color(0xffffbc57),
+                    fontSize = 7.sp,
+                )
+            }
+        }
+    }
+}
+
+/** Keep slider feedback immediate, but persist only after a short pause or leaving the editor. */
+@Composable
+private fun PluginBlockColorEditor(value: String, commit: (String) -> Unit) {
+    var draft by remember { mutableStateOf(value) }
+    var pending by remember { mutableStateOf(false) }
+    val latestCommit by rememberUpdatedState(commit)
+    LaunchedEffect(value) { if (!pending) draft = value }
+    LaunchedEffect(draft) {
+        if (pending) {
+            delay(200)
+            pending = false
+            latestCommit(draft)
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose { if (pending) latestCommit(draft) }
+    }
+    ColorEditor(draft) {
+        if (it != draft) {
+            pending = true
+            draft = it
         }
     }
 }

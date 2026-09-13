@@ -24,12 +24,23 @@ import com.blanoir.moons.client.utils.client.ClientReady;
 import com.blanoir.moons.client.utils.math.RandomMath;
 import com.blanoir.moons.client.utils.prediction.TrajectoryPrediction;
 import com.blanoir.moons.client.utils.rotation.Rotation;
+import com.blanoir.moons.client.utils.rotation.aim.AimPointsG;
+import com.blanoir.moons.client.utils.rotation.aim.AimSolverE;
+import com.blanoir.moons.client.utils.rotation.aim.BlockAim;
+import com.blanoir.moons.client.utils.rotation.aim.BlockTarget;
+import com.blanoir.moons.client.utils.rotation.aim.TargetSelectorC;
+import com.blanoir.moons.client.utils.rotation.aim.TargetSelectorD;
+import com.blanoir.moons.client.utils.rotation.aim.TargetSelectorE;
+import com.blanoir.moons.client.utils.rotation.quantize.QuantizerA;
+import com.blanoir.moons.client.utils.rotation.smooth.InstantA;
+import com.blanoir.moons.client.utils.rotation.smooth.InstantB;
+import com.blanoir.moons.client.utils.rotation.smooth.SmoothD;
+import com.blanoir.moons.client.utils.rotation.smooth.SmoothE;
 import com.blanoir.moons.client.utils.world.placement.BlockPlacementUtils;
 import com.mojang.blaze3d.vertex.PoseStack;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
 import net.minecraft.network.protocol.game.ServerboundUseItemOnPacket;
@@ -47,7 +58,6 @@ import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 
@@ -60,21 +70,12 @@ import java.util.Locale;
  * routing interactions through modern vanilla {@code useItemOn}.</p>
  */
 public final class ScaffoldManager {
+    private static final QuantizerA.Adapter AIM_QUANTIZER =
+            new QuantizerA.Adapter(
+                    SilentPacketRotation::quantizePacketYaw,
+                    SilentPacketRotation::quantizePacketPitch);
     private static final int SEARCH_RADIUS = 4;
     private static final int MAX_FACE_CANDIDATES = 32;
-    private static final double[] PRIMARY_FACE_OFFSETS = {
-        0.5D, 0.375D, 0.625D, 0.25D, 0.75D, 0.125D, 0.875D, 0.0625D, 0.9375D
-    };
-    private static final double[] STANDARD_FACE_OFFSETS = {
-        0.03125D, 0.09375D, 0.15625D, 0.21875D,
-        0.28125D, 0.34375D, 0.40625D, 0.46875D,
-        0.53125D, 0.59375D, 0.65625D, 0.71875D,
-        0.78125D, 0.84375D, 0.90625D, 0.96875D
-    };
-    private static final double[] DENSE_FACE_OFFSETS = {
-        0.015625D, 0.03125D, 0.09375D, 0.15625D, 0.21875D, 0.28125D, 0.34375D, 0.40625D, 0.46875D,
-        0.53125D, 0.59375D, 0.65625D, 0.71875D, 0.78125D, 0.84375D, 0.90625D, 0.96875D, 0.984375D
-    };
     private static final BooleanSetting ENABLED = bool("scaffold.enabled", false);
     private static final ModeSetting<ScaffoldMode> MODE =
             new ModeSetting.Builder<ScaffoldMode>()
@@ -83,6 +84,7 @@ public final class ScaffoldManager {
                     .option(ScaffoldMode.LEGIT, "legit")
                     .option(ScaffoldMode.TELLY, "telly")
                     .option(ScaffoldMode.JUMP, "jump")
+                    .option(ScaffoldMode.GODBRIDGE, "godbridge")
                     .build();
     private static final ModeSetting<MoveFix> MOVE_FIX =
             new ModeSetting.Builder<MoveFix>()
@@ -97,6 +99,13 @@ public final class ScaffoldManager {
                     .defaultValue(TellyDelay.FIXED)
                     .option(TellyDelay.FIXED, "fixed")
                     .option(TellyDelay.ADAPTIVE, "adaptive")
+                    .build();
+    private static final ModeSetting<TellyRotation> TELLY_ROTATION =
+            new ModeSetting.Builder<TellyRotation>()
+                    .name("scaffold.tellyRotation")
+                    .defaultValue(TellyRotation.SMOOTH)
+                    .option(TellyRotation.INSTANT, "instant")
+                    .option(TellyRotation.SMOOTH, "smooth")
                     .build();
     private static final ModeSetting<FaceSampling> FACE_SAMPLING =
             new ModeSetting.Builder<FaceSampling>()
@@ -147,6 +156,9 @@ public final class ScaffoldManager {
             bool("scaffold.tellyBlocksPerSecondEnabled", true);
     private static final BooleanSetting TELLY_FLAT = bool("scaffold.tellyFlat", false);
     private static final BooleanSetting TELLY_FALL_RESCUE = bool("scaffold.tellyFallRescue", false);
+    private static final BooleanSetting GOD_BRIDGE_SNEAK = bool("scaffold.godBridgeSneak", true);
+    private static final IntSetting GOD_BRIDGE_SNEAK_TICKS =
+            integer("scaffold.godBridgeSneakTicks", 1, 1, 2);
 
     private static final IntSetting TOWER_FLAT_TICKS = integer("scaffold.towerFlatTicks", 4, 0, 20);
     private static final IntSetting LEGIT_DELAY_MIN =
@@ -157,6 +169,10 @@ public final class ScaffoldManager {
             integer("scaffold.tellyMaxForwardBlocks", 3, 1, 6);
     private static final IntSetting TELLY_PLACE_DELAY =
             integer("scaffold.tellyPlaceDelay", 4, 0, 8);
+    private static final BooleanSetting TELLY_EARLY_ROTATION =
+            bool("scaffold.tellyEarlyRotation", true);
+    private static final IntSetting TELLY_ROTATION_DELAY =
+            integer("scaffold.tellyRotationDelay", 0, 0, 8);
     private static final IntSetting TELLY_BLOCKS_PER_SECOND_MIN =
             integer("scaffold.tellyBlocksPerSecondMin", 3, 1, 20);
     private static final IntSetting TELLY_BLOCKS_PER_SECOND_MAX =
@@ -193,6 +209,8 @@ public final class ScaffoldManager {
     private static int legitUnsneakDelayMillis = -1;
     private static int tellyBlocksThisJump;
     private static int tellyAirTicks;
+    private static final GodBridgeRotation GOD_BRIDGE_ROTATION = new GodBridgeRotation();
+    private static final GodBridgeSneak GOD_BRIDGE_EDGE_SNEAK = new GodBridgeSneak();
     private static BlockPos lastTellyPlacePos;
     private static int lastTellyPlaceTick = Integer.MIN_VALUE;
     private static float outgoingYaw;
@@ -283,7 +301,9 @@ public final class ScaffoldManager {
     }
 
     public static boolean shouldCorrectMovement() {
-        return shouldApplyRotation() && moveFix() == MoveFix.SILENT;
+        return com.blanoir.moons.client.management.rotation.MoveFix.enabled()
+                && shouldApplyRotation()
+                && moveFix() == MoveFix.SILENT;
     }
 
     public static float yaw() {
@@ -438,7 +458,7 @@ public final class ScaffoldManager {
                 : String.format(
                         Locale.ROOT,
                         "%s %.1f BPS %s",
-                        jumpMode() ? "jump" : "telly",
+                        scaffoldMode().configName(),
                         currentBps(),
                         towerMode().configName());
     }
@@ -501,11 +521,44 @@ public final class ScaffoldManager {
     }
 
     public static boolean smoothTellySelected() {
-        return tellySelected();
+        return standardBridgeSelected() && TELLY_ROTATION.get() == TellyRotation.SMOOTH;
+    }
+
+    public static boolean standardBridgeSelected() {
+        return tellySelected() && !godBridgeMode();
+    }
+
+    public static boolean godBridgeSelected() {
+        return godBridgeMode();
+    }
+
+    public static boolean godBridgeSneakSelected() {
+        return godBridgeMode() && GOD_BRIDGE_SNEAK.get();
+    }
+
+    public static int setGodBridgeSneak(Minecraft client, boolean value) {
+        GOD_BRIDGE_SNEAK.set(value);
+        if (!value) releaseGodBridgeSneaking(client);
+        return 1;
+    }
+
+    public static int setGodBridgeSneakTicks(Minecraft client, int value) {
+        GOD_BRIDGE_SNEAK_TICKS.set(value);
+        return 1;
+    }
+
+    public static List<String> tellyRotationOptions() {
+        return TELLY_ROTATION.optionIds();
+    }
+
+    public static int setTellyRotation(Minecraft client, String mode) {
+        TELLY_ROTATION.deserialize(mode);
+        placementRotationStarted = false;
+        return 1;
     }
 
     public static boolean tellyBpsLimitSelected() {
-        return TELLY_BPS_LIMIT.get();
+        return !godBridgeMode() && TELLY_BPS_LIMIT.get();
     }
 
     public static boolean returningTellySelected() {
@@ -562,6 +615,25 @@ public final class ScaffoldManager {
 
     public static int setTellyPlaceDelay(Minecraft c, int v) {
         TELLY_PLACE_DELAY.set(v);
+        TELLY_ROTATION_DELAY.set(Math.min(TELLY_ROTATION_DELAY.get(), TELLY_PLACE_DELAY.get()));
+        return 1;
+    }
+
+    public static int setTellyEarlyRotation(Minecraft client, boolean enabled) {
+        TELLY_EARLY_ROTATION.set(enabled);
+        return 1;
+    }
+
+    public static boolean earlyTellyRotationSelected() {
+        return returningTellySelected() && TELLY_EARLY_ROTATION.get();
+    }
+
+    public static int tellyRotationDelay() {
+        return Math.min(TELLY_ROTATION_DELAY.get(), TELLY_PLACE_DELAY.get());
+    }
+
+    public static int setTellyRotationDelay(Minecraft client, int delay) {
+        TELLY_ROTATION_DELAY.set(Math.min(delay, TELLY_PLACE_DELAY.get()));
         return 1;
     }
 
@@ -643,11 +715,22 @@ public final class ScaffoldManager {
         towerRotationInitialized = false;
         tellyTriggered = true;
         if (!acquireRotation(client)) return;
-        if (!rotationInitialized) {
+        if (godBridgeMode()) {
+            Rotation rotation = godBridgeRotation(client);
+            float yaw =
+                    SilentPacketRotation.quantizePacketYaw(
+                            placementBaseYaw(client),
+                            placementBaseYaw(client)
+                                    + Mth.wrapDegrees(rotation.yaw() - placementBaseYaw(client)));
+            float pitch =
+                    SilentPacketRotation.quantizePacketPitch(
+                            placementBasePitch(client), rotation.pitch());
+            publishTellyRotation(client, yaw, pitch);
+        } else if (!rotationInitialized) {
             publishTellyRotation(client, client.player.getYRot() + 180.0F, 80.0F);
         }
         ROTATION.acquire(new RotationRequest(outgoingYaw, outgoingPitch, 1, .35F, null));
-        if (blockCount <= 0 || tellyFeetCovered(client)) {
+        if (blockCount <= 0 || !godBridgeMode() && tellyFeetCovered(client)) {
             clearTellyAim();
             transitionTelly(TellyPhase.SELECT_POINT, "jump; holding backward view");
             return;
@@ -701,13 +784,19 @@ public final class ScaffoldManager {
             PlacementIntent intent =
                     new PlacementIntent(
                             nextTellyPlacementPos(client, client.player.position()), false);
-            int remainingAirDelay =
-                    tellyBlocksThisJump == 0
-                            ? Math.max(0, effectiveTellyDelay(client, intent) - tellyAirTicks)
-                            : 0;
+            int airDelay = tellyBlocksThisJump == 0 ? effectiveTellyDelay(client, intent) : 0;
+            int remainingAirDelay = Math.max(0, airDelay - tellyAirTicks);
             if (tellyBlocksThisJump > 0 && tellyFeetCovered(client)) {
                 clearTellyAim();
                 transitionTelly(TellyPhase.SELECT_POINT, "feet covered; waiting landing");
+                return;
+            }
+            if (remainingAirDelay > 0
+                    && tellyAirTicks
+                            < TellyTiming.rotationStartTick(
+                                    TELLY_EARLY_ROTATION.get(), tellyRotationDelay(), airDelay)) {
+                clearTellyAim();
+                transitionTelly(TellyPhase.SELECT_POINT, "waiting rotation delay");
                 return;
             }
             attemptTellyPlacement(client, intent, false, remainingAirDelay);
@@ -797,11 +886,15 @@ public final class ScaffoldManager {
         Vec3 planningPosition = client.player.position();
         Vec3 planningEye = client.player.getEyePosition();
         PlacementIntent intent = requestedIntent;
-        PlacementAim aim =
+        BlockAim aim =
                 verticalTower
                         ? findVanillaTowerAim(
                                 client, planningPosition, planningEye, intent.desired())
-                        : findPlacementAim(client, planningPosition, planningEye, intent.desired());
+                        : godBridgeMode() && scaffoldPath == ScaffoldPath.TELLY
+                                ? findGodBridgeAim(
+                                        client, planningPosition, planningEye, intent.desired())
+                                : findPlacementAim(
+                                        client, planningPosition, planningEye, intent.desired());
 
         renderTarget = aim == null ? intent.desired() : aim.target().placePos();
         renderHit = aim == null ? null : aim.hit();
@@ -813,7 +906,7 @@ public final class ScaffoldManager {
             return;
         }
 
-        PlacementTarget target = aim.target();
+        BlockTarget target = aim.target();
         if (!replaceable(client, target.placePos())) {
             if (!verticalTower) {
                 lastTellyPlacePos = target.placePos();
@@ -848,7 +941,7 @@ public final class ScaffoldManager {
         placementRotationStarted = true;
         renderHit = published.hit();
         double remaining =
-                rotationDistance(
+                AimSolverE.distance(
                         aim.rotation(), published.rotation().yaw(), published.rotation().pitch());
         if (published.hit() == null || remaining > TELLY_PLACE_ANGLE.get()) {
             tellyDebugReason = String.format(Locale.ROOT, "rotating %.1f deg", remaining);
@@ -1114,8 +1207,8 @@ public final class ScaffoldManager {
         if (lastTellyReturnTick == client.player.tickCount) return;
         lastTellyReturnTick = client.player.tickCount;
         Rotation camera = new Rotation(client.player.getYRot(), client.player.getXRot());
-        if (rotationDistance(camera, sentYaw(), sentPitch()) < .5D
-                && rotationDistance(camera, renderYaw, renderPitch) < 1.0D) {
+        if (AimSolverE.distance(camera, sentYaw(), sentPitch()) < .5D
+                && AimSolverE.distance(camera, renderYaw, renderPitch) < 1.0D) {
             releaseTellyRotation();
             return;
         }
@@ -1175,11 +1268,13 @@ public final class ScaffoldManager {
         if (tellyTakeoff) {
             if (scaffoldPath != ScaffoldPath.TELLY) {
                 scaffoldPath = ScaffoldPath.TELLY;
-                transitionTelly(TellyPhase.SELECT_POINT, "jump requested");
+                transitionTelly(
+                        TellyPhase.SELECT_POINT,
+                        godBridgeMode() ? "godbridge active" : "jump requested");
             }
         }
 
-        if (tellyTakeoff) {
+        if (tellyTakeoff && !godBridgeMode()) {
             client.player.input.makeJump();
         }
     }
@@ -1188,8 +1283,14 @@ public final class ScaffoldManager {
     public static Input filterMovementInput(Minecraft client, Input requested) {
         if (!enabled() || placementSuspended() || !tellyMode() || !ClientReady.gameplay(client)) {
             resetTellyBpsState(client);
+            GOD_BRIDGE_EDGE_SNEAK.reset();
             return requested;
         }
+        if (godBridgeMode()) {
+            FORWARD_SPEED.reset();
+            return filterGodBridgeSneak(client, requested);
+        }
+        GOD_BRIDGE_EDGE_SNEAK.reset();
         int tick = client.player.tickCount;
         if (forwardSampleTick != tick) {
             Vec3 travel =
@@ -1220,6 +1321,46 @@ public final class ScaffoldManager {
             client.player.setSprinting(false);
         }
         return filtered;
+    }
+
+    private static Input filterGodBridgeSneak(Minecraft client, Input requested) {
+        if (!GOD_BRIDGE_SNEAK.get()
+                || requested.shift()
+                || requested.jump()
+                || !client.player.onGround()
+                || client.player.getAbilities().flying
+                || client.player.isInWater()
+                || client.player.isInLava()
+                || !moving(client)
+                || blockCount <= 0
+                || towerRequested(client)
+                || tellyBelowRowRescue) {
+            GOD_BRIDGE_EDGE_SNEAK.reset();
+            return requested;
+        }
+        // This hook runs before MoveFix, so prediction sees camera-relative raw input.
+        double edgeDistance = legitEdgeDistance(client, TrajectoryPrediction.nextInputBox(client));
+        boolean edge = Double.isNaN(edgeDistance) || edgeDistance > 1.0E-4;
+        if (!GOD_BRIDGE_EDGE_SNEAK.update(
+                client.player.tickCount, edge, GOD_BRIDGE_SNEAK_TICKS.get())) return requested;
+        client.player.setSprinting(false);
+        return new Input(
+                requested.forward(),
+                requested.backward(),
+                requested.left(),
+                requested.right(),
+                requested.jump(),
+                true,
+                false);
+    }
+
+    private static void releaseGodBridgeSneaking(Minecraft client) {
+        if (GOD_BRIDGE_EDGE_SNEAK.sneaking() && client != null && client.player != null) {
+            setInputSneaking(
+                    client,
+                    CombatInputController.isPhysicallyDown(client, client.options.keyShift));
+        }
+        GOD_BRIDGE_EDGE_SNEAK.reset();
     }
 
     private static void resetTellyBpsState(Minecraft client) {
@@ -1436,7 +1577,7 @@ public final class ScaffoldManager {
         }
     }
 
-    private static boolean place(Minecraft client, PlacementTarget target, Vec3 hitVec) {
+    private static boolean place(Minecraft client, BlockTarget target, Vec3 hitVec) {
         // Flat keeps its bridge plane until a requested Tower raises the support.
         if (tellyMode()
                 && TELLY_FLAT.get()
@@ -1485,10 +1626,14 @@ public final class ScaffoldManager {
 
     private static void frame(FrameEvent event) {
         if (!enabled() || !rotationInitialized || event.client() == null) return;
-        double delta = Mth.clamp(event.deltaSeconds(), 0.0D, 0.05D);
-        float blend = (float) (1.0D - Math.exp(-RENDER_RESPONSE.get() * delta));
-        renderYaw += Mth.wrapDegrees(outgoingYaw - renderYaw) * blend;
-        renderPitch += (outgoingPitch - renderPitch) * blend;
+        Rotation next =
+                SmoothE.render(
+                        new Rotation(renderYaw, renderPitch),
+                        new Rotation(outgoingYaw, outgoingPitch),
+                        event.deltaSeconds(),
+                        RENDER_RESPONSE.get());
+        renderYaw = next.yaw();
+        renderPitch = next.pitch();
     }
 
     private static void hud(HudRenderEvent event) {
@@ -1606,200 +1751,113 @@ public final class ScaffoldManager {
      * before the ray test. The desired cell is still the dominant ordering;
      * alternate faces only act as a rescue when the nearest face is occluded.
      */
-    private static List<PlacementTarget> collectPlacementTargets(
+    private static List<BlockTarget> collectPlacementTargets(
             Minecraft client, Vec3 playerPosition, BlockPos desired) {
-        if (!replaceable(client, desired)) return List.of();
-
-        List<PlacementTarget> targets = new ArrayList<>();
-        Vec3 targetCenter = Vec3.atCenterOf(desired);
-        double reachSqr = Math.pow(client.player.blockInteractionRange(), 2.0D);
-        boolean keepHeight = stage != 0 && !shouldKeepY && !towerActive(client);
-        for (int x = -SEARCH_RADIUS; x <= SEARCH_RADIUS; x++) {
-            for (int y = -SEARCH_RADIUS; y <= 0; y++) {
-                for (int z = -SEARCH_RADIUS; z <= SEARCH_RADIUS; z++) {
-                    BlockPos support = desired.offset(x, y, z);
-                    BlockState state = client.level.getBlockState(support);
-                    if (state.canBeReplaced()
-                            || isInteractable(state)
-                            || playerPosition.distanceToSqr(Vec3.atCenterOf(support)) > reachSqr
-                            || keepHeight && support.getY() >= startY) continue;
-                    for (Direction face : Direction.values()) {
-                        if (face == Direction.DOWN) continue;
-                        BlockPos placed = support.relative(face);
-                        if (placed.getY() > desired.getY() || !replaceable(client, placed))
-                            continue;
-                        PlacementTarget candidate = new PlacementTarget(support, face);
-                        if (!targets.contains(candidate)) targets.add(candidate);
-                    }
-                }
-            }
-        }
-        targets.sort(
-                Comparator.comparingDouble(
-                                (PlacementTarget target) ->
-                                        Vec3.atCenterOf(target.placePos())
-                                                .distanceToSqr(targetCenter))
-                        .thenComparingDouble(
-                                target ->
-                                        Vec3.atCenterOf(target.support())
-                                                .distanceToSqr(targetCenter))
-                        .thenComparingInt(target -> target.face() == Direction.UP ? 0 : 1));
-        return targets;
+        return TargetSelectorC.collect(
+                client,
+                playerPosition,
+                desired,
+                SEARCH_RADIUS,
+                stage != 0 && !shouldKeepY && !towerActive(client),
+                startY,
+                ScaffoldManager::isInteractable);
     }
 
     /** Selects the nearest place cell, then the reachable face requiring least rotation. */
-    private static PlacementAim findPlacementAim(
+    private static BlockAim findPlacementAim(
             Minecraft client, Vec3 playerPosition, Vec3 eye, BlockPos desired) {
-        Vec3 desiredCenter = Vec3.atCenterOf(desired);
-        float baseYaw = placementBaseYaw(client);
-        float basePitch = placementBasePitch(client);
-        PlacementAim best = null;
-        double bestScore = Double.MAX_VALUE;
-        double bestPlaceDistance = Double.MAX_VALUE;
-        int evaluated = 0;
-        for (PlacementTarget target : collectPlacementTargets(client, playerPosition, desired)) {
-            double placeDistance = Vec3.atCenterOf(target.placePos()).distanceToSqr(desiredCenter);
-            if (best != null && placeDistance > bestPlaceDistance) break;
-            if (evaluated++ >= MAX_FACE_CANDIDATES) break;
-            PlacementAim candidate = findFaceAim(client, target, eye);
-            if (candidate == null) continue;
-            double continuity =
-                    lastTellyPlacePos != null && target.support().equals(lastTellyPlacePos)
-                            ? -2.0D
-                            : 0.0D;
-            double score = rotationDistance(candidate.rotation(), baseYaw, basePitch) + continuity;
-            if (score < bestScore) {
-                best = candidate;
-                bestScore = score;
-                bestPlaceDistance = placeDistance;
-            }
-            // An exact cell with a near-continuous angle cannot be improved by
-            // distant chain candidates; avoid unnecessary ray scans.
-            if (placeDistance == 0.0D
-                    && rotationDistance(candidate.rotation(), baseYaw, basePitch) <= 2.0D) break;
-        }
-        return best;
+        Rotation base = new Rotation(placementBaseYaw(client), placementBasePitch(client));
+        return TargetSelectorC.select(
+                desired,
+                base,
+                collectPlacementTargets(client, playerPosition, desired),
+                MAX_FACE_CANDIDATES,
+                lastTellyPlacePos,
+                target -> findFaceAim(client, target, eye));
+    }
+
+    private static Rotation godBridgeRotation(Minecraft client) {
+        float forward =
+                impulse(
+                        CombatInputController.isPhysicallyDown(client, client.options.keyUp),
+                        CombatInputController.isPhysicallyDown(client, client.options.keyDown));
+        float sideways =
+                impulse(
+                        CombatInputController.isPhysicallyDown(client, client.options.keyLeft),
+                        CombatInputController.isPhysicallyDown(client, client.options.keyRight));
+        return GOD_BRIDGE_ROTATION.update(
+                client.player.getYRot(),
+                forward,
+                sideways,
+                client.player.getX(),
+                client.player.getZ(),
+                client.player.onGround());
+    }
+
+    /** Prefer the bridge angle, then re-aim at a real side face while remaining on the bridge row. */
+    private static BlockAim findGodBridgeAim(
+            Minecraft client, Vec3 position, Vec3 eye, BlockPos desired) {
+        return TargetSelectorD.select(
+                client,
+                eye,
+                desired.getY(),
+                new Rotation(outgoingYaw, outgoingPitch),
+                client.player.blockInteractionRange(),
+                cell -> tellyPointCovered(client, cell),
+                ScaffoldManager::isInteractable,
+                AIM_QUANTIZER);
     }
 
     /** Preserves the original single-support/single-face Vanilla Tower path. */
-    private static PlacementAim findVanillaTowerAim(
+    private static BlockAim findVanillaTowerAim(
             Minecraft client, Vec3 playerPosition, Vec3 eye, BlockPos desired) {
-        Vec3 desiredCenter = Vec3.atCenterOf(desired);
-        List<PlacementTarget> targets =
-                new ArrayList<>(collectPlacementTargets(client, playerPosition, desired));
-        targets.sort(
-                Comparator.comparingDouble(
-                                (PlacementTarget target) ->
-                                        Vec3.atCenterOf(target.support())
-                                                .distanceToSqr(desiredCenter))
-                        .thenComparingDouble(
-                                target ->
-                                        Vec3.atCenterOf(target.placePos())
-                                                .distanceToSqr(desiredCenter))
-                        .thenComparingInt(target -> target.face() == Direction.UP ? 0 : 1));
-        for (PlacementTarget target : targets) {
-            BlockHitResult hit =
-                    BlockPlacementUtils.traceFace(
-                            client,
-                            eye,
-                            towerRotationYaw,
-                            90.0F,
-                            client.player.blockInteractionRange(),
-                            target.support(),
-                            target.face());
-            if (hit != null) {
-                return new PlacementAim(target, new Rotation(towerRotationYaw, 90.0F), hit);
-            }
-        }
-        return null;
+        return TargetSelectorE.select(
+                client,
+                eye,
+                desired,
+                collectPlacementTargets(client, playerPosition, desired),
+                towerRotationYaw);
     }
 
     /** Face scan validated after modern mouse-GCD quantization. */
-    private static PlacementAim findFaceAim(Minecraft client, PlacementTarget target, Vec3 eye) {
-        float baseYaw = placementBaseYaw(client);
-        float basePitch = placementBasePitch(client);
-        return switch (FACE_SAMPLING.get()) {
-            case STANDARD ->
-                    scanFaceAim(client, target, eye, baseYaw, basePitch, STANDARD_FACE_OFFSETS);
-            case CENTER ->
-                    scanFaceAim(client, target, eye, baseYaw, basePitch, PRIMARY_FACE_OFFSETS);
-            case DENSE -> scanFaceAim(client, target, eye, baseYaw, basePitch, DENSE_FACE_OFFSETS);
-            case ADAPTIVE -> {
-                PlacementAim primary =
-                        scanFaceAim(client, target, eye, baseYaw, basePitch, PRIMARY_FACE_OFFSETS);
-                yield primary != null
-                        ? primary
-                        : scanFaceAim(client, target, eye, baseYaw, basePitch, DENSE_FACE_OFFSETS);
-            }
-        };
-    }
-
-    private static PlacementAim scanFaceAim(
-            Minecraft client,
-            PlacementTarget target,
-            Vec3 eye,
-            float baseYaw,
-            float basePitch,
-            double[] offsets) {
-        PlacementAim best = null;
-        double bestScore = Double.MAX_VALUE;
-        // Server-side placement ray tracing uses exactly BLOCK_INTERACTION_RANGE;
-        // a face our own trace needs beyond that can never survive its check.
-        double range = client.player.blockInteractionRange();
-
-        for (double u : offsets) {
-            for (double v : offsets) {
-                Vec3 point =
-                        BlockPlacementUtils.facePoint(
-                                client, target.support(), target.face(), u, v);
-                Vec3 delta = point.subtract(eye);
-                double horizontal = Math.hypot(delta.x, delta.z);
-                if (delta.lengthSqr() < 1.0E-8D) continue;
-
-                float rawYaw = (float) Math.toDegrees(Math.atan2(delta.z, delta.x)) - 90.0F;
-                float rawPitch = (float) -Math.toDegrees(Math.atan2(delta.y, horizontal));
-                float yaw =
-                        SilentPacketRotation.quantizePacketYaw(
-                                baseYaw, baseYaw + Mth.wrapDegrees(rawYaw - baseYaw));
-                float pitch = SilentPacketRotation.quantizePacketPitch(basePitch, rawPitch);
-
-                BlockHitResult hit =
-                        BlockPlacementUtils.traceFace(
-                                client, eye, yaw, pitch, range, target.support(), target.face());
-                if (hit == null) continue;
-
-                double angleScore =
-                        Math.abs(Mth.wrapDegrees(yaw - baseYaw)) + Math.abs(pitch - basePitch);
-                double centerScore = (u - 0.5D) * (u - 0.5D) + (v - 0.5D) * (v - 0.5D);
-                double score = angleScore + centerScore * 0.01D;
-                if (score < bestScore) {
-                    bestScore = score;
-                    best = new PlacementAim(target, new Rotation(yaw, pitch), hit);
-                }
-            }
-        }
-        return best;
-    }
-
-    private static double rotationDistance(Rotation rotation, float baseYaw, float basePitch) {
-        return Math.abs(Mth.wrapDegrees(rotation.yaw() - baseYaw))
-                + Math.abs(rotation.pitch() - basePitch);
+    private static BlockAim findFaceAim(Minecraft client, BlockTarget target, Vec3 eye) {
+        Rotation base = new Rotation(placementBaseYaw(client), placementBasePitch(client));
+        return AimPointsG.resolve(
+                switch (FACE_SAMPLING.get()) {
+                    case STANDARD -> AimPointsG.Sampling.STANDARD;
+                    case CENTER -> AimPointsG.Sampling.CENTER;
+                    case DENSE -> AimPointsG.Sampling.DENSE;
+                    case ADAPTIVE -> AimPointsG.Sampling.ADAPTIVE;
+                },
+                client,
+                target,
+                eye,
+                base,
+                AIM_QUANTIZER);
     }
 
     /** Use the remaining air delay for turning; the placement deadline stays unchanged. */
     private static PlacementStep resolvePlacementStep(
-            Minecraft client, Vec3 eye, PlacementAim exact, boolean rescue, int remainingAirDelay) {
-        if (rescue) {
+            Minecraft client, Vec3 eye, BlockAim exact, boolean rescue, int remainingAirDelay) {
+        boolean instant = TELLY_ROTATION.get() == TellyRotation.INSTANT;
+        if (rescue
+                || godBridgeMode() && scaffoldPath == ScaffoldPath.TELLY
+                || instant && remainingAirDelay == 0) {
             return PlacementStep.ready(exact);
         }
         float baseYaw = placementBaseYaw(client);
         float basePitch = placementBasePitch(client);
-        double speed = placementRotationStarted ? TELLY_TRACK_SPEED.get() : TELLY_START_SPEED.get();
-        float steps = remainingAirDelay + 1.0F;
-        float yawDelta = Mth.wrapDegrees(exact.rotation().yaw() - baseYaw) / steps;
-        float pitchDelta = (exact.rotation().pitch() - basePitch) / steps;
-        float limitedYaw = baseYaw + (float) Mth.clamp(yawDelta, -speed, speed);
-        float limitedPitch = basePitch + (float) Mth.clamp(pitchDelta, -speed, speed);
+        Rotation base = new Rotation(baseYaw, basePitch);
+        Rotation limited;
+        if (instant) {
+            limited = InstantB.step(base, exact.rotation(), remainingAirDelay);
+        } else {
+            double speed =
+                    placementRotationStarted ? TELLY_TRACK_SPEED.get() : TELLY_START_SPEED.get();
+            limited = SmoothD.limitedStep(base, exact.rotation(), remainingAirDelay + 1.0F, speed);
+        }
+        float limitedYaw = limited.yaw();
+        float limitedPitch = limited.pitch();
         limitedYaw = SilentPacketRotation.quantizePacketYaw(baseYaw, limitedYaw);
         limitedPitch = SilentPacketRotation.quantizePacketPitch(basePitch, limitedPitch);
         Rotation rotation = new Rotation(limitedYaw, limitedPitch);
@@ -1903,6 +1961,8 @@ public final class ScaffoldManager {
     }
 
     private static void enableState(Minecraft client) {
+        GOD_BRIDGE_ROTATION.reset();
+        GOD_BRIDGE_EDGE_SNEAK.reset();
         var currentPlayer = client == null ? null : client.player;
         if (client != null && currentPlayer != null) {
             HOTBAR.userSelected(currentPlayer.getInventory().getSelectedSlot());
@@ -1943,6 +2003,8 @@ public final class ScaffoldManager {
     }
 
     private static void disableState(Minecraft client) {
+        GOD_BRIDGE_ROTATION.reset();
+        releaseGodBridgeSneaking(client);
         ScaffoldPlacementDebugger.update(client, false);
         HOTBAR.release(client);
         ROTATION.release();
@@ -1995,7 +2057,11 @@ public final class ScaffoldManager {
     }
 
     private static boolean jumpMode() {
-        return scaffoldMode() == ScaffoldMode.JUMP;
+        return scaffoldMode() == ScaffoldMode.JUMP || godBridgeMode();
+    }
+
+    private static boolean godBridgeMode() {
+        return scaffoldMode() == ScaffoldMode.GODBRIDGE;
     }
 
     private static MoveFix moveFix() {
@@ -2026,19 +2092,11 @@ public final class ScaffoldManager {
         return new IntSetting.Builder().name(key).defaultValue(fallback).range(min, max).build();
     }
 
-    private record PlacementTarget(BlockPos support, Direction face) {
-        BlockPos placePos() {
-            return support.relative(face);
-        }
-    }
-
     private record PlacementIntent(BlockPos desired, boolean rescue) {}
 
-    private record PlacementAim(PlacementTarget target, Rotation rotation, BlockHitResult hit) {}
-
-    private record PlacementStep(PlacementTarget target, Rotation rotation, BlockHitResult hit) {
-        static PlacementStep ready(PlacementAim aim) {
-            return new PlacementStep(aim.target(), aim.rotation(), aim.hit());
+    private record PlacementStep(BlockTarget target, Rotation rotation, BlockHitResult hit) {
+        static PlacementStep ready(BlockAim aim) {
+            return new PlacementStep(aim.target(), InstantA.step(aim.rotation()), aim.hit());
         }
     }
 
@@ -2053,6 +2111,11 @@ public final class ScaffoldManager {
         String configName() {
             return name().toLowerCase(Locale.ROOT);
         }
+    }
+
+    private enum TellyRotation {
+        INSTANT,
+        SMOOTH
     }
 
     private enum TellyPhase {
@@ -2078,7 +2141,8 @@ public final class ScaffoldManager {
     private enum ScaffoldMode {
         LEGIT,
         TELLY,
-        JUMP;
+        JUMP,
+        GODBRIDGE;
 
         String configName() {
             return name().toLowerCase(Locale.ROOT);

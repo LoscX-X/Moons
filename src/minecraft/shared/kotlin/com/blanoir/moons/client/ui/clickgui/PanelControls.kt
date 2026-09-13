@@ -72,6 +72,9 @@ import com.blanoir.moons.client.module.framework.ModuleKeybinds
 import com.blanoir.moons.client.module.framework.ModuleRegistry
 import com.blanoir.moons.client.module.framework.ModuleRegistry.Module
 import com.blanoir.moons.client.module.framework.ModuleRegistry.Setting
+import com.blanoir.moons.client.module.impl.player.invmanager.AutoArmorPreview
+import com.blanoir.moons.client.module.impl.player.invmanager.InvClearPreview
+import com.blanoir.moons.client.module.impl.player.invmanager.InventoryLayoutSetting
 import com.blanoir.moons.client.module.impl.render.xray.PluginBlocksSetting
 import com.blanoir.moons.client.utils.ui.ColorEditor
 import com.blanoir.moons.client.utils.ui.RegistryListSetting
@@ -199,7 +202,9 @@ internal fun ModuleRow(
             ) {
                 KeybindSetting(module, bindingModuleId, onBindingModuleChange)
                 val visibleSettings = settingsRevision.let {
-                    module.settings().filter { setting -> setting.isVisible }
+                    module.settings().filter { setting ->
+                        setting.isVisible && (module.id() != "invmanager" || setting.id() == "hide")
+                    }
                 }
                 visibleSettings.forEach { setting ->
                     key(setting.id()) {
@@ -207,6 +212,9 @@ internal fun ModuleRow(
                     }
                 }
                 if (module.id() == "xray") PluginBlocksSetting(refreshSettings)
+                if (module.id() == "invmanager") InventoryLayoutSetting()
+                if (module.id() == "autoarmor") AutoArmorPreview()
+                if (module.id() == "invclear") InvClearPreview()
             }
         }
     }

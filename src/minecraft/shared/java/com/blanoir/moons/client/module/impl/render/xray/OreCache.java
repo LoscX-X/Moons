@@ -127,7 +127,7 @@ public final class OreCache {
                                         }
 
                                         BlockState current = client.level.getBlockState(pos);
-                                        if (PluginXrayTargets.isRecognized(current)
+                                        if (PluginXrayTargets.blocksVanillaFallback(current)
                                                 && PluginXrayTargets.find(current) != target)
                                             return true;
 

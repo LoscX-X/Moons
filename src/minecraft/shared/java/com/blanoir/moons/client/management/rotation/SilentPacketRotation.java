@@ -1,16 +1,17 @@
 package com.blanoir.moons.client.management.rotation;
 
-import static com.blanoir.moons.client.utils.math.MathUtils.approach;
-
 import com.blanoir.moons.client.access.GameAccess;
 import com.blanoir.moons.client.access.PacketAccess;
 import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.event.network.PacketSendEvent;
 import com.blanoir.moons.client.management.lease.RotationLease;
-import com.blanoir.moons.client.utils.math.MathUtils;
 import com.blanoir.moons.client.utils.math.RandomMath;
 import com.blanoir.moons.client.utils.rotation.Rotation;
-import com.blanoir.moons.client.utils.rotation.aim.RotationUtils;
+import com.blanoir.moons.client.utils.rotation.aim.AimSolverD;
+import com.blanoir.moons.client.utils.rotation.smooth.InstantA;
+import com.blanoir.moons.client.utils.rotation.smooth.SmoothA;
+import com.blanoir.moons.client.utils.rotation.smooth.SmoothB;
+import com.blanoir.moons.client.utils.rotation.smooth.SmoothG;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
@@ -44,6 +45,9 @@ public final class SilentPacketRotation {
     private static final double MAX_PITCH_SPEED = 460.0D;
     private static final double MAX_YAW_ACCELERATION = 3_600.0D;
     private static final double MAX_PITCH_ACCELERATION = 2_700.0D;
+    private static final SmoothB.AccelerationLimits TURN_LIMITS =
+            new SmoothB.AccelerationLimits(
+                    MAX_YAW_SPEED, MAX_PITCH_SPEED, MAX_YAW_ACCELERATION, MAX_PITCH_ACCELERATION);
     private static final double TICKS_PER_SECOND = 20.0D;
     private static final double NANOS_PER_SECOND = 1_000_000_000.0D;
     private static final RotationLease ROTATION_LEASE =
@@ -161,7 +165,7 @@ public final class SilentPacketRotation {
             }
             return false;
         }
-        Rotation desired = RotationUtils.rotationTo(currentPlayer.getEyePosition(), target);
+        Rotation desired = AimSolverD.rotationTo(currentPlayer.getEyePosition(), target);
         if (USE_LOCK.locked()
                 || RotationLease.submission() != null
                 || !ROTATION_LEASE.acquire(
@@ -187,8 +191,9 @@ public final class SilentPacketRotation {
         yawVelocity = 0.0F;
         pitchVelocity = 0.0F;
         if (mode == Mode.INSTANT) {
-            packetYaw = desired.yaw();
-            packetPitch = desired.pitch();
+            Rotation instant = InstantA.step(desired);
+            packetYaw = instant.yaw();
+            packetPitch = instant.pitch();
             active = false;
             rotationPacketSent = false;
             reachedAction = null;
@@ -247,8 +252,10 @@ public final class SilentPacketRotation {
         yawVelocity = 0.0F;
         pitchVelocity = 0.0F;
         if (mode == Mode.INSTANT) {
-            packetYaw = currentPlayer.getYRot();
-            packetPitch = currentPlayer.getXRot();
+            Rotation instant =
+                    InstantA.step(new Rotation(currentPlayer.getYRot(), currentPlayer.getXRot()));
+            packetYaw = instant.yaw();
+            packetPitch = instant.pitch();
             returnYawOffset = 0.0F;
             returnPitchOffset = 0.0F;
             active = false;
@@ -303,14 +310,14 @@ public final class SilentPacketRotation {
                             (now - rotationStartedAtNanos) / (durationSeconds * NANOS_PER_SECOND),
                             0.0D,
                             1.0D);
-            double progress = MathUtils.cubicSmoothStep(linear);
-            double remaining = 1.0D - progress;
-            packetYaw = currentPlayer.getYRot() + returnYawOffset * (float) remaining;
-            packetPitch =
-                    Mth.clamp(
-                            currentPlayer.getXRot() + returnPitchOffset * (float) remaining,
-                            -90.0F,
-                            90.0F);
+            Rotation returned =
+                    SmoothG.returnOffset(
+                            new Rotation(currentPlayer.getYRot(), currentPlayer.getXRot()),
+                            returnYawOffset,
+                            returnPitchOffset,
+                            linear);
+            packetYaw = returned.yaw();
+            packetPitch = returned.pitch();
             yawVelocity = 0.0F;
             pitchVelocity = 0.0F;
             if (linear >= 1.0D) {
@@ -327,43 +334,19 @@ public final class SilentPacketRotation {
             return;
         }
 
-        Rotation target = RotationUtils.rotationTo(currentPlayer.getEyePosition(), rotationTarget);
-        float yawDifference = Mth.wrapDegrees(target.yaw() - packetYaw);
-        float pitchDifference = target.pitch() - packetPitch;
-        // Match SilentAura's inertial model: accelerate from rest toward a
-        // bounded desired speed. This avoids the large first exponential step
-        // that made a short block interaction look like an instant snap.
+        Rotation target = AimSolverD.rotationTo(currentPlayer.getEyePosition(), rotationTarget);
         double response = 4.0D / Math.max(durationSeconds, 0.05D);
-        float desiredYawVelocity =
-                (float) Mth.clamp(yawDifference * response, -MAX_YAW_SPEED, MAX_YAW_SPEED);
-        float desiredPitchVelocity =
-                (float) Mth.clamp(pitchDifference * response, -MAX_PITCH_SPEED, MAX_PITCH_SPEED);
-        yawVelocity =
-                approach(
-                        yawVelocity,
-                        desiredYawVelocity,
-                        (float) (MAX_YAW_ACCELERATION * deltaSeconds));
-        pitchVelocity =
-                approach(
-                        pitchVelocity,
-                        desiredPitchVelocity,
-                        (float) (MAX_PITCH_ACCELERATION * deltaSeconds));
-
-        float yawStep = yawVelocity * (float) deltaSeconds;
-        if (Math.signum(yawStep) == Math.signum(yawDifference)
-                && Math.abs(yawStep) > Math.abs(yawDifference)) {
-            yawStep = yawDifference;
-            yawVelocity = 0.0F;
-        }
-        float pitchStep = pitchVelocity * (float) deltaSeconds;
-        if (Math.signum(pitchStep) == Math.signum(pitchDifference)
-                && Math.abs(pitchStep) > Math.abs(pitchDifference)) {
-            pitchStep = pitchDifference;
-            pitchVelocity = 0.0F;
-        }
-        packetYaw += yawStep;
-        packetPitch = Mth.clamp(packetPitch + pitchStep, -90.0F, 90.0F);
-
+        SmoothA.Motion next =
+                SmoothB.approachTarget(
+                        new SmoothA.Motion(packetYaw, packetPitch, yawVelocity, pitchVelocity),
+                        target,
+                        deltaSeconds,
+                        response,
+                        TURN_LIMITS);
+        packetYaw = next.yaw();
+        packetPitch = next.pitch();
+        yawVelocity = next.yawVelocity();
+        pitchVelocity = next.pitchVelocity();
         if (followHeldTarget) {
             // The player may jump or walk after reaching the original angle.
             // Continue following the fixed world point until the use click is

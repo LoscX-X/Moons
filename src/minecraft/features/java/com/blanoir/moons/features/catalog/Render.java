@@ -14,6 +14,17 @@ import com.blanoir.moons.client.utils.registry.RegistryLists;
 final class Render {
     private Render() {}
 
+    static ModuleRegistry.Module antiDebuff() {
+        return module(
+                "antidebuff",
+                "AntiDebuff",
+                ModuleCategories.RENDER,
+                AntiDebuff::enabled,
+                AntiDebuff::setEnabled,
+                () -> "",
+                AntiDebuff.settings());
+    }
+
     static ModuleRegistry.Module clickGui() {
         return module(
                 "clickgui",

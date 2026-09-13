@@ -1,13 +1,14 @@
 package com.blanoir.moons.client.module.impl.combat;
 
+import com.blanoir.moons.client.access.GameAccess;
 import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.DoubleSetting;
 import com.blanoir.moons.client.config.settings.IntSetting;
-import com.blanoir.moons.client.config.settings.ModeSetting;
 import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.event.EventPriority;
 import com.blanoir.moons.client.event.action.AttackInputEvent;
+import com.blanoir.moons.client.event.network.PacketThread;
 import com.blanoir.moons.client.management.input.CombatInputController;
 import com.blanoir.moons.client.management.lease.RotationLease;
 import com.blanoir.moons.client.management.rotation.RotationManager;
@@ -22,19 +23,18 @@ import com.blanoir.moons.client.utils.math.MathUtils;
 import com.blanoir.moons.client.utils.render.AnimationPulse;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 import com.blanoir.moons.client.utils.world.placement.PlacementCoordinator;
+import com.mojang.blaze3d.platform.InputConstants;
 
+import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import net.minecraft.network.protocol.game.ServerboundAttackPacket;
+import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 
-/** Standalone combat support: Latest is visual only; Legacy releases and reblocks around attacks. */
+/** Legacy blocking with a bounded replay of manual attack input. */
 public final class AutoBlock {
-    private enum Mode {
-        LEGACY,
-        LATEST
-    }
-
     private enum Phase {
         IDLE,
         BLOCKING,
@@ -43,13 +43,6 @@ public final class AutoBlock {
     }
 
     private static final BooleanSetting ENABLED = bool("autoblock.enabled", false);
-    private static final ModeSetting<Mode> MODE =
-            new ModeSetting.Builder<Mode>()
-                    .name("autoblock.mode")
-                    .defaultValue(Mode.LATEST)
-                    .option(Mode.LEGACY, "legacy")
-                    .option(Mode.LATEST, "latest")
-                    .build();
     private static final BooleanSetting REQUIRE_RIGHT_CLICK =
             bool("autoblock.requireRightClick", false);
     private static final BooleanSetting VISUAL = bool("autoblock.visual", true);
@@ -85,13 +78,21 @@ public final class AutoBlock {
     private static int attackWindowExpires;
     private static int blockedTick = Integer.MIN_VALUE;
     private static int releasedTick = Integer.MIN_VALUE;
-    private static boolean lastLegacy;
+    private static int attackedTick = Integer.MIN_VALUE;
+    private static int tickId;
+    private static boolean pendingManualAttack;
+    private static boolean suppressingAttack;
+    private static InputConstants.Key pendingAttackKey;
+    private static int pendingAttackSlot = -1;
 
     private AutoBlock() {}
 
     public static void init() {
-        EventBus.CLIENT_CONTEXT_CHANGED.register("AutoBlock.context", event -> discard());
-        EventBus.TICK.register("AutoBlock.tick", event -> refresh(event.client()));
+        EventBus.CLIENT_CONTEXT_CHANGED.register(
+                "AutoBlock.context", event -> discard(event.client()));
+        // This must precede Minecraft.handleKeybinds, which discards attack clicks during use.
+        EventBus.TICK.register(
+                "AutoBlock.tick", EventPriority.HIGHEST, event -> tick(event.client()));
         EventBus.PLAYER_UPDATE.register(
                 "AutoBlock.reblock",
                 EventPriority.HIGHEST,
@@ -108,7 +109,6 @@ public final class AutoBlock {
                     // animation.
                     pendingAnimationTarget =
                             event.attacker() == client.player
-                                            && legacy()
                                             && target(client) != null
                                             && event.target() instanceof LivingEntity
                                             && CombatReach.within(
@@ -122,20 +122,19 @@ public final class AutoBlock {
                     Minecraft client = Minecraft.getInstance();
                     boolean completed = event.target() == pendingAnimationTarget;
                     pendingAnimationTarget = null;
-                    if (completed
-                            && event.attacker() == client.player
-                            && legacy()
-                            && canRun(client)) {
+                    if (completed && event.attacker() == client.player && canRun(client)) {
+
                         if (VISUAL.get()) BLOCK_HIT.start();
                         phase = Phase.REBLOCKING;
-                        readyTick = client.player.tickCount + REBLOCK_TICKS.get();
+                        attackedTick = tickId;
+                        readyTick = tickId + REBLOCK_TICKS.get();
                     }
                 });
         EventBus.USE_INPUT_PRE.register(
                 "AutoBlock.use",
                 EventPriority.HIGHEST,
                 event -> {
-                    if (!legacy() || SilentAura.isActivationHeld(event.client())) {
+                    if (SilentAura.isActivationHeld(event.client())) {
                         reset(event.client());
                         return;
                     }
@@ -143,17 +142,71 @@ public final class AutoBlock {
                             || USE.owned() && !USE.matches(event.client())) {
                         reset(event.client());
                     } else if (USE.owned()
-                            || legacy() && phase != Phase.IDLE
-                            || ClientReady.world(event.client())
-                                    && releasedTick == event.client().player.tickCount) {
+                            || phase != Phase.IDLE
+                            || ClientReady.world(event.client()) && releasedTick == tickId) {
                         // A held physical use key must not restart use inside our attack window.
                         event.cancel();
                     }
                 });
+        EventBus.PACKET_SEND_POST.register(
+                "AutoBlock.actionBoundary",
+                event -> {
+                    Minecraft client = Minecraft.getInstance();
+                    if (!ENABLED.get()
+                            || event.thread() != PacketThread.CLIENT
+                            || !ClientReady.world(client)
+                            || client.getConnection() == null
+                            || event.connection() != client.getConnection().getConnection()) return;
+                    // Include native/manual actions as well as requests issued by this module.
+                    if (event.packet() instanceof ServerboundPlayerActionPacket action
+                            && action.getAction()
+                                    == ServerboundPlayerActionPacket.Action.RELEASE_USE_ITEM)
+                        releasedTick = tickId;
+                    else if (event.packet() instanceof ServerboundAttackPacket)
+                        attackedTick = tickId;
+                });
     }
 
-    private static boolean legacy() {
-        return MODE.get() == Mode.LEGACY;
+    private static void tick(Minecraft client) {
+        tickId++;
+        if (!refresh(client)) return;
+        if (pendingManualAttack
+                && pendingAttackSlot != client.player.getInventory().getSelectedSlot())
+            clearPendingAttack(client);
+        if (USE.owned() || phase != Phase.IDLE) captureAttackInput(client);
+        if (!pendingManualAttack) return;
+        if (!attackReady(client)) {
+            suppressingAttack = true;
+            CombatInputController.suppressAttack(client, CombatInputController.Owner.AUTO_BLOCK);
+            return;
+        }
+        InputConstants.Key key = pendingAttackKey;
+        clearPendingAttack(client);
+        // Re-submit only the input that was withheld. Vanilla chooses the current crosshair
+        // target and dispatches it in handleKeybinds; no stored target or direct attack packet.
+        if (key != null
+                && key != InputConstants.UNKNOWN
+                && key.equals(GameAccess.boundKey(client.options.keyAttack))) KeyMapping.click(key);
+    }
+
+    private static void captureAttackInput(Minecraft client) {
+        boolean clicked = false;
+        while (client.options.keyAttack.consumeClick()) clicked = true;
+        if (clicked) {
+            pendingManualAttack = true;
+            pendingAttackKey = GameAccess.boundKey(client.options.keyAttack);
+            pendingAttackSlot = client.player.getInventory().getSelectedSlot();
+        }
+    }
+
+    private static void clearPendingAttack(Minecraft client) {
+        pendingManualAttack = false;
+        pendingAttackKey = null;
+        pendingAttackSlot = -1;
+        if (suppressingAttack) {
+            suppressingAttack = false;
+            CombatInputController.releaseAttack(client, CombatInputController.Owner.AUTO_BLOCK);
+        }
     }
 
     private static boolean canRun(Minecraft client) {
@@ -188,13 +241,14 @@ public final class AutoBlock {
     }
 
     private static boolean refresh(Minecraft client) {
-        boolean legacy = legacy();
-        if (lastLegacy != legacy) reset(client);
-        lastLegacy = legacy;
-        if (!legacy) return false;
-        if (USE.owned() && !USE.matches(client)) discard();
+        if (USE.refresh(client)) {
+            releasedTick = tickId;
+            phase = Phase.IDLE;
+            blockedTick = Integer.MIN_VALUE;
+            clearPendingAttack(client);
+        }
         if (!canRun(client)
-                || client.player.isUsingItem()
+                || client.player.isUsingItem() && !USE.ownsNativeUse(client)
                 || SilentPacketRotation.isBusy()
                 || PlacementCoordinator.busy()
                 || RotationLease.hasSilentRotation()) {
@@ -212,36 +266,38 @@ public final class AutoBlock {
         Minecraft client = event.client();
         if (event.isCancelled()) return;
         boolean active = refresh(client);
-        if (!legacy() || SilentAura.isActivationHeld(client)) return;
-        if (ClientReady.world(client) && releasedTick == client.player.tickCount) {
+        if (SilentAura.isActivationHeld(client)) return;
+        if (!active && releasedTick != tickId) return;
+        if (!attackReady(client)) {
             event.cancel();
-            return;
-        }
-        if (!active || phase == Phase.IDLE) return;
-        // Finish the pending block phase before opening another attack window.
-        if (phase == Phase.REBLOCKING) {
-            event.cancel();
-            return;
-        }
-        int tick = client.player.tickCount;
-        if (USE.owned()) {
-            // Do not emit USE and RELEASE in the same movement window.
-            if (tick == blockedTick) {
-                event.cancel();
-                return;
+            if (active && !CombatInputController.isInvokingTargetAttack()) {
+                pendingManualAttack = true;
+                pendingAttackKey = GameAccess.boundKey(client.options.keyAttack);
+                pendingAttackSlot = client.player.getInventory().getSelectedSlot();
             }
+        }
+    }
+
+    private static boolean attackReady(Minecraft client) {
+        int tick = tickId;
+        if (tick == releasedTick || tick == blockedTick || tick == attackedTick) return false;
+        if (phase == Phase.REBLOCKING && tick < readyTick) return false;
+        if (USE.owned()) {
             if (USE.stop(client)) releasedTick = tick;
             phase = Phase.UNBLOCKING;
             readyTick = tick + UNBLOCK_TICKS.get();
             attackWindowExpires = readyTick + 2;
+            return false;
         }
-        if (phase == Phase.UNBLOCKING && tick < readyTick) event.cancel();
+        return ClientReady.world(client)
+                && !client.player.isUsingItem()
+                && (phase != Phase.UNBLOCKING || tick >= readyTick);
     }
 
     private static void reblock(Minecraft client) {
         if (!refresh(client)) return;
-        int tick = client.player.tickCount;
-        if (tick == releasedTick) return;
+        int tick = tickId;
+        if (pendingManualAttack || tick == releasedTick || tick == attackedTick) return;
         if (phase == Phase.UNBLOCKING && tick < attackWindowExpires) return;
         if (phase == Phase.REBLOCKING && tick < readyTick || USE.owned()) return;
         if (!USE.canStart(client)) return;
@@ -259,12 +315,11 @@ public final class AutoBlock {
     }
 
     public static boolean shouldRenderBlock(Minecraft client) {
-        // Keep the block pose between hits, including the release/reblock attack window.
-        return (!legacy() || VISUAL.get()) && target(client) != null;
+        return ENABLED.get() && VISUAL.get() && USE.ownsNativeUse(client);
     }
 
     public static boolean attackAnimationOnly() {
-        return ENABLED.get() && legacy();
+        return ENABLED.get();
     }
 
     public static double animationProgress() {
@@ -278,17 +333,20 @@ public final class AutoBlock {
     }
 
     private static void resetBlocking(Minecraft client) {
-        if (USE.stop(client)) releasedTick = client.player.tickCount;
+        if (USE.stop(client)) releasedTick = tickId;
+        clearPendingAttack(client);
         phase = Phase.IDLE;
         blockedTick = Integer.MIN_VALUE;
         readyTick = attackWindowExpires = 0;
     }
 
-    private static void discard() {
+    private static void discard(Minecraft client) {
         USE.discard();
+        clearPendingAttack(client);
         BLOCK_HIT.reset();
         pendingAnimationTarget = null;
         blockedTick = releasedTick = Integer.MIN_VALUE;
+        attackedTick = Integer.MIN_VALUE;
         phase = Phase.IDLE;
         readyTick = attackWindowExpires = 0;
     }
@@ -298,7 +356,10 @@ public final class AutoBlock {
     }
 
     public static String hudTag() {
-        return legacy() ? "Legacy" : "Latest";
+        Minecraft client = Minecraft.getInstance();
+        if (ClientReady.world(client) && !BlockingUse.supportsSwordBlock(client))
+            return "Legacy (Experiment) / Unsupported";
+        return "Legacy (Experiment) / " + (USE.ownsNativeUse(client) ? "Blocking" : "Ready");
     }
 
     public static int setEnabled(Minecraft client, boolean value) {
@@ -314,14 +375,6 @@ public final class AutoBlock {
 
     private static final class Descriptors {
         private static final ModuleRegistry.Setting[] ALL = {
-            MODE.describe(
-                    "mode",
-                    "Mode",
-                    (client, value) -> {
-                        reset(client);
-                        MODE.deserialize(value);
-                        return 1;
-                    }),
             REQUIRE_RIGHT_CLICK.describe(
                     "require_right_click",
                     "Require right click",
@@ -331,14 +384,13 @@ public final class AutoBlock {
                         return 1;
                     }),
             VISUAL.describe(
-                            "visual",
-                            "Visual blocking",
-                            (client, value) -> {
-                                BLOCK_HIT.reset();
-                                VISUAL.set(value);
-                                return 1;
-                            })
-                    .visibleWhen(AutoBlock::legacy),
+                    "visual",
+                    "Visual blocking",
+                    (client, value) -> {
+                        BLOCK_HIT.reset();
+                        VISUAL.set(value);
+                        return 1;
+                    }),
             RANGE.describe(
                     "range",
                     "Block range",
@@ -357,28 +409,24 @@ public final class AutoBlock {
                         FOV.set(value);
                         return 1;
                     }),
-            UNBLOCK_TICKS
-                    .describe(
-                            "unblock_ticks",
-                            "Wait before attack (ticks)",
-                            1,
-                            (client, value) -> {
-                                reset(client);
-                                UNBLOCK_TICKS.set(value);
-                                return 1;
-                            })
-                    .visibleWhen(AutoBlock::legacy),
-            REBLOCK_TICKS
-                    .describe(
-                            "reblock_ticks",
-                            "Reblock delay (ticks)",
-                            1,
-                            (client, value) -> {
-                                reset(client);
-                                REBLOCK_TICKS.set(value);
-                                return 1;
-                            })
-                    .visibleWhen(AutoBlock::legacy)
+            UNBLOCK_TICKS.describe(
+                    "unblock_ticks",
+                    "Wait before attack (ticks)",
+                    1,
+                    (client, value) -> {
+                        reset(client);
+                        UNBLOCK_TICKS.set(value);
+                        return 1;
+                    }),
+            REBLOCK_TICKS.describe(
+                    "reblock_ticks",
+                    "Reblock delay (ticks)",
+                    1,
+                    (client, value) -> {
+                        reset(client);
+                        REBLOCK_TICKS.set(value);
+                        return 1;
+                    })
         };
     }
 

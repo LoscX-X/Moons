@@ -71,7 +71,7 @@ internal fun guiThemeValue(): String =
         if (it.lowercase() in setOf("#b29a65", "#f0b43c")) DEFAULT_GUI_THEME else it
     }
 
-internal val CLIENT_SETTINGS_MODULE_IDS = setOf("chatprefix", "armorhide", "staticfov")
+internal val CLIENT_SETTINGS_MODULE_IDS = setOf("chatprefix", "armorhide", "staticfov", "movefix")
 
 internal object PanelFontResource
 

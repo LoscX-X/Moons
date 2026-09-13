@@ -16,7 +16,7 @@ import com.blanoir.moons.client.utils.math.RandomMath;
 import com.blanoir.moons.client.utils.player.HotbarQueries;
 import com.blanoir.moons.client.utils.prediction.KnockbackPrediction;
 import com.blanoir.moons.client.utils.prediction.TrajectoryPrediction;
-import com.blanoir.moons.client.utils.rotation.aim.AimPointUtils;
+import com.blanoir.moons.client.utils.rotation.aim.AimPointsF;
 import com.blanoir.moons.client.utils.world.FluidQueries;
 import com.blanoir.moons.client.utils.world.placement.BlockPlacementUtils;
 import com.blanoir.moons.client.utils.world.placement.PlacementCoordinator;
@@ -807,7 +807,7 @@ public final class AutoLava {
                         continue;
                     }
                     AABB facePlane = insetFacePlane(supportPos, face);
-                    Vec3 nearest = AimPointUtils.closest(facePlane, eye, look, rayLength);
+                    Vec3 nearest = AimPointsF.closest(facePlane, eye, look, rayLength);
                     BlockHitResult visibleHit = visibleFaceHit(client, supportPos, face, nearest);
                     if (visibleHit == null
                             || !withinRange(client, visibleHit.getLocation())
@@ -861,7 +861,7 @@ public final class AutoLava {
                     continue;
                 }
                 AABB topFace = insetFacePlane(webPos, Direction.UP);
-                Vec3 nearest = AimPointUtils.closest(topFace, eye, look, rayLength);
+                Vec3 nearest = AimPointsF.closest(topFace, eye, look, rayLength);
                 BlockHitResult hit = visibleFaceHit(client, webPos, Direction.UP, nearest);
                 if (hit == null
                         || !withinRange(client, hit.getLocation())
@@ -1195,23 +1195,6 @@ public final class AutoLava {
     }
 
     private record PlacementPlan(BlockPos lavaPos, BlockHitResult hit) {}
-
-    // Debug
-    public static String debugState() {
-        return phase.name().toLowerCase(java.util.Locale.ROOT)
-                + " phase="
-                + phaseTicks
-                + "t"
-                + " cycle="
-                + cycleTicks
-                + "t"
-                + " switch="
-                + (returnSwitchScheduled ? "queued" : "none")
-                + " use="
-                + SilentPacketRotation.isUseInvocationDone()
-                + "/"
-                + SilentPacketRotation.isUseDone();
-    }
 
     /** End this feature's pending work without changing its configured toggle. */
     public static void shutdown(Minecraft client) {

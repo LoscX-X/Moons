@@ -109,6 +109,23 @@ final class World {
                         "legit",
                         Scaffold.modeOptions(),
                         Scaffold::setMode),
+                bool(
+                                "godbridge_sneak",
+                                "Edge sneak",
+                                "scaffold.godBridgeSneak",
+                                true,
+                                Scaffold::setGodBridgeSneak)
+                        .visibleWhen(Scaffold::godBridgeSelected),
+                integer(
+                                "godbridge_sneak_ticks",
+                                "Sneak time (ticks)",
+                                "scaffold.godBridgeSneakTicks",
+                                1,
+                                1,
+                                2,
+                                1,
+                                Scaffold::setGodBridgeSneakTicks)
+                        .visibleWhen(Scaffold::godBridgeSneakSelected),
                 rangeInts(
                                 "legit_delay_ms",
                                 "Sneak delay (ms)",
@@ -145,7 +162,15 @@ final class World {
                                 "standard",
                                 Scaffold.faceSamplingOptions(),
                                 Scaffold::setFaceSampling)
-                        .visibleWhen(Scaffold::tellySelected),
+                        .visibleWhen(Scaffold::standardBridgeSelected),
+                choice(
+                                "telly_rotation",
+                                "Telly rotation",
+                                "scaffold.tellyRotation",
+                                "smooth",
+                                Scaffold.tellyRotationOptions(),
+                                Scaffold::setTellyRotation)
+                        .visibleWhen(Scaffold::standardBridgeSelected),
                 number(
                                 "telly_start_speed",
                                 "Start turn limit",
@@ -175,7 +200,7 @@ final class World {
                                 20,
                                 .5,
                                 Scaffold::setTellyPlaceAngle)
-                        .visibleWhen(Scaffold::tellySelected),
+                        .visibleWhen(Scaffold::standardBridgeSelected),
                 number(
                                 "telly_return_speed",
                                 "Return turn limit",
@@ -205,12 +230,32 @@ final class World {
                                 Scaffold::setTellyPlaceDelay)
                         .visibleWhen(Scaffold::returningTellySelected),
                 bool(
+                                "telly_early_rotation",
+                                "Early rotation",
+                                "scaffold.tellyEarlyRotation",
+                                true,
+                                Scaffold::setTellyEarlyRotation)
+                        .visibleWhen(Scaffold::returningTellySelected),
+                numeric(
+                                "telly_rotation_delay",
+                                "Pre-turn wait (ticks)",
+                                "integer",
+                                Scaffold::tellyRotationDelay,
+                                0,
+                                8,
+                                1,
+                                (client, value) ->
+                                        Scaffold.setTellyRotationDelay(
+                                                client, (int) Math.round(value)))
+                        .withDefault(0)
+                        .visibleWhen(Scaffold::earlyTellyRotationSelected),
+                bool(
                                 "telly_bps_limit",
                                 "Limit forward BPS",
                                 "scaffold.tellyBlocksPerSecondEnabled",
                                 true,
                                 Scaffold::setTellyBlocksPerSecondEnabled)
-                        .visibleWhen(Scaffold::tellySelected),
+                        .visibleWhen(Scaffold::standardBridgeSelected),
                 rangeInts(
                                 "telly_blocks_per_second",
                                 "Blocks per second",

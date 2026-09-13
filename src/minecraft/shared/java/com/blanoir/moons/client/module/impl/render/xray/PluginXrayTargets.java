@@ -3,6 +3,7 @@ package com.blanoir.moons.client.module.impl.render.xray;
 import com.blanoir.moons.client.access.MinecraftClientAccess;
 import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.config.Settings;
+import com.blanoir.moons.client.module.impl.render.xray.PluginXrayConfig.ManualTarget;
 import com.blanoir.moons.client.utils.plugin.PluginBlockSelector;
 import com.blanoir.moons.client.utils.plugin.PluginClientContext;
 import com.blanoir.moons.client.utils.plugin.PluginModelIndex;
@@ -29,7 +30,7 @@ public final class PluginXrayTargets {
     private static final String TARGETS_KEY = "xray.plugin.targets";
     private static volatile boolean enabled = Settings.getBoolean(ENABLED_KEY, false);
     private static final String SERVER_SECTION = "plugin_xray";
-    private static final Map<String, LinkedHashMap<String, SavedTarget>> SAVED =
+    private static final Map<String, LinkedHashMap<String, ManualTarget>> SAVED =
             new LinkedHashMap<>();
     private static boolean legacyMigrated;
     private static volatile Map<BlockState, StateTarget> compiled = Map.of();
@@ -37,10 +38,11 @@ public final class PluginXrayTargets {
     private static Object modelSet;
     private static List<PackResources> packs = List.of();
     private static PluginModelIndex indexing;
-    private static Map<BlockState, PluginModelIndex.Appearance> automatic = Map.of();
+    private static volatile Map<BlockState, PluginModelIndex.Appearance> automatic = Map.of();
     private static PluginBlockCatalog catalog = new PluginBlockCatalog();
     private static volatile Map<BlockState, String> appearanceIds = Map.of();
     private static long revision;
+    private static String configurationProblem = "";
 
     private PluginXrayTargets() {}
 
@@ -62,6 +64,7 @@ public final class PluginXrayTargets {
         String scope = PluginClientContext.scope(client);
         if (currentScope.equals(scope)) return;
         currentScope = scope;
+        configurationProblem = "";
         catalog = new PluginBlockCatalog();
         loadCurrent(client);
         resetIndex();
@@ -75,6 +78,20 @@ public final class PluginXrayTargets {
 
     public static boolean isRecognized(BlockState state) {
         return enabled && appearanceIds.containsKey(state);
+    }
+
+    /** Local appearance packs must not suppress explicitly selected vanilla ores. */
+    public static boolean blocksVanillaFallback(BlockState state) {
+        var appearance = automatic.get(state);
+        return enabled && appearance != null && appearance.serverProvided();
+    }
+
+    public static String configurationProblem() {
+        return configurationProblem;
+    }
+
+    private static void requireWritable() {
+        if (!configurationProblem.isEmpty()) throw new IllegalStateException(configurationProblem);
     }
 
     public static void tick(Minecraft client) {
@@ -210,23 +227,36 @@ public final class PluginXrayTargets {
         requireScope(client);
         if (!currentScope.equals(scope))
             throw new IllegalArgumentException("The server changed; reopen Plugin Blocks.");
+        requireWritable();
+        boolean selectionChanged;
         if (id.startsWith("manual:")) {
             String selector = id.substring("manual:".length());
             var next = new LinkedHashMap<>(SAVED.getOrDefault(currentScope, new LinkedHashMap<>()));
             if (!next.containsKey(selector))
                 throw new IllegalArgumentException("Unknown manual target");
-            next.put(selector, new SavedTarget(selector, rgb & 0xffffff, selected));
+            selectionChanged = next.get(selector).enabled() != selected;
+            next.put(selector, new ManualTarget(selector, rgb & 0xffffff, selected));
             save(next);
             SAVED.put(currentScope, next);
         } else {
+            var previous = catalog.get(id);
+            if (previous == null) throw new IllegalArgumentException("Unknown plugin block");
+            selectionChanged = previous.enabled() != selected;
             var next = PluginBlockCatalog.read(catalog.toJson());
             next.edit(id, selected, rgb);
             PluginServerStore.update(
                     currentScope, SERVER_SECTION, section -> section.add("blocks", next.toJson()));
             catalog = next;
         }
-        rebuild();
-        refresh(client);
+        if (selectionChanged) {
+            rebuild();
+            refresh(client);
+        } else {
+            compiled.values().stream()
+                    .filter(target -> target.sourceId.equals(id))
+                    .forEach(target -> target.rgb = rgb & 0xffffff);
+            revision++;
+        }
     }
 
     public static String describe(BlockState state) {
@@ -264,7 +294,7 @@ public final class PluginXrayTargets {
                         : PluginBlockSelector.parse(input);
         int rgb = (color.red() << 16) | (color.green() << 8) | color.blue();
         var targets = new LinkedHashMap<>(SAVED.getOrDefault(currentScope, new LinkedHashMap<>()));
-        targets.put(selector.key(), new SavedTarget(selector.key(), rgb, true));
+        targets.put(selector.key(), new ManualTarget(selector.key(), rgb, true));
         save(targets);
         SAVED.put(currentScope, targets);
         rebuild();
@@ -289,7 +319,7 @@ public final class PluginXrayTargets {
 
     public static List<String> list(Minecraft client) {
         requireScope(client);
-        Map<String, SavedTarget> targets = SAVED.get(currentScope);
+        Map<String, ManualTarget> targets = SAVED.get(currentScope);
         if (targets == null) return List.of();
         return targets.values().stream()
                 .map(
@@ -330,15 +360,17 @@ public final class PluginXrayTargets {
     private static void rebuild() {
         compiled.values().forEach(target -> target.active = false);
         Map<BlockState, StateTarget> next = new HashMap<>();
-        Map<String, SavedTarget> saved = SAVED.get(currentScope);
+        Map<String, ManualTarget> saved = SAVED.get(currentScope);
         if (enabled && saved != null) {
             List<StateTarget> targets = new ArrayList<>();
-            for (SavedTarget target : saved.values()) {
+            for (ManualTarget target : saved.values()) {
                 if (!target.enabled()) continue;
                 try {
                     targets.add(
                             new StateTarget(
-                                    PluginBlockSelector.parse(target.selector()), target.rgb()));
+                                    PluginBlockSelector.parse(target.selector()),
+                                    target.rgb(),
+                                    "manual:" + target.selector()));
                 } catch (IllegalArgumentException ignored) {
                     /* Preserve unavailable selectors on disk. */
                 }
@@ -362,7 +394,7 @@ public final class PluginXrayTargets {
                             next.putIfAbsent(
                                     state,
                                     new StateTarget(
-                                            PluginBlockSelector.capture(state), entry.rgb()));
+                                            PluginBlockSelector.capture(state), entry.rgb(), id));
                     });
         }
         compiled = Map.copyOf(next);
@@ -380,43 +412,16 @@ public final class PluginXrayTargets {
                     "Plugin Xray: legacy configuration migration is incomplete: "
                             + exception.getMessage());
         }
-        try {
-            JsonObject root = PluginServerStore.read(currentScope);
-            JsonObject section =
-                    root.has(SERVER_SECTION)
-                            ? root.getAsJsonObject(SERVER_SECTION)
-                            : new JsonObject();
-            if (section.has("blocks"))
-                catalog = PluginBlockCatalog.read(section.getAsJsonArray("blocks"));
-            // Older appearance snapshots supply names only, never selections or live bindings.
-            if (section.has("appearances")) {
-                for (var value : section.getAsJsonArray("appearances")) {
-                    catalog.discover(
-                            value.getAsJsonObject().getAsJsonArray("models").asList().stream()
-                                    .map(element -> element.getAsString())
-                                    .toList());
-                }
-            }
-            var targets = new LinkedHashMap<String, SavedTarget>();
-            if (section.has("manual_targets")) {
-                for (var element : section.getAsJsonArray("manual_targets")) {
-                    var entry = element.getAsJsonObject();
-                    String selector = entry.get("state").getAsString();
-                    int rgb = entry.get("rgb").getAsInt() & 0xffffff;
-                    targets.put(
-                            selector,
-                            new SavedTarget(
-                                    selector,
-                                    rgb,
-                                    !entry.has("enabled") || entry.get("enabled").getAsBoolean()));
-                }
-            }
-            SAVED.put(currentScope, targets);
-        } catch (RuntimeException exception) {
-            ClientChat.send(
-                    client,
-                    "Plugin Xray: could not read server configuration: " + exception.getMessage());
-        }
+        var loaded = PluginXrayConfig.load(currentScope);
+        catalog = loaded.catalog();
+        SAVED.put(currentScope, loaded.manual());
+        configurationProblem =
+                loaded.writable()
+                        ? ""
+                        : "Server configuration has invalid entries; valid choices loaded, saving paused. "
+                                + PluginServerStore.file(currentScope);
+        if (!configurationProblem.isEmpty())
+            ClientChat.send(client, "Plugin Xray: " + configurationProblem);
     }
 
     private static void migrateLegacy() {
@@ -438,7 +443,8 @@ public final class PluginXrayTargets {
         legacyMigrated = true;
     }
 
-    private static void save(Map<String, SavedTarget> targets) {
+    private static void save(Map<String, ManualTarget> targets) {
+        requireWritable();
         JsonArray entries = new JsonArray();
         targets.values()
                 .forEach(
@@ -454,7 +460,7 @@ public final class PluginXrayTargets {
     }
 
     private static void saveAppearances(Minecraft client) {
-        if (currentScope.isEmpty()) return;
+        if (currentScope.isEmpty() || !configurationProblem.isEmpty()) return;
         JsonArray entries = new JsonArray();
         automatic.entrySet().stream()
                 .sorted(
@@ -488,16 +494,16 @@ public final class PluginXrayTargets {
         }
     }
 
-    private record SavedTarget(String selector, int rgb, boolean enabled) {}
-
     private static final class StateTarget implements XrayTarget {
         private final PluginBlockSelector selector;
-        private final int rgb;
+        private volatile int rgb;
+        private final String sourceId;
         private volatile boolean active = true;
 
-        private StateTarget(PluginBlockSelector selector, int rgb) {
+        private StateTarget(PluginBlockSelector selector, int rgb, String sourceId) {
             this.selector = selector;
             this.rgb = rgb;
+            this.sourceId = sourceId;
         }
 
         @Override

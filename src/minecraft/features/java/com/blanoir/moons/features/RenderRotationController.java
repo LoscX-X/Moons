@@ -3,6 +3,9 @@ package com.blanoir.moons.features;
 import com.blanoir.moons.client.management.rotation.SilentPacketRotation;
 import com.blanoir.moons.client.module.impl.combat.SilentAura;
 import com.blanoir.moons.client.module.impl.world.scaffold.Scaffold;
+import com.blanoir.moons.client.utils.rotation.Rotation;
+import com.blanoir.moons.client.utils.rotation.smooth.SmoothH;
+import com.blanoir.moons.client.utils.rotation.smooth.SmoothI;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.entity.state.AvatarRenderState;
@@ -146,12 +149,13 @@ final class RenderRotationController {
                 state.fullLockPreviousYaw + Mth.wrapDegrees(targetYaw - state.fullLockPreviousYaw);
         state.fullLockTargetPitch = Mth.clamp(targetPitch, -90.0F, 90.0F);
         float progress = Mth.clamp(partialTick, 0.0F, 1.0F);
-        state.fullLockRenderYaw =
-                state.fullLockPreviousYaw
-                        + Mth.wrapDegrees(state.fullLockTargetYaw - state.fullLockPreviousYaw)
-                                * progress;
-        state.fullLockRenderPitch =
-                Mth.lerp(progress, state.fullLockPreviousPitch, state.fullLockTargetPitch);
+        Rotation next =
+                SmoothH.interpolate(
+                        new Rotation(state.fullLockPreviousYaw, state.fullLockPreviousPitch),
+                        new Rotation(state.fullLockTargetYaw, state.fullLockTargetPitch),
+                        progress);
+        state.fullLockRenderYaw = next.yaw();
+        state.fullLockRenderPitch = next.pitch();
     }
 
     static float frameSeconds(BodyRotationState state, long now) {
@@ -167,22 +171,17 @@ final class RenderRotationController {
 
     static void stepBodyYaw(
             BodyRotationState state, float targetYaw, float seconds, boolean aggressive) {
-        float difference = Mth.wrapDegrees(targetYaw - state.bodyYaw);
-        float response = aggressive ? 28.0F : 14.0F;
-        float maxSpeed = aggressive ? 900.0F : 420.0F;
-        float desiredVelocity = Mth.clamp(difference * response, -maxSpeed, maxSpeed);
-        float velocityChange = (aggressive ? 5_000.0F : 1_600.0F) * seconds;
-        state.velocity =
-                Mth.clamp(
-                        desiredVelocity,
-                        state.velocity - velocityChange,
-                        state.velocity + velocityChange);
-        float step = state.velocity * seconds;
-        if (Math.signum(step) == Math.signum(difference) && Math.abs(step) > Math.abs(difference)) {
-            step = difference;
-            state.velocity = 0.0F;
-        }
-        state.bodyYaw += step;
+        SmoothI.AxisMotion next =
+                SmoothI.bodyYaw(
+                        state.bodyYaw,
+                        state.velocity,
+                        targetYaw,
+                        seconds,
+                        aggressive ? 28.0F : 14.0F,
+                        aggressive ? 900.0F : 420.0F,
+                        aggressive ? 5_000.0F : 1_600.0F);
+        state.bodyYaw = next.angle();
+        state.velocity = next.velocity();
     }
 
     static final class BodyRotationState {

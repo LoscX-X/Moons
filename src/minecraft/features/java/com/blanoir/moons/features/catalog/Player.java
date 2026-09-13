@@ -7,10 +7,45 @@ import com.blanoir.moons.client.module.framework.ModuleRegistry;
 import com.blanoir.moons.client.module.impl.player.*;
 import com.blanoir.moons.client.module.impl.player.blockin.BlockInConfig;
 import com.blanoir.moons.client.module.impl.player.blockin.BlockInRuntime;
+import com.blanoir.moons.client.module.impl.player.invmanager.InvManager;
+import com.blanoir.moons.client.module.impl.player.invmanager.InvManagerConfig;
 
 /** Defines player module descriptors; ordering is owned by ModuleCatalog. */
 final class Player {
     private Player() {}
+
+    static ModuleRegistry.Module autoArmor() {
+        return module(
+                "autoarmor",
+                "AutoArmor",
+                ModuleCategories.PLAYER,
+                AutoArmor::enabled,
+                AutoArmor::setEnabled,
+                AutoArmor::statusText,
+                AutoArmor.settings());
+    }
+
+    static ModuleRegistry.Module invManager() {
+        return module(
+                "invmanager",
+                "InvManager",
+                ModuleCategories.PLAYER,
+                InvManagerConfig::enabled,
+                InvManager::setEnabled,
+                InvManager::statusText,
+                InvManagerConfig.settings());
+    }
+
+    static ModuleRegistry.Module invClear() {
+        return module(
+                "invclear",
+                "InvClear",
+                ModuleCategories.PLAYER,
+                InvClear::enabled,
+                InvClear::setEnabled,
+                InvClear::statusText,
+                InvClear.settings());
+    }
 
     static ModuleRegistry.Module blockIn() {
         return module(
@@ -507,6 +542,33 @@ final class Player {
                 cfgBool("nofall.enabled", false),
                 AutoMLG::setEnabled,
                 AutoMLG::statusTag,
+                choice(
+                        "rotation",
+                        "Rotation",
+                        "nofall.rotation",
+                        "instant",
+                        AutoMLG.rotationOptions(),
+                        AutoMLG::setRotation),
+                integer(
+                                "smooth_turn_ticks",
+                                "Turn smoothing (ticks)",
+                                "nofall.smoothTurnTicks",
+                                2,
+                                1,
+                                5,
+                                1,
+                                AutoMLG::setSmoothTurnTicks)
+                        .visibleWhen(AutoMLG::smoothRotationSelected),
+                integer(
+                                "smooth_return_ticks",
+                                "Return time (ticks)",
+                                "nofall.smoothReturnTicks",
+                                2,
+                                1,
+                                5,
+                                1,
+                                AutoMLG::setSmoothReturnTicks)
+                        .visibleWhen(AutoMLG::smoothRotationSelected),
                 number(
                         "threshold",
                         "Fall distance",

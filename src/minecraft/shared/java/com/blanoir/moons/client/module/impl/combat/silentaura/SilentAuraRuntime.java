@@ -9,7 +9,6 @@ import com.blanoir.moons.client.management.rotation.RotationManager;
 import com.blanoir.moons.client.management.rotation.RotationRequest;
 import com.blanoir.moons.client.management.rotation.SilentPacketRotation;
 import com.blanoir.moons.client.management.targeting.Targeting;
-import com.blanoir.moons.client.module.impl.combat.TriggerBot;
 import com.blanoir.moons.client.utils.client.ClientReady;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 
@@ -21,16 +20,13 @@ import net.minecraft.world.phys.Vec3;
 
 /** Coordinates independent selector, rotation and attack components. */
 public final class SilentAuraRuntime {
-    private static final SilentAuraTargetRouter SELECTOR = new SilentAuraTargetRouter();
-    private static final SilentAuraRotationRouter ROTATION = new SilentAuraRotationRouter();
+    private static final SilentAuraModes MODES = new SilentAuraModes();
     private static boolean initialized;
     private static boolean running;
     private static boolean stopping;
     private static String activeMode;
     private static boolean activeMatrix;
     private static SentRotation sent = SentRotation.invalid();
-    private static final SilentAuraPacketRotationRouter PACKET_ROTATION =
-            new SilentAuraPacketRotationRouter();
     private static final RotationLease ROTATION_LEASE =
             new RotationLease(
                     "SilentAura",
@@ -57,7 +53,7 @@ public final class SilentAuraRuntime {
                 reset(client);
             } else {
                 finishTracking(client, deltaSeconds);
-                if (!ROTATION.active()) reset(client);
+                if (!MODES.rotation().active()) reset(client);
             }
             return;
         }
@@ -86,18 +82,18 @@ public final class SilentAuraRuntime {
     /** Live target tracking follows render cadence; attack dispatch remains tick-bound. */
     private static void updateTracking(Minecraft client, double deltaSeconds) {
         Vec3 referenceLook =
-                ROTATION.active() && !ROTATION.returning()
-                        ? ROTATION.lookVector()
+                MODES.rotation().active() && !MODES.rotation().returning()
+                        ? MODES.rotation().lookVector()
                         : client.player.getViewVector(1.0F);
-        LivingEntity target = SELECTOR.select(client, referenceLook);
+        LivingEntity target = MODES.targets().select(client, referenceLook);
         if (target == null) {
             sent = SentRotation.invalid();
-            ROTATION.returnToCamera(client, deltaSeconds);
-            if (!ROTATION.active()) PACKET_ROTATION.reset();
+            MODES.rotation().returnToCamera(client, deltaSeconds);
+            if (!MODES.rotation().active()) MODES.resetPackets();
             syncLease();
             return;
         }
-        if (ROTATION.targetId() != target.getId()) {
+        if (MODES.rotation().targetId() != target.getId()) {
             sent = SentRotation.invalid();
         }
         // Lock is judged against the packet-domain ray, not the faster visual
@@ -107,12 +103,12 @@ public final class SilentAuraRuntime {
                 SilentAuraConfig.lockMode() && sent.valid() && sent.targetId() == target.getId()
                         ? sent.look()
                         : referenceLook;
-        Vec3 point = SELECTOR.aimPoint(client, target, aimReferenceLook);
+        Vec3 point = MODES.targets().aimPoint(client, target, aimReferenceLook);
         if (point == null) {
-            SELECTOR.clear();
+            MODES.clearTargets();
             sent = SentRotation.invalid();
-            ROTATION.returnToCamera(client, deltaSeconds);
-            if (!ROTATION.active()) PACKET_ROTATION.reset();
+            MODES.rotation().returnToCamera(client, deltaSeconds);
+            if (!MODES.rotation().active()) MODES.resetPackets();
             syncLease();
             return;
         }
@@ -122,21 +118,21 @@ public final class SilentAuraRuntime {
                     new RotationRequest(camera.yaw(), camera.pitch(), 1, 0.35F, null),
                     camera,
                     start -> {
-                        ROTATION.clear();
-                        PACKET_ROTATION.reset();
-                        ROTATION.beginFrom(start.yaw(), start.pitch());
-                        PACKET_ROTATION.rebase(start.yaw(), start.pitch());
+                        MODES.clearRotations();
+                        MODES.resetPackets();
+                        MODES.rotation().beginFrom(start.yaw(), start.pitch());
+                        MODES.packets().rebase(start.yaw(), start.pitch());
                     })) return;
         }
-        ROTATION.track(client, target, point, deltaSeconds);
+        MODES.rotation().track(client, target, point, deltaSeconds);
         syncLease();
     }
 
     private static void finishTracking(Minecraft client, double deltaSeconds) {
-        SELECTOR.clear();
+        MODES.clearTargets();
         sent = SentRotation.invalid();
-        ROTATION.returnToCamera(client, deltaSeconds);
-        if (!ROTATION.active()) PACKET_ROTATION.reset();
+        MODES.rotation().returnToCamera(client, deltaSeconds);
+        if (!MODES.rotation().active()) MODES.resetPackets();
         syncLease();
     }
 
@@ -152,7 +148,7 @@ public final class SilentAuraRuntime {
                 && ClientReady.world(client)
                 && ROTATION_LEASE.active()
                 && canApply(client)
-                && ROTATION.active()
+                && MODES.rotation().active()
                 && SilentAuraConfig.aimMode().equals(activeMode)
                 && SilentAuraConfig.matrixCompatibility() == activeMatrix;
     }
@@ -223,10 +219,10 @@ public final class SilentAuraRuntime {
     }
 
     private static void clearRotation() {
-        SELECTOR.clear();
-        ROTATION.clear();
+        MODES.clearTargets();
+        MODES.clearRotations();
         sent = SentRotation.invalid();
-        PACKET_ROTATION.reset();
+        MODES.resetPackets();
         ROTATION_LEASE.release();
     }
 
@@ -235,19 +231,19 @@ public final class SilentAuraRuntime {
     }
 
     public static float yaw() {
-        return ROTATION.yaw();
+        return MODES.rotation().yaw();
     }
 
     public static float pitch() {
-        return ROTATION.pitch();
+        return MODES.rotation().pitch();
     }
 
     public static boolean crossingTarget() {
-        return ROTATION.crossingTarget();
+        return MODES.rotation().crossingTarget();
     }
 
     public static float bodyYaw() {
-        return ROTATION.bodyYaw();
+        return MODES.rotation().bodyYaw();
     }
 
     public static float movementYaw() {
@@ -258,8 +254,8 @@ public final class SilentAuraRuntime {
         Minecraft client = Minecraft.getInstance();
         var currentPlayer = client == null ? null : client.player;
         if (!shouldApplyRotation() || client == null || currentPlayer == null) return;
-        PACKET_ROTATION.confirm(yaw, pitch);
-        int targetId = ROTATION.returning() ? -1 : ROTATION.targetId();
+        MODES.packets().confirm(yaw, pitch);
+        int targetId = MODES.rotation().returning() ? -1 : MODES.rotation().targetId();
         sent =
                 new SentRotation(
                         targetId >= 0,
@@ -268,10 +264,10 @@ public final class SilentAuraRuntime {
                         currentPlayer.getEyePosition(),
                         Vec3.directionFromRotation(pitch, yaw),
                         targetId);
-        if (ROTATION.returnPacketReached(yaw, pitch)) {
-            ROTATION.completeReturn();
+        if (MODES.rotation().returnPacketReached(yaw, pitch)) {
+            MODES.rotation().completeReturn();
             sent = SentRotation.invalid();
-            PACKET_ROTATION.reset();
+            MODES.resetPackets();
             ROTATION_LEASE.release();
         }
     }
@@ -307,11 +303,11 @@ public final class SilentAuraRuntime {
         if (client == null
                 || currentPlayer == null
                 || !shouldApplyRotation()
-                || ROTATION.returning()) {
+                || MODES.rotation().returning()) {
             return AttackRotation.invalid();
         }
-        LivingEntity target = SELECTOR.current(client);
-        if (target == null || ROTATION.targetId() != target.getId()) {
+        LivingEntity target = MODES.targets().current(client);
+        if (target == null || MODES.rotation().targetId() != target.getId()) {
             return AttackRotation.invalid();
         }
         Rotation candidate = committedRotation();
@@ -323,54 +319,55 @@ public final class SilentAuraRuntime {
     }
 
     public static LivingEntity currentTarget(Minecraft client) {
-        return SELECTOR.current(client);
+        return MODES.targets().current(client);
     }
 
     public static void onSuccessfulAttack(Minecraft client, LivingEntity target) {
-        SELECTOR.onAttack(client, target);
+        MODES.targets().onAttack(client, target);
     }
 
     public static void resetTargeting() {
-        TriggerBot.stopSilentAuraInput(Minecraft.getInstance());
+        SilentAuraCombat.stop(Minecraft.getInstance());
         clearRotation();
     }
 
     public static void finishReturn(Minecraft client) {
-        if (!ROTATION.returning()) return;
-        ROTATION.cancelReturn(client);
+        if (!MODES.rotation().returning()) return;
+        MODES.rotation().cancelReturn(client);
         sent = SentRotation.invalid();
-        PACKET_ROTATION.reset();
+        MODES.resetPackets();
         ROTATION_LEASE.release();
     }
 
     public static void reset(Minecraft client) {
-        TriggerBot.stopSilentAuraInput(client);
+        SilentAuraCombat.stop(client);
         running = false;
         stopping = false;
-        SELECTOR.clear();
-        ROTATION.clear();
+        MODES.clearTargets();
+        MODES.clearRotations();
         sent = SentRotation.invalid();
-        PACKET_ROTATION.reset();
+        MODES.resetPackets();
         ROTATION_LEASE.release();
     }
 
     /** Ordinary disable stops attacks now, but observes the return's actual movement send. */
     public static void stop(Minecraft client) {
-        TriggerBot.stopSilentAuraInput(client);
+        SilentAuraCombat.stop(client);
         running = false;
-        if (!ClientReady.world(client) || !ROTATION_LEASE.active() || !ROTATION.active()) {
+        if (!ClientReady.world(client) || !ROTATION_LEASE.active() || !MODES.rotation().active()) {
             reset(client);
             return;
         }
         stopping = true;
         finishTracking(client, 0.0D);
-        if (!ROTATION.active()) reset(client);
+        if (!MODES.rotation().active()) reset(client);
     }
 
     private static void syncLease() {
-        if (ROTATION.active()) {
+        if (MODES.rotation().active()) {
             ROTATION_LEASE.acquire(
-                    new RotationRequest(ROTATION.yaw(), ROTATION.pitch(), 1, 0.35F, null));
+                    new RotationRequest(
+                            MODES.rotation().yaw(), MODES.rotation().pitch(), 1, 0.35F, null));
         } else {
             ROTATION_LEASE.release();
         }
@@ -380,17 +377,17 @@ public final class SilentAuraRuntime {
         Minecraft client = Minecraft.getInstance();
         var currentPlayer = client == null ? null : client.player;
         if (client == null || currentPlayer == null) {
-            return new Rotation(ROTATION.yaw(), ROTATION.pitch());
+            return new Rotation(MODES.rotation().yaw(), MODES.rotation().pitch());
         }
-        return PACKET_ROTATION.sample(
+        return MODES.samplePacket(
                 currentPlayer.tickCount,
                 currentPlayer.getYRot(),
                 currentPlayer.getXRot(),
-                ROTATION.yaw(),
-                ROTATION.pitch(),
+                MODES.rotation().yaw(),
+                MODES.rotation().pitch(),
                 SilentAuraConfig.lockMode(),
                 client.options.sensitivity().get(),
-                ROTATION.crossingTarget(),
+                MODES.rotation().crossingTarget(),
                 SilentAuraConfig.matrixCompatibility());
     }
 

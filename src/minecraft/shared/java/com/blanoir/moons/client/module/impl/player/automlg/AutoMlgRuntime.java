@@ -3,9 +3,7 @@ package com.blanoir.moons.client.module.impl.player.automlg;
 import com.blanoir.moons.client.management.rotation.SilentPacketRotation;
 import com.blanoir.moons.client.utils.math.MathUtils;
 import com.blanoir.moons.client.utils.player.HotbarQueries;
-import com.blanoir.moons.client.utils.prediction.LandingPrediction;
 import com.blanoir.moons.client.utils.rotation.Rotation;
-import com.blanoir.moons.client.utils.world.BlockDistance;
 import com.blanoir.moons.client.utils.world.FluidQueries;
 import com.blanoir.moons.client.utils.world.placement.BlockPlacementUtils;
 
@@ -36,16 +34,32 @@ public final class AutoMlgRuntime {
     private boolean silentUseRecovery;
     private int silentUseTicks;
     private int silentUseTick;
+    private SilentPacketRotation.Mode configuredRotation = SilentPacketRotation.Mode.INSTANT;
+    private SilentPacketRotation.Mode actionRotation = SilentPacketRotation.Mode.INSTANT;
+    private int configuredTurnTicks = 2;
+    private int configuredReturnTicks = 2;
+    private int actionTurnTicks = 2;
+    private int actionReturnTicks = 2;
+    private int placementPredictTicks;
+    private boolean placementSolidCheck;
 
     public void tick(
             Minecraft client,
             double triggerDistance,
             int predictTicks,
             boolean solidCheck,
-            boolean recovery) {
+            boolean recovery,
+            SilentPacketRotation.Mode rotationMode,
+            int smoothTurnTicks,
+            int smoothReturnTicks) {
         var currentPlayer = client == null ? null : client.player;
         if (client == null || currentPlayer == null || client.level == null) return;
         if (currentPlayer.isFallFlying()) return;
+        configuredRotation = rotationMode;
+        configuredTurnTicks = smoothTurnTicks;
+        configuredReturnTicks = smoothReturnTicks;
+        placementPredictTicks = predictTicks;
+        placementSolidCheck = solidCheck;
 
         if (currentPlayer.onGround()
                 || currentPlayer.getAbilities().flying
@@ -101,17 +115,15 @@ public final class AutoMlgRuntime {
         if (waterPlaced || accumulatedFall < triggerDistance) return;
 
         int waterSlot = HotbarQueries.firstItem(client, Items.WATER_BUCKET);
-        if (waterSlot < 0 || ticksUntilGround(client) > predictTicks + 1) return;
-        if (solidCheck && !hasSolidBelow(client, currentPlayer.blockPosition())) return;
-
-        Rotation down = new Rotation(currentPlayer.getYRot(), 90.0F);
+        if (waterSlot < 0) return;
+        boolean smooth = configuredRotation == SilentPacketRotation.Mode.SMOOTH;
         BlockHitResult hit =
-                BlockPlacementUtils.traceOutline(
+                AutoMlgLanding.find(
                         client,
-                        down,
-                        currentPlayer.blockInteractionRange(),
-                        ClipContext.Fluid.NONE);
-        if (hit.getType() == HitResult.Type.MISS) return;
+                        smooth ? Math.max(8, predictTicks + 1) : predictTicks + 1,
+                        solidCheck,
+                        !smooth);
+        if (hit == null) return;
         placeWaterBucket(client, waterSlot, hit, recovery);
     }
 
@@ -131,14 +143,6 @@ public final class AutoMlgRuntime {
         postActionCooldown = 0;
         accumulatedFall = 0.0F;
         lastY = client != null && currentPlayer != null ? currentPlayer.getY() : 0.0D;
-    }
-
-    private int ticksUntilGround(Minecraft client) {
-        if (client.player.getDeltaMovement().y >= 0.0D) return 999;
-        int ticks =
-                LandingPrediction.ticksUntilGround(
-                        client.player.getDeltaMovement().y, BlockDistance.toGround(client, 30.0D));
-        return ticks == Integer.MAX_VALUE ? 999 : ticks;
     }
 
     private void placeWaterBucket(
@@ -162,6 +166,9 @@ public final class AutoMlgRuntime {
         silentUseFluid = fluid;
         silentUseSlot = slot;
         silentUseRecovery = recovery;
+        actionRotation = configuredRotation;
+        actionTurnTicks = configuredTurnTicks;
+        actionReturnTicks = configuredReturnTicks;
         silentUseTicks = 0;
         turnForUse(client, hit.getLocation());
     }
@@ -171,8 +178,8 @@ public final class AutoMlgRuntime {
         SilentPacketRotation.beginRotation(
                 client,
                 target,
-                1,
-                SilentPacketRotation.Mode.INSTANT,
+                actionRotation == SilentPacketRotation.Mode.SMOOTH ? actionTurnTicks : 1,
+                actionRotation,
                 () -> {
                     if (silentUsePhase == SilentUsePhase.TURNING) {
                         silentUsePhase = SilentUsePhase.READY_TO_USE;
@@ -193,6 +200,29 @@ public final class AutoMlgRuntime {
                 return;
             }
             case READY_TO_USE -> {
+                if (silentUseAction == SilentUseAction.PLACE_WATER
+                        && actionRotation == SilentPacketRotation.Mode.SMOOTH) {
+                    // Smooth may finish while the predicted landing is still outside use range.
+                    // Wait for the normal placement window, then verify the first support again.
+                    if (client.player.onGround()
+                            || client.player.isInWater()
+                            || client.player.isInLava()) {
+                        abortSilentUse(client);
+                        return;
+                    }
+                    BlockHitResult landing =
+                            AutoMlgLanding.find(
+                                    client, placementPredictTicks + 1, placementSolidCheck);
+                    if (landing == null) return;
+                    if (silentUseHit == null
+                            || !landing.getBlockPos().equals(silentUseHit.getBlockPos())
+                            || landing.getDirection() != silentUseHit.getDirection()) {
+                        abortSilentUse(client);
+                        return;
+                    }
+                }
+                if (actionRotation == SilentPacketRotation.Mode.SMOOTH
+                        && !SilentPacketRotation.isRotationPacketSent()) return;
                 Rotation sent =
                         new Rotation(
                                 SilentPacketRotation.getInteractionYaw(client),
@@ -229,7 +259,8 @@ public final class AutoMlgRuntime {
                                         currentHit.getBlockPos());
                 // Keep slot sync/use/swing before this tick's movement. The instant
                 // angle stays pinned until that following movement is sent.
-                if (!SilentPacketRotation.invokeUseInPlayerUpdate(client, useHit, false)) {
+                if (!SilentPacketRotation.invokeUseInPlayerUpdate(
+                        client, useHit, actionRotation == SilentPacketRotation.Mode.SMOOTH)) {
                     abortSilentUse(client);
                     return;
                 }
@@ -334,8 +365,8 @@ public final class AutoMlgRuntime {
         silentUseTicks = 0;
         SilentPacketRotation.beginReturnToCamera(
                 client,
-                1,
-                SilentPacketRotation.Mode.SMOOTH,
+                actionRotation == SilentPacketRotation.Mode.SMOOTH ? actionReturnTicks : 1,
+                actionRotation,
                 () -> {
                     if (silentUsePhase == SilentUsePhase.RETURNING) {
                         silentUsePhase = SilentUsePhase.WAITING_FOR_RETURN_PACKET;
@@ -397,11 +428,6 @@ public final class AutoMlgRuntime {
     private static boolean isWaterSource(Minecraft client, BlockPos pos) {
         FluidState fluid = client.level.getFluidState(pos);
         return FluidQueries.isSource(fluid, Fluids.WATER);
-    }
-
-    private static boolean hasSolidBelow(Minecraft client, BlockPos pos) {
-        return BlockPlacementUtils.solidWithoutMenu(client, pos.below())
-                || BlockPlacementUtils.solidWithoutMenu(client, pos.below(2));
     }
 
     private void selectSlot(Minecraft client, int slot) {

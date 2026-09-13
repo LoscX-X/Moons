@@ -9,6 +9,7 @@ import com.blanoir.moons.client.management.input.CombatInputController;
 import com.blanoir.moons.client.management.lease.HotbarLease;
 import com.blanoir.moons.client.management.rotation.RotationManager;
 import com.blanoir.moons.client.management.rotation.SilentPacketRotation;
+import com.blanoir.moons.client.management.time.TimerManager;
 import com.blanoir.moons.client.module.framework.ModuleRegistry;
 import com.blanoir.moons.client.module.impl.combat.AutoBlock;
 import com.blanoir.moons.client.module.impl.combat.AutoClicker;
@@ -26,11 +27,13 @@ import com.blanoir.moons.client.module.impl.misc.antibot.AntiBot;
 import com.blanoir.moons.client.module.impl.movement.JumpReset;
 import com.blanoir.moons.client.module.impl.movement.KeepSprint;
 import com.blanoir.moons.client.module.impl.network.Backtrack;
+import com.blanoir.moons.client.module.impl.network.Disabler;
 import com.blanoir.moons.client.module.impl.network.FakeLag;
 import com.blanoir.moons.client.module.impl.network.LowHealthFakeLag;
 import com.blanoir.moons.client.module.impl.network.RandomFakeLag;
 import com.blanoir.moons.client.module.impl.player.AntiLava;
 import com.blanoir.moons.client.module.impl.player.AntiWeb;
+import com.blanoir.moons.client.module.impl.player.AutoArmor;
 import com.blanoir.moons.client.module.impl.player.AutoBed;
 import com.blanoir.moons.client.module.impl.player.AutoHead;
 import com.blanoir.moons.client.module.impl.player.AutoLava;
@@ -38,7 +41,9 @@ import com.blanoir.moons.client.module.impl.player.AutoMLG;
 import com.blanoir.moons.client.module.impl.player.AutoSword;
 import com.blanoir.moons.client.module.impl.player.AutoTotem;
 import com.blanoir.moons.client.module.impl.player.AutoWeb;
+import com.blanoir.moons.client.module.impl.player.InvClear;
 import com.blanoir.moons.client.module.impl.player.blockin.BlockInRuntime;
+import com.blanoir.moons.client.module.impl.player.invmanager.InvManager;
 import com.blanoir.moons.client.module.impl.render.Animations;
 import com.blanoir.moons.client.module.impl.render.Caver;
 import com.blanoir.moons.client.module.impl.render.Chams;
@@ -134,6 +139,10 @@ final class FeatureBootstrap {
         Backtrack.init();
         KeepSprint.init();
         AutoTotem.init();
+        InvManager.init();
+        AutoArmor.init();
+        InvClear.init();
+        TimerManager.init();
         AutoTool.init();
         AutoSword.init();
         AutoLava.init();
@@ -155,10 +164,11 @@ final class FeatureBootstrap {
 
     private static void initializePacketListeners() {
         // This block stays between Backtrack and SilentPacketRotation registration.
-        // SEND: attack snapshot -> lag modes -> FastBreak.
+        // SEND: Disabler (highest priority) -> attack snapshot -> lag modes -> FastBreak.
         // RECEIVE: bundle intent -> Velocity -> lag modes -> Reach -> Backtrack.
         // APPLY: scoreboard -> damage confirmation -> JumpReset -> lightning.
         PacketEventAdapter.initPacketListeners();
+        Disabler.initPacketListeners();
         Scoreboard.initPacketListeners();
         CriticalHitTracker.initPacketListeners();
         Velocity.initPacketListeners();
@@ -171,10 +181,15 @@ final class FeatureBootstrap {
     }
 
     static void shutdown() {
+        Disabler.discardPending();
         FakeLag.discardPending();
         RotationManager.reset();
         Minecraft client = Minecraft.getInstance();
         AutoBlock.reset(client);
+        InvManager.reset();
+        AutoArmor.reset();
+        InvClear.reset();
+        TimerManager.reset();
         SilentAuraBlock.reset(client);
         SilentAuraRuntime.reset(client);
         AutoMLG.shutdown(client);

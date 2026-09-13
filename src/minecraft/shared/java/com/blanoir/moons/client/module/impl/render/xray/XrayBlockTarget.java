@@ -117,7 +117,7 @@ public enum XrayBlockTarget implements XrayTarget {
     public static XrayTarget findEnabledTarget(BlockState state) {
         XrayTarget plugin = PluginXrayTargets.find(state);
         if (plugin != null) return plugin;
-        if (PluginXrayTargets.isRecognized(state)) return null;
+        if (PluginXrayTargets.blocksVanillaFallback(state)) return null;
         return findEnabledTarget(state.getBlock());
     }
 

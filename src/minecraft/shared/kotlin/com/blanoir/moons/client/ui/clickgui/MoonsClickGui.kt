@@ -2,6 +2,7 @@ package com.blanoir.moons.client.ui.clickgui
 
 import androidx.compose.runtime.Composable
 import com.blanoir.moons.client.module.framework.ModuleRegistry
+import com.blanoir.moons.client.module.impl.player.invmanager.InventoryEditorHost
 
 /** One route for the game screen and CPU warmup; the saved layout can change while open. */
 @Composable
@@ -14,23 +15,25 @@ internal fun MoonsClickGui(
     modulesOverride: List<ModuleRegistry.Module>? = null,
 ) {
     ClickGuiRevision.intValue
-    if (ModuleGui.layout() == "panels") {
-        MoonsPanelClickGui(
-            bindingModuleId,
-            onBindingModuleChange,
-            onMutated,
-            onEditHudLayout,
-            onClose,
-            modulesOverride,
-        )
-    } else {
-        MoonsSettingsClickGui(
-            bindingModuleId,
-            onBindingModuleChange,
-            onMutated,
-            onEditHudLayout,
-            onClose,
-            modulesOverride,
-        )
+    InventoryEditorHost(onMutated, { onBindingModuleChange(null) }) {
+        if (ModuleGui.layout() == "panels") {
+            MoonsPanelClickGui(
+                bindingModuleId,
+                onBindingModuleChange,
+                onMutated,
+                onEditHudLayout,
+                onClose,
+                modulesOverride,
+            )
+        } else {
+            MoonsSettingsClickGui(
+                bindingModuleId,
+                onBindingModuleChange,
+                onMutated,
+                onEditHudLayout,
+                onClose,
+                modulesOverride,
+            )
+        }
     }
 }

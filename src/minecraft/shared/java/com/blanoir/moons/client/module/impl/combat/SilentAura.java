@@ -6,9 +6,10 @@ import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.event.frame.HudRenderEvent;
 import com.blanoir.moons.client.module.impl.combat.critical.Critical;
 import com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraBlock;
+import com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraCombat;
 import com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraConfig;
-import com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraPlacementDebugger;
 import com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraRuntime;
+import com.blanoir.moons.client.module.impl.combat.silentaura.legacy.LegacyCombat;
 import com.blanoir.moons.client.utils.combat.CombatDecisionEngine;
 import com.blanoir.moons.client.utils.combat.CombatModuleCoordinator;
 import com.blanoir.moons.client.utils.combat.CombatReach;
@@ -27,7 +28,7 @@ public final class SilentAura {
 
     public static void init() {
         SilentAuraRuntime.init();
-        SilentAuraPlacementDebugger.init();
+        SilentAuraCombat.init();
         EventBus.HUD_RENDER.register("SilentAura.debugger", SilentAura::drawDebugger);
     }
 
@@ -141,7 +142,7 @@ public final class SilentAura {
         try {
             NumberRange range = NumberRange.parse(raw);
             SilentAuraConfig.cps(range.min(), range.max());
-            TriggerBot.resetLegacyClicks();
+            LegacyCombat.reset();
             return 1;
         } catch (IllegalArgumentException failure) {
             ClientChat.send(client, "CPS must be a number or min-max between 1 and 20.");
@@ -169,7 +170,7 @@ public final class SilentAura {
                         SilentAuraConfig.targetMode(),
                         aimProfile,
                         activePrediction,
-                        TriggerBot.silentAuraGate()));
+                        SilentAuraCombat.gate()));
         return 1;
     }
 
@@ -390,7 +391,7 @@ public final class SilentAura {
     public static String hudTag() {
         return SilentAuraConfig.legacyCombat()
                 ? "Legacy " + SilentAuraConfig.minCps() + "-" + SilentAuraConfig.maxCps() + " CPS"
-                : "Latest " + TriggerBot.attackChargePercent(Minecraft.getInstance()) + "%";
+                : "Latest " + SilentAuraCombat.attackChargePercent(Minecraft.getInstance()) + "%";
     }
 
     // Debug
@@ -431,7 +432,7 @@ public final class SilentAura {
         CombatDecisionEngine.Decision decision = Critical.getPlannedDecision();
         String targetText =
                 target == null ? "-" : target.getName().getString() + "#" + target.getId();
-        String gate = TriggerBot.silentAuraGate();
+        String gate = SilentAuraCombat.gate();
         String[] lines = {
             "SilentAura debugger",
             "held="
@@ -481,20 +482,6 @@ public final class SilentAura {
                             lines[index],
                             x,
                             y + index * (client.font.lineHeight + 1),
-                            color,
-                            true);
-        }
-        String[] timingLines = SilentAuraPlacementDebugger.debugLines();
-        for (int index = 0; index < timingLines.length; index++) {
-            String line = timingLines[index];
-            int color =
-                    line.contains("MISMATCH") ? 0xFFFF6666 : index == 0 ? 0xFFFFCC66 : 0xFFD8E8FF;
-            event.graphics()
-                    .text(
-                            client.font,
-                            line,
-                            x,
-                            y + (lines.length + index) * (client.font.lineHeight + 1),
                             color,
                             true);
         }

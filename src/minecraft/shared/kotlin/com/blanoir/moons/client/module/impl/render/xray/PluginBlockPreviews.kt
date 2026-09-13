@@ -57,6 +57,11 @@ internal object PluginBlockPreviews {
                     if (started == generation) {
                         busy = false
                         pending.remove(request)
+                        if (pixels == null) {
+                            failed.add(request)
+                            revision.intValue++
+                            return@execute
+                        }
                         val size = NativeItemIconCapture.SIZE
                         images[request] =
                             Image.makeRaster(

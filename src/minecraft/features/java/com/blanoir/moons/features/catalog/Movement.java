@@ -2,12 +2,31 @@ package com.blanoir.moons.features.catalog;
 
 import static com.blanoir.moons.client.module.framework.ModuleRegistry.*;
 
+import com.blanoir.moons.client.management.rotation.MoveFix;
 import com.blanoir.moons.client.module.framework.ModuleRegistry;
 import com.blanoir.moons.client.module.impl.movement.*;
 
 /** Defines movement module descriptors; ordering is owned by ModuleCatalog. */
 final class Movement {
     private Movement() {}
+
+    static ModuleRegistry.Module moveFix() {
+        return module(
+                        "movefix",
+                        "MoveFix",
+                        "Movement",
+                        MoveFix::enabled,
+                        MoveFix::setEnabled,
+                        MoveFix::algorithm,
+                        choice(
+                                "algorithm",
+                                "Algorithm",
+                                "movefix.algorithm",
+                                "legacy",
+                                MoveFix.algorithmOptions(),
+                                MoveFix::setAlgorithm))
+                .withDefaultEnabled(true);
+    }
 
     static ModuleRegistry.Module keepSprint() {
         return module(

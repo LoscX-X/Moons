@@ -13,6 +13,7 @@ import com.blanoir.moons.client.event.render.LivingRenderEvent;
 import com.blanoir.moons.client.management.input.CombatInputController;
 import com.blanoir.moons.client.management.lease.RotationLease;
 import com.blanoir.moons.client.management.rotation.MoveFix;
+import com.blanoir.moons.client.management.time.TimerManager;
 import com.blanoir.moons.client.module.impl.combat.Reach;
 import com.blanoir.moons.client.module.impl.combat.SilentAura;
 import com.blanoir.moons.client.module.impl.misc.AntiNick;
@@ -23,6 +24,7 @@ import com.blanoir.moons.client.module.impl.movement.KeepSprint;
 import com.blanoir.moons.client.module.impl.movement.NoJumpDelay;
 import com.blanoir.moons.client.module.impl.movement.Sprint;
 import com.blanoir.moons.client.module.impl.render.Animations;
+import com.blanoir.moons.client.module.impl.render.AntiDebuff;
 import com.blanoir.moons.client.module.impl.render.Chams;
 import com.blanoir.moons.client.module.impl.render.Clip;
 import com.blanoir.moons.client.module.impl.render.FullBright;
@@ -55,7 +57,6 @@ import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.resources.model.EquipmentClientInfo;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
-import net.minecraft.util.Mth;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Input;
 import net.minecraft.world.entity.player.Player;
@@ -71,6 +72,9 @@ public final class FeatureHooks {
     /** Called before the runtime allocates a method-hook event or boxes its values. */
     public static boolean isActive(String id) {
         return switch (id) {
+            case "client.timer-speed" -> TimerManager.active(Minecraft.getInstance());
+            case "render.antidebuff.blend", "render.antidebuff.fog", "render.antidebuff.sky" ->
+                    AntiDebuff.enabled();
             case "xray.block-tessellate.end", "optional.sodium.render-model.end" ->
                     XrayTerrain.isRenderingBackground();
             case "xray.block-tessellate",
@@ -115,6 +119,52 @@ public final class FeatureHooks {
 
     public static void apply(RuntimeEvents.MethodHook hook) {
         switch (hook.id()) {
+            case "client.timer-speed" -> {
+                if (hook.owner() instanceof Minecraft client && hook.value() instanceof Float value)
+                    hook.value(TimerManager.adjustTickMillis(client, value));
+            }
+            case "render.antidebuff.blend" -> {
+                if (hook.owner() == Minecraft.getInstance().getCameraEntity()
+                        && hook.argument() instanceof net.minecraft.core.Holder<?> effect
+                        && (effect.equals(net.minecraft.world.effect.MobEffects.NAUSEA)
+                                        && AntiDebuff.suppress(
+                                                net.minecraft.world.effect.MobEffects.NAUSEA)
+                                || effect.equals(net.minecraft.world.effect.MobEffects.DARKNESS)
+                                        && AntiDebuff.suppress(
+                                                net.minecraft.world.effect.MobEffects.DARKNESS)))
+                    hook.value(0.0F);
+            }
+            case "render.antidebuff.fog" -> {
+                if (hook.owner()
+                                instanceof
+                                net.minecraft.client.renderer.fog.environment
+                                                .MobEffectFogEnvironment
+                                        fog
+                        && AntiDebuff.suppress(fog.getMobEffect())) hook.value(false);
+            }
+            case "render.antidebuff.sky" -> {
+                if (hook.owner() instanceof net.minecraft.client.renderer.GameRenderer renderer
+                        && Minecraft.getInstance().getCameraEntity()
+                                instanceof LivingEntity entity) {
+                    var state =
+                            renderer.gameRenderState()
+                                    .levelRenderState
+                                    .cameraRenderState
+                                    .entityRenderState;
+                    if (state != null)
+                        state.doesMobEffectBlockSky =
+                                entity.hasEffect(net.minecraft.world.effect.MobEffects.BLINDNESS)
+                                                && !AntiDebuff.suppress(
+                                                        net.minecraft.world.effect.MobEffects
+                                                                .BLINDNESS)
+                                        || entity.hasEffect(
+                                                        net.minecraft.world.effect.MobEffects
+                                                                .DARKNESS)
+                                                && !AntiDebuff.suppress(
+                                                        net.minecraft.world.effect.MobEffects
+                                                                .DARKNESS);
+                }
+            }
             case "movement.living-ai-step" -> livingAiStep(hook.owner());
             case "movement.keyboard-input" -> keyboardInput(hook.owner());
             case "movement.sprint-start", "movement.sprint-input" -> {
@@ -452,14 +502,9 @@ public final class FeatureHooks {
             return;
         }
 
-        float forward = impulse(original.forward(), original.backward());
-        float sideways = impulse(original.left(), original.right());
-        float movementYaw = movementFix.yaw();
-        float radians = Mth.wrapDegrees(player.getYRot() - movementYaw) * Mth.DEG_TO_RAD;
-        float correctedSideways = sideways * Mth.cos(radians) - forward * Mth.sin(radians);
-        float correctedForward = forward * Mth.cos(radians) + sideways * Mth.sin(radians);
-        int side = Math.round(correctedSideways);
-        int front = Math.round(correctedForward);
+        Input corrected = MoveFix.correctInput(original, player.getYRot(), movementFix);
+        int side = (int) impulse(corrected.left(), corrected.right());
+        int front = (int) impulse(corrected.forward(), corrected.backward());
         keyboard.keyPresses =
                 new Input(
                         front > 0,

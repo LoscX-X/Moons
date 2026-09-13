@@ -9,10 +9,7 @@ import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.management.input.CombatInputController;
 import com.blanoir.moons.client.management.targeting.Targeting;
 import com.blanoir.moons.client.module.impl.combat.critical.Critical;
-import com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraConfig;
 import com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraRuntime;
-import com.blanoir.moons.client.module.impl.render.Animations;
-import com.blanoir.moons.client.utils.combat.ClickScheduler;
 import com.blanoir.moons.client.utils.combat.CombatModuleCoordinator;
 import com.blanoir.moons.client.utils.combat.CombatReach;
 import com.blanoir.moons.client.utils.math.RandomMath;
@@ -25,9 +22,8 @@ import com.google.gson.JsonElement;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.EntitySelector;
 import net.minecraft.world.phys.EntityHitResult;
-import net.minecraft.world.phys.HitResult;
 
 import java.util.Locale;
 import java.util.Set;
@@ -45,9 +41,6 @@ public final class TriggerBot {
     private static double sampledAttackCharge;
     private static boolean missedCrosshair = true;
     private static long missDelayDeadlineNanos = 0L;
-    private static boolean silentAuraInputOwned;
-    private static final ClickScheduler LEGACY_CLICKS = new ClickScheduler();
-    private static String silentAuraGate = "idle";
     private static final Set<Identifier> targetEntityTypes =
             Targeting.parseEntityTypeIds(TARGET_ENTITIES.get());
 
@@ -96,21 +89,15 @@ public final class TriggerBot {
 
     private TriggerBot() {}
 
-    private enum RayEntry {
-        CAMERA_RAY,
-        SILENT_RAY
-    }
-
-    /** Result of the shared ray -> cooldown -> Critical -> vanilla-click pipeline. */
+    /** Result of the camera ray -> cooldown -> Critical -> vanilla-click pipeline. */
     private record AutomaticAttackResult(boolean attacked, String gate) {}
 
     public static void init() {
-        EventBus.TICK.register("TriggerBot.tick", event -> prepareSilentAuraInput(event.client()));
         EventBus.PLAYER_UPDATE.register(
                 "TriggerBot.playerUpdate", event -> playerUpdate(event.client()));
     }
 
-    /** Uses this tick's pick result and submits before LocalPlayer movement. */
+    /** Samples the current view ray and submits before LocalPlayer movement. */
     private static void playerUpdate(Minecraft client) {
         if (client == null
                 || client.player == null
@@ -120,14 +107,13 @@ public final class TriggerBot {
             return;
         }
         if (SilentAuraRuntime.activationHeld(client)) {
-            playerUpdateSilentRay(client);
             return;
         }
         if (!ENABLED.get()) return;
         playerUpdateCameraRay(client);
     }
 
-    /** Ordinary TriggerBot entry: the vanilla camera pick result owns the ray. */
+    /** Ordinary TriggerBot entry: use the player's current view within vanilla reach. */
     private static void playerUpdateCameraRay(Minecraft client) {
         if (!Targeting.isHoldingTriggerWeapon(client)) {
             rejectCameraRay(client);
@@ -162,144 +148,13 @@ public final class TriggerBot {
             return;
         }
 
-        AutomaticAttackResult result = attackRayTarget(client, target, RayEntry.CAMERA_RAY);
+        AutomaticAttackResult result = attackRayTarget(client, target);
         if (result.attacked()) resetAttackState();
-    }
-
-    /**
-     * SilentAura input ownership lives here rather than in the aimer. The
-     * physical button remains readable through the version input adapter while its vanilla mapping
-     * is suppressed, so Aura can keep tracking without leaking a camera click.
-     */
-    private static void prepareSilentAuraInput(Minecraft client) {
-        boolean active = SilentAuraRuntime.activationHeld(client);
-        if (!active) {
-            stopSilentAuraInput(client);
-            return;
-        }
-
-        if (!silentAuraInputOwned) {
-            silentAuraInputOwned = true;
-            LEGACY_CLICKS.reset();
-            Critical.cancelAutomaticPrediction(client);
-            resetPreparedAttackState(SilentAuraConfig.minCharge(), SilentAuraConfig.maxCharge());
-        }
-        while (client.options.keyAttack.consumeClick()) {
-            // TriggerBot dispatches the eventual click after proving silent-ray.
-        }
-        CombatInputController.suppressAttack(client, CombatInputController.Owner.SILENT_AURA);
-        if (!SilentAuraConfig.legacyCombat()) attackCharge(client);
-    }
-
-    /** Stops Aura's attack producer immediately; rotation may still be returning. */
-    public static void stopSilentAuraInput(Minecraft client) {
-        LEGACY_CLICKS.reset();
-        if (!silentAuraInputOwned) return;
-        silentAuraInputOwned = false;
-        CombatInputController.releaseAttack(client, CombatInputController.Owner.SILENT_AURA);
-        Critical.cancelAutomaticPrediction(client);
-        resetPreparedAttackState(MIN_CHARGE.get(), MAX_CHARGE.get());
-        silentAuraGate = "idle";
-    }
-
-    /** Silent TriggerBot entry: use the rotation this tick will publish. */
-    private static void playerUpdateSilentRay(Minecraft client) {
-        LivingEntity target = getSilentRayTarget(client);
-        if (target == null) {
-            LEGACY_CLICKS.reset();
-            return;
-        }
-
-        AutomaticAttackResult result = attackRayTarget(client, target, RayEntry.SILENT_RAY);
-        silentAuraGate = result.gate();
-        if (!result.attacked()) return;
-
-        if (!SilentAuraConfig.legacyCombat())
-            resetPreparedAttackState(SilentAuraConfig.minCharge(), SilentAuraConfig.maxCharge());
-        Animations.onAttack();
-        SilentAuraRuntime.onSuccessfulAttack(client, target);
-    }
-
-    private static LivingEntity getSilentRayTarget(Minecraft client) {
-        LivingEntity intended = SilentAuraRuntime.currentTarget(client);
-        if (isConfiguredSilentTarget(client, intended)) {
-            rejectSilentRay(client, "no target");
-            return null;
-        }
-
-        SilentAuraRuntime.AttackRotation rotation = SilentAuraRuntime.attackRotation(client);
-        if (!rotation.valid() || rotation.targetId() != intended.getId()) {
-            rejectSilentRay(client, "waiting rotation");
-            return null;
-        }
-
-        double range = CombatReach.entityInteractionRange(client, SilentAuraConfig.aimRange());
-        if (range <= 0.0D) {
-            rejectSilentRay(client, "range");
-            return null;
-        }
-
-        Entity intercepted =
-                Targeting.findTargetOnRay(
-                        client,
-                        rotation.eye(),
-                        rotation.look(),
-                        range,
-                        entity ->
-                                entity instanceof LivingEntity living
-                                        && living != client.player
-                                        && living.isAlive()
-                                        && living.isAttackable()
-                                        && !living.isSpectator(),
-                        SilentAuraConfig.throughBlocks());
-        LivingEntity target = intercepted instanceof LivingEntity living ? living : intended;
-        if (isConfiguredSilentTarget(client, target)) {
-            rejectSilentRay(client, "ray blocked");
-            return null;
-        }
-        if (client.level.getEntity(target.getId()) != target) {
-            rejectSilentRay(client, "target moved");
-            return null;
-        }
-
-        RaytraceUtils.EntityRayState ray =
-                RaytraceUtils.traceEntity(
-                        client,
-                        rotation.eye(),
-                        rotation.look(),
-                        range,
-                        target,
-                        SilentAuraConfig.throughBlocks());
-        if (ray != RaytraceUtils.EntityRayState.HIT) {
-            rejectSilentRay(client, ray.name().toLowerCase(Locale.ROOT));
-            return null;
-        }
-        return target;
-    }
-
-    private static boolean isConfiguredSilentTarget(Minecraft client, Entity target) {
-        return !Targeting.isConfiguredTarget(
-                client,
-                target,
-                SilentAuraConfig.targetPlayers(),
-                false,
-                SilentAuraConfig.targetEntityTypes());
     }
 
     private static void rejectCameraRay(Minecraft client) {
         markMissedCrosshair();
         Critical.cancelAutomaticPrediction(client);
-    }
-
-    private static void rejectSilentRay(Minecraft client, String reason) {
-        // A one-frame packet-ray AIM is not target invalidation. Preserve the
-        // old Predict reservation so cooldown/jump alignment survives the
-        // aimer's recovery; the null return still makes attacking impossible
-        // until this same target produces a real HIT again.
-        if (!"aim".equals(reason)) {
-            Critical.cancelAutomaticPrediction(client);
-        }
-        silentAuraGate = reason;
     }
 
     private static void resetAttackState() {
@@ -382,11 +237,10 @@ public final class TriggerBot {
     }
 
     /**
-     * Both ray entries converge here. Neither aimer owns cooldown, Critical
-     * state or dispatch; they only supply a target proven by their own ray.
+     * The camera-ray entry owns cooldown, Critical
+     * state and dispatch after validating the current view ray.
      */
-    private static AutomaticAttackResult attackRayTarget(
-            Minecraft client, Entity target, RayEntry entry) {
+    private static AutomaticAttackResult attackRayTarget(Minecraft client, Entity target) {
         if (client == null
                 || client.player == null
                 || client.level == null
@@ -399,14 +253,9 @@ public final class TriggerBot {
             return new AutomaticAttackResult(false, "weapon");
         }
 
-        boolean legacy = entry == RayEntry.SILENT_RAY && SilentAuraConfig.legacyCombat();
-        if (legacy && !LEGACY_CLICKS.ready(System.nanoTime()))
-            return new AutomaticAttackResult(false, "cps");
-        double charge = legacy ? 1D : attackCharge(client);
-        boolean useCritical =
-                !legacy && (entry != RayEntry.SILENT_RAY || SilentAuraConfig.criticalIntegration());
+        double charge = attackCharge(client);
         boolean criticalAttack = false;
-        if (useCritical) {
+        {
             // Preserve the original TriggerBot + Predict contract: Critical
             // sees how many ticks remain before the sampled charge threshold,
             // so it can align that cooldown with the current jump instead of
@@ -429,7 +278,7 @@ public final class TriggerBot {
         // ATTACK is the current-structure equivalent of old Predict ATTACKED:
         // the reservation already counted down its cooldown lead, so sampling
         // TriggerBot's threshold a second time here would weaken old behavior.
-        if (!legacy && !criticalAttack && charge + 1.0E-4D < nextAttackCharge) {
+        if (!criticalAttack && charge + 1.0E-4D < nextAttackCharge) {
             return new AutomaticAttackResult(
                     false,
                     String.format(Locale.ROOT, "charge %.2f/%.2f", charge, nextAttackCharge));
@@ -437,33 +286,15 @@ public final class TriggerBot {
 
         boolean cameraOwnsTarget =
                 client.hitResult instanceof EntityHitResult hit && hit.getEntity() == target;
-        boolean forceTargetOverride = entry == RayEntry.SILENT_RAY || !cameraOwnsTarget;
+        boolean forceTargetOverride = !cameraOwnsTarget;
         boolean attacked =
-                useCritical
-                        ? CombatInputController.attackTargetNow(client, target, forceTargetOverride)
-                        : Critical.withoutSilentAuraCritical(
-                                () -> CombatInputController.attackTargetNow(client, target, true));
+                CombatInputController.attackTargetNow(client, target, forceTargetOverride);
         if (!attacked) {
             return new AutomaticAttackResult(false, "attack dispatch");
         }
 
-        if (legacy)
-            LEGACY_CLICKS.clicked(
-                    System.nanoTime(), SilentAuraConfig.minCps(), SilentAuraConfig.maxCps());
-
         Critical.cancelAutomaticPrediction(client);
         return new AutomaticAttackResult(true, "attack");
-    }
-
-    public static void resetLegacyClicks() {
-        LEGACY_CLICKS.reset();
-    }
-
-    private static void resetPreparedAttackState(double minimumCharge, double maximumCharge) {
-        fullChargeTicks = 0;
-        sampledChargeTick = Integer.MIN_VALUE;
-        sampledAttackCharge = 0.0D;
-        nextAttackCharge = randomChargeThreshold(minimumCharge, maximumCharge);
     }
 
     private static boolean isPlayerPhysicallyAttacking(Minecraft client) {
@@ -471,32 +302,25 @@ public final class TriggerBot {
     }
 
     private static Entity getAttackableCrosshairTarget(Minecraft client) {
-        HitResult hitResult = client.hitResult;
-        if (hitResult instanceof EntityHitResult entityHitResult
-                && Targeting.isConfiguredTarget(
-                        client,
-                        entityHitResult.getEntity(),
-                        TARGET_PLAYERS.get(),
-                        false,
-                        targetEntityTypes)) {
-            return entityHitResult.getEntity();
-        }
-        return THROUGH_BLOCK_ENABLED.get()
-                ? Targeting.findConfiguredTargetOnViewRay(
-                        client, TARGET_PLAYERS.get(), false, targetEntityTypes, true)
+        if (client == null || client.player == null || client.level == null) return null;
+        var eye = client.player.getEyePosition();
+        var look = client.player.getViewVector(1.0F);
+        double range = safeInteractionRange(client);
+        boolean throughBlocks = THROUGH_BLOCK_ENABLED.get();
+        // The shared camera hit can be stale or extended by Reach. Pick afresh,
+        // retaining non-target entities as occluders instead of looking through them.
+        Entity target =
+                Targeting.findTargetOnRay(
+                        client, eye, look, range, EntitySelector.CAN_BE_PICKED, throughBlocks);
+        if (!Targeting.isConfiguredTarget(
+                        client, target, TARGET_PLAYERS.get(), false, targetEntityTypes)
+                || client.level.getEntity(target.getId()) != target) return null;
+        // A nearby corner is insufficient: the actual view ray must enter the
+        // unexpanded hitbox before its vanilla-range endpoint.
+        return RaytraceUtils.traceEntity(client, eye, look, range, target, throughBlocks)
+                        == RaytraceUtils.EntityRayState.HIT
+                ? target
                 : null;
-    }
-
-    public static String silentAuraGate() {
-        return silentAuraGate;
-    }
-
-    /** Vanilla weapon cooldown shown by SilentAura's compact HUD suffix. */
-    public static int attackChargePercent(Minecraft client) {
-        var currentPlayer = client == null ? null : client.player;
-        if (client == null || currentPlayer == null) return 0;
-        double charge = currentPlayer.getAttackStrengthScale(0.0F);
-        return (int) Math.round(Math.clamp(charge, 0.0D, 1.0D) * 100.0D);
     }
 
     private static double safeInteractionRange(Minecraft client) {
@@ -631,10 +455,6 @@ public final class TriggerBot {
 
     private static double randomChargeThreshold() {
         return RandomMath.between(MIN_CHARGE.get(), MAX_CHARGE.get());
-    }
-
-    private static double randomChargeThreshold(double minimum, double maximum) {
-        return RandomMath.between(Math.min(minimum, maximum), Math.max(minimum, maximum));
     }
 
     private static String statusText() {

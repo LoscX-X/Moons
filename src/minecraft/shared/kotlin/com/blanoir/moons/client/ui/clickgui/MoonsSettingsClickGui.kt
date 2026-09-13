@@ -44,6 +44,9 @@ import com.blanoir.moons.client.config.Settings
 import com.blanoir.moons.client.module.framework.ModuleCategories
 import com.blanoir.moons.client.module.framework.ModuleRegistry
 import com.blanoir.moons.client.module.framework.ModuleRegistry.Module
+import com.blanoir.moons.client.module.impl.player.invmanager.AutoArmorPreview
+import com.blanoir.moons.client.module.impl.player.invmanager.InvClearPreview
+import com.blanoir.moons.client.module.impl.player.invmanager.InventoryLayoutSetting
 import com.blanoir.moons.client.utils.ui.ColorEditor
 
 /** Settings-window layout sharing the existing module and setting mutation paths. */
@@ -573,12 +576,17 @@ private fun ModuleConfiguration(
                     KeybindSetting(module, bindingModuleId, onBindingModuleChange)
                     module
                         .settings()
-                        .filter { it.isVisible }
+                        .filter {
+                            it.isVisible && (module.id() != "invmanager" || it.id() == "hide")
+                        }
                         .forEach { setting ->
                             key(module.id(), setting.id()) {
                                 CompactSetting(module, setting, onMutated)
                             }
                         }
+                    if (module.id() == "invmanager") InventoryLayoutSetting()
+                    if (module.id() == "autoarmor") AutoArmorPreview()
+                    if (module.id() == "invclear") InvClearPreview()
                 }
             }
             if (module.settings().none { it.isVisible })

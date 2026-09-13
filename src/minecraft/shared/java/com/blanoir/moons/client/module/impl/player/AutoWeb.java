@@ -145,7 +145,6 @@ public final class AutoWeb {
     private static int heldWebSlot = -1;
     private static int originalSlot = -1;
     private static WebActionPhase phase = WebActionPhase.IDLE;
-    private static String lastDecision = "waiting_attack";
     private static int pendingAttackTargetId = -1;
     private static int pendingAttackTicks;
     private static boolean pendingWallAttempted;
@@ -177,7 +176,7 @@ public final class AutoWeb {
 
         if (!ClientReady.gameplay(client)) {
             resetAll(client);
-            lastDecision = "not_ready";
+
             return;
         }
 
@@ -200,7 +199,6 @@ public final class AutoWeb {
         observePlacementConfirmation(client);
 
         if (PlacementCoordinator.busyFor(PlacementCoordinator.Owner.AUTO_WEB)) {
-            lastDecision = "other_placement";
             return;
         }
 
@@ -209,20 +207,17 @@ public final class AutoWeb {
             return;
         }
         if (remainingCooldownTicks > 0) {
-            lastDecision = "cooldown";
             return;
         }
         // A fast return releases slot/rotation ownership immediately, but a
         // second web must not start until the first server result is known.
         if (pendingPlaceConfirmationPos != null) {
-            lastDecision = "awaiting_confirmation";
             return;
         }
         processIdleTick(client);
     }
 
     private static void processIdleTick(Minecraft client) {
-
         if (tryExecutePendingAttack(client)) {
             return;
         }
@@ -243,7 +238,6 @@ public final class AutoWeb {
                 || !Targeting.isValidTargetPlayer(client, player)
                 || isTrappedInWeb(client, player)
                 || findWebSlot(client) == -1) {
-            lastDecision = "attack_ineligible_or_no_web";
             return;
         }
         // Attack callbacks may run before or after LocalPlayer.tick depending
@@ -252,7 +246,7 @@ public final class AutoWeb {
         pendingAttackTargetId = player.getId();
         pendingAttackTicks = ATTACK_REQUEST_LIFETIME_TICKS;
         pendingWallAttempted = false;
-        lastDecision = "attack_armed";
+
         if (GROUND_ENABLED.get()) {
             GROUND_LANDING_WINDOW.arm(
                     player, ATTACK_REQUEST_LIFETIME_TICKS, GROUND_WINDOW_TICKS.get());
@@ -263,7 +257,6 @@ public final class AutoWeb {
 
     private static boolean tryExecutePendingAttack(Minecraft client) {
         if (pendingAttackTargetId == -1) {
-            lastDecision = "waiting_attack";
             return false;
         }
         Player target =
@@ -307,22 +300,18 @@ public final class AutoWeb {
         PostHitLandingWindow.Snapshot landing =
                 GROUND_LANDING_WINDOW.update(target, client.player.getDeltaMovement());
         if (landing.expired()) {
-            lastDecision = "landing_window_expired";
             clearPendingAttack();
             return false;
         }
         if (!target.onGround() || !landing.insideLandingWindow()) {
-            lastDecision = landing.sawAirborne() ? "waiting_landing" : "waiting_airborne";
             return false;
         }
         if (landing.targetHorizontalSpeed() > GROUND_MAX_SPEED.get()
                 || landing.relativeHorizontalSpeed() > GROUND_MAX_RELATIVE_SPEED.get()) {
-            lastDecision = "ground_speed_limit";
             return false;
         }
         PlacementPlan plan = findLandingGroundPlan(client, target);
         if (plan == null) {
-            lastDecision = "no_safe_reachable_cell";
             return false;
         }
         return consumePlacementAttempt(client, plan);
@@ -331,10 +320,7 @@ public final class AutoWeb {
     private static boolean consumePlacementAttempt(Minecraft client, PlacementPlan plan) {
         clearPendingAttack();
         if (RandomMath.chance(CHANCE.get())) {
-            lastDecision = "placing";
             beginWebHold(client, plan);
-        } else {
-            lastDecision = "chance_skipped";
         }
         return true;
     }
@@ -1449,25 +1435,6 @@ public final class AutoWeb {
             int predictionTick,
             double score,
             boolean groundOnly) {}
-
-    // Debug
-    public static String debugState() {
-        return phase.name().toLowerCase(java.util.Locale.ROOT)
-                + " gate="
-                + lastDecision
-                + " request="
-                + pendingAttackTicks
-                + " hold="
-                + postPlaceHoldRemainingTicks
-                + " confirm="
-                + (pendingPlaceConfirmationPos == null ? "none" : placeConfirmTicks + "t")
-                + " strict="
-                + WAIT_CONFIRM_ROTATION.get()
-                + " use="
-                + SilentPacketRotation.isUseInvocationDone()
-                + "/"
-                + SilentPacketRotation.isUseDone();
-    }
 
     /** End this feature's pending work without changing its configured toggle. */
     public static void shutdown(Minecraft client) {

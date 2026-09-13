@@ -18,6 +18,7 @@ public final class ModuleCatalog {
         ModuleRegistry.add(Combat.jumpReset());
         ModuleRegistry.add(Network.backtrack());
         ModuleRegistry.add(Movement.keepSprint());
+        ModuleRegistry.add(Movement.moveFix());
         ModuleRegistry.add(Player.autoWeb());
         ModuleRegistry.add(Player.autoLava());
         ModuleRegistry.add(Player.autoBed());
@@ -29,9 +30,13 @@ public final class ModuleCatalog {
         ModuleRegistry.add(Movement.noJumpDelay());
         ModuleRegistry.add(World.fastPlace());
         ModuleRegistry.add(Player.autoTotem());
+        ModuleRegistry.add(Player.autoArmor());
+        ModuleRegistry.add(Player.invManager());
+        ModuleRegistry.add(Player.invClear());
         ModuleRegistry.add(Player.autoHead());
         ModuleRegistry.add(Player.autoMlg());
         ModuleRegistry.add(Network.fakeLag());
+        ModuleRegistry.add(Network.disabler());
         ModuleRegistry.add(Render.clickGui());
         ModuleRegistry.add(Render.blockAnimation());
         ModuleRegistry.add(Render.hud());
@@ -41,6 +46,7 @@ public final class ModuleCatalog {
         ModuleRegistry.add(Render.nametags());
         ModuleRegistry.add(Render.chams());
         ModuleRegistry.add(Render.fullBright());
+        ModuleRegistry.add(Render.antiDebuff());
         ModuleRegistry.add(Render.caver());
         ModuleRegistry.add(Render.clip());
         ModuleRegistry.add(Render.uhcFinder());

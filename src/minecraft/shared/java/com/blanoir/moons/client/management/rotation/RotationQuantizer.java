@@ -1,6 +1,7 @@
 package com.blanoir.moons.client.management.rotation;
 
-import com.blanoir.moons.client.utils.rotation.aim.RotationUtils;
+import com.blanoir.moons.client.utils.rotation.aim.AimSolverD;
+import com.blanoir.moons.client.utils.rotation.quantize.QuantizerA;
 
 import net.minecraft.client.Minecraft;
 
@@ -11,7 +12,7 @@ public final class RotationQuantizer {
     public static double mouseStep() {
         Minecraft client = Minecraft.getInstance();
         if (client == null || client.options == null) return 0;
-        return RotationUtils.mouseSensitivityStep(client.options.sensitivity().get());
+        return QuantizerA.mouseSensitivityStep(client.options.sensitivity().get());
     }
 
     public static float yaw(float base, float desired) {
@@ -24,14 +25,14 @@ public final class RotationQuantizer {
 
     /** Changes only whole turns so vanilla can keep the last sent yaw's numeric domain. */
     public static float continuousYaw(float reference, float cameraYaw) {
-        return RotationUtils.continuousYaw(reference, cameraYaw);
+        return AimSolverD.continuousYaw(reference, cameraYaw);
     }
 
     static float yaw(float base, float desired, double step) {
-        return RotationUtils.quantizeYawWithStep(base, desired, step);
+        return QuantizerA.quantizeYawWithStep(base, desired, step);
     }
 
     static float pitch(float base, float desired, double step) {
-        return RotationUtils.quantizePitchWithStep(base, desired, step);
+        return QuantizerA.quantizePitchWithStep(base, desired, step);
     }
 }

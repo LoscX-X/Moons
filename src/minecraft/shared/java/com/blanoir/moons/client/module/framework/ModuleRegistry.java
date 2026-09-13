@@ -27,7 +27,7 @@ public final class ModuleRegistry {
     private static final List<Module> MODULES = new ArrayList<>();
     private static final Map<String, Module> BY_ID = new LinkedHashMap<>();
     private static final Set<String> HUD_HIDDEN_MODULES =
-            Set.of("clickgui", "hud", "xraytargets", "chatprefix");
+            Set.of("clickgui", "hud", "xraytargets", "chatprefix", "movefix");
     private static Runnable catalogRegistration;
     private static boolean catalogInitializing;
     private static volatile boolean catalogInitialized;

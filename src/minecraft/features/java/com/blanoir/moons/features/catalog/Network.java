@@ -6,6 +6,7 @@ import com.blanoir.moons.client.config.Settings;
 import com.blanoir.moons.client.module.framework.ModuleCategories;
 import com.blanoir.moons.client.module.framework.ModuleRegistry;
 import com.blanoir.moons.client.module.impl.network.Backtrack;
+import com.blanoir.moons.client.module.impl.network.Disabler;
 import com.blanoir.moons.client.module.impl.network.FakeLag;
 import com.blanoir.moons.client.module.impl.network.LowHealthFakeLag;
 import com.blanoir.moons.client.module.impl.network.RandomFakeLag;
@@ -13,6 +14,16 @@ import com.blanoir.moons.client.module.impl.network.RandomFakeLag;
 /** Defines network module descriptors; ordering is owned by ModuleCatalog. */
 final class Network {
     private Network() {}
+
+    static ModuleRegistry.Module disabler() {
+        return module(
+                "disabler",
+                "Disabler",
+                ModuleCategories.NETWORK,
+                Disabler::isEnabled,
+                Disabler::setEnabled,
+                Disabler::statusTag);
+    }
 
     static ModuleRegistry.Module backtrack() {
         return module(

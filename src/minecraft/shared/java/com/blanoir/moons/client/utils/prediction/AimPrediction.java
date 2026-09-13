@@ -3,8 +3,11 @@ package com.blanoir.moons.client.utils.prediction;
 import com.blanoir.moons.client.utils.math.MathUtils;
 import com.blanoir.moons.client.utils.raytrace.RaytraceUtils;
 import com.blanoir.moons.client.utils.rotation.Rotation;
-import com.blanoir.moons.client.utils.rotation.aim.AimPointUtils;
-import com.blanoir.moons.client.utils.rotation.aim.RotationUtils;
+import com.blanoir.moons.client.utils.rotation.aim.AimGeometry;
+import com.blanoir.moons.client.utils.rotation.aim.AimPointsA;
+import com.blanoir.moons.client.utils.rotation.aim.AimPointsB;
+import com.blanoir.moons.client.utils.rotation.aim.AimPointsF;
+import com.blanoir.moons.client.utils.rotation.aim.AimSolverD;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.util.Mth;
@@ -56,7 +59,7 @@ public final class AimPrediction {
             double range,
             double inputMultiplier,
             double minimumAngle,
-            AimPointUtils.Mode pointMode) {
+            AimGeometry.Mode pointMode) {
         var currentPlayer = client.player;
         int ticks = Math.max(0, ticksAhead);
 
@@ -67,11 +70,11 @@ public final class AimPrediction {
 
         Vec3 futureAimPoint =
                 pointMode == null
-                        ? AimPointUtils.closest(
+                        ? AimPointsF.closest(
                                 futureBox, futureEye, currentPlayer.getLookAngle(), range)
-                        : pointMode == AimPointUtils.Mode.CENTER
-                                ? AimPointUtils.centerTrackingPoint(futureEye, futureBox)
-                                : AimPointUtils.closestTrackingPoint(futureEye, futureBox);
+                        : pointMode == AimGeometry.Mode.CENTER
+                                ? AimPointsA.centerTrackingPoint(futureEye, futureBox)
+                                : AimPointsB.closestTrackingPoint(futureEye, futureBox);
 
         boolean visible = RaytraceUtils.canRayTraceTo(client, futureEye, futureAimPoint);
 
@@ -84,7 +87,7 @@ public final class AimPrediction {
             }
         }
 
-        Rotation rotation = RotationUtils.rotationTo(futureEye, futureAimPoint);
+        Rotation rotation = AimSolverD.rotationTo(futureEye, futureAimPoint);
 
         double yawError = Math.abs(Mth.wrapDegrees(rotation.yaw() - currentPlayer.getYRot()));
 

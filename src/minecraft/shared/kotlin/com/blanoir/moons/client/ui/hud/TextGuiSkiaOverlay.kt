@@ -2,6 +2,7 @@ package com.blanoir.moons.client.ui.hud
 
 import com.blanoir.moons.client.access.MinecraftClientAccess
 import com.blanoir.moons.client.module.framework.ModuleRegistry
+import com.blanoir.moons.client.module.impl.render.InventorySee
 import com.blanoir.moons.client.module.impl.render.TargetInfoHud
 import com.blanoir.moons.client.ui.MinecraftScreenAccess
 import com.blanoir.moons.client.ui.animation.Animation
@@ -46,7 +47,12 @@ object TextGuiSkiaOverlay {
     private val animationClock = FrameClock(0.0)
     private val moduleEntries = LinkedHashMap<String, ModuleEntry>()
     private val sortedRows = ArrayList<Row>()
-    private val rowComparator = compareByDescending<Row> { it.width }.thenBy { it.name }
+    // InvManager's live action text changes length frequently. Keep its row anchored
+    // below the header; other modules retain their usual width ordering.
+    private val rowComparator =
+        compareBy<Row> { it.entry.module.id() != "invmanager" }
+            .thenByDescending { it.width }
+            .thenBy { it.name }
     private var rowsDirty = true
     private var rowScale = Float.NaN
     private var rowPixelMode = false
@@ -66,6 +72,7 @@ object TextGuiSkiaOverlay {
         RenderSystem.assertOnRenderThread()
         val client = Minecraft.getInstance()
         if (client.player == null || client.level == null) {
+            InventorySkiaRenderer.prepare(InventorySee.snapshot(false))
             moduleEntries.clear()
             sortedRows.clear()
             rowsDirty = true
@@ -76,11 +83,13 @@ object TextGuiSkiaOverlay {
 
         val currentScreen = MinecraftScreenAccess.current(client)
         if (currentScreen is MoonsComposeScreen && !editorVisible) {
+            InventorySkiaRenderer.prepare(InventorySee.Snapshot.HIDDEN)
             animationClock.reset()
             TargetInfoHud.snapshot(false)
             return
         }
         if (!editorVisible && MinecraftClientAccess.isHudHidden(client)) {
+            InventorySkiaRenderer.prepare(InventorySee.Snapshot.HIDDEN)
             animationClock.reset()
             return
         }
@@ -94,10 +103,12 @@ object TextGuiSkiaOverlay {
         )
         val drawTextGui = editorVisible || moduleEntries.isNotEmpty()
         val targetSnapshot = TargetInfoHud.snapshot(editorVisible)
+        val inventorySnapshot = InventorySee.snapshot(editorVisible)
+        InventorySkiaRenderer.prepare(inventorySnapshot)
         if (!drawTextGui) {
             MoonsHud.updateExternalBounds(Bounds(0.0, 0.0, 0.0, 0.0), HudConfig.SCALE.get())
         }
-        if (!drawTextGui && !targetSnapshot.visible()) {
+        if (!drawTextGui && !targetSnapshot.visible() && !inventorySnapshot.visible()) {
             return
         }
 
@@ -119,6 +130,18 @@ object TextGuiSkiaOverlay {
                     animationSeconds,
                 )
             if (targetSnapshot.visible()) drawTargetInfo(canvas, targetSnapshot)
+            if (inventorySnapshot.visible()) {
+                val resources = textResources
+                resources.configureFont(8f)
+                val rect =
+                    InventorySkiaRenderer.draw(
+                        canvas,
+                        inventorySnapshot,
+                        resources.font,
+                        resources.targetPaint,
+                    )
+                drawnBounds.include(rect.left - 2, rect.top - 2, rect.right + 2, rect.bottom + 2)
+            }
         }
     }
 
@@ -785,6 +808,7 @@ object TextGuiSkiaOverlay {
 
     @JvmStatic
     fun close() {
+        InventorySkiaRenderer.close()
         frameSurface.close()
         moduleEntries.clear()
         sortedRows.clear()

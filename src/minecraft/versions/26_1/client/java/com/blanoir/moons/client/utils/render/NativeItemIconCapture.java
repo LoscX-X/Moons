@@ -10,7 +10,7 @@ import net.minecraft.world.item.ItemStack;
 
 import java.util.function.Consumer;
 
-/** Captures a vanilla GUI item model, retaining transparency for the Compose picker. */
+/** Captures native item geometry offscreen. Null pixels report failure without blocking the queue. */
 public final class NativeItemIconCapture {
     public static final int SIZE = 32;
 
@@ -25,68 +25,77 @@ public final class NativeItemIconCapture {
     public static void capture(ItemStack stack, Consumer<byte[]> ready) {
         RenderSystem.assertOnRenderThread();
         Minecraft client = Minecraft.getInstance();
-        var state = new TrackingItemStackRenderState();
-        client.getItemModelResolver()
-                .updateForTopItem(
-                        state, stack, ItemDisplayContext.GUI, client.level, client.player, 0);
+        TrackingItemStackRenderState state;
+        try {
+            state = new TrackingItemStackRenderState();
+            client.getItemModelResolver()
+                    .updateForTopItem(
+                            state, stack, ItemDisplayContext.GUI, client.level, client.player, 0);
+        } catch (RuntimeException failure) {
+            ready.accept(null);
+            return;
+        }
         capture(state, ready);
     }
 
-    /** Renders prepared geometry using the same native GUI atlas and GPU readback. */
     public static void capture(TrackingItemStackRenderState state, Consumer<byte[]> ready) {
         RenderSystem.assertOnRenderThread();
         Minecraft client = Minecraft.getInstance();
-        var atlas =
-                new GuiItemAtlas(
-                        client.gameRenderer.getSubmitNodeStorage(),
-                        client.gameRenderer.getFeatureRenderDispatcher(),
-                        client.renderBuffers().bufferSource(),
-                        SIZE,
-                        SIZE);
-        var projection = RenderSystem.getProjectionMatrixBuffer();
-        var projectionType = RenderSystem.getProjectionType();
-        var colorOutput = RenderSystem.outputColorTextureOverride;
-        var depthOutput = RenderSystem.outputDepthTextureOverride;
-        GuiItemAtlas.SlotView slot;
+        var result = new NativeIconCaptureResult(ready);
         try {
-            slot = atlas.getOrUpdate(state);
-        } catch (RuntimeException exception) {
-            atlas.close();
-            throw exception;
-        } finally {
-            RenderSystem.setProjectionMatrix(projection, projectionType);
-            RenderSystem.outputColorTextureOverride = colorOutput;
-            RenderSystem.outputDepthTextureOverride = depthOutput;
-        }
-        if (slot == null) {
-            atlas.close();
-            ready.accept(new byte[SIZE * SIZE * 4]);
-            return;
-        }
-        var device = RenderSystem.getDevice();
-        var buffer =
-                device.createBuffer(() -> "Moons item icon readback", 9, (long) SIZE * SIZE * 4);
-        var encoder = device.createCommandEncoder();
-        encoder.copyTextureToBuffer(
-                slot.textureView().texture(),
-                buffer,
-                0L,
-                () -> {
-                    try (var mapped = encoder.mapBuffer(buffer, true, false)) {
-                        var source = mapped.data();
-                        byte[] pixels = new byte[SIZE * SIZE * 4];
-                        for (int y = 0; y < SIZE; y++) {
-                            for (int x = 0; x < SIZE * 4; x++) {
-                                pixels[y * SIZE * 4 + x] =
-                                        source.get((SIZE - 1 - y) * SIZE * 4 + x);
-                            }
+            var atlas =
+                    result.own(
+                            new GuiItemAtlas(
+                                    client.gameRenderer.getSubmitNodeStorage(),
+                                    client.gameRenderer.getFeatureRenderDispatcher(),
+                                    client.renderBuffers().bufferSource(),
+                                    SIZE,
+                                    SIZE));
+            var projection = RenderSystem.getProjectionMatrixBuffer();
+            var projectionType = RenderSystem.getProjectionType();
+            var colorOutput = RenderSystem.outputColorTextureOverride;
+            var depthOutput = RenderSystem.outputDepthTextureOverride;
+            GuiItemAtlas.SlotView slot;
+            try {
+                slot = atlas.getOrUpdate(state);
+            } finally {
+                RenderSystem.setProjectionMatrix(projection, projectionType);
+                RenderSystem.outputColorTextureOverride = colorOutput;
+                RenderSystem.outputDepthTextureOverride = depthOutput;
+            }
+            if (slot == null) {
+                result.complete(null);
+                return;
+            }
+            var buffer =
+                    result.own(
+                            RenderSystem.getDevice()
+                                    .createBuffer(
+                                            () -> "Moons icon readback",
+                                            9,
+                                            (long) SIZE * SIZE * 4));
+            var encoder = RenderSystem.getDevice().createCommandEncoder();
+            encoder.copyTextureToBuffer(
+                    slot.textureView().texture(),
+                    buffer,
+                    0L,
+                    () -> {
+                        byte[] pixels = null;
+                        try (var mapped = encoder.mapBuffer(buffer, true, false)) {
+                            var source = mapped.data();
+                            pixels = new byte[SIZE * SIZE * 4];
+                            for (int y = 0; y < SIZE; y++)
+                                for (int x = 0; x < SIZE * 4; x++)
+                                    pixels[y * SIZE * 4 + x] =
+                                            source.get((SIZE - 1 - y) * SIZE * 4 + x);
+                        } catch (RuntimeException failure) {
+                            pixels = null;
                         }
-                        ready.accept(pixels);
-                    } finally {
-                        buffer.close();
-                        atlas.close();
-                    }
-                },
-                0);
+                        result.complete(pixels);
+                    },
+                    0);
+        } catch (RuntimeException failure) {
+            result.complete(null);
+        }
     }
 }

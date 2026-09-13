@@ -13,8 +13,7 @@ import com.blanoir.moons.client.management.targeting.Targeting;
 import com.blanoir.moons.client.utils.client.ClientReady;
 import com.blanoir.moons.client.utils.math.MathUtils;
 import com.blanoir.moons.client.utils.math.RandomMath;
-import com.blanoir.moons.client.utils.rotation.Rotation;
-import com.blanoir.moons.client.utils.rotation.aim.RotationUtils;
+import com.blanoir.moons.client.utils.rotation.aim.TargetSelectorF;
 import com.blanoir.moons.client.utils.world.FluidQueries;
 import com.blanoir.moons.client.utils.world.placement.BlockPlacementUtils;
 import com.blanoir.moons.client.utils.world.placement.PlacementCoordinator;
@@ -360,46 +359,14 @@ public final class AntiLava {
     }
 
     private static BlockHitResult findSupportHit(Minecraft client, BlockPos source) {
-        if (!isLavaSource(client, source)) {
-            return null;
-        }
-        BlockHitResult best = null;
-        double bestScore = Double.POSITIVE_INFINITY;
-        Vec3 eye = client.player.getEyePosition();
-        double range = effectiveRange(client);
-        for (Direction face : SUPPORT_FACES) {
-            BlockPos supportPos = source.relative(face.getOpposite());
-            BlockState support = client.level.getBlockState(supportPos);
-            if (support.getCollisionShape(client.level, supportPos).isEmpty()) {
-                continue;
-            }
-            for (double u : FACE_SAMPLES) {
-                for (double v : FACE_SAMPLES) {
-                    Vec3 requested = BlockPlacementUtils.facePoint(client, supportPos, face, u, v);
-                    if (eye.distanceToSqr(requested) > range * range) continue;
-                    Rotation rotation = RotationUtils.rotationTo(eye, requested);
-                    BlockHitResult traced =
-                            BlockPlacementUtils.traceFace(
-                                    client,
-                                    eye,
-                                    rotation.yaw(),
-                                    rotation.pitch(),
-                                    range,
-                                    supportPos,
-                                    face);
-                    if (traced == null) continue;
-                    double score =
-                            eye.distanceToSqr(traced.getLocation())
-                                    + Math.abs(u - 0.5D) * 0.02D
-                                    + Math.abs(v - 0.5D) * 0.02D;
-                    if (score < bestScore) {
-                        best = traced;
-                        bestScore = score;
-                    }
-                }
-            }
-        }
-        return best;
+        if (!isLavaSource(client, source)) return null;
+        return TargetSelectorF.select(
+                client,
+                source,
+                client.player.getEyePosition(),
+                effectiveRange(client),
+                SUPPORT_FACES,
+                FACE_SAMPLES);
     }
 
     private static boolean isLavaSource(Minecraft client, BlockPos source) {

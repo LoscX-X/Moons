@@ -120,6 +120,7 @@ public final class AutoTotem {
     private static InventoryClickStep inventoryClickStep = InventoryClickStep.NONE;
     private static boolean inventoryOpenedByModule;
     private static boolean transactionOffhandEmpty;
+    private static final Object INVENTORY_OWNER = new Object();
 
     private enum InventoryClickStep {
         NONE,
@@ -130,7 +131,18 @@ public final class AutoTotem {
 
     private AutoTotem() {}
 
+    public static boolean inventoryBusy() {
+        return inventoryClickStep != InventoryClickStep.NONE || inventoryOpenedByModule;
+    }
+
+    public static boolean reservesOffhand() {
+        return ENABLED.get() || inventoryBusy();
+    }
+
     public static void init() {
+        com.blanoir.moons.client.utils.inventory.InventoryClicks.init();
+        EventBus.CLIENT_CONTEXT_CHANGED.register(
+                "AutoTotem.inventoryContext", event -> resetState());
         // AutoTotem is edge-triggered and never restores the previous offhand.
 
         EventBus.TICK.register(
@@ -198,6 +210,12 @@ public final class AutoTotem {
             return;
         }
 
+        if (com.blanoir.moons.client.utils.inventory.InventoryClicks.busyExcept(INVENTORY_OWNER)) {
+            com.blanoir.moons.client.utils.inventory.InventoryClicks.requestPreemption();
+            return;
+        }
+        if (client.player.containerMenu != client.player.inventoryMenu
+                || !client.player.inventoryMenu.getCarried().isEmpty()) return;
         equipTotem(client);
     }
 
@@ -226,12 +244,15 @@ public final class AutoTotem {
     }
 
     private static void beginInventoryClicks(Minecraft client, InventoryClickStep firstStep) {
+        if (!com.blanoir.moons.client.utils.inventory.InventoryClicks.acquire(INVENTORY_OWNER))
+            return;
         if (MinecraftClientAccess.screen(client) == null) {
             MinecraftClientAccess.setScreen(client, new InventoryScreen(client.player));
             inventoryOpenedByModule = true;
         } else if (MinecraftClientAccess.screen(client) instanceof InventoryScreen) {
             inventoryOpenedByModule = false;
         } else {
+            com.blanoir.moons.client.utils.inventory.InventoryClicks.release(INVENTORY_OWNER);
             return;
         }
 
@@ -298,6 +319,7 @@ public final class AutoTotem {
     }
 
     private static void finishTotemEquip(Minecraft client) {
+        com.blanoir.moons.client.utils.inventory.InventoryClicks.release(INVENTORY_OWNER);
         inventoryClickStep = InventoryClickStep.NONE;
         dangerEpisodeHandled = true;
         sourceMenuSlot = -1;
@@ -536,6 +558,7 @@ public final class AutoTotem {
     }
 
     private static void resetState() {
+        com.blanoir.moons.client.utils.inventory.InventoryClicks.release(INVENTORY_OWNER);
         dangerEpisodeHandled = false;
         offhandTotemObserved = false;
         sourceMenuSlot = -1;

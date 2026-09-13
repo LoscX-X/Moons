@@ -69,6 +69,34 @@ public final class Scaffold {
         return ScaffoldManager.smoothTellySelected();
     }
 
+    public static boolean standardBridgeSelected() {
+        return ScaffoldManager.standardBridgeSelected();
+    }
+
+    public static boolean godBridgeSelected() {
+        return ScaffoldManager.godBridgeSelected();
+    }
+
+    public static boolean godBridgeSneakSelected() {
+        return ScaffoldManager.godBridgeSneakSelected();
+    }
+
+    public static int setGodBridgeSneak(Minecraft client, boolean value) {
+        return ScaffoldManager.setGodBridgeSneak(client, value);
+    }
+
+    public static int setGodBridgeSneakTicks(Minecraft client, int value) {
+        return ScaffoldManager.setGodBridgeSneakTicks(client, value);
+    }
+
+    public static List<String> tellyRotationOptions() {
+        return ScaffoldManager.tellyRotationOptions();
+    }
+
+    public static int setTellyRotation(Minecraft c, String v) {
+        return ScaffoldManager.setTellyRotation(c, v);
+    }
+
     public static boolean tellyBpsLimitSelected() {
         return ScaffoldManager.tellyBpsLimitSelected();
     }
@@ -111,6 +139,22 @@ public final class Scaffold {
 
     public static int setTellyPlaceDelay(Minecraft c, int v) {
         return ScaffoldManager.setTellyPlaceDelay(c, v);
+    }
+
+    public static int setTellyEarlyRotation(Minecraft c, boolean v) {
+        return ScaffoldManager.setTellyEarlyRotation(c, v);
+    }
+
+    public static boolean earlyTellyRotationSelected() {
+        return ScaffoldManager.earlyTellyRotationSelected();
+    }
+
+    public static int tellyRotationDelay() {
+        return ScaffoldManager.tellyRotationDelay();
+    }
+
+    public static int setTellyRotationDelay(Minecraft c, int v) {
+        return ScaffoldManager.setTellyRotationDelay(c, v);
     }
 
     public static int setTellyBlocksPerSecondEnabled(Minecraft c, boolean v) {

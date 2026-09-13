@@ -73,6 +73,10 @@ public final class HotbarLease {
         return holder == this;
     }
 
+    public static synchronized boolean isHeld() {
+        return holder != null;
+    }
+
     public synchronized int leasedSlot() {
         return leasedSlot;
     }

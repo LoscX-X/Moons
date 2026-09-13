@@ -1,7 +1,7 @@
 package com.blanoir.moons.client.management.rotation;
 
 import com.blanoir.moons.client.utils.rotation.Rotation;
-import com.blanoir.moons.client.utils.rotation.aim.RotationUtils;
+import com.blanoir.moons.client.utils.rotation.aim.AimSolverD;
 
 import net.minecraft.world.phys.Vec3;
 
@@ -20,7 +20,7 @@ public record RotationRequest(
             Vec3 eye, Vec3 target, int smoothTicks, Runnable onConfirmed) {
         Objects.requireNonNull(eye, "eye");
         Objects.requireNonNull(target, "target");
-        Rotation rotation = RotationUtils.rotationTo(eye, target);
+        Rotation rotation = AimSolverD.rotationTo(eye, target);
         return new RotationRequest(
                 rotation.yaw(), rotation.pitch(), smoothTicks, 0.35F, onConfirmed);
     }

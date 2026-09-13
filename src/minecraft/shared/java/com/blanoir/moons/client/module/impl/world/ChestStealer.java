@@ -8,6 +8,8 @@ import com.blanoir.moons.client.config.settings.IntSetting;
 import com.blanoir.moons.client.config.settings.ModeSetting;
 import com.blanoir.moons.client.config.settings.StringSetting;
 import com.blanoir.moons.client.event.EventBus;
+import com.blanoir.moons.client.module.impl.world.cheststealer.ChestStealPlan;
+import com.blanoir.moons.client.utils.inventory.InventoryClicks;
 import com.blanoir.moons.client.utils.registry.RegistryLists;
 
 import net.minecraft.IdentifierException;
@@ -66,10 +68,15 @@ public final class ChestStealer {
     private static long nextStealAtNanos;
     private static boolean tookItems;
     private static int closeAfterTick = Integer.MIN_VALUE;
+    private static boolean blatantStalled;
+    private static final Object INVENTORY_OWNER = new Object();
 
     private ChestStealer() {}
 
     public static void init() {
+        InventoryClicks.init();
+        EventBus.CLIENT_CONTEXT_CHANGED.register(
+                "ChestStealer.context", event -> resetScreenState());
         EventBus.TICK.register(
                 "ChestStealer.tick",
                 event -> {
@@ -100,6 +107,9 @@ public final class ChestStealer {
 
         AbstractContainerMenu handler =
                 ((AbstractContainerScreen<?>) MinecraftClientAccess.screen(client)).getMenu();
+        if (currentPlayer.containerMenu != handler
+                || !handler.getCarried().isEmpty()
+                || InventoryClicks.busyExcept(INVENTORY_OWNER)) return;
         long now = System.nanoTime();
 
         if (handler != lastHandler) {
@@ -107,9 +117,11 @@ public final class ChestStealer {
             nextStealAtNanos = now + nextDelayMs() * 1_000_000L;
             tookItems = false;
             closeAfterTick = Integer.MIN_VALUE;
+            blatantStalled = false;
         }
 
         if (!legitMode()) {
+            if (blatantStalled) return;
             if (closeAfterTick != Integer.MIN_VALUE) {
                 closeIfFinished(client, handler);
                 return;
@@ -143,41 +155,73 @@ public final class ChestStealer {
     }
 
     private static void stealBlatant(Minecraft client, AbstractContainerMenu handler) {
-        int inventoryStart = handler.slots.size() - 36;
-        int hotbarStart = handler.slots.size() - 9;
-        // Each vanilla click predicts the changed slots synchronously. The next
-        // SWAP therefore uses the updated inventory in this same client tick.
-        for (int source = 0; source < inventoryStart; source++) {
-            Slot slot = handler.slots.get(source);
-            if (!slot.hasItem() || !shouldSteal(slot.getItem()) || !slot.mayPickup(client.player))
-                continue;
-
-            int hotbar = findEmptySlot(handler, hotbarStart, handler.slots.size());
-            if (hotbar < 0) {
-                int storage = findEmptySlot(handler, inventoryStart, hotbarStart);
-                if (storage < 0) return;
-                hotbar = hotbarStart;
-                // Make an empty hotbar slot without swapping owned items into
-                // the chest. SWAP buttons address hotbar indices, not menu slots.
-                swap(client, handler, storage, hotbar - hotbarStart);
-                if (handler.slots.get(hotbar).hasItem()) return;
+        if (!InventoryClicks.acquire(INVENTORY_OWNER)) return;
+        try {
+            int[] inventorySlots = new int[36];
+            Arrays.fill(inventorySlots, -1);
+            var sources = new java.util.ArrayList<Integer>();
+            for (int index = 0; index < handler.slots.size(); index++) {
+                Slot slot = handler.slots.get(index);
+                if (slot.container == client.player.getInventory()) {
+                    int inventoryIndex = slot.getContainerSlot();
+                    if (inventoryIndex >= 0 && inventoryIndex < 36)
+                        inventorySlots[inventoryIndex] = index;
+                } else if (slot.hasItem()
+                        && shouldSteal(slot.getItem())
+                        && slot.mayPickup(client.player)) {
+                    sources.add(index);
+                }
             }
-            swap(client, handler, source, hotbar - hotbarStart);
-            tookItems |= !slot.hasItem();
+            var plan =
+                    ChestStealPlan.build(
+                            handler.slots.stream().map(slot -> slot.getItem().copy()).toList(),
+                            inventorySlots,
+                            sources);
+            // Native prediction updates each pair before the next pair in the same client tick.
+            // A 36-stack batch uses at most 63 swaps (27 are internal hotbar shuttles).
+            for (var action : plan) {
+                if (!preparedSwap(client, handler, action)) {
+                    blatantStalled = true;
+                    return;
+                }
+                tookItems |= action.fromContainer();
+            }
+        } finally {
+            InventoryClicks.release(INVENTORY_OWNER);
         }
     }
 
-    private static int findEmptySlot(AbstractContainerMenu handler, int start, int end) {
-        for (int index = start; index < end; index++) {
-            if (!handler.slots.get(index).hasItem()) return index;
+    private static boolean preparedSwap(
+            Minecraft client, AbstractContainerMenu handler, ChestStealPlan.Swap action) {
+        if (client.player.containerMenu != handler || !handler.getCarried().isEmpty()) return false;
+        Slot slot = handler.getSlot(action.slot()), hotbar = handler.getSlot(action.hotbarSlot());
+        if (!ItemStack.matches(slot.getItem(), action.beforeSlot())
+                || !ItemStack.matches(hotbar.getItem(), action.beforeHotbar())
+                || !slot.mayPickup(client.player)
+                || !hotbar.mayPickup(client.player)
+                || !action.beforeSlot().isEmpty() && !hotbar.mayPlace(action.beforeSlot())
+                || !action.beforeHotbar().isEmpty() && !slot.mayPlace(action.beforeHotbar()))
+            return false;
+        // Survival middle click is CLONE/button 2, interpreted as MIDDLE/NOTHING by
+        // Bukkit. It must target the very same slot as the following NUMBER_KEY/SWAP.
+        // Creative CLONE creates a carried item, so creative uses only the real swap.
+        if (!client.player.getAbilities().instabuild) {
+            client.gameMode.handleContainerInput(
+                    handler.containerId, action.slot(), 2, ContainerInput.CLONE, client.player);
+            if (client.player.containerMenu != handler
+                    || !handler.getCarried().isEmpty()
+                    || !ItemStack.matches(slot.getItem(), action.beforeSlot())
+                    || !ItemStack.matches(hotbar.getItem(), action.beforeHotbar())) return false;
         }
-        return -1;
-    }
-
-    private static void swap(
-            Minecraft client, AbstractContainerMenu handler, int slot, int hotbar) {
         client.gameMode.handleContainerInput(
-                handler.containerId, slot, hotbar, ContainerInput.SWAP, client.player);
+                handler.containerId,
+                action.slot(),
+                action.button(),
+                ContainerInput.SWAP,
+                client.player);
+        return handler.getCarried().isEmpty()
+                && ItemStack.matches(slot.getItem(), action.beforeHotbar())
+                && ItemStack.matches(hotbar.getItem(), action.beforeSlot());
     }
 
     private static OptionalInt findNextContainerSlotIndex(AbstractContainerMenu handler) {
@@ -232,6 +276,7 @@ public final class ChestStealer {
         nextStealAtNanos = 0L;
         tookItems = false;
         closeAfterTick = Integer.MIN_VALUE;
+        blatantStalled = false;
     }
 
     public static int showStatus(Minecraft client) {

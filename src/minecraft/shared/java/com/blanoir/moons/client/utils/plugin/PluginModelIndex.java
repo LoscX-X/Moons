@@ -42,6 +42,7 @@ public final class PluginModelIndex {
     private Iterator<BlockState> pendingStates = List.<BlockState>of().iterator();
     private List<ModelRule> rules = List.of();
     private String currentPack = "";
+    private boolean currentServerPack;
 
     public PluginModelIndex(ResourceManager resources, PackResources vanilla) {
         this.resources = resources;
@@ -85,7 +86,10 @@ public final class PluginModelIndex {
                 if (rule.condition().test(state)) models.addAll(rule.models());
             }
             if (!models.isEmpty()) {
-                found.put(state, new Appearance(models.stream().sorted().toList(), currentPack));
+                found.put(
+                        state,
+                        new Appearance(
+                                models.stream().sorted().toList(), currentPack, currentServerPack));
             }
         }
         return pending.isEmpty() && !pendingStates.hasNext();
@@ -136,6 +140,11 @@ public final class PluginModelIndex {
         }
         rules = List.copyOf(customRules);
         currentPack = resource.sourcePackId();
+        var locationInfo = resource.source().location();
+        currentServerPack =
+                locationInfo != null
+                        && locationInfo.source()
+                                == net.minecraft.server.packs.repository.PackSource.SERVER;
         pendingStates =
                 rules.isEmpty()
                         ? List.<BlockState>of().iterator()
@@ -251,7 +260,11 @@ public final class PluginModelIndex {
         return JsonParser.parseString(new String(bytes, StandardCharsets.UTF_8)).getAsJsonObject();
     }
 
-    public record Appearance(List<Identifier> models, String pack) {}
+    public record Appearance(List<Identifier> models, String pack, boolean serverProvided) {
+        public Appearance(List<Identifier> models, String pack) {
+            this(models, pack, false);
+        }
+    }
 
     private record ModelRule(Predicate<BlockState> condition, Set<Identifier> models) {}
 }

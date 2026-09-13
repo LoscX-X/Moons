@@ -29,6 +29,8 @@ public final class CombatInputController {
         AUTO_LAVA,
         AUTO_BED,
         BLOCK_IN,
+        BLOCKING_USE,
+        AUTO_BLOCK,
         ANTI_LAVA,
         ANTI_WEB,
         SPRINT_RESET
@@ -38,6 +40,7 @@ public final class CombatInputController {
     private static final EnumSet<Owner> sprintSuppressors = EnumSet.noneOf(Owner.class);
     private static final EnumSet<Owner> attackSuppressors = EnumSet.noneOf(Owner.class);
     private static final EnumSet<Owner> jumpForcers = EnumSet.noneOf(Owner.class);
+    private static final EnumSet<Owner> useForcers = EnumSet.noneOf(Owner.class);
     private static boolean initialized;
     private static boolean syntheticAttackDown;
     private static int syntheticAttackTicks;
@@ -126,6 +129,20 @@ public final class CombatInputController {
         }
     }
 
+    /** Maintains a native held-use action without submitting another use click. */
+    public static void holdUse(Minecraft client, Owner owner) {
+        useForcers.add(owner);
+        if (valid(client)) client.options.keyUse.setDown(true);
+    }
+
+    public static void releaseUse(Minecraft client, Owner owner) {
+        if (!useForcers.remove(owner) || !useForcers.isEmpty()) return;
+        if (client != null && client.options != null) {
+            client.options.keyUse.setDown(false);
+            if (valid(client)) restorePhysicalState(client, client.options.keyUse);
+        }
+    }
+
     /**
      * Presses the jump key through the same callback path as a real keyboard or
      * mouse event instead of flipping the KeyMapping state synthetically.
@@ -166,10 +183,13 @@ public final class CombatInputController {
         releaseSprint(client, owner);
         releaseAttack(client, owner);
         releaseJump(client, owner);
+        releaseUse(client, owner);
     }
 
     /** Context loss/unload clears synthetic state without generating a new input callback. */
     public static void reset(Minecraft client) {
+        boolean heldUse = !useForcers.isEmpty();
+        useForcers.clear();
         forwardSuppressors.clear();
         sprintSuppressors.clear();
         attackSuppressors.clear();
@@ -183,11 +203,13 @@ public final class CombatInputController {
         client.options.keySprint.setDown(false);
         client.options.keyAttack.setDown(false);
         client.options.keyJump.setDown(false);
+        if (heldUse) client.options.keyUse.setDown(false);
         if (valid(client)) {
             restorePhysicalState(client, client.options.keyUp);
             restorePhysicalState(client, client.options.keySprint);
             restorePhysicalState(client, client.options.keyAttack);
             restorePhysicalState(client, client.options.keyJump);
+            if (heldUse) restorePhysicalState(client, client.options.keyUse);
         }
     }
 
@@ -275,8 +297,8 @@ public final class CombatInputController {
 
     /**
      * Submits a visible input press and invokes vanilla startAttack immediately.
-     * Used after the matching silent rotation packet has actually been sent, so
-     * a moving target is not validated against the previous tick's direction.
+     * The automatic attacker calls this before LocalPlayer movement, using the
+     * committed rotation for that tick. Vanilla retains attack/swing packet order.
      */
     public static boolean attackTargetNow(
             Minecraft client, Entity target, boolean forceTargetOverride) {

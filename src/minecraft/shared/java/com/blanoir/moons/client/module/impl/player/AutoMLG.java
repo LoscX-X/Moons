@@ -4,11 +4,15 @@ import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.DoubleSetting;
 import com.blanoir.moons.client.config.settings.IntSetting;
+import com.blanoir.moons.client.config.settings.ModeSetting;
 import com.blanoir.moons.client.event.EventBus;
+import com.blanoir.moons.client.management.rotation.SilentPacketRotation;
 import com.blanoir.moons.client.module.impl.player.automlg.AutoMlgRuntime;
 import com.blanoir.moons.client.utils.client.ClientReady;
 
 import net.minecraft.client.Minecraft;
+
+import java.util.List;
 
 public final class AutoMLG {
     // Legacy storage/module ids are retained for existing profiles and key bindings.
@@ -31,6 +35,25 @@ public final class AutoMLG {
             new BooleanSetting.Builder().name("nofall.solidCheck").defaultValue(true).build();
     private static final BooleanSetting RECOVERY =
             new BooleanSetting.Builder().name("nofall.recovery").defaultValue(true).build();
+    private static final ModeSetting<SilentPacketRotation.Mode> ROTATION =
+            new ModeSetting.Builder<SilentPacketRotation.Mode>()
+                    .name("nofall.rotation")
+                    .defaultValue(SilentPacketRotation.Mode.INSTANT)
+                    .option(SilentPacketRotation.Mode.INSTANT, "instant")
+                    .option(SilentPacketRotation.Mode.SMOOTH, "smooth")
+                    .build();
+    private static final IntSetting SMOOTH_TURN_TICKS =
+            new IntSetting.Builder()
+                    .name("nofall.smoothTurnTicks")
+                    .defaultValue(2)
+                    .range(1, 5)
+                    .build();
+    private static final IntSetting SMOOTH_RETURN_TICKS =
+            new IntSetting.Builder()
+                    .name("nofall.smoothReturnTicks")
+                    .defaultValue(2)
+                    .range(1, 5)
+                    .build();
 
     private AutoMLG() {}
 
@@ -49,7 +72,10 @@ public final class AutoMLG {
                             THRESHOLD.get(),
                             PREDICT_TICKS.get(),
                             SOLID_CHECK.get(),
-                            RECOVERY.get());
+                            RECOVERY.get(),
+                            ROTATION.get(),
+                            SMOOTH_TURN_TICKS.get(),
+                            SMOOTH_RETURN_TICKS.get());
                 });
     }
 
@@ -104,7 +130,30 @@ public final class AutoMLG {
     }
 
     public static String statusTag() {
-        return "";
+        return ROTATION.serialized();
+    }
+
+    public static List<String> rotationOptions() {
+        return ROTATION.optionIds();
+    }
+
+    public static int setRotation(Minecraft client, String mode) {
+        ROTATION.deserialize(mode);
+        return 1;
+    }
+
+    public static boolean smoothRotationSelected() {
+        return ROTATION.get() == SilentPacketRotation.Mode.SMOOTH;
+    }
+
+    public static int setSmoothTurnTicks(Minecraft ignoredClient, int value) {
+        SMOOTH_TURN_TICKS.set(value);
+        return 1;
+    }
+
+    public static int setSmoothReturnTicks(Minecraft ignoredClient, int value) {
+        SMOOTH_RETURN_TICKS.set(value);
+        return 1;
     }
 
     private static String statusText() {

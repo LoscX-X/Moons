@@ -9,6 +9,11 @@ import java.util.function.Consumer;
 public final class PacketAccess {
     private PacketAccess() {}
 
+    public static int teleportConfirmationId(
+            net.minecraft.network.protocol.game.ServerboundAcceptTeleportationPacket packet) {
+        return packet.getId();
+    }
+
     public static void forEachPacket(Packet<?> packet, Consumer<Packet<?>> consumer) {
         if (packet instanceof ClientboundBundlePacket bundle) {
             bundle.subPackets().forEach(consumer);

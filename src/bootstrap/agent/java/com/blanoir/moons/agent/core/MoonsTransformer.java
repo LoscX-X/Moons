@@ -168,6 +168,7 @@ final class MoonsTransformer {
             case PRESENT_BEFORE_GPU_PRESENT -> loadBeforeGpuPresent(method, target.id());
             case FLOAT_RETURN -> loadFloatReturn(method, target.id(), false);
             case FLOAT_RETURN_ARG -> loadFloatReturn(method, target.id());
+            case FLOAT_RETURN_OBJECT_ARG -> loadFloatObjectReturn(method, target.id());
             case FLOAT_HEAD_BOOLEAN_GATE -> loadFloatHeadBooleanGate(method, target.id());
             case BOOLEAN_RETURN_ARG -> loadBooleanReturn(method, target.id());
             case OBJECT_RETURN -> loadObjectReturn(method, target.id());
@@ -641,6 +642,42 @@ final class MoonsTransformer {
                 };
         if (atReturn) beforeReturns(method, Opcodes.RETURN, factory);
         else method.instructions.insert(factory.get());
+        return true;
+    }
+
+    private static boolean loadFloatObjectReturn(MethodNode method, String id) {
+        int result = method.maxLocals++;
+        beforeReturns(
+                method,
+                Opcodes.FRETURN,
+                () -> {
+                    InsnList hook = new InsnList();
+                    hook.add(new VarInsnNode(Opcodes.FSTORE, result));
+                    hook.add(new LdcInsnNode(id));
+                    hook.add(new VarInsnNode(Opcodes.ALOAD, 0));
+                    hook.add(new VarInsnNode(Opcodes.ALOAD, 1));
+                    hook.add(new VarInsnNode(Opcodes.FLOAD, result));
+                    hook.add(
+                            new MethodInsnNode(
+                                    Opcodes.INVOKESTATIC,
+                                    "java/lang/Float",
+                                    "valueOf",
+                                    "(F)Ljava/lang/Float;",
+                                    false));
+                    hook.add(
+                            call(
+                                    "onObjectValue",
+                                    "(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;"));
+                    hook.add(new TypeInsnNode(Opcodes.CHECKCAST, "java/lang/Float"));
+                    hook.add(
+                            new MethodInsnNode(
+                                    Opcodes.INVOKEVIRTUAL,
+                                    "java/lang/Float",
+                                    "floatValue",
+                                    "()F",
+                                    false));
+                    return hook;
+                });
         return true;
     }
 
@@ -1594,6 +1631,7 @@ final class MoonsTransformer {
                     case FLOAT_HEAD_BOOLEAN_GATE -> "onBooleanValue";
                     case BOOLEAN_RETURN_ARG -> "onBooleanValue";
                     case OBJECT_RETURN,
+                            FLOAT_RETURN_OBJECT_ARG,
                             OBJECT_ARGUMENT,
                             ITEM_STACK_ARGUMENT_5,
                             OBJECT_INVOKE_RETURN ->

@@ -17,7 +17,7 @@ on:
       verify:
         description: Verify Minecraft hooks, YSM rendering and update behavior
         type: boolean
-        default: false
+        default: true
 
 permissions:
   contents: read
@@ -29,7 +29,7 @@ concurrency:
 jobs:
   check:
     runs-on: windows-2022
-    timeout-minutes: 30
+    timeout-minutes: 60
     outputs:
       release_tag: ${{ steps.package.outputs.release_tag }}
     steps:
@@ -39,14 +39,10 @@ jobs:
           distribution: temurin
           java-version: '25'
       - uses: gradle/actions/setup-gradle@v5
-      - name: Compile all supported Minecraft versions
-        if: github.event_name == 'pull_request' || (github.event_name != 'workflow_dispatch' && github.ref != 'refs/heads/main')
-        shell: pwsh
-        run: .\gradlew.bat compileAllVersions --console=plain
       - name: Verify Minecraft hooks and YSM behavior
-        if: github.event_name == 'workflow_dispatch' && inputs.verify
+        if: github.event_name != 'workflow_dispatch' || inputs.verify
         shell: pwsh
-        run: .\gradlew.bat checkAllVersions --console=plain
+        run: .\gradlew.bat verifyMinecraftTransformers checkAllVersions --console=plain
       - name: Package YSM for all supported versions
         if: github.event_name == 'pull_request' || (github.event_name != 'workflow_dispatch' && github.ref != 'refs/heads/main')
         shell: pwsh

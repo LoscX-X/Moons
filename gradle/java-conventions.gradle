@@ -137,7 +137,7 @@ java {
 sourceSets.client.compileClasspath += sourceSets.api.output
 sourceSets.features.compileClasspath += sourceSets.client.output + sourceSets.client.compileClasspath
 
-// Daily CI compiles production sources only. Mapping verification remains opt-in.
+// Compilation-only entry points remain available; CI runs the full version checks by default.
 def versionCompilations = []
 moonsBuild.supportedVersions.each { minecraftVersion, directory ->
     def previousCompilation = versionCompilations.isEmpty() ? null : versionCompilations.last()

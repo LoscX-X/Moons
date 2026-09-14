@@ -1,5 +1,7 @@
 package com.blanoir.moons.agent.core;
 
+import com.blanoir.moons.agent.core.hooks.YsmHooks;
+
 import java.util.List;
 
 /** Exact logical-to-runtime targets for Minecraft 26.1.2. */

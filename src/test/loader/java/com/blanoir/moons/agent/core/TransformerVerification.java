@@ -70,6 +70,10 @@ public final class TransformerVerification {
                 }
                 assertStructureUnchanged(className, original, transformed);
                 verify(className, transformed);
+                if (transformer.transform(null, className, transformed) != null) {
+                    throw new AssertionError(
+                            "Retransformation added duplicate hooks: " + className);
+                }
             }
         } finally {
             for (JarFile jar : minecraftJars) jar.close();
@@ -114,20 +118,36 @@ public final class TransformerVerification {
     private static void verifyMovementHookOrdering(String className, ClassNode node) {
         if (className.equals("net/minecraft/client/Minecraft")) {
             MethodNode attack = findMethod(node, "startAttack", "()Z");
-            int entityAttack = callNamed(attack, "net/minecraft/client/multiplayer/MultiPlayerGameMode", "attack");
+            int entityAttack =
+                    callNamed(
+                            attack,
+                            "net/minecraft/client/multiplayer/MultiPlayerGameMode",
+                            "attack");
             // 26.1/26.2 also have an earlier swing on the separate piercing-weapon branch.
-            int swing = callNamedAfter(attack, "net/minecraft/client/player/LocalPlayer", "swing", entityAttack);
+            int swing =
+                    callNamedAfter(
+                            attack,
+                            "net/minecraft/client/player/LocalPlayer",
+                            "swing",
+                            entityAttack);
             if (entityAttack < 0 || swing <= entityAttack)
-                throw new AssertionError("Native entity attack must precede swing on this client protocol");
+                throw new AssertionError(
+                        "Native entity attack must precede swing on this client protocol");
             MethodNode tick = findMethod(node, "tick", "()V");
             int keys = callNamed(tick, className, "handleKeybinds");
-            int entities = callNamed(tick, "net/minecraft/client/multiplayer/ClientLevel", "tickEntities");
+            int entities =
+                    callNamed(tick, "net/minecraft/client/multiplayer/ClientLevel", "tickEntities");
             int changes = callNamed(tick, "net/minecraft/client/player/LocalPlayer", "sendChanges");
-            int endTick = fieldNamed(tick, "net/minecraft/network/protocol/game/ServerboundClientTickEndPacket", "INSTANCE");
+            int endTick =
+                    fieldNamed(
+                            tick,
+                            "net/minecraft/network/protocol/game/ServerboundClientTickEndPacket",
+                            "INSTANCE");
             if (keys < 0 || entities <= keys || endTick <= entities)
                 throw new AssertionError("Input/player tick must precede CLIENT_TICK_END");
             if (changes >= 0 && (changes <= entities || changes >= endTick))
-                throw new AssertionError("26.3 sendChanges must follow player simulation and precede CLIENT_TICK_END");
+                throw new AssertionError(
+                        "26.3 sendChanges must follow player simulation and precede CLIENT_TICK_END");
         }
         if (className.equals("net/minecraft/client/player/LocalPlayer")) {
             MethodNode collision =
@@ -157,9 +177,11 @@ public final class TransformerVerification {
                 throw new AssertionError("PlayerUpdate is not installed at LocalPlayer.tick head");
             }
             int movement = callNamed(update, className, "sendPosition");
-            int superclassTick = callNamed(update, "net/minecraft/client/player/AbstractClientPlayer", "tick");
+            int superclassTick =
+                    callNamed(update, "net/minecraft/client/player/AbstractClientPlayer", "tick");
             if (superclassTick <= updateHook || movement >= 0 && movement <= updateHook)
-                throw new AssertionError("Automatic interaction window must precede player simulation and movement send");
+                throw new AssertionError(
+                        "Automatic interaction window must precede player simulation and movement send");
             if (movement < 0) {
                 // 26.3 moved network updates out of tick; Minecraft.tick calls this afterwards.
                 MethodNode changes = findMethod(node, "sendChanges", "()V");
@@ -206,7 +228,8 @@ public final class TransformerVerification {
         int index = 0;
         for (var instruction : method.instructions) {
             if (instruction instanceof org.objectweb.asm.tree.FieldInsnNode field
-                    && field.owner.equals(owner) && field.name.equals(name)) return index;
+                    && field.owner.equals(owner)
+                    && field.name.equals(name)) return index;
             index++;
         }
         return -1;
@@ -215,8 +238,10 @@ public final class TransformerVerification {
     private static int callNamedAfter(MethodNode method, String owner, String name, int after) {
         int index = 0;
         for (var instruction : method.instructions) {
-            if (index > after && instruction instanceof MethodInsnNode call
-                    && call.owner.equals(owner) && call.name.equals(name)) return index;
+            if (index > after
+                    && instruction instanceof MethodInsnNode call
+                    && call.owner.equals(owner)
+                    && call.name.equals(name)) return index;
             index++;
         }
         return -1;

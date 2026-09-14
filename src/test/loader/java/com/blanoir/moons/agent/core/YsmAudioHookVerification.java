@@ -1,5 +1,6 @@
 package com.blanoir.moons.agent.core;
 
+import com.blanoir.moons.agent.core.hooks.YsmHooks;
 import com.blanoir.moons.api.bridge.*;
 
 import org.objectweb.asm.*;
@@ -11,14 +12,6 @@ import java.util.concurrent.CompletableFuture;
 /** Executes the version-specific audio return gate with replacement and vanilla fallthrough. */
 final class YsmAudioHookVerification implements Opcodes {
     static void verify() throws Exception {
-        Class<?> hooks;
-        try {
-            hooks = Class.forName("com.blanoir.moons.agent.core.YsmHooks");
-        } catch (ClassNotFoundException otherVersion) {
-            return;
-        }
-        var install = hooks.getDeclaredMethod("audioStream", MethodNode.class, String.class);
-        install.setAccessible(true);
         String name = "com/blanoir/moons/agent/core/AudioGateFixture";
         ClassNode node = new ClassNode();
         node.visit(V17, ACC_PUBLIC, name, null, "java/lang/Object", null);
@@ -46,7 +39,8 @@ final class YsmAudioHookVerification implements Opcodes {
         method.visitMaxs(0, 3);
         method.visitEnd();
         node.methods.add(method);
-        install.invoke(null, method, "audio.ysm-stream");
+        if (!YsmHooks.audioStream(method, "audio.ysm-stream"))
+            throw new AssertionError("YSM audio hook was not installed");
         ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_FRAMES | ClassWriter.COMPUTE_MAXS);
         node.accept(writer);
         byte[] bytes = writer.toByteArray();

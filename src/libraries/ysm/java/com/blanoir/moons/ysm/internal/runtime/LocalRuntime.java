@@ -311,8 +311,10 @@ public final class LocalRuntime extends AnimatableEntity<Object> implements Auto
         if (Double.isFinite(lastTime) && seconds < lastTime) reset();
         lastTime = seconds;
         var modelData = new EntityModelData();
-        modelData.headPitch = (float) number("head_x_rotation");
-        modelData.netHeadYaw = (float) number("head_y_rotation");
+        modelData.rawHeadPitch = (float) number("head_x_rotation");
+        modelData.rawNetHeadYaw = (float) number("head_y_rotation");
+        modelData.headPitch = headPitch();
+        modelData.netHeadYaw = headYaw();
         var event =
                 new AnimationEvent<AnimatableEntity<Object>>(
                         this,
@@ -388,6 +390,18 @@ public final class LocalRuntime extends AnimatableEntity<Object> implements Auto
     public double number(String name) {
         Object v = observations.get(name);
         return v instanceof Number n ? n.doubleValue() : Boolean.TRUE.equals(v) ? 1 : 0;
+    }
+
+    /** Upstream model-space degrees, shared by Molang and automatic head tracking. */
+    public float headPitch() {
+        return -(float) number("head_x_rotation");
+    }
+
+    public float headYaw() {
+        double yaw = number("head_y_rotation") % 360;
+        if (yaw >= 180) yaw -= 360;
+        if (yaw < -180) yaw += 360;
+        return -(float) Math.clamp(yaw, -85, 85);
     }
 
     public boolean flag(String name) {

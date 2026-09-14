@@ -6,6 +6,14 @@ Moons 是面向 Minecraft Java Edition 的 Windows 客户端，提供功能模�
 
 支持 **26.1.2**、**26.2**、**26.3-rc-2** 和 **26.3-rc-3**。
 
+## 版本支持
+
+Moons 持续维护最近四个 Minecraft 稳定版本系列。
+
+快照、预发布版和候选发布版等开发版本，仅支持即将推出的最新 Minecraft 版本。
+
+较早的预览构建和已停止支持的 Minecraft 版本可能仍可通过历史 Releases 或 CI 产物获取，但不再获得修复或兼容性更新。
+
 ## 如何使用
 
 1. 从 [Releases](https://github.com/LoscX-X/Moons/releases) 下载 `moons-full.exe`。

@@ -83,7 +83,7 @@ Get-Item .\build\dist\moons.exe | Select-Object FullName, LastWriteTime, Length
 
 `verifyYsmCore` 使用所选 Minecraft 的 Java 依赖运行一次核心验证，包括头部追踪、第一人称过滤、动画和队列快照。`verifyYsmRenderSetup` 检查该版本的材质与顶点变换；`benchmarkYsm` 测 CPU 时间和分配量，不代表游戏 FPS。最终视觉效果仍需进游戏确认第三人称抬头/低头、第一人称双臂、持物、透明材质和动作切换。
 
-CI 的日常构建只编译和打包；在 Actions 勾选 `verify` 才执行全版本自定义验证。格式化按需运行 `formatCode`，不挂在打包路径上。
+CI 在 push、PR 和默认的手动运行中先执行 `verifyMinecraftTransformers checkAllVersions`，通过后再打包。`checkAllVersions` 包含各受支持版本的编译、Transformer 和 YSM 验证；手动运行时可取消默认勾选的 `verify` 来跳过验证。格式化按需运行 `formatCode`，不挂在打包路径上。
 
 ## Windows bootstrap 中文路径验证
 

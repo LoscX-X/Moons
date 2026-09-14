@@ -2,7 +2,7 @@ package com.blanoir.moons.agent.core;
 
 import java.util.List;
 
-record TargetMethod(
+public record TargetMethod(
         String id,
         List<String> classNames,
         List<String> methodNames,
@@ -31,7 +31,8 @@ record TargetMethod(
         return !id.startsWith("optional.");
     }
 
-    enum HookKind {
+    /** Release-specific implementations belong in version mappings via VERSION_SPECIFIC. */
+    public enum HookKind {
         VERSION_SPECIFIC,
         CLIENT_TICK,
         FRAME,
@@ -75,7 +76,6 @@ record TargetMethod(
         STATIC_BOOLEAN_RETURN_ARG1,
         XRAY_TESSELLATE,
         XRAY_QUAD,
-        XRAY_SECTION_QUAD_26_2,
         VOID_START_END_ARG0,
         BOXED_ARGS_VOID_GATE,
         CHAMS_FRAME,
@@ -85,9 +85,6 @@ record TargetMethod(
         CHAMS_MARK_ITEM,
         CHAMS_ITEM_RENDER,
         CHAMS_FOIL_BUFFER,
-        CHAMS_MARK_ITEM_26_2,
-        CHAMS_ITEM_PREPARE_26_2,
-        CHAMS_FOIL_BUFFER_26_2,
         HAND_ANIMATION
     }
 }

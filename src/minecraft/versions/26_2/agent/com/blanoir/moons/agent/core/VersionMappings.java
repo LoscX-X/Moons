@@ -1,5 +1,9 @@
 package com.blanoir.moons.agent.core;
 
+import com.blanoir.moons.agent.core.hooks.ItemHooks;
+import com.blanoir.moons.agent.core.hooks.TerrainHooks;
+import com.blanoir.moons.agent.core.hooks.YsmHooks;
+
 import java.util.List;
 
 /** Exact logical-to-runtime targets for Minecraft 26.2. */
@@ -344,7 +348,8 @@ final class VersionMappings {
                                 "(Ljava/util/Map;Lnet/minecraft/client/renderer/SectionBufferBuilderPack;FFF"
                                         + "Lnet/minecraft/client/resources/model/geometry/BakedQuad;"
                                         + "Lcom/mojang/blaze3d/vertex/QuadInstance;)V",
-                                TargetMethod.HookKind.XRAY_SECTION_QUAD_26_2),
+                                TargetMethod.HookKind.VERSION_SPECIFIC,
+                                TerrainHooks::sectionQuad),
                         new TargetMethod(
                                 "xray.section-occlusion",
                                 List.of("net/minecraft/client/renderer/chunk/VisGraph"),
@@ -542,7 +547,8 @@ final class VersionMappings {
                                 "(Lcom/mojang/blaze3d/vertex/PoseStack;"
                                         + "Lnet/minecraft/world/item/ItemDisplayContext;III[ILjava/util/List;"
                                         + "Lnet/minecraft/client/renderer/item/ItemStackRenderState$FoilType;)V",
-                                TargetMethod.HookKind.CHAMS_MARK_ITEM_26_2),
+                                TargetMethod.HookKind.VERSION_SPECIFIC,
+                                ItemHooks::markItem),
                         new TargetMethod(
                                 "render.chams-item",
                                 List.of(
@@ -552,7 +558,8 @@ final class VersionMappings {
                                         "prepareOutlineSubmit",
                                         "prepareFoilSubmit"),
                                 "(Lnet/minecraft/client/renderer/feature/ItemFeatureRenderer$Submit;)V",
-                                TargetMethod.HookKind.CHAMS_ITEM_PREPARE_26_2),
+                                TargetMethod.HookKind.VERSION_SPECIFIC,
+                                ItemHooks::prepareItem),
                         new TargetMethod(
                                 "render.chams-foil",
                                 List.of(
@@ -561,7 +568,8 @@ final class VersionMappings {
                                 "(Lnet/minecraft/client/renderer/rendertype/RenderType;"
                                         + "Lcom/mojang/blaze3d/vertex/PoseStack$Pose;)"
                                         + "Lcom/mojang/blaze3d/vertex/VertexConsumer;",
-                                TargetMethod.HookKind.CHAMS_FOIL_BUFFER_26_2),
+                                TargetMethod.HookKind.VERSION_SPECIFIC,
+                                ItemHooks::foilBuffer),
                         new TargetMethod(
                                 "optional.sodium.render-model",
                                 List.of(

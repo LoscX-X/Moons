@@ -1,5 +1,9 @@
 package com.blanoir.moons.agent.core;
 
+import com.blanoir.moons.agent.core.hooks.TerrainHooks;
+import com.blanoir.moons.agent.core.hooks.VersionTransformer;
+import com.blanoir.moons.agent.core.hooks.YsmHooks;
+
 import java.util.List;
 
 /** Exact logical-to-runtime targets shared by Minecraft 26.3-rc-2 and 26.3-rc-3. */
@@ -337,7 +341,8 @@ final class VersionMappings {
                                 "(Ljava/util/Map;Lnet/minecraft/client/renderer/SectionBufferBuilderPack;FFF"
                                         + "Lnet/minecraft/client/resources/model/geometry/BakedQuad;"
                                         + "Lcom/mojang/blaze3d/vertex/QuadInstance;)V",
-                                TargetMethod.HookKind.XRAY_SECTION_QUAD_26_2),
+                                TargetMethod.HookKind.VERSION_SPECIFIC,
+                                TerrainHooks::sectionQuad),
                         new TargetMethod(
                                 "xray.section-occlusion",
                                 List.of("net/minecraft/client/renderer/chunk/VisGraph"),

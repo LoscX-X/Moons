@@ -477,9 +477,10 @@ public final class LocalYsmModel implements AutoCloseable {
             // LivingAnimatable adds view tracking after animation evaluation. Keep that
             // offset in this frame's matrices so repeated draws never accumulate rotation.
             if (i == headBone) {
-                // Geometry faces -Z with +Y up; Minecraft pitch/yaw use the opposite signs.
-                rx -= (float) Math.toRadians(runtime.number("head_x_rotation"));
-                ry -= (float) Math.toRadians(runtime.number("head_y_rotation"));
+                // Use the same signed, limited angles as Molang so authored
+                // head compensation and torso follow-through remain coordinated.
+                rx += (float) Math.toRadians(runtime.headPitch());
+                ry += (float) Math.toRadians(runtime.headYaw());
             }
             float sx = pose.scale.x * (float) adjustment.scaleX(),
                     sy = pose.scale.y * (float) adjustment.scaleY(),

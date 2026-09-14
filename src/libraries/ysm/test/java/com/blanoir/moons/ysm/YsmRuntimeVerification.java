@@ -53,6 +53,7 @@ final class YsmRuntimeVerification {
         verifyInterleavedRenderTimes();
         verifyFirstPersonAndSubEntities();
         verifyHeadTracking();
+        verifyAuthoredHeadTracking();
         verifyEquipmentRules();
         verifyWeaponAssemblyAndPredicates();
         verifyTimelineAndPhysics();
@@ -151,6 +152,82 @@ final class YsmRuntimeVerification {
         }
         System.out.println(
                 "YSM_HEAD_TRACKING_VERIFIED direction=up+down+left+right body-yaw=3 authored=preserved first-person=isolated");
+    }
+
+    private static void verifyAuthoredHeadTracking() throws Exception {
+        // Models divide view rotation between the torso and neck by compensating
+        // for automatic Head tracking. Wrong Molang signs make the torso turn away
+        // and force the neck to turn farther to keep looking in the same direction.
+        for (String[] bindings :
+                List.of(
+                        new String[] {"ysm.head_pitch", "ysm.head_yaw"},
+                        new String[] {"ysm.target_x_rotation", "ysm.target_y_rotation"},
+                        new String[] {"q.head_y_rotation", "q.head_x_rotation"})) {
+            var raw = fixture();
+            var head = new RawBone();
+            head.name = "Head";
+            head.parentName = "root";
+            raw.mainEntity.mainModel.bones.add(head);
+            var split = animation("parallel0", "root", 0, 0, 0);
+            split.boneAnimations.getFirst().rotation.getFirst().postData =
+                    new Object[] {"-0.5*" + bindings[0], "-0.5*" + bindings[1], 0};
+            var neck = animation("", "Head", 0, 0, 0).boneAnimations.getFirst();
+            neck.rotation.getFirst().postData =
+                    new Object[] {"0.5*" + bindings[0], "0.5*" + bindings[1], 0};
+            split.boneAnimations.add(neck);
+            raw.mainEntity.animationFiles.get("main").animations.put("parallel0", split);
+            // Single-axis cases isolate head/torso distribution; yaw cases also
+            // cover both sides of the wrap boundary and the upstream 85-degree cap.
+            for (float[] angles :
+                    new float[][] {
+                        {40, 0, 0},
+                        {-40, 0, 0},
+                        {0, 60, 60},
+                        {0, -60, -60},
+                        {0, 120, 85},
+                        {0, -120, -85},
+                        {0, 350, -10},
+                        {0, -350, 10},
+                        {0, 540, -85},
+                        {0, -540, -85}
+                    }) {
+                try (var model = new LocalYsmModel(raw)) {
+                    var queries =
+                            Map.<String, Object>of(
+                                    "head_x_rotation", angles[0],
+                                    "head_y_rotation", angles[1],
+                                    "query.head_x_rotation", angles[1],
+                                    "query.head_y_rotation", angles[0]);
+                    model.frame(0, queries, "");
+                    var mesh = model.frame(.5, queries, "");
+                    var torso =
+                            new org.joml.Matrix4f()
+                                    .rotateY((float) Math.toRadians(-angles[2] * .5))
+                                    .rotateX((float) Math.toRadians(-angles[0] * .5));
+                    var facing =
+                            new org.joml.Matrix4f()
+                                    .rotateY((float) Math.toRadians(-angles[2]))
+                                    .rotateX((float) Math.toRadians(-angles[0]));
+                    if (!mesh.locators().get("root").equals(torso, 1e-5f))
+                        throw new AssertionError(
+                                "Authored torso must follow the view: " + bindings[1]);
+                    if (!mesh.locators().get("Head").equals(facing, 1e-5f)
+                            || !mesh.equipmentLocators().get("Head").equals(facing, 1e-5f))
+                        throw new AssertionError(
+                                "Head compensation must preserve facing: " + bindings[1]);
+                    near(
+                            number(model.runtime().evaluate(bindings[0])),
+                            -angles[0],
+                            "YSM pitch sign");
+                    near(
+                            number(model.runtime().evaluate(bindings[1])),
+                            -angles[2],
+                            "YSM yaw sign and limit");
+                }
+            }
+        }
+        System.out.println(
+                "YSM_AUTHORED_HEAD_VERIFIED torso=half neck=half aliases=3 yaw=wrapped+limited");
     }
 
     private static void verifyWeaponAssemblyAndPredicates() throws Exception {

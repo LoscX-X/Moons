@@ -177,6 +177,12 @@ public final class RuntimeBindings {
                         : null;
             }
             if (namespace.equals("query")) {
+                // Upstream QueryBinding exposes yaw as x and pitch as y. Player
+                // observations contain raw game angles; these queries use model space.
+                if (name.equals("head_x_rotation") && rt.observation("head_y_rotation") != null)
+                    return ctx.data().netHeadYaw;
+                if (name.equals("head_y_rotation") && rt.observation("head_x_rotation") != null)
+                    return ctx.data().headPitch;
                 if (name.equals("life_time")) return rt.time();
                 if (name.equals("anim_time"))
                     return ctx.animationControllerContext() == null

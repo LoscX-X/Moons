@@ -1,4 +1,4 @@
-package com.blanoir.moons.agent.core;
+package com.blanoir.moons.agent.core.hooks;
 
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.AbstractInsnNode;
@@ -14,7 +14,7 @@ import org.objectweb.asm.tree.VarInsnNode;
 
 import java.util.function.Supplier;
 
-/** Builds bridge instructions; target selection and hook placement remain in the transformer. */
+/** Builds bridge instructions shared by the hook installers. */
 final class HookInstructions {
     static final String BRIDGE = "com/blanoir/moons/api/bridge/AgentBridge";
 

@@ -1,16 +1,16 @@
-package com.blanoir.moons.agent.core;
+package com.blanoir.moons.agent.core.hooks;
 
-import static com.blanoir.moons.agent.core.HookInstructions.*;
+import static com.blanoir.moons.agent.core.hooks.HookInstructions.*;
 
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.*;
 
 /** Injection boundaries verified against 26.3-rc-3's extracted renderer. */
-final class VersionTransformer {
+public final class VersionTransformer {
     private VersionTransformer() {}
 
-    static boolean load(MethodNode method, String id) {
+    public static boolean load(MethodNode method, String id) {
         return switch (id) {
             case "client.world-render" -> world(method);
             case "render.present" -> present(method, id);

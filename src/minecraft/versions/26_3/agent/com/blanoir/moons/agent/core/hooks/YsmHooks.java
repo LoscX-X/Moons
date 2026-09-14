@@ -1,11 +1,11 @@
-package com.blanoir.moons.agent.core;
+package com.blanoir.moons.agent.core.hooks;
 
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.*;
 
 /** Observe the completed state without retaining game types in the bootstrap API. */
-final class YsmHooks {
-    static boolean audioStream(MethodNode method, String id) {
+public final class YsmHooks {
+    public static boolean audioStream(MethodNode method, String id) {
         var hook = new InsnList();
         var fallback = new LabelNode();
         hook.add(new LdcInsnNode(id));
@@ -45,7 +45,7 @@ final class YsmHooks {
         return true;
     }
 
-    static boolean capture(MethodNode method, String id) {
+    public static boolean capture(MethodNode method, String id) {
         int result = method.maxLocals++;
         boolean found = false;
         for (var instruction : method.instructions.toArray()) {

@@ -6,6 +6,14 @@ Moons is a Windows client for Minecraft Java Edition with configurable modules, 
 
 Supports **26.1.2**, **26.2**, **26.3-rc-2** and **26.3-rc-3**.
 
+## Version Support
+
+Moons actively supports the four most recent stable Minecraft release lines.
+
+Development builds such as snapshots, pre-releases and release candidates are only supported for the newest upcoming Minecraft version.
+
+Older preview builds and retired Minecraft versions may remain available through historical releases or CI artifacts, but receive no further fixes or compatibility updates.
+
 ## How to Use
 
 1. Download `moons-full.exe` from [Releases](https://github.com/LoscX-X/Moons/releases).

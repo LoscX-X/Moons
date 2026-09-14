@@ -1,6 +1,6 @@
 # 构建与更新
 
-在仓库根目录运行 PowerShell。当前支持 Minecraft **26.1.2、26.2、26.3-rc-2**。
+在仓库根目录运行 PowerShell。当前构建目标为 Minecraft **26.1.2、26.2、26.3-rc-3**；26.3 载荷同时兼容 **26.3-rc-2**。
 
 ## 环境
 
@@ -49,7 +49,7 @@ MOONS_HOME/
   modules/
     moons-ysm-26.1.2.jar
     moons-ysm-26.2.jar
-    moons-ysm-26.3-rc-2.jar
+    moons-ysm-26.3-rc-3.jar
 ```
 
 三个 Minecraft 版本共用上面的三份库，仅适配模块不同。无需为每个模型复制 libs。也可把 `moons-ysm-all.zip` 解压至 `MOONS_HOME`，或运行 `build\dist\moons.exe --install-ysm-only` 只安装 YSM。
@@ -75,7 +75,7 @@ Get-Item .\build\dist\moons.exe | Select-Object FullName, LastWriteTime, Length
 .\gradlew.bat checkAllVersions
 
 # 局部修改只跑相关检查
-.\gradlew.bat verifyYsmCore verifyYsmRenderSetup '-Pminecraft_version=26.3-rc-2'
+.\gradlew.bat verifyYsmCore verifyYsmRenderSetup '-Pminecraft_version=26.3-rc-3'
 .\gradlew.bat verifyYsmCore '-Pysm_test_model=C:\Models\example.ysm'
 .\gradlew.bat verifyYsmPackage
 .\gradlew.bat benchmarkYsm

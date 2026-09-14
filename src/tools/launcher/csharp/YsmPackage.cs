@@ -16,7 +16,7 @@ namespace Moons.WindowsLauncher
             "libraries/moons-ysm-images.jar",
             "modules/moons-ysm-26.1.2.jar",
             "modules/moons-ysm-26.2.jar",
-            "modules/moons-ysm-26.3-rc-2.jar"
+            "modules/moons-ysm-26.3-rc-3.jar"
         };
 
         internal static void Install(string home, byte[] package)

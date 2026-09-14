@@ -239,14 +239,26 @@ namespace Moons.WindowsLauncher
             passed &= String.Equals(MatchSupportedVersion(
                 @"C:\Games\Minecraft\versions\26.3-rc-2\26.3-rc-2.jar"),
                 "26.3", StringComparison.Ordinal);
+            passed &= String.Equals(NormalizeConfiguredVersion("26.3-rc-3"),
+                "26.3", StringComparison.Ordinal);
+            passed &= String.Equals(MatchSupportedVersion(
+                "net.minecraft.client.main.Main --version 26.3-rc-3"),
+                "26.3", StringComparison.Ordinal);
+            passed &= String.Equals(MatchSupportedVersion(
+                @"C:\Users\coffe\AppData\Roaming\.minecraft\versions\26.3-rc-3\26.3-rc-3.jar"),
+                "26.3", StringComparison.Ordinal);
             passed &= NormalizeConfiguredVersion("26.3-pre-3") == null;
             passed &= NormalizeConfiguredVersion("26.3-rc-1") == null;
             passed &= MatchSupportedVersion("26.3-pre-3") == null;
             passed &= MatchSupportedVersion("26.3-rc-1") == null;
             passed &= MatchSupportedVersion("26.3-rc-20") == null;
             passed &= MatchSupportedVersion("26.3-rc-2-custom") == null;
+            passed &= NormalizeConfiguredVersion("26.3-rc-4") == null;
+            passed &= MatchSupportedVersion("26.3-rc-30") == null;
+            passed &= MatchSupportedVersion("26.3-rc-3-custom") == null;
             passed &= MatchSupportedVersion("26.3") == null;
             passed &= MatchSupportedVersion("26.2 and 26.3-rc-2") == null;
+            passed &= MatchSupportedVersion("26.2 and 26.3-rc-3") == null;
             passed &= MatchSupportedVersion("Minecraft 1.21.5") == null;
             passed &= MatchSupportedVersion("26.1.2 and 26.2") == null;
             passed &= IsMinecraftTargetEvidence(
@@ -1064,7 +1076,7 @@ namespace Moons.WindowsLauncher
                 {
                     throw new InvalidOperationException(
                         "Unsupported --minecraft-version value: " + configured
-                        + ". Expected 26.1, 26.1.2, 26.2, or 26.3-rc-2.");
+                        + ". Expected 26.1, 26.1.2, 26.2, 26.3-rc-2, or 26.3-rc-3.");
                 }
                 return selected;
             }
@@ -1084,10 +1096,10 @@ namespace Moons.WindowsLauncher
 
             throw new InvalidOperationException(
                 "Unable to identify whether PID " + target.Pid
-                + " is Minecraft 26.1.2, 26.2, or 26.3-rc-2. Load was cancelled to avoid loading "
+                + " is Minecraft 26.1.2, 26.2, 26.3-rc-2, or 26.3-rc-3. Load was cancelled to avoid loading "
                 + "the wrong mappings.\r\n\r\n"
                 + "Start the game normally so its command line contains --version, or run "
-                + DisplayName + " with --minecraft-version 26.1/26.1.2/26.2/26.3-rc-2.");
+                + DisplayName + " with --minecraft-version 26.1/26.1.2/26.2/26.3-rc-2/26.3-rc-3.");
         }
 
         private static string NormalizeConfiguredVersion(string configured)
@@ -1098,7 +1110,8 @@ namespace Moons.WindowsLauncher
             {
                 return "26.1";
             }
-            if (String.Equals(value, "26.3-rc-2", StringComparison.OrdinalIgnoreCase))
+            if (String.Equals(value, "26.3-rc-2", StringComparison.OrdinalIgnoreCase)
+                || String.Equals(value, "26.3-rc-3", StringComparison.OrdinalIgnoreCase))
             {
                 return "26.3";
             }
@@ -1119,7 +1132,7 @@ namespace Moons.WindowsLauncher
                 @"(?<![0-9.])26\.2(?![0-9.])",
                 RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
             bool is26_3 = Regex.IsMatch(evidence,
-                @"(?<![0-9A-Za-z.\-])26\.3-rc-2(?![0-9A-Za-z.\-])",
+                @"(?<![0-9A-Za-z.\-])26\.3-rc-[23](?![0-9A-Za-z.\-])",
                 RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
             if ((is26_1 ? 1 : 0) + (is26_2 ? 1 : 0) + (is26_3 ? 1 : 0) != 1)
             {

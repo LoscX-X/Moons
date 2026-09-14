@@ -12,7 +12,7 @@ import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
 
-/** Owns local selection, background loading and the Minecraft 26.3-rc-2 renderer. */
+/** Owns local selection, background loading and the Minecraft 26.3-rc-3 renderer. */
 public final class YsmModule implements MoonsModule, YsmSelector, YsmStudio {
     record Settings(Path model, String texture, String animation, double scale, boolean enabled) {}
 

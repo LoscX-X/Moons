@@ -139,7 +139,7 @@ jobs:
           - `moons-ysm-all.zip`: standalone YSM bundle with one shared library set and all supported adapters.
           - `moons-ysm-<version>.zip`: optional standalone bundle for one game version.
 
-          Only assets selected for this run are included. Both launchers support Minecraft 26.1.2, 26.2 and 26.3-rc-2.
+          Only assets selected for this run are included. Both launchers support Minecraft 26.1.2, 26.2, 26.3-rc-2 and 26.3-rc-3.
           NOTES
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" artifacts/* --repo "$GITHUB_REPOSITORY" --clobber

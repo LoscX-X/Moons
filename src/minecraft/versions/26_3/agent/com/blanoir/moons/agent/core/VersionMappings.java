@@ -2,12 +2,12 @@ package com.blanoir.moons.agent.core;
 
 import java.util.List;
 
-/** Exact logical-to-runtime targets for Minecraft 26.3-rc-2. */
+/** Exact logical-to-runtime targets shared by Minecraft 26.3-rc-2 and 26.3-rc-3. */
 final class VersionMappings {
     private VersionMappings() {}
 
     static String version() {
-        return "26.3-rc-2";
+        return "26.3-rc-3";
     }
 
     static MappingService create() {

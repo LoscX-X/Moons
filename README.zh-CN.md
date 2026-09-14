@@ -1,192 +1,51 @@
-# Moons
+<h1 align="center">Moons</h1>
 
-**简体中文** | [English](readme.md)
+<p align="center">简体中文 · <a href="readme.md">English</a></p>
 
-面向 Minecraft Java Edition 的 Windows 客户端项目，支持 **26.1.2 / 26.2 / 26.3-rc-2**，通过 JNI/JVMTI 桥接加载。客户端逻辑集中维护，版本差异由独立适配层处理。
+Moons 是面向 Minecraft Java Edition 的 Windows 客户端，提供功能模块、本地配置和 YSM 模型支持。
 
-26.3 当前预支持 `26.3-rc-2`，适配目录固定为 `26_3`，载荷标识为 `26.3`；正式版发布后在同一目录内更新目标版本。
+支持 **26.1.2**、**26.2**、**26.3-rc-2** 和 **26.3-rc-3**。
 
-## 获取与运行
+## 如何使用
 
-构建产物发布在 [GitHub Releases](https://github.com/LoscX-X/Moons/releases)，也可从对应 Actions 运行的 Artifacts 下载。
+1. 从 [Releases](https://github.com/LoscX-X/Moons/releases) 下载 `moons-full.exe`。
+2. 启动受支持版本的 Minecraft。
+3. 运行启动器，选择游戏进程并加载 Moons。
+4. 按 **右 Shift** 打开 ClickGUI，这是默认按键。
 
-- **完整版** `moons-full.exe`：内置 UI 依赖。
-- **轻量版** `moons.exe`：首次运行下载并缓存同次发布的 UI 依赖。
+体积较小的 `moons.exe` 会在首次使用时下载并缓存匹配的 UI 运行库。开发构建可从 [Actions](https://github.com/LoscX-X/Moons/actions) 获取。
 
-先启动受支持版本的 Minecraft，再运行启动器。
+## 如何保存配置
 
-## 本地构建
+1. 打开 **ClickGUI → Configs**。
+2. 输入名称，点击 **Create**，再点击 **Save** 保存当前设置。
+3. 之后选中已保存的配置，点击 **Load** 应用。
 
-### 环境要求
+## 如何使用 YSM 模型
 
-- Windows x64、x64 JDK 25。
-- Visual Studio 2022 或 Build Tools 2022，安装“使用 C++ 的桌面开发”，包含 Windows SDK 和 CMake 3.20+。
-- .NET Framework 4.x C# 编译器。
+1. 将模型放入 YSM 页面显示的目录，默认位置为 `%APPDATA%\.moons\data\ysm\models`。
+2. 打开 **ClickGUI → YSM**，点击 **Refresh**，选中模型后点击 **Apply**。
+3. 点击 **Use vanilla** 可恢复原版玩家模型。
 
-仓库包含 Gradle Wrapper，无需单独安装 Gradle。
+## 如何构建
 
-### 构建命令
-
-在仓库根目录打开 PowerShell，按本机环境设置 JDK 路径：
-
-```powershell
-$env:JAVA_HOME = 'C:\Program Files\Java\jdk-25'
-.\gradlew.bat moonsPackages
-```
-
-产物位于 `build/dist/`，也可单独执行对应任务：
-
-| 任务 | 产物 |
-|---|---|
-| `moonsPackages` | 全部产物，包含全部受支持的 Minecraft 版本 |
-| `moonsFullExe` | `moons-full.exe` |
-| `moonsExe` | `moons.exe` |
-| `moonsUiRuntime` | `dependencies/moons-ui-runtime.jar` 及 SHA-256 校验文件 |
-| `ysmAllVersions` | 独立的 `moons-ysm-all.zip` 及各版本 YSM 包；不重建 EXE |
-
-两个启动器均内置一套共享 YSM 库和全部适配模块，并自动安装匹配文件。详细命令与更新步骤见 [构建文档](BUILDING.md)。旧启动器缺少这些注入点时，仅替换模块 JAR 无法启用渲染，需要用新启动器注入新游戏进程。
-
-首次构建需要联网下载依赖。本地构建轻量版时，通过 `-Pmoons_ui_download_url=<URL>` 指定匹配的 UI JAR 下载地址。
-
-### 单独构建 Java 载荷
+准备 Windows x64、JDK 25，以及 [BUILDING.md](BUILDING.md) 列出的本地编译工具。在项目目录打开 PowerShell：
 
 ```powershell
-.\gradlew.bat moonsJar '-Pminecraft_version=26.1.2'
-.\gradlew.bat moonsJar '-Pminecraft_version=26.2'
-.\gradlew.bat moonsJar '-Pminecraft_version=26.3-rc-2'
+.\gradlew.bat moonsFullExe
 ```
 
-产物分别为 `build/dist/agent/26_1/moons.jar`、`build/dist/agent/26_2/moons.jar` 和 `build/dist/agent/26_3/moons.jar`，供桥接层加载，不支持 `java -jar` 启动。
+产物位于 `build/dist/moons-full.exe`。使用 IDE 时，以 JDK 25 导入 Gradle 项目并执行同名任务。
 
-## GitHub Actions
+## 如何参与开发
 
-在 **Actions → Project checks and packages → Run workflow** 中选择：
+- 在 [Issues](https://github.com/LoscX-X/Moons/issues) 中附上 Minecraft 版本、复现步骤和相关日志。
+- 修改代码后，完成受影响功能的编译和相关检查，再提交 PR。验证方式见 [构建文档](BUILDING.md)；网络功能修改参考 [开发约定](NETWORK_DEVELOPMENT.md)。
 
-- `all`：全部产物，默认选项。
-- `full` / `download`：完整版 / 轻量版，同时生成 UI 依赖。
-- `ui-runtime`：仅构建 UI 依赖。
+## 许可证
 
-日常 CI 编译全部受支持版本并打包 YSM，不强制执行自定义验证。主分支推送自动构建启动器并创建预发布版本；Pull Request 运行正式源码编译和 YSM 打包。手动选择 `ui-runtime` 时跳过 Minecraft 编译。轻量版的依赖下载地址由工作流自动配置。
+[GPL-3.0](LICENSE)。第三方代码保留原有许可证和声明。
 
-在 **Run workflow** 勾选 `verify` 会执行 `checkAllVersions`，编译各版本正式源码并验证 Minecraft 映射、注入点、YSM 行为、材质和更新回滚。局部修改可只运行相关验证任务，见 [构建文档](BUILDING.md)。
+完整的安全协议、免责声明与使用须知见 [免责声明](DISCLAIMER.zh-CN.md)。
 
-## 开发与许可
-
-开发约定见 [CONTRIBUTING.md](CONTRIBUTING.md)。
-
-许可证见 [LICENSE](LICENSE)。
-
----
-
-安全协议及免责声明与使用须知
-
-一、项目性质
-
-本项目是一个以 Minecraft Java Edition 为运行载体的开源研究与测试项目，主要用于学习、研究和验证运行时注入、事件拦截、模块加载及相关软件工程技术。
-
-本项目不属于 Minecraft 官方产品，不受 Mojang Studios 或 Microsoft 的认可、赞助或授权，也不代表上述主体的立场。
-
-NOT AN OFFICIAL MINECRAFT PRODUCT. NOT APPROVED BY OR ASSOCIATED WITH MOJANG OR MICROSOFT.
-
-二、使用范围
-
-本项目仅供合法的软件研究、个人学习、兼容性测试及经明确授权的安全测试使用。
-
-使用者不得将本项目用于任何违反适用法律法规、平台规则、软件许可协议或他人合法权益的活动，包括但不限于：
-
-未经授权访问、修改、干扰或破坏第三方设备、账户、服务器及数据；
-
-窃取、收集、上传、出售或泄露个人信息、身份凭据及其他敏感数据；
-
-绕过访问控制、安全验证、付费机制或平台限制；
-
-实施欺诈、攻击、勒索、恶意控制、持久化驻留或其他违法行为；
-
-盗取账号或令牌、远程控制、数据外传、持久化隐藏、绕过安全软件；
-
-将本项目伪装成 Minecraft、Mojang Studios 或 Microsoft 的官方产品。
-
-三、数据与隐私
-
-本项目的设计目的不包括收集、窃取、监控、上传或向外部主体提供用户及第三方的个人信息、账户凭据、聊天记录、设备信息或其他非公开数据。
-
-除非项目文档另有明确说明，官方发布版本不应主动连接与项目功能无关的外部服务。
-
-使用者应自行审查所使用的源代码、构建产物、配置文件及网络行为。对于第三方修改版本、非官方构建、重新分发版本、外部插件或使用者自行添加的代码，项目维护者无法保证其安全性、完整性及数据处理行为。
-
-请仅从本项目明确列出的官方仓库或发布渠道获取源代码和构建产物。
-
-四、使用者责任
-
-下载、编译、安装、运行、修改或分发本项目，即表示使用者理解并同意：
-
-使用者应确保其行为已经获得必要授权，并符合所在地适用法律、Minecraft 相关协议、服务器规则及其他适用条款；
-
-使用者应自行评估运行时注入及修改游戏行为可能造成的安全性、稳定性和兼容性风险；
-
-使用者应自行备份重要文件，并优先在隔离的测试环境、个人存档或获得明确授权的环境中使用；
-
-因使用者违反法律、协议、服务器规则或本声明而产生的责任，由使用者自行承担；
-
-项目名称、开源属性或研究目的，不构成对任何具体使用行为合法性、合规性或安全性的保证。
-
-五、风险提示
-
-运行时注入、字节码修改、Hook、Mixin 或类似机制可能与其他 Mod、加载器、游戏版本、安全软件及系统环境发生冲突，并可能导致：
-
-游戏崩溃、存档损坏或配置丢失；
-
-性能下降、功能异常或版本不兼容；
-
-服务器拒绝连接、账户限制或其他平台处置；
-
-安全软件产生警告、拦截或误报；
-
-因错误配置、第三方修改或不当操作造成的其他损失。
-
-使用者应在充分了解相关风险后自行决定是否运行本项目。
-
-六、无担保声明
-
-在适用法律允许的最大范围内，本项目按照“现状”和“可用状态”提供，不附带任何明示或默示担保，包括但不限于对适销性、特定用途适用性、准确性、可靠性、兼容性、安全性及不侵权的担保。
-
-项目作者及维护者不保证本项目：
-
-始终可用、无错误或不中断；
-
-适配所有 Minecraft、Java、Mod Loader 或操作系统版本；
-
-不会触发安全软件、平台风控或服务器检测；
-
-能够满足任何特定目的或产生任何特定结果。
-
-在适用法律允许的最大范围内，项目作者、维护者及贡献者不对因使用或无法使用本项目而产生的直接、间接、附带、特殊、惩罚性或后果性损失承担责任。
-
-如适用法律不允许排除或限制部分责任，则相关责任按照该法律允许的最低范围承担。
-
-七、知识产权
-
-Minecraft、Mojang、Mojang Studios、Microsoft 及其相关名称、商标、图形和游戏资源，归其各自权利人所有。
-
-本项目仅对项目作者及贡献者原创的代码和内容依照仓库所附开源许可证进行授权。该授权不包括 Minecraft 本体、修改后的游戏客户端或服务端、官方资源，以及任何项目无权再授权的第三方内容。
-
-使用者在复制、修改或分发本项目时，应同时遵守：
-
-本项目采用的开源许可证；
-
-Minecraft 最终用户许可协议及使用指南；
-
-所使用依赖项和第三方组件的许可证；
-
-所在地区适用的法律法规。
-
-本声明不替代或修改仓库中开源许可证所规定的权利与义务；如两者存在冲突，应以适用的许可证及强制性法律规定为准。
-
-八、第三方内容与非官方版本
-
-项目维护者不对第三方网站、镜像、整合包、衍生项目、修改版本或非官方构建提供担保，也不对其安全性、合法性、完整性及可用性负责。
-
-任何第三方对本项目的修改、重新分发或组合使用，均不当然代表项目作者及维护者的认可、授权或合作关系。
-
-相关源代码
-https://github.com/LoscX-X/Moons
+非 Minecraft 官方产品，与 Mojang 或 Microsoft 无关联。

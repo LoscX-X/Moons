@@ -15,7 +15,7 @@ on:
           - download
           - ui-runtime
       verify:
-        description: Verify Minecraft mappings and injection points
+        description: Verify Minecraft hooks, YSM rendering and update behavior
         type: boolean
         default: false
 
@@ -40,13 +40,17 @@ jobs:
           java-version: '25'
       - uses: gradle/actions/setup-gradle@v5
       - name: Compile all supported Minecraft versions
-        if: github.event_name != 'workflow_dispatch' || inputs.package != 'ui-runtime'
+        if: github.event_name == 'pull_request' || (github.event_name != 'workflow_dispatch' && github.ref != 'refs/heads/main')
         shell: pwsh
         run: .\gradlew.bat compileAllVersions --console=plain
-      - name: Verify Minecraft mappings and injection points
+      - name: Verify Minecraft hooks and YSM behavior
         if: github.event_name == 'workflow_dispatch' && inputs.verify
         shell: pwsh
         run: .\gradlew.bat checkAllVersions --console=plain
+      - name: Package YSM for all supported versions
+        if: github.event_name == 'pull_request' || (github.event_name != 'workflow_dispatch' && github.ref != 'refs/heads/main')
+        shell: pwsh
+        run: .\gradlew.bat ysmAllVersions --console=plain
       - name: Build selected packages
         id: package
         if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch')
@@ -68,6 +72,15 @@ jobs:
           "kind=$env:PACKAGE_KIND" >> $env:GITHUB_OUTPUT
           .\gradlew.bat @tasks "-Pmoons_ui_download_url=$runtimeUrl" --console=plain
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Upload YSM bundles
+        if: github.event_name != 'workflow_dispatch' || inputs.package != 'ui-runtime'
+        uses: actions/upload-artifact@v6
+        with:
+          name: moons-ysm
+          overwrite: true
+          path: build/dist/moons-ysm-*.zip
+          if-no-files-found: error
+          compression-level: 0
       - name: Upload UI runtime
         if: steps.package.outputs.kind != ''
         uses: actions/upload-artifact@v6
@@ -122,8 +135,11 @@ jobs:
           - `moons-full.exe`: includes the UI runtime; no separate UI dependency download.
           - `moons.exe`: downloads and caches the matching UI runtime from this release.
           - `moons-ui-runtime.jar`: standalone UI dependency, with a SHA-256 sidecar.
+          - Both launchers automatically install their matching shared YSM libraries and all game-version adapters.
+          - `moons-ysm-all.zip`: standalone YSM bundle with one shared library set and all supported adapters.
+          - `moons-ysm-<version>.zip`: optional standalone bundle for one game version.
 
-          Only assets selected for this run are included. Both launchers support Minecraft 26.1.2, 26.2 and 26.3-pre-3.
+          Only assets selected for this run are included. Both launchers support Minecraft 26.1.2, 26.2 and 26.3-rc-2.
           NOTES
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" artifacts/* --repo "$GITHUB_REPOSITORY" --clobber

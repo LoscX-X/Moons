@@ -6,7 +6,6 @@ import com.blanoir.moons.client.utils.world.placement.BlockPlacementUtils;
 import com.blanoir.moons.client.utils.world.placement.FaceScanA;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.util.Mth;
 import net.minecraft.world.phys.Vec3;
 
 /**
@@ -94,8 +93,7 @@ public final class AimPointsG {
 
     public static double score(FaceScanA.Sample sample, Rotation base) {
         double angleScore =
-                Math.abs(Mth.wrapDegrees(sample.rotation().yaw() - base.yaw()))
-                        + Math.abs(sample.rotation().pitch() - base.pitch());
+                AimSolverE.distance(sample.rotation(), base.yaw(), base.pitch());
         double centerScore =
                 (sample.u() - 0.5D) * (sample.u() - 0.5D)
                         + (sample.v() - 0.5D) * (sample.v() - 0.5D);

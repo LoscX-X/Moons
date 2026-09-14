@@ -13,16 +13,15 @@ def javaSources = files(fileTree('src') { include '**/*.java' },
         fileTree('tools') { include '**/*.java' })
 def kotlinSources = fileTree('src') { include '**/*.kt', '**/*.kts' }
 
-def registerFormatter = { String taskName, boolean checkOnly, boolean javaLanguage ->
+def registerFormatter = { String taskName, boolean javaLanguage ->
     tasks.register(taskName, JavaExec) {
-        group = checkOnly ? 'verification' : 'formatting'
-        description = "${checkOnly ? 'Checks' : 'Formats'} all ${javaLanguage ? 'Java' : 'Kotlin'} sources, including all Minecraft versions."
+        group = 'formatting'
+        description = "Formats all ${javaLanguage ? 'Java' : 'Kotlin'} sources, including all Minecraft versions."
         def sources = javaLanguage ? javaSources : kotlinSources
         classpath = javaLanguage ? configurations.javaFormatter : configurations.kotlinFormatter
         mainClass = javaLanguage ? 'com.google.googlejavaformat.java.Main' : 'com.facebook.ktfmt.cli.Main'
         workingDir = project.projectDir
         inputs.files(sources).withPathSensitivity(PathSensitivity.RELATIVE)
-        // Check tasks deliberately have no outputs: each check must inspect the working tree.
         if (javaLanguage) {
             jvmArgs(['api', 'file', 'parser', 'tree', 'util', 'code'].collect {
                 "--add-exports=jdk.compiler/com.sun.tools.javac.${it}=ALL-UNNAMED"
@@ -35,8 +34,7 @@ def registerFormatter = { String taskName, boolean checkOnly, boolean javaLangua
             def options = javaLanguage
                     ? ['--aosp', '--skip-reflowing-long-strings', '--skip-javadoc-formatting']
                     : ['--kotlinlang-style']
-            if (checkOnly) options += ['--dry-run', '--set-exit-if-changed']
-            else if (javaLanguage) options += ['--replace']
+            if (javaLanguage) options += ['--replace']
             def paths = sources.files.collect { project.relativePath(it) }.sort()
             argumentFile.setText((options + paths).join('\n') + '\n', 'UTF-8')
             setArgs(["@${argumentFile.absolutePath}"])
@@ -44,8 +42,8 @@ def registerFormatter = { String taskName, boolean checkOnly, boolean javaLangua
     }
 }
 
-registerFormatter('formatJava', false, true)
-registerFormatter('formatKotlin', false, false)
+registerFormatter('formatJava', true)
+registerFormatter('formatKotlin', false)
 
 def textSources = files(
         fileTree('src') { include '**/*.cs' },

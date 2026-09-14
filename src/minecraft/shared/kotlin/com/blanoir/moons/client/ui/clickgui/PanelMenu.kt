@@ -219,6 +219,20 @@ internal fun ControlMenu(
                 },
             )
             ControlMenuRow(
+                label = "YSM models",
+                selected = false,
+                icon = "player",
+                onClick = {
+                    onBindingModuleChange(null)
+                    com.blanoir.moons.client.config.Settings.setString(
+                        "clickgui.settings.page",
+                        "YSM",
+                    )
+                    ModuleGui.setLayout(null, "settings")
+                    onMutated()
+                },
+            )
+            ControlMenuRow(
                 label = "Close",
                 selected = false,
                 icon = "close",

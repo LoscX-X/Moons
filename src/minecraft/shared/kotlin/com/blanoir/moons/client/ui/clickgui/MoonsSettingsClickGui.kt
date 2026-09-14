@@ -74,7 +74,7 @@ internal fun MoonsSettingsClickGui(
     var category by remember {
         mutableStateOf(
             Settings.getString("clickgui.settings.page", "All modules")
-                .takeIf { it == "Configs" }
+                .takeIf { it == "Configs" || it.startsWith("YSM") }
                 .orEmpty()
                 .ifEmpty { "All modules" }
         )
@@ -153,24 +153,38 @@ internal fun MoonsSettingsClickGui(
                             Modifier.weight(1f).verticalScroll(rememberScrollState()),
                             verticalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
-                            (listOf("General", "Configs", "All modules") + categories).forEach {
-                                item ->
-                                val icon =
-                                    when (item) {
-                                        "General" -> "settings"
-                                        "Configs" -> "configs"
-                                        "All modules" -> "modules"
-                                        else -> categoryIconId(item) ?: "modules"
+                            (listOf(
+                                    "General",
+                                    "Configs",
+                                    "YSM",
+                                    "YSM Parameters",
+                                    "YSM Actions",
+                                    "YSM Pose",
+                                    "YSM Debug",
+                                    "All modules",
+                                ) + categories)
+                                .forEach { item ->
+                                    val icon =
+                                        when (item) {
+                                            "General" -> "settings"
+                                            "Configs" -> "configs"
+                                            "YSM",
+                                            "YSM Parameters",
+                                            "YSM Actions",
+                                            "YSM Pose",
+                                            "YSM Debug" -> "player"
+                                            "All modules" -> "modules"
+                                            else -> categoryIconId(item) ?: "modules"
+                                        }
+                                    SettingsNavigation(item, icon, category == item, compact) {
+                                        focus.clearFocus()
+                                        onBindingModuleChange(null)
+                                        category = item
+                                        Settings.setString("clickgui.settings.page", item)
+                                        search = ""
+                                        configuration = false
                                     }
-                                SettingsNavigation(item, icon, category == item, compact) {
-                                    focus.clearFocus()
-                                    onBindingModuleChange(null)
-                                    category = item
-                                    Settings.setString("clickgui.settings.page", item)
-                                    search = ""
-                                    configuration = false
                                 }
-                            }
                         }
                         if (!compact)
                             Text(
@@ -190,12 +204,14 @@ internal fun MoonsSettingsClickGui(
                             horizontalArrangement = Arrangement.End,
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            SettingsAction(
-                                if (compact) "Config file" else "Open configuration file"
-                            ) {
-                                fileError = ModuleGui.openConfigurationFile()
+                            if (!category.startsWith("YSM")) {
+                                SettingsAction(
+                                    if (compact) "Config file" else "Open configuration file"
+                                ) {
+                                    fileError = ModuleGui.openConfigurationFile()
+                                }
+                                Spacer(Modifier.width(12.dp))
                             }
-                            Spacer(Modifier.width(12.dp))
                             SettingsIconButton("close", "Close ClickGUI", onClose)
                         }
                         Text(
@@ -208,6 +224,10 @@ internal fun MoonsSettingsClickGui(
                         Text(
                             if (category == "Configs")
                                 "Create, save and load your local configurations."
+                            else if (category == "YSM")
+                                "Choose a local player model. Changes are visible only to you."
+                            else if (category.startsWith("YSM"))
+                                "Preview and adjust your local model."
                             else if (category == "General")
                                 "Manage your interface and client preferences."
                             else "Configure and inspect the modules in your client.",
@@ -215,7 +235,7 @@ internal fun MoonsSettingsClickGui(
                             fontSize = 13.sp,
                             lineHeight = 19.sp,
                         )
-                        if (fileError.isNotEmpty())
+                        if (fileError.isNotEmpty() && !category.startsWith("YSM"))
                             Text(
                                 fileError,
                                 color = PanelStyle.danger,
@@ -228,6 +248,10 @@ internal fun MoonsSettingsClickGui(
                                 onBindingModuleChange(null)
                                 onMutated()
                             }
+                        } else if (category == "YSM") {
+                            YsmSelectorPage()
+                        } else if (category.startsWith("YSM")) {
+                            YsmStudioPage(category)
                         } else if (category == "General") {
                             GeneralSettingsPage(
                                 allModules,

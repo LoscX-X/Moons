@@ -38,6 +38,7 @@ namespace Moons.WindowsLauncher
         private const string Payload26_1Resource = "Moons.Payload.26_1.jar";
         private const string Payload26_2PatchResource = "Moons.Payload.26_2.patch";
         private const string Payload26_3PatchResource = "Moons.Payload.26_3.patch";
+        private const string YsmPackageResource = "Moons.Ysm.zip";
         private const string FeaturesJarEntry =
             "META-INF/moons/modules/moons-core-features.jar";
         private const string BootstrapApiResource = "Moons.Api.jar";
@@ -138,11 +139,25 @@ namespace Moons.WindowsLauncher
             {
                 return SelfTestVersionDetection();
             }
+            if (Contains(arguments, "--install-ysm-only"))
+            {
+                try
+                {
+                    YsmPackage.Install(ResolveHome(), ReadResourceBytes(YsmPackageResource));
+                    return 0;
+                }
+                catch (Exception error)
+                {
+                    Console.Error.WriteLine(error);
+                    return 1;
+                }
+            }
             if (Contains(arguments, "--extract-only"))
             {
                 try
                 {
                     string home = ResolveHome();
+                    YsmPackage.Install(home, ReadResourceBytes(YsmPackageResource));
                     EnsureUiRuntime(home, arguments, null, null, delegate { return false; });
                     ExtractPayload(home, "26.1");
                     ExtractPayload(home, "26.2");
@@ -216,19 +231,22 @@ namespace Moons.WindowsLauncher
             passed &= String.Equals(NormalizeConfiguredVersion("26.1.2"),
                 "26.1", StringComparison.Ordinal);
             passed &= NormalizeConfiguredVersion("26.1.3") == null;
-            passed &= String.Equals(NormalizeConfiguredVersion("26.3-pre-3"),
+            passed &= String.Equals(NormalizeConfiguredVersion("26.3-rc-2"),
                 "26.3", StringComparison.Ordinal);
             passed &= String.Equals(MatchSupportedVersion(
-                "net.minecraft.client.main.Main --version 26.3-pre-3"),
+                "net.minecraft.client.main.Main --version 26.3-rc-2"),
                 "26.3", StringComparison.Ordinal);
             passed &= String.Equals(MatchSupportedVersion(
-                @"C:\Games\Minecraft\versions\26.3-pre-3\26.3-pre-3.jar"),
+                @"C:\Games\Minecraft\versions\26.3-rc-2\26.3-rc-2.jar"),
                 "26.3", StringComparison.Ordinal);
-            passed &= NormalizeConfiguredVersion("26.3-pre-2") == null;
-            passed &= MatchSupportedVersion("26.3-pre-30") == null;
-            passed &= MatchSupportedVersion("26.3-pre-3-custom") == null;
+            passed &= NormalizeConfiguredVersion("26.3-pre-3") == null;
+            passed &= NormalizeConfiguredVersion("26.3-rc-1") == null;
+            passed &= MatchSupportedVersion("26.3-pre-3") == null;
+            passed &= MatchSupportedVersion("26.3-rc-1") == null;
+            passed &= MatchSupportedVersion("26.3-rc-20") == null;
+            passed &= MatchSupportedVersion("26.3-rc-2-custom") == null;
             passed &= MatchSupportedVersion("26.3") == null;
-            passed &= MatchSupportedVersion("26.2 and 26.3-pre-3") == null;
+            passed &= MatchSupportedVersion("26.2 and 26.3-rc-2") == null;
             passed &= MatchSupportedVersion("Minecraft 1.21.5") == null;
             passed &= MatchSupportedVersion("26.1.2 and 26.2") == null;
             passed &= IsMinecraftTargetEvidence(
@@ -526,6 +544,9 @@ namespace Moons.WindowsLauncher
 
             string detectedVersion = DetectMinecraftVersion(
                 target, OptionArgument(arguments, "--minecraft-version"));
+            ThrowIfCancelled(cancelled);
+            progress(40, "Installing matching YSM libraries and modules");
+            YsmPackage.Install(home, ReadResourceBytes(YsmPackageResource));
             progress(43, "Minecraft " + detectedVersion + " selected: " + target.Label);
             string payload = ExtractPayload(home, detectedVersion);
             progress(48, "Loaded embedded Minecraft " + detectedVersion + " payload");
@@ -560,7 +581,6 @@ namespace Moons.WindowsLauncher
             private double starAnimationSeconds;
             private int targetProgress;
             private bool downloadCompleted;
-            private RunWorkerCompletedEventArgs pendingCompletion;
             private bool allowClose;
             private bool highResolutionTimer;
 
@@ -783,13 +803,6 @@ namespace Moons.WindowsLauncher
                     }
                     RenderProgress();
                 }
-
-                if (pendingCompletion != null && displayedProgress >= 99.999)
-                {
-                    RunWorkerCompletedEventArgs result = pendingCompletion;
-                    pendingCompletion = null;
-                    FinishCompletion(result);
-                }
             }
 
             private void RenderProgress()
@@ -798,22 +811,6 @@ namespace Moons.WindowsLauncher
             }
 
             private void Completed(object sender, RunWorkerCompletedEventArgs eventArgs)
-            {
-                if (!eventArgs.Cancelled && eventArgs.Error == null)
-                {
-                    pendingCompletion = eventArgs;
-                    targetProgress = 100;
-                    status.Text = "Finalizing load";
-                    if (displayedProgress < 99.999)
-                    {
-                        return;
-                    }
-                    pendingCompletion = null;
-                }
-                FinishCompletion(eventArgs);
-            }
-
-            private void FinishCompletion(RunWorkerCompletedEventArgs eventArgs)
             {
                 allowClose = true;
                 progressTimer.Stop();
@@ -834,17 +831,6 @@ namespace Moons.WindowsLauncher
                 }
 
                 ExitCode = 0;
-                displayedProgress = 100.0;
-                targetProgress = 100;
-                RenderProgress();
-                status.Text = "Load completed";
-                if (!Program.Contains(arguments, "--no-success-dialog"))
-                {
-                    string message = DisplayName + " was loaded successfully.";
-                    MessageBox.Show(this, message,
-                        DisplayName + " Loader",
-                        MessageBoxButtons.OK, MessageBoxIcon.Information);
-                }
                 Close();
             }
 
@@ -877,10 +863,6 @@ namespace Moons.WindowsLauncher
                 {
                     worker.CancelAsync();
                     status.Text = "Cancelling...";
-                    eventArgs.Cancel = true;
-                }
-                else if (!allowClose && pendingCompletion != null)
-                {
                     eventArgs.Cancel = true;
                 }
             }
@@ -1082,7 +1064,7 @@ namespace Moons.WindowsLauncher
                 {
                     throw new InvalidOperationException(
                         "Unsupported --minecraft-version value: " + configured
-                        + ". Expected 26.1, 26.1.2, 26.2, or 26.3-pre-3.");
+                        + ". Expected 26.1, 26.1.2, 26.2, or 26.3-rc-2.");
                 }
                 return selected;
             }
@@ -1102,10 +1084,10 @@ namespace Moons.WindowsLauncher
 
             throw new InvalidOperationException(
                 "Unable to identify whether PID " + target.Pid
-                + " is Minecraft 26.1.2, 26.2, or 26.3-pre-3. Load was cancelled to avoid loading "
+                + " is Minecraft 26.1.2, 26.2, or 26.3-rc-2. Load was cancelled to avoid loading "
                 + "the wrong mappings.\r\n\r\n"
                 + "Start the game normally so its command line contains --version, or run "
-                + DisplayName + " with --minecraft-version 26.1/26.1.2/26.2/26.3-pre-3.");
+                + DisplayName + " with --minecraft-version 26.1/26.1.2/26.2/26.3-rc-2.");
         }
 
         private static string NormalizeConfiguredVersion(string configured)
@@ -1116,7 +1098,7 @@ namespace Moons.WindowsLauncher
             {
                 return "26.1";
             }
-            if (String.Equals(value, "26.3-pre-3", StringComparison.OrdinalIgnoreCase))
+            if (String.Equals(value, "26.3-rc-2", StringComparison.OrdinalIgnoreCase))
             {
                 return "26.3";
             }
@@ -1137,7 +1119,7 @@ namespace Moons.WindowsLauncher
                 @"(?<![0-9.])26\.2(?![0-9.])",
                 RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
             bool is26_3 = Regex.IsMatch(evidence,
-                @"(?<![0-9A-Za-z.\-])26\.3-pre-3(?![0-9A-Za-z.\-])",
+                @"(?<![0-9A-Za-z.\-])26\.3-rc-2(?![0-9A-Za-z.\-])",
                 RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
             if ((is26_1 ? 1 : 0) + (is26_2 ? 1 : 0) + (is26_3 ? 1 : 0) != 1)
             {

@@ -1,6 +1,8 @@
 #include <jni.h>
 #include <jvmti.h>
 
+#include "bootstrap_search.h"
+
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
@@ -636,8 +638,8 @@ bool initialize_jvmti(JNIEnv* env, const BridgeConfig& config) {
                 + std::to_string(static_cast<int>(phase)));
         return false;
     }
-    const jvmtiError bootstrap_error =
-            g_jvmti->AddToBootstrapClassLoaderSearch(config.bootstrap.c_str());
+    const jvmtiError bootstrap_error = moons::add_bootstrap_jar(
+            env, g_jvmti, config.bootstrap, log_line);
     if (bootstrap_error != JVMTI_ERROR_NONE) {
         log_jvmti_error("AddToBootstrapClassLoaderSearch", bootstrap_error);
         return false;

@@ -1,7 +1,7 @@
 package com.blanoir.moons.runtime;
 
-import com.blanoir.moons.api.AgentMode;
 import com.blanoir.moons.api.Branding;
+import com.blanoir.moons.api.LoadMode;
 import com.blanoir.moons.api.bridge.AgentBridge;
 import com.blanoir.moons.api.bridge.RuntimeBridge;
 import com.blanoir.moons.runtime.module.ModuleManager;
@@ -10,7 +10,7 @@ import java.nio.file.Path;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class DefaultRuntimeBridge implements RuntimeBridge {
-    private final AgentMode mode;
+    private final LoadMode mode;
     private final Path home;
     private final RuntimeEvents events = new RuntimeEvents();
     private final AtomicBoolean closed = new AtomicBoolean();
@@ -21,7 +21,7 @@ public final class DefaultRuntimeBridge implements RuntimeBridge {
     private final ModuleManager modules;
     private final String minecraftVersion;
 
-    public DefaultRuntimeBridge(AgentMode mode, Path home, Path outerJar, String minecraftVersion)
+    public DefaultRuntimeBridge(LoadMode mode, Path home, Path outerJar, String minecraftVersion)
             throws Exception {
         this.mode = mode;
         this.home = home;

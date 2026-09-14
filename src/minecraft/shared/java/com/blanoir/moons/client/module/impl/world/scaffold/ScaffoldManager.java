@@ -1213,7 +1213,7 @@ public final class ScaffoldManager {
             return;
         }
         Rotation next =
-                ScaffoldTurn.step(
+                SmoothD.boundedTurn(
                         new Rotation(outgoingYaw, outgoingPitch), camera, TELLY_RETURN_SPEED.get());
         float yaw = SilentPacketRotation.quantizePacketYaw(outgoingYaw, next.yaw());
         float pitch = SilentPacketRotation.quantizePacketPitch(outgoingPitch, next.pitch());

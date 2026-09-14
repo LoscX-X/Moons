@@ -1,6 +1,7 @@
 package com.blanoir.moons.runtime.module;
 
 import com.blanoir.moons.api.Branding;
+import com.blanoir.moons.api.ModuleServices;
 import com.blanoir.moons.api.MoonsModule;
 import com.blanoir.moons.api.ScopedResources;
 import com.blanoir.moons.runtime.RuntimeEvents;
@@ -32,8 +33,10 @@ public final class ModuleManager implements AutoCloseable {
     private final Path home;
     private final Path outerJar;
     private final Path moduleDirectory;
+    private final Path libraryDirectory;
     private final Path cacheDirectory;
     private final RuntimeEvents events;
+    private final ModuleServices services = new ModuleServices();
     private final String minecraftVersion;
     private final Map<String, LoadedModule> loaded = new LinkedHashMap<>();
     private final ConcurrentLinkedQueue<Path> reloadQueue = new ConcurrentLinkedQueue<>();
@@ -47,6 +50,7 @@ public final class ModuleManager implements AutoCloseable {
         this.home = home;
         this.outerJar = outerJar;
         this.moduleDirectory = home.resolve("modules");
+        this.libraryDirectory = home.resolve("libraries");
         this.cacheDirectory = home.resolve("cache/modules");
         this.events = events;
         this.minecraftVersion =
@@ -55,6 +59,7 @@ public final class ModuleManager implements AutoCloseable {
 
     public synchronized void start() throws Exception {
         Files.createDirectories(moduleDirectory);
+        Files.createDirectories(libraryDirectory);
         Files.createDirectories(cacheDirectory);
         Path builtin = extractBuiltin();
         builtinModule = builtin;
@@ -65,6 +70,7 @@ public final class ModuleManager implements AutoCloseable {
         try (var files = Files.list(moduleDirectory)) {
             for (Path candidate : files.filter(ModuleManager::isJar).sorted().toList()) {
                 ModuleDescriptor descriptor = ModuleDescriptor.read(candidate);
+                if (!descriptor.supportsMinecraft(minecraftVersion)) continue;
                 selected.put(descriptor.id(), candidate);
             }
         }
@@ -95,11 +101,18 @@ public final class ModuleManager implements AutoCloseable {
         source = source.toAbsolutePath().normalize();
         Path cached = cacheCopy(source);
         ModuleDescriptor descriptor = ModuleDescriptor.read(cached);
+        if (!descriptor.supportsMinecraft(minecraftVersion)) return;
+        var cachedLibraries = new java.util.ArrayList<Path>();
+        for (String library : descriptor.libraries()) {
+            cachedLibraries.add(cacheCopy(libraryDirectory.resolve(library)));
+        }
         LoadedModule previous = loaded.get(descriptor.id());
-        if (previous != null && previous.cachedJar.equals(cached)) {
+        if (previous != null
+                && previous.cachedJar.equals(cached)
+                && previous.cachedLibraries.equals(cachedLibraries)) {
             return;
         }
-        LoadedModule candidate = loadCandidate(source, cached, descriptor);
+        LoadedModule candidate = loadCandidate(source, cached, cachedLibraries, descriptor);
         try {
             if (previous != null && previous.enabled) {
                 previous.instance.disable();
@@ -148,7 +161,11 @@ public final class ModuleManager implements AutoCloseable {
         return true;
     }
 
-    private LoadedModule loadCandidate(Path source, Path cached, ModuleDescriptor descriptor)
+    private LoadedModule loadCandidate(
+            Path source,
+            Path cached,
+            java.util.List<Path> cachedLibraries,
+            ModuleDescriptor descriptor)
             throws Exception {
         if (descriptor.api() != 1) {
             throw new IOException(
@@ -164,7 +181,11 @@ public final class ModuleManager implements AutoCloseable {
                             + minecraftVersion);
         }
         ClassLoader runtimeLoader = ModuleManager.class.getClassLoader();
-        ModuleClassLoader loader = new ModuleClassLoader(cached.toUri().toURL(), runtimeLoader);
+        var urls = new java.util.ArrayList<java.net.URL>();
+        urls.add(cached.toUri().toURL());
+        for (Path library : cachedLibraries) urls.add(library.toUri().toURL());
+        ModuleClassLoader loader =
+                new ModuleClassLoader(urls.toArray(java.net.URL[]::new), runtimeLoader);
         DefaultResourceScope resources = new DefaultResourceScope();
         try {
             Class<?> entrypoint = Class.forName(descriptor.entrypoint(), true, loader);
@@ -175,9 +196,10 @@ public final class ModuleManager implements AutoCloseable {
                             descriptor.id(),
                             home.resolve("data").resolve(descriptor.id()),
                             resources,
-                            Map.of(RuntimeEvents.class, events));
+                            Map.of(RuntimeEvents.class, events, ModuleServices.class, services));
             ScopedResources.run(resources, () -> instance.load(context));
-            return new LoadedModule(descriptor, source, cached, loader, resources, instance);
+            return new LoadedModule(
+                    descriptor, source, cached, cachedLibraries, loader, resources, instance);
         } catch (Throwable failure) {
             resources.close();
             loader.close();
@@ -219,6 +241,11 @@ public final class ModuleManager implements AutoCloseable {
                 StandardWatchEventKinds.ENTRY_CREATE,
                 StandardWatchEventKinds.ENTRY_MODIFY,
                 StandardWatchEventKinds.ENTRY_DELETE);
+        libraryDirectory.register(
+                watchService,
+                StandardWatchEventKinds.ENTRY_CREATE,
+                StandardWatchEventKinds.ENTRY_MODIFY,
+                StandardWatchEventKinds.ENTRY_DELETE);
         watchThread =
                 Thread.ofPlatform()
                         .name(Branding.name() + "-Module-Watcher")
@@ -232,17 +259,23 @@ public final class ModuleManager implements AutoCloseable {
                 WatchKey key = watchService.take();
                 for (WatchEvent<?> event : key.pollEvents()) {
                     if (event.context() instanceof Path relative && isJar(relative)) {
+                        Path watchedDirectory = (Path) key.watchable();
                         Path source =
-                                moduleDirectory.resolve(relative).toAbsolutePath().normalize();
+                                watchedDirectory.resolve(relative).toAbsolutePath().normalize();
                         try {
                             // Editors commonly emit several MODIFY events. A short
                             // stability window prevents loading a partially copied JAR.
                             if (event.kind() != StandardWatchEventKinds.ENTRY_DELETE) {
                                 Thread.sleep(200L);
                             }
-                            if (queuedReloads.add(source)) {
+                            if (watchedDirectory.equals(libraryDirectory)) {
+                                queueLibraryDependents(relative.getFileName().toString());
+                            } else if (queuedReloads.add(source)) {
                                 reloadQueue.add(source);
                             }
+                        } catch (InterruptedException interrupted) {
+                            Thread.currentThread().interrupt();
+                            return;
                         } catch (Throwable failure) {
                             System.err.println(
                                     Branding.prefix()
@@ -266,6 +299,15 @@ public final class ModuleManager implements AutoCloseable {
 
     private static boolean isJar(Path path) {
         return path.getFileName().toString().toLowerCase(java.util.Locale.ROOT).endsWith(".jar");
+    }
+
+    private synchronized void queueLibraryDependents(String library) {
+        for (LoadedModule module : loaded.values()) {
+            if (module.descriptor.libraries().contains(library)
+                    && queuedReloads.add(module.source)) {
+                reloadQueue.add(module.source);
+            }
+        }
     }
 
     private synchronized void removeDeletedSource(Path source) throws Exception {

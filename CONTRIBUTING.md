@@ -1,6 +1,6 @@
 # 参与开发
 
-环境配置和打包命令见 [README](readme.md)。报告问题时，请附上 Minecraft 版本、复现步骤和相关日志。
+环境配置和打包命令见 [构建文档](BUILDING.md)。报告问题时，请附上 Minecraft 版本、复现步骤和相关日志。
 
 ## 修改代码
 
@@ -26,7 +26,7 @@
 .\gradlew.bat compileAllVersions
 ```
 
-目前只保留 Minecraft 映射和注入点验证；其他自定义验证程序已移除。在 Actions 手动运行工作流并勾选 `verify`，或在本地运行以下命令，编译正式源码并验证各版本映射：
+保留 Minecraft 映射、注入点以及 YSM 行为、材质和安装回滚验证，均按需执行。在 Actions 手动运行工作流并勾选 `verify`，或在本地运行以下命令，编译正式源码并验证全部版本：
 
 ```powershell
 .\gradlew.bat checkAllVersions

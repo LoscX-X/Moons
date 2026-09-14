@@ -209,21 +209,28 @@ public final class SilentAuraConfig {
                             .05,
                             SilentAura::setFullLockPrediction)
                     .visibleWhen(SilentAuraConfig::fullLockMode),
-            PREDICTION_MAX_SPEED.describe(
-                    "prediction_max_speed",
-                    "Max target speed (blocks/tick)",
-                    .05,
-                    SilentAura::setPredictionMaxSpeed),
-            PREDICTION_MAX_ACCELERATION.describe(
-                    "prediction_max_acceleration",
-                    "Max target acceleration",
-                    .01,
-                    SilentAura::setPredictionMaxAcceleration),
-            PREDICTION_MAX_HORIZON.describe(
-                    "prediction_max_horizon",
-                    "Max lead ticks",
-                    .05,
-                    SilentAura::setPredictionMaxHorizon),
+            // FullLock keeps predictor tuning internal; Lock/Balance still expose it.
+            PREDICTION_MAX_SPEED
+                    .describe(
+                            "prediction_max_speed",
+                            "Max target speed (blocks/tick)",
+                            .05,
+                            SilentAura::setPredictionMaxSpeed)
+                    .visibleWhen(() -> !SilentAuraConfig.fullLockMode()),
+            PREDICTION_MAX_ACCELERATION
+                    .describe(
+                            "prediction_max_acceleration",
+                            "Max target acceleration",
+                            .01,
+                            SilentAura::setPredictionMaxAcceleration)
+                    .visibleWhen(() -> !SilentAuraConfig.fullLockMode()),
+            PREDICTION_MAX_HORIZON
+                    .describe(
+                            "prediction_max_horizon",
+                            "Max lead ticks",
+                            .05,
+                            SilentAura::setPredictionMaxHorizon)
+                    .visibleWhen(() -> !SilentAuraConfig.fullLockMode()),
             PREDICTION_VERTICAL_SCALE
                     .describe(
                             "prediction_vertical_scale",
@@ -231,24 +238,31 @@ public final class SilentAuraConfig {
                             .01,
                             SilentAura::setPredictionVerticalScale)
                     .visibleWhen(() -> !SilentAuraConfig.fullLockMode()),
-            PREDICTION_MAX_TURN_RATE.describe(
-                    "prediction_max_turn_rate",
-                    "Max movement turn (deg/tick)",
-                    1,
-                    SilentAura::setPredictionMaxTurnRate),
+            PREDICTION_MAX_TURN_RATE
+                    .describe(
+                            "prediction_max_turn_rate",
+                            "Max movement turn (deg/tick)",
+                            1,
+                            SilentAura::setPredictionMaxTurnRate)
+                    .visibleWhen(() -> !SilentAuraConfig.fullLockMode()),
             PREDICTION_MAX_TURN_ANGLE
                     .describe(
                             "prediction_max_turn_angle",
                             "Max predicted turn (deg)",
                             1,
                             SilentAura::setPredictionMaxTurnAngle)
-                    .visibleWhen(SilentAuraConfig::predictionTurningEnabled),
-            PREDICTION_MIN_RESPONSE.describeRange(
-                    "prediction_response",
-                    "Prediction response ticks",
-                    PREDICTION_MAX_RESPONSE,
-                    .05,
-                    SilentAura::setPredictionResponse),
+                    .visibleWhen(
+                            () ->
+                                    !SilentAuraConfig.fullLockMode()
+                                            && SilentAuraConfig.predictionTurningEnabled()),
+            PREDICTION_MIN_RESPONSE
+                    .describeRange(
+                            "prediction_response",
+                            "Prediction response ticks",
+                            PREDICTION_MAX_RESPONSE,
+                            .05,
+                            SilentAura::setPredictionResponse)
+                    .visibleWhen(() -> !SilentAuraConfig.fullLockMode()),
             MATRIX_COMPATIBILITY
                     .describe("matrix", "Limitation", SilentAura::setMatrixCompatibility)
                     .visibleWhen(() -> !SilentAuraConfig.fullLockMode()),

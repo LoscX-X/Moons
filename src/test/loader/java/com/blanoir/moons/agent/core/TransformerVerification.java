@@ -28,6 +28,8 @@ public final class TransformerVerification {
         if (arguments.length == 0)
             throw new IllegalArgumentException("Expected one or more Minecraft JAR paths");
         verifyBootstrapBridgeBoundary();
+        BoxedGateVerification.verify();
+        YsmAudioHookVerification.verify();
         MappingService mappings = VersionMappings.create();
         MoonsTransformer transformer = new MoonsTransformer(mappings);
         Set<String> classes = new LinkedHashSet<>();

@@ -1,6 +1,24 @@
-/* Only mapping/injection-point validation remains; regression fixtures are not packaged. */
+/* Opt-in mapping/injection validation. YSM checks are registered in ysm.gradle; fixtures are not packaged. */
 tasks.named("test", Test) {
     enabled = false
+}
+
+sourceSets {
+    renderTest {
+        java.setSrcDirs(['src/test/render/java'])
+        compileClasspath += sourceSets.features.output + sourceSets.client.output + sourceSets.agent.output + sourceSets.runtime.output + sourceSets.api.output + sourceSets.features.compileClasspath + configurations.agentRuntimeClasspath
+        runtimeClasspath += compileClasspath
+    }
+}
+
+tasks.register('verifyArmorHide', JavaExec) {
+    group = 'verification'
+    description = 'Checks custom-model head items, cached render states and the injected item resolver without a GPU.'
+    dependsOn 'renderTestClasses'
+    classpath = sourceSets.renderTest.runtimeClasspath
+    mainClass = 'com.blanoir.moons.agent.core.ArmorHeadItemVerification'
+    systemProperty 'moons.home', layout.buildDirectory.dir('armor-hide-fixture/home').get().asFile.absolutePath
+    workingDir layout.buildDirectory.get().asFile
 }
 
 tasks.register("verifyMinecraftTransformers", JavaExec) {
@@ -25,7 +43,7 @@ tasks.register("verifyMinecraftTransformers", JavaExec) {
 
 
 tasks.named("check").configure {
-    dependsOn "clientClasses", "featuresClasses", "verifyMinecraftTransformers"
+    dependsOn "clientClasses", "featuresClasses", "verifyMinecraftTransformers", "verifyArmorHide"
 }
 
 def versionChecks = []
@@ -33,7 +51,7 @@ moonsBuild.supportedVersions.each { minecraftVersion, directory ->
     def previousCheck = versionChecks.isEmpty() ? null : versionChecks.last()
     def versionCheck = tasks.register("checkMinecraft${directory}", Exec) {
         group = "verification"
-        description = "Compiles production sources and verifies Minecraft mappings for Minecraft ${minecraftVersion}."
+        description = "Compiles production sources and verifies hooks and YSM behavior for Minecraft ${minecraftVersion}."
         if (previousCheck != null) {
             mustRunAfter previousCheck
         }
@@ -54,6 +72,6 @@ moonsBuild.supportedVersions.each { minecraftVersion, directory ->
 
 tasks.register("checkAllVersions") {
     group = "verification"
-    description = "Compiles production sources and verifies mappings for each supported Minecraft version."
+    description = "Compiles production sources and verifies hooks and YSM behavior for each supported Minecraft version."
     dependsOn versionChecks
 }

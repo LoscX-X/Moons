@@ -21,7 +21,7 @@ if(NOT EXISTS "${JAVA_INCLUDE_DIR}/jni.h")
     message(FATAL_ERROR "JAVA_HOME does not contain JNI headers: ${JAVA_HOME}")
 endif()
 
-add_library(moons-bridge SHARED src/moons_bridge.cpp)
+add_library(moons-bridge SHARED src/moons_bridge.cpp src/bootstrap_search.cpp)
 target_compile_features(moons-bridge PRIVATE cxx_std_17)
 target_include_directories(moons-bridge PRIVATE
         "${JAVA_INCLUDE_DIR}"
@@ -49,3 +49,16 @@ foreach(configuration DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)
             RUNTIME_OUTPUT_DIRECTORY_${configuration} "${CMAKE_BINARY_DIR}/out"
             LIBRARY_OUTPUT_DIRECTORY_${configuration} "${CMAKE_BINARY_DIR}/out")
 endforeach()
+
+option(MOONS_BUILD_NATIVE_TESTS "Build the standalone JVM bootstrap path check" OFF)
+if(MOONS_BUILD_NATIVE_TESTS)
+    add_executable(bootstrap-path-verification
+            tests/bootstrap_path_verification.cpp src/bootstrap_search.cpp)
+    target_compile_features(bootstrap-path-verification PRIVATE cxx_std_17)
+    target_include_directories(bootstrap-path-verification PRIVATE src
+            "${JAVA_INCLUDE_DIR}" "${JAVA_PLATFORM_INCLUDE_DIR}")
+    target_link_libraries(bootstrap-path-verification PRIVATE "${JAVA_HOME}/lib/jvm.lib")
+    if(MSVC)
+        target_compile_options(bootstrap-path-verification PRIVATE /W4 /EHsc /utf-8)
+    endif()
+endif()

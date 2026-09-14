@@ -5,6 +5,7 @@ import com.blanoir.moons.client.access.PacketAccess;
 import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.event.network.PacketSendEvent;
 import com.blanoir.moons.client.management.lease.RotationLease;
+import com.blanoir.moons.client.utils.math.MathUtils;
 import com.blanoir.moons.client.utils.math.RandomMath;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 import com.blanoir.moons.client.utils.rotation.aim.AimSolverD;
@@ -351,19 +352,20 @@ public final class SilentPacketRotation {
             // The player may jump or walk after reaching the original angle.
             // Continue following the fixed world point until the use click is
             // queued, so changing eye position cannot invalidate the pitch.
-            if (Math.abs(Mth.wrapDegrees(target.yaw() - packetYaw)) <= 0.35F
-                    && Math.abs(target.pitch() - packetPitch) <= 0.35F) {
+            if (MathUtils.withinRotationTolerance(
+                    target.yaw() - packetYaw, target.pitch() - packetPitch, 0.35F)) {
                 yawVelocity = 0.0F;
                 pitchVelocity = 0.0F;
             }
             return;
         }
 
-        float remainingYaw = Math.abs(Mth.wrapDegrees(target.yaw() - packetYaw));
-        float remainingPitch = Math.abs(target.pitch() - packetPitch);
+        boolean rotationReached =
+                MathUtils.withinRotationTolerance(
+                        target.yaw() - packetYaw, target.pitch() - packetPitch, 0.35F);
         boolean minimumTimeElapsed =
                 now - rotationStartedAtNanos >= durationSeconds * NANOS_PER_SECOND;
-        if (minimumTimeElapsed && remainingYaw <= 0.35F && remainingPitch <= 0.35F) {
+        if (minimumTimeElapsed && rotationReached) {
             packetYaw = target.yaw();
             packetPitch = target.pitch();
             yawVelocity = 0.0F;

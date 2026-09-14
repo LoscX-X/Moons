@@ -68,6 +68,14 @@ def locateCSharpCompiler = {
 def nestedGradleArguments = { List<String> arguments ->
     def result = new ArrayList<String>(arguments)
     result.addAll(["--console=plain", "--no-daemon"])
+    // Gradle tracks previous task outputs in the project cache. Sharing that cache
+    // across build directories lets a child delete its parent's compiled classes
+    // as stale outputs, even when the builds execute sequentially.
+    def buildArgument = arguments.find { it.startsWith('-Pmoons_build_directory=') }
+    if (buildArgument != null) {
+        def buildPath = buildArgument.substring('-Pmoons_build_directory='.length())
+        result.addAll(['--project-cache-dir', new File(file(buildPath), '.gradle-project-cache').absolutePath])
+    }
     if (gradle.startParameter.offline) {
         result.add("--offline")
     }

@@ -1,7 +1,9 @@
 package com.blanoir.moons.features;
 
 import com.blanoir.moons.api.ModuleContext;
+import com.blanoir.moons.api.ModuleServices;
 import com.blanoir.moons.api.MoonsModule;
+import com.blanoir.moons.client.ui.clickgui.YsmSelectorHost;
 import com.blanoir.moons.runtime.RuntimeEvents;
 
 /** Loads and owns the built-in client feature lifecycle. */
@@ -17,6 +19,7 @@ public final class CoreFeaturesModule implements MoonsModule {
             return;
         }
         adapter = new RuntimeEventAdapter(events);
+        context.resources().own(YsmSelectorHost.bind(context.service(ModuleServices.class)));
         adapter.bind(context.resources());
         FeatureBootstrap.initialize();
     }

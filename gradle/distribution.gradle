@@ -234,6 +234,7 @@ def registerLauncher = { String taskName, String fileName, boolean bundled ->
                 ? "Builds one Windows loader with its UI runtime embedded."
                 : "Builds one Windows loader that downloads and caches its UI runtime."
         dependsOn universalPayloadPatch, universalPayload26_3Patch, apiJar, bridgeDll, moonsHwidExe, launcherUiMetadata
+        dependsOn 'ysmUniversalBundle'
 
         def source = layout.projectDirectory.file("src/tools/launcher/csharp/MoonsExeLauncher.cs")
         def hardwareIdGenerator = layout.projectDirectory.file("src/tools/shared/HardwareIdGenerator.cs")
@@ -244,16 +245,19 @@ def registerLauncher = { String taskName, String fileName, boolean bundled ->
                 "src/tools/shared/Hashing.cs",
                 "src/tools/shared/StagedFile.cs",
                 "src/tools/launcher/csharp/RuntimeMetadata.cs",
+                "src/tools/launcher/csharp/YsmPackage.cs",
                 "src/tools/launcher/csharp/ZipEntries.cs")
         def payload26_1 = layout.buildDirectory.file("universal/26.1/moons.jar")
         def payload26_2Patch = layout.buildDirectory.file("universal/moons-26.2.patch.zip")
         def payload26_3Patch = layout.buildDirectory.file("universal/moons-26.3.patch.zip")
+        def ysmPackage = layout.buildDirectory.file('dist/moons-ysm-all.zip')
         def bootstrapApi = apiJar.flatMap { it.archiveFile }
         def bridge = layout.buildDirectory.file("${moonsBuild.loaderStagingDirectory}/moons-bridge.dll")
         def output = layout.buildDirectory.file("dist/${fileName}")
         inputs.files(source, hardwareIdGenerator, processEvidenceCache, loadLease, bridgeAttemptMonitor)
         inputs.files(utilitySources)
         inputs.files(payload26_1, payload26_2Patch, payload26_3Patch, bootstrapApi, bridge, uiMetadata)
+        inputs.file(ysmPackage)
         if (bundled) inputs.file(uiRuntime)
         outputs.file(output)
 
@@ -270,6 +274,7 @@ def registerLauncher = { String taskName, String fileName, boolean bundled ->
                     "/resource:${payload26_1.get().asFile.absolutePath},Moons.Payload.26_1.jar",
                     "/resource:${payload26_2Patch.get().asFile.absolutePath},Moons.Payload.26_2.patch",
                     "/resource:${payload26_3Patch.get().asFile.absolutePath},Moons.Payload.26_3.patch",
+                    "/resource:${ysmPackage.get().asFile.absolutePath},Moons.Ysm.zip",
                     "/resource:${bootstrapApi.get().asFile.absolutePath},Moons.Api.jar",
                     "/resource:${bridge.get().asFile.absolutePath},Moons.Bridge.dll"
             )

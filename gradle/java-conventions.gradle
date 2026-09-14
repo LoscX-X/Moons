@@ -151,7 +151,7 @@ moonsBuild.supportedVersions.each { minecraftVersion, directory ->
         executable moonsToolchains.gradleExecutable.absolutePath
         def nestedBuild = layout.buildDirectory.dir("compilation/${directory}").get().asFile.absolutePath
         args moonsToolchains.nestedGradleArguments([
-                "clientClasses", "featuresClasses", "agentClasses",
+                "clientClasses", "featuresClasses", "agentClasses", "ysmClasses",
                 "-Pminecraft_version=${minecraftVersion}",
                 "-Pmoons_build_directory=${nestedBuild}"
         ].collect { it.toString() })

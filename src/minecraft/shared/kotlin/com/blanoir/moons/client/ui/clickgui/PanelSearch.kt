@@ -25,6 +25,7 @@ internal fun PanelSearch(
     onChange: (String) -> Unit,
     modifier: Modifier = Modifier,
     compact: Boolean = false,
+    placeholder: String = "Search modules",
 ) {
     val textStyle =
         TextStyle(
@@ -49,7 +50,7 @@ internal fun PanelSearch(
                 .clip(PanelStyle.controlShape)
                 .background(PanelStyle.field)
                 .border(1.dp, PanelStyle.border, PanelStyle.controlShape)
-                .semantics { contentDescription = "Search modules" },
+                .semantics { contentDescription = placeholder },
         decorationBox = { input ->
             Row(
                 Modifier.fillMaxSize().padding(horizontal = if (compact) 9.dp else 11.dp),
@@ -60,7 +61,7 @@ internal fun PanelSearch(
                 Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
                     if (value.isEmpty())
                         Text(
-                            "Search modules",
+                            placeholder,
                             style = textStyle,
                             color = PanelStyle.muted,
                             maxLines = 1,

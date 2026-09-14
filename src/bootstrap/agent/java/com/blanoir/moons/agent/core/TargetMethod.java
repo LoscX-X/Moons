@@ -77,6 +77,7 @@ record TargetMethod(
         XRAY_QUAD,
         XRAY_SECTION_QUAD_26_2,
         VOID_START_END_ARG0,
+        BOXED_ARGS_VOID_GATE,
         CHAMS_FRAME,
         SODIUM_RENDER_MODEL,
         SODIUM_PROCESS_QUAD,

@@ -108,9 +108,10 @@ public final class SilentAuraRotationController {
 
     public boolean returnPacketReached(float sentYaw, float sentPitch) {
         return state.returning
-                && Math.abs(MathUtils.wrappedAngleDifference(sentYaw, state.returnYaw))
-                        <= AimSolverG.RETURN_DONE_ANGLE
-                && Math.abs(sentPitch - state.returnPitch) <= AimSolverG.RETURN_DONE_ANGLE;
+                && MathUtils.withinRotationTolerance(
+                        state.returnYaw - sentYaw,
+                        sentPitch - state.returnPitch,
+                        AimSolverG.RETURN_DONE_ANGLE);
     }
 
     public void completeReturn() {

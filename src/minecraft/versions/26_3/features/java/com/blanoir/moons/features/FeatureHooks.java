@@ -53,6 +53,7 @@ import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayerGroup;
 import net.minecraft.client.renderer.entity.state.AvatarRenderState;
 import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
+import net.minecraft.client.renderer.item.ItemStackRenderState;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.resources.model.EquipmentClientInfo;
 import net.minecraft.core.BlockPos;
@@ -60,6 +61,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Input;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec2;
@@ -100,7 +102,11 @@ public final class FeatureHooks {
             case "render.silent-aura-animation", "render.silent-aura-animation.replace-vanilla" ->
                     Animations.renderingEnabled();
             case "render.trim", "render.trim.direct" -> Trim.isEnabled();
-            case "render.armor-hide" -> ArmorHide.isEnabled();
+            case "render.armor-hide",
+                    "render.armor-hide.head",
+                    "render.armor-hide.head-item",
+                    "render.armor-hide.wings" ->
+                    ArmorHide.isEnabled();
             case "render.player-nametag" -> Nametags.isEnabled();
             case "render.chams-draw",
                     "render.chams-draw-oit",
@@ -286,8 +292,21 @@ public final class FeatureHooks {
                     EventBus.LIVING_RENDER_POST.post(new LivingRenderEvent.Post(state));
                 }
             }
-            case "render.armor-hide" -> {
+            case "render.armor-hide", "render.armor-hide.head", "render.armor-hide.wings" -> {
                 if (!ArmorHide.shouldRenderCurrentArmor()) {
+                    hook.value(false);
+                }
+            }
+            case "render.armor-hide.head-item" -> {
+                if (hook.argument() instanceof Object[] args
+                        && args.length == 6
+                        && args[0] instanceof ItemStackRenderState state
+                        && args[1] instanceof ItemStack item
+                        && args[2] instanceof ItemDisplayContext context
+                        && args[4] instanceof LivingEntity wearer
+                        && !ArmorHide.shouldRenderHeadItem(wearer, item, context)) {
+                    // Reused render states can still contain the previously visible head item.
+                    state.clear();
                     hook.value(false);
                 }
             }

@@ -1,7 +1,7 @@
 package com.blanoir.moons.agent.core;
 
-import com.blanoir.moons.api.AgentMode;
 import com.blanoir.moons.api.Branding;
+import com.blanoir.moons.api.LoadMode;
 import com.blanoir.moons.api.bridge.AgentBridge;
 import com.blanoir.moons.api.bridge.RuntimeBridge;
 
@@ -118,7 +118,7 @@ public final class NativeTransformerBridge {
             }
             RuntimeLoader next =
                     RuntimeLoader.startNative(
-                            outerJar, home, AgentMode.JVMTI, gameLoader, VersionMappings.version());
+                            outerJar, home, LoadMode.JVMTI, gameLoader, VersionMappings.version());
             bindGameBridge(gameLoader, gameAgentBridge, gameRuntimeBridge, next.bridge());
             RuntimeBridge previous = AgentBridge.install(next.bridge());
             runtime = next;

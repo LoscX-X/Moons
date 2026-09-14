@@ -21,6 +21,7 @@ import com.blanoir.moons.client.management.rotation.SilentPacketRotation;
 import com.blanoir.moons.client.management.targeting.PostHitLandingWindow;
 import com.blanoir.moons.client.management.targeting.Targeting;
 import com.blanoir.moons.client.utils.client.ClientReady;
+import com.blanoir.moons.client.utils.math.MathUtils;
 import com.blanoir.moons.client.utils.math.RandomMath;
 import com.blanoir.moons.client.utils.player.HotbarQueries;
 import com.blanoir.moons.client.utils.prediction.TrajectoryPrediction;
@@ -459,13 +460,10 @@ public final class AutoWeb {
         if (!SilentPacketRotation.isRotationPacketSent()) {
             return;
         }
-        float cameraYawDifference =
-                Math.abs(
-                        Mth.wrapDegrees(
-                                client.player.getYRot() - SilentPacketRotation.getSentYaw()));
-        float cameraPitchDifference =
-                Math.abs(client.player.getXRot() - SilentPacketRotation.getSentPitch());
-        if (cameraYawDifference <= 0.35F && cameraPitchDifference <= 0.35F) {
+        if (MathUtils.withinRotationTolerance(
+                client.player.getYRot() - SilentPacketRotation.getSentYaw(),
+                client.player.getXRot() - SilentPacketRotation.getSentPitch(),
+                0.35F)) {
             if (postPlaceHoldRemainingTicks <= 0) {
                 restoreHeldSlot(client);
             } else {
@@ -1027,34 +1025,21 @@ public final class AutoWeb {
         for (double first : FACE_SAMPLES) {
             for (double second : FACE_SAMPLES) {
                 Vec3 requested = pointOnFace(supportPos, supportFace, first, second);
-                Vec3 justInside =
-                        requested.add(
-                                -supportFace.getStepX() * RAY_EPSILON,
-                                -supportFace.getStepY() * RAY_EPSILON,
-                                -supportFace.getStepZ() * RAY_EPSILON);
                 BlockHitResult actual =
-                        client.level.clip(
-                                new ClipContext(
-                                        client.player.getEyePosition(),
-                                        justInside,
-                                        ClipContext.Block.OUTLINE,
-                                        ClipContext.Fluid.NONE,
-                                        client.player));
-                if (actual.getType() != HitResult.Type.BLOCK
-                        || !actual.getBlockPos().equals(supportPos)
-                        || actual.getDirection() != supportFace
-                        || !withinPlacementRange(client, actual.getLocation())) {
+                        BlockPlacementUtils.visibleFaceHit(
+                                client,
+                                client.player.getEyePosition(),
+                                supportPos,
+                                supportFace,
+                                requested,
+                                RAY_EPSILON);
+                if (actual == null || !withinPlacementRange(client, actual.getLocation())) {
                     continue;
                 }
                 double centerOffset = Math.abs(first - 0.5D) + Math.abs(second - 0.5D);
                 double score = rotationCost(client, actual.getLocation()) + centerOffset * 0.04D;
                 if (score < bestScore) {
-                    best =
-                            new BlockHitResult(
-                                    actual.getLocation(),
-                                    supportFace,
-                                    supportPos,
-                                    actual.isInside());
+                    best = actual;
                     bestScore = score;
                 }
             }

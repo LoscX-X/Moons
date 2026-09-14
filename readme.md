@@ -2,9 +2,9 @@
 
 [简体中文](README.zh-CN.md) | **English**
 
-A Windows client project for Minecraft Java Edition, supporting **26.1.2 / 26.2 / 26.3-pre-3** and loaded through a JNI/JVMTI bridge. Client logic is shared across versions, with version differences handled by dedicated adapters.
+A Windows client project for Minecraft Java Edition, supporting **26.1.2 / 26.2 / 26.3-rc-2** and loaded through a JNI/JVMTI bridge. Client logic is shared across versions, with version differences handled by dedicated adapters.
 
-26.3 support currently targets `26.3-pre-3`. Its source directory remains `26_3` and payload key remains `26.3` when the target is updated to the final release.
+26.3 support currently targets `26.3-rc-2`. Its source directory remains `26_3` and payload key remains `26.3` when the target is updated to the final release.
 
 ## Download and Run
 
@@ -42,6 +42,9 @@ Output is written to `build/dist/`. Individual packages can also be built separa
 | `moonsFullExe` | `moons-full.exe` |
 | `moonsExe` | `moons.exe` |
 | `moonsUiRuntime` | `dependencies/moons-ui-runtime.jar` and its SHA-256 checksum file |
+| `ysmAllVersions` | Standalone `moons-ysm-all.zip` and per-version YSM bundles; does not rebuild the EXE |
+
+Both launchers include one shared YSM library set and all supported adapters, and install matching files automatically. See [BUILDING.md](BUILDING.md) for build commands, optional checks and update instructions. If an older launcher lacks those hooks, replacing module JARs alone cannot enable rendering; use the new launcher with a fresh game process.
 
 The first build requires an internet connection to download dependencies. When building the lightweight package locally, set `-Pmoons_ui_download_url=<URL>` to the download URL of the matching UI JAR.
 
@@ -50,7 +53,7 @@ The first build requires an internet connection to download dependencies. When b
 ```powershell
 .\gradlew.bat moonsJar '-Pminecraft_version=26.1.2'
 .\gradlew.bat moonsJar '-Pminecraft_version=26.2'
-.\gradlew.bat moonsJar '-Pminecraft_version=26.3-pre-3'
+.\gradlew.bat moonsJar '-Pminecraft_version=26.3-rc-2'
 ```
 
 The outputs are `build/dist/agent/26_1/moons.jar`, `build/dist/agent/26_2/moons.jar`, and `build/dist/agent/26_3/moons.jar`. These payloads are loaded by the bridge and cannot be launched with `java -jar`.
@@ -82,9 +85,9 @@ Open **Actions → Project checks and packages → Run workflow** and select:
 - `full` / `download`: the full / lightweight package, together with the UI runtime.
 - `ui-runtime`: the UI runtime only.
 
-Daily CI compiles production sources for every supported version with `compileAllVersions`; it does not run custom `verify` tasks or style checks. Pushes to the main branch also build packages and create a prerelease. Pull requests compile only. Selecting `ui-runtime` manually skips Minecraft compilation. The workflow configures the lightweight launcher's dependency download URL automatically.
+Daily CI compiles production sources and packages YSM for every supported version; it does not run custom `verify` tasks or style checks. Pushes to the main branch also build packages and create a prerelease. Pull requests compile production sources and build YSM bundles. Selecting `ui-runtime` manually skips Minecraft compilation. The workflow configures the lightweight launcher's dependency download URL automatically.
 
-Enable the optional `verify` checkbox in **Run workflow** to run `checkAllVersions`: production compilation plus Minecraft mapping/injection-point validation. For one selected version, run `verifyMinecraftTransformers`. Other regression verifiers have been removed.
+Enable the optional `verify` checkbox in **Run workflow** to run `checkAllVersions`: production compilation plus Minecraft hooks, YSM behavior, materials and update rollback validation. Run individual verification tasks for focused changes; see [BUILDING.md](BUILDING.md).
 
 ## Development and License
 

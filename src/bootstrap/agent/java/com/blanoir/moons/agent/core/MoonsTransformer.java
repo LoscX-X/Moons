@@ -96,6 +96,9 @@ final class MoonsTransformer {
                                     target ->
                                             target.hook() == TargetMethod.HookKind.HAND_ANIMATION
                                                     || target.hook()
+                                                            == TargetMethod.HookKind
+                                                                    .BOXED_ARGS_VOID_GATE
+                                                    || target.hook()
                                                             == TargetMethod.HookKind.SCOREBOARD
                                                     || target.hook()
                                                             == TargetMethod.HookKind.TRIM_RENDER
@@ -185,6 +188,7 @@ final class MoonsTransformer {
             case XRAY_QUAD -> loadXrayQuad(method, target.id());
             case XRAY_SECTION_QUAD_26_2 -> loadXraySectionQuad26_2(method, target.id());
             case VOID_START_END_ARG0 -> loadVoidStartEndArgument(method, target.id());
+            case BOXED_ARGS_VOID_GATE -> loadBoxedArgumentsGate(method, target.id());
             case CHAMS_FRAME -> loadChamsFrame(method, target.id());
             case SODIUM_RENDER_MODEL -> loadSodiumRenderModel(method, target.id());
             case SODIUM_PROCESS_QUAD -> loadSodiumProcessQuad(method, target.id());
@@ -208,6 +212,54 @@ final class MoonsTransformer {
         loadThisAndCall(start, "onClientTickStart");
         method.instructions.insert(start);
         beforeReturns(method, Opcodes.RETURN, () -> thisCall("onClientTickEnd"));
+        return true;
+    }
+
+    /** A cancellable render entrypoint using method-body changes only; safe for already loaded classes. */
+    private static boolean loadBoxedArgumentsGate(MethodNode method, String id) {
+        var arguments = org.objectweb.asm.Type.getArgumentTypes(method.desc);
+        if ((method.access & Opcodes.ACC_STATIC) != 0 || !method.desc.endsWith(")V")) return false;
+        InsnList hook = new InsnList();
+        hook.add(new LdcInsnNode(id));
+        hook.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        hook.add(new LdcInsnNode(arguments.length));
+        hook.add(new TypeInsnNode(Opcodes.ANEWARRAY, "java/lang/Object"));
+        int slot = 1;
+        for (int index = 0; index < arguments.length; index++) {
+            hook.add(new InsnNode(Opcodes.DUP));
+            hook.add(new LdcInsnNode(index));
+            var argument = arguments[index];
+            hook.add(new VarInsnNode(argument.getOpcode(Opcodes.ILOAD), slot));
+            slot += argument.getSize();
+            String wrapper =
+                    switch (argument.getSort()) {
+                        case org.objectweb.asm.Type.BOOLEAN -> "java/lang/Boolean";
+                        case org.objectweb.asm.Type.BYTE -> "java/lang/Byte";
+                        case org.objectweb.asm.Type.CHAR -> "java/lang/Character";
+                        case org.objectweb.asm.Type.SHORT -> "java/lang/Short";
+                        case org.objectweb.asm.Type.INT -> "java/lang/Integer";
+                        case org.objectweb.asm.Type.FLOAT -> "java/lang/Float";
+                        case org.objectweb.asm.Type.LONG -> "java/lang/Long";
+                        case org.objectweb.asm.Type.DOUBLE -> "java/lang/Double";
+                        default -> null;
+                    };
+            if (wrapper != null)
+                hook.add(
+                        new MethodInsnNode(
+                                Opcodes.INVOKESTATIC,
+                                wrapper,
+                                "valueOf",
+                                "(" + argument.getDescriptor() + ")L" + wrapper + ";",
+                                false));
+            hook.add(new InsnNode(Opcodes.AASTORE));
+        }
+        hook.add(new InsnNode(Opcodes.ICONST_1));
+        hook.add(
+                call(
+                        "onBooleanValue",
+                        "(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;Z)Z"));
+        appendVoidCancellation(hook);
+        method.instructions.insert(guardHook(id, hook));
         return true;
     }
 
@@ -1599,7 +1651,8 @@ final class MoonsTransformer {
         if (target.hook() == TargetMethod.HookKind.ITEM_STACK_ARGUMENT_5) {
             return containsIdentifiedHook(method, target.id(), "onObjectValue");
         }
-        if (target.hook() == TargetMethod.HookKind.TRIM_RENDER) {
+        if (target.hook() == TargetMethod.HookKind.TRIM_RENDER
+                || target.hook() == TargetMethod.HookKind.BOXED_ARGS_VOID_GATE) {
             return containsIdentifiedHook(method, target.id(), "onBooleanValue");
         }
         String hookName =
@@ -1643,6 +1696,7 @@ final class MoonsTransformer {
                             "onBooleanValue";
                     case XRAY_QUAD, XRAY_SECTION_QUAD_26_2 -> "onVoidHook";
                     case VOID_START_END_ARG0 -> "onVoidHook";
+                    case BOXED_ARGS_VOID_GATE -> "onBooleanValue";
                     case CHAMS_FRAME -> "onVoidHook";
                     case SODIUM_RENDER_MODEL -> "onBooleanValue";
                     case SODIUM_PROCESS_QUAD -> "onBooleanValue";

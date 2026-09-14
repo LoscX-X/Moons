@@ -68,6 +68,13 @@ public final class MathUtils {
         return Mth.wrapDegrees(target - current);
     }
 
+    /** Per-axis tolerance: wrapped yaw, linear pitch. Not a combined angular distance. */
+    public static boolean withinRotationTolerance(
+            float yawDifference, float pitchDifference, float tolerance) {
+        return Math.abs(Mth.wrapDegrees(yawDifference)) <= tolerance
+                && Math.abs(pitchDifference) <= tolerance;
+    }
+
     /** Moves a scalar by at most the caller's step; this is not exponential smoothing. */
     public static float approach(float current, float target, float maxChange) {
         return current + Mth.clamp(target - current, -maxChange, maxChange);

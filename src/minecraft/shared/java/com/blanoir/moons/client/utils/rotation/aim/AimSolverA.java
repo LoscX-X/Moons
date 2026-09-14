@@ -3,7 +3,6 @@ package com.blanoir.moons.client.utils.rotation.aim;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.util.Mth;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.phys.Vec3;
 
@@ -26,15 +25,12 @@ public final class AimSolverA {
 
         Rotation rotation = AimSolverD.rotationTo(eyePos, aimPoint);
 
-        float yawDifference = Math.abs(Mth.wrapDegrees(rotation.yaw() - client.player.getYRot()));
-
-        float pitchDifference = Math.abs(rotation.pitch() - client.player.getXRot());
-
         return new Result(
                 entity,
                 aimPoint,
                 rotation,
-                Math.hypot(yawDifference, pitchDifference),
+                AimSolverD.angleBetween(
+                        client.player.getYRot(), client.player.getXRot(), rotation),
                 eyePos.distanceToSqr(aimPoint));
     }
 }

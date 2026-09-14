@@ -2,9 +2,9 @@
 
 **简体中文** | [English](readme.md)
 
-面向 Minecraft Java Edition 的 Windows 客户端项目，支持 **26.1.2 / 26.2 / 26.3-pre-3**，通过 JNI/JVMTI 桥接加载。客户端逻辑集中维护，版本差异由独立适配层处理。
+面向 Minecraft Java Edition 的 Windows 客户端项目，支持 **26.1.2 / 26.2 / 26.3-rc-2**，通过 JNI/JVMTI 桥接加载。客户端逻辑集中维护，版本差异由独立适配层处理。
 
-26.3 当前预支持 `26.3-pre-3`，适配目录固定为 `26_3`，载荷标识为 `26.3`；正式版发布后在同一目录内更新目标版本。
+26.3 当前预支持 `26.3-rc-2`，适配目录固定为 `26_3`，载荷标识为 `26.3`；正式版发布后在同一目录内更新目标版本。
 
 ## 获取与运行
 
@@ -42,6 +42,9 @@ $env:JAVA_HOME = 'C:\Program Files\Java\jdk-25'
 | `moonsFullExe` | `moons-full.exe` |
 | `moonsExe` | `moons.exe` |
 | `moonsUiRuntime` | `dependencies/moons-ui-runtime.jar` 及 SHA-256 校验文件 |
+| `ysmAllVersions` | 独立的 `moons-ysm-all.zip` 及各版本 YSM 包；不重建 EXE |
+
+两个启动器均内置一套共享 YSM 库和全部适配模块，并自动安装匹配文件。详细命令与更新步骤见 [构建文档](BUILDING.md)。旧启动器缺少这些注入点时，仅替换模块 JAR 无法启用渲染，需要用新启动器注入新游戏进程。
 
 首次构建需要联网下载依赖。本地构建轻量版时，通过 `-Pmoons_ui_download_url=<URL>` 指定匹配的 UI JAR 下载地址。
 
@@ -50,7 +53,7 @@ $env:JAVA_HOME = 'C:\Program Files\Java\jdk-25'
 ```powershell
 .\gradlew.bat moonsJar '-Pminecraft_version=26.1.2'
 .\gradlew.bat moonsJar '-Pminecraft_version=26.2'
-.\gradlew.bat moonsJar '-Pminecraft_version=26.3-pre-3'
+.\gradlew.bat moonsJar '-Pminecraft_version=26.3-rc-2'
 ```
 
 产物分别为 `build/dist/agent/26_1/moons.jar`、`build/dist/agent/26_2/moons.jar` 和 `build/dist/agent/26_3/moons.jar`，供桥接层加载，不支持 `java -jar` 启动。
@@ -63,9 +66,9 @@ $env:JAVA_HOME = 'C:\Program Files\Java\jdk-25'
 - `full` / `download`：完整版 / 轻量版，同时生成 UI 依赖。
 - `ui-runtime`：仅构建 UI 依赖。
 
-日常 CI 通过 `compileAllVersions` 编译全部受支持版本的正式源码，不运行自定义 `verify` 任务或格式检查。主分支推送还会自动打包并创建预发布版本；Pull Request 仅编译。手动选择 `ui-runtime` 时跳过 Minecraft 编译。轻量版的依赖下载地址由工作流自动配置。
+日常 CI 编译全部受支持版本并打包 YSM，不强制执行自定义验证。主分支推送自动构建启动器并创建预发布版本；Pull Request 运行正式源码编译和 YSM 打包。手动选择 `ui-runtime` 时跳过 Minecraft 编译。轻量版的依赖下载地址由工作流自动配置。
 
-在 **Run workflow** 勾选 `verify` 会执行 `checkAllVersions`，编译各版本正式源码并验证 Minecraft 映射和注入点。单个版本可运行 `verifyMinecraftTransformers`。其他回归验证程序已移除。
+在 **Run workflow** 勾选 `verify` 会执行 `checkAllVersions`，编译各版本正式源码并验证 Minecraft 映射、注入点、YSM 行为、材质和更新回滚。局部修改可只运行相关验证任务，见 [构建文档](BUILDING.md)。
 
 ## 开发与许可
 

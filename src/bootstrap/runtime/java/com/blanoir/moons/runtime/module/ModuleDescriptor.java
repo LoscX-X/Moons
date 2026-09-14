@@ -6,7 +6,13 @@ import java.util.Properties;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
-record ModuleDescriptor(String id, String version, String entrypoint, String minecraft, int api) {
+record ModuleDescriptor(
+        String id,
+        String version,
+        String entrypoint,
+        String minecraft,
+        int api,
+        java.util.List<String> libraries) {
     private static final String DESCRIPTOR = "META-INF/moons-module.properties";
 
     static ModuleDescriptor read(java.nio.file.Path jarPath) throws IOException {
@@ -32,8 +38,23 @@ record ModuleDescriptor(String id, String version, String entrypoint, String min
                     required(properties, "version"),
                     required(properties, "entrypoint"),
                     required(properties, "minecraft"),
-                    api);
+                    api,
+                    parseLibraries(properties.getProperty("libraries", "")));
         }
+    }
+
+    private static java.util.List<String> parseLibraries(String value) throws IOException {
+        var libraries = new java.util.LinkedHashSet<String>();
+        for (String item : value.split(",")) {
+            String name = item.trim();
+            if (name.isEmpty()) continue;
+            // File names, not paths or URLs: dependencies live directly in MOONS_HOME/libraries.
+            if (!name.matches("[A-Za-z0-9][A-Za-z0-9._-]*\\.jar") || name.contains("..")) {
+                throw new IOException("Invalid module library: " + name);
+            }
+            libraries.add(name);
+        }
+        return java.util.List.copyOf(libraries);
     }
 
     boolean supportsMinecraft(String version) {

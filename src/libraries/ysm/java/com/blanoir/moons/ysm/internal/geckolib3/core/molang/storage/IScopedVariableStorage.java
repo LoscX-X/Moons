@@ -1,0 +1,7 @@
+package com.blanoir.moons.ysm.internal.geckolib3.core.molang.storage;
+
+public interface IScopedVariableStorage {
+    Object getScoped(int address);
+
+    void setScoped(int address, Object value);
+}

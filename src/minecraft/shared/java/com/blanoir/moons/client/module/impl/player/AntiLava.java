@@ -213,13 +213,10 @@ public final class AntiLava {
             if (!SilentPacketRotation.isRotationPacketSent()) {
                 return;
             }
-            float yawDifference =
-                    Math.abs(
-                            Mth.wrapDegrees(
-                                    client.player.getYRot() - SilentPacketRotation.getSentYaw()));
-            float pitchDifference =
-                    Math.abs(client.player.getXRot() - SilentPacketRotation.getSentPitch());
-            if (yawDifference <= 0.35F && pitchDifference <= 0.35F) {
+            if (MathUtils.withinRotationTolerance(
+                    client.player.getYRot() - SilentPacketRotation.getSentYaw(),
+                    client.player.getXRot() - SilentPacketRotation.getSentPitch(),
+                    0.35F)) {
                 restoreMaterial(client);
             } else {
                 beginReturnRotation(client);

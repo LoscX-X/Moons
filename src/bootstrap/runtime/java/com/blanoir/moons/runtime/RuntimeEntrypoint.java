@@ -1,7 +1,7 @@
 package com.blanoir.moons.runtime;
 
-import com.blanoir.moons.api.AgentMode;
 import com.blanoir.moons.api.Branding;
+import com.blanoir.moons.api.LoadMode;
 import com.blanoir.moons.api.bridge.RuntimeBridge;
 
 import java.nio.file.Files;
@@ -12,7 +12,7 @@ public final class RuntimeEntrypoint {
     private RuntimeEntrypoint() {}
 
     public static RuntimeBridge start(
-            Path home, Path outerJar, AgentMode mode, String minecraftVersion) throws Exception {
+            Path home, Path outerJar, LoadMode mode, String minecraftVersion) throws Exception {
         Files.createDirectories(home);
         DefaultRuntimeBridge runtime =
                 new DefaultRuntimeBridge(mode, home, outerJar, minecraftVersion);

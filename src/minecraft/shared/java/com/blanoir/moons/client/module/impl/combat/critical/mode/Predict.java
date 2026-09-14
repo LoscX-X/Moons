@@ -179,10 +179,6 @@ public final class Predict {
                     clear(client);
                     return;
                 }
-                if (!queuedManualIntent && (client == null || target == null)) {
-                    clear(client);
-                    return;
-                }
                 releasePredictionMovement(client);
                 boolean executable = isImmediatelyAttackable(client, target, queuedThroughBlock);
                 if (executable) {

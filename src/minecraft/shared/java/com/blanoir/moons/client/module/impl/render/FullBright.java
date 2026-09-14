@@ -67,7 +67,7 @@ public final class FullBright {
                     new MobEffectInstance(MobEffects.NIGHT_VISION, NIGHT_VISION_DURATION));
         } else if (gamma < BRIGHTNESS.get()) {
             if (gamma == 0.0F) {
-                gamma = client == null ? 0.0F : client.options.gamma().get().floatValue();
+                gamma = client.options.gamma().get().floatValue();
             }
             gamma = Math.min(gamma + GAMMA_STEP, BRIGHTNESS.get());
         }

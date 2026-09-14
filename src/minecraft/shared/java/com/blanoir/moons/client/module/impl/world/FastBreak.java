@@ -80,7 +80,7 @@ public final class FastBreak {
             return;
         }
 
-        if (currentPlayer == null || currentPlayer.connection == null) {
+        if (currentPlayer.connection == null) {
             return;
         }
 

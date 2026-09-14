@@ -20,8 +20,8 @@ final class ModuleClassLoader extends URLClassLoader {
         ClassLoader.registerAsParallelCapable();
     }
 
-    ModuleClassLoader(URL jar, ClassLoader parent) {
-        super(new URL[] {jar}, parent);
+    ModuleClassLoader(URL[] jars, ClassLoader parent) {
+        super(jars, parent);
     }
 
     @Override

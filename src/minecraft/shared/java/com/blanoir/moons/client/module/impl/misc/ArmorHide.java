@@ -5,8 +5,12 @@ import com.blanoir.moons.client.config.settings.BooleanSetting;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.entity.state.AvatarRenderState;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.item.ItemDisplayContext;
+import net.minecraft.world.item.ItemStack;
 
-/** Hides only the local player's worn armor model without changing equipment state. */
+/** Hides the local player's worn armor, head items and wings without changing equipment state. */
 public final class ArmorHide {
     private static final BooleanSetting ENABLED =
             new BooleanSetting.Builder().name("armorhide.enabled").defaultValue(false).build();
@@ -39,6 +43,16 @@ public final class ArmorHide {
         var currentPlayer = client.player;
         AvatarRenderState state = CURRENT_AVATAR.get();
         return currentPlayer == null || state == null || state.id != currentPlayer.getId();
+    }
+
+    /** Covers head-slot items submitted directly by replacement player renderers. */
+    public static boolean shouldRenderHeadItem(
+            LivingEntity wearer, ItemStack item, ItemDisplayContext context) {
+        if (!ENABLED.get() || context != ItemDisplayContext.HEAD) return true;
+        var player = Minecraft.getInstance().player;
+        return player == null
+                || wearer != player
+                || !ItemStack.isSameItemSameComponents(item, player.getItemBySlot(EquipmentSlot.HEAD));
     }
 
     public static int setEnabled(Minecraft client, boolean enabled) {

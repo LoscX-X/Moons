@@ -1,0 +1,217 @@
+/* Shared loader-independent library, with explicitly version-owned Minecraft adapters. */
+sourceSets {
+    ysmImages {
+        java.setSrcDirs(['src/libraries/ysm-images/java'])
+        resources.setSrcDirs(['src/libraries/ysm-images/resources'])
+    }
+    ysmCodecs {
+        java.setSrcDirs(['src/libraries/ysm-codecs/java'])
+        resources.setSrcDirs(['src/libraries/ysm-codecs/resources'])
+    }
+    ysmCore {
+        java.setSrcDirs(['src/libraries/ysm/java'])
+        resources.setSrcDirs(['src/libraries/ysm/resources'])
+        compileClasspath += sourceSets.ysmImages.output
+        runtimeClasspath += sourceSets.ysmImages.output
+    }
+    ysmTest {
+        java.setSrcDirs(['src/libraries/ysm/test/java'])
+        resources.setSrcDirs(['src/libraries/ysm/test/resources'])
+        compileClasspath += sourceSets.ysmCore.output + sourceSets.ysmCodecs.output + sourceSets.ysmCore.compileClasspath
+        runtimeClasspath += sourceSets.ysmCore.output + sourceSets.ysmCodecs.output + sourceSets.ysmCore.runtimeClasspath
+    }
+}
+
+dependencies {
+    // Ordinary Java libraries only. The game already supplies these at runtime.
+    ysmCoreImplementation 'com.google.code.gson:gson:2.13.2'
+    ysmCoreImplementation 'org.joml:joml:1.10.8'
+    ysmCoreImplementation 'io.netty:netty-buffer:4.2.7.Final'
+    ysmCoreImplementation 'it.unimi.dsi:fastutil:8.5.18'
+    ysmCoreImplementation 'org.apache.commons:commons-lang3:3.20.0'
+    ysmCoreCompileOnly 'org.jetbrains:annotations:26.0.2'
+}
+
+tasks.named('compileYsmCoreJava', JavaCompile) {
+    options.compilerArgs.addAll(['-Xmaxwarns', '1'])
+}
+
+tasks.register('verifyModuleLibraries', JavaExec) {
+    group = 'verification'
+    description = 'Checks external library replacement, rollback and selector service ownership.'
+    dependsOn tasks.named('loaderTestClasses')
+    classpath = sourceSets.loaderTest.runtimeClasspath
+    mainClass = 'com.blanoir.moons.runtime.module.ModuleLibrariesVerification'
+}
+
+tasks.register('benchmarkYsm', JavaExec) {
+    group = 'verification'
+    description = 'Reports repeatable YSM CPU mesh time and allocation without a GPU.'
+    dependsOn tasks.named('ysmTestClasses')
+    classpath = sourceSets.ysmTest.runtimeClasspath
+    mainClass = 'com.blanoir.moons.ysm.YsmPerformanceVerification'
+    maxHeapSize = '512m'
+}
+
+def coreJar = tasks.register('ysmCoreJar', Jar) {
+    group = 'build'
+    archiveFileName = 'moons-ysm-core.jar'
+    destinationDirectory = layout.buildDirectory.dir('dist/libraries')
+    from sourceSets.ysmCore.output
+    manifest { attributes('Moons-Ysm-Core-API': '1') }
+}
+
+def imagesJar = tasks.register('ysmImagesJar', Jar) {
+    group = 'build'
+    archiveFileName = 'moons-ysm-images.jar'
+    destinationDirectory = layout.buildDirectory.dir('dist/libraries')
+    from sourceSets.ysmImages.output
+    into('META-INF') { from('src/libraries/ysm-images/README.md') { rename { 'ImageStream-provenance.md' } } }
+}
+
+def codecsJar = tasks.register('ysmCodecsJar', Jar) {
+    group = 'build'
+    archiveFileName = 'moons-ysm-codecs.jar'
+    destinationDirectory = layout.buildDirectory.dir('dist/libraries')
+    from sourceSets.ysmCodecs.output
+}
+
+def ysmVersion = moonsBuild.minecraftVersion
+def ysmDirectory = moonsBuild.versionDirectory
+
+sourceSets {
+    ysm {
+        java.setSrcDirs(['src/minecraft/shared/ysm/adapter/java', "src/minecraft/versions/${ysmDirectory}/ysm/adapter/java"])
+        resources.setSrcDirs(["src/minecraft/versions/${ysmDirectory}/ysm/adapter/resources"])
+        compileClasspath += sourceSets.ysmCore.output + sourceSets.ysmCodecs.output + sourceSets.api.output + sourceSets.runtime.output + sourceSets.client.compileClasspath
+    }
+    ysmAdapterTest {
+        java.setSrcDirs(['src/minecraft/shared/ysm/test/java', "src/minecraft/versions/${ysmDirectory}/ysm/test/java"])
+        compileClasspath += sourceSets.ysm.output + sourceSets.ysm.compileClasspath
+        runtimeClasspath += sourceSets.ysm.output + sourceSets.ysm.compileClasspath
+    }
+}
+
+tasks.register('verifyYsmRenderSetup', JavaExec) {
+    group = 'verification'
+    description = 'Constructs every YSM material with real Minecraft classes, without a GPU context.'
+    dependsOn tasks.named('ysmAdapterTestClasses')
+    classpath = sourceSets.ysmAdapterTest.runtimeClasspath
+    mainClass = 'com.blanoir.moons.ysm.adapter.YsmRenderSetupVerification'
+}
+
+tasks.register('verifyYsmCore', JavaExec) {
+    group = 'verification'
+    description = 'Runs shared YSM behavior with the selected game version libraries.'
+    dependsOn 'ysmTestClasses', 'ysmClasses', 'ysmImagesClasses'
+    classpath = sourceSets.ysm.compileClasspath + sourceSets.ysmImages.output + sourceSets.ysmTest.output
+    mainClass = 'com.blanoir.moons.ysm.YsmCoreVerification'
+    if (providers.gradleProperty('ysm_test_model').isPresent()) args providers.gradleProperty('ysm_test_model').get()
+}
+
+tasks.register('ysmJar', Jar) {
+    group = 'build'
+    description = "Builds the independent Fabric-free YSM module for Minecraft ${ysmVersion}."
+    dependsOn tasks.named('ysmClasses')
+    archiveFileName = "moons-ysm-${ysmVersion}.jar"
+    destinationDirectory = layout.buildDirectory.dir("dist/modules/${ysmDirectory}")
+    from sourceSets.ysm.output
+}
+
+tasks.register('ysmBundle', Zip) {
+    group = 'build'
+    description = "Packages the shared YSM libraries and the ${ysmVersion} module for MOONS_HOME."
+    archiveFileName = "moons-ysm-${ysmVersion}.zip"
+    destinationDirectory = layout.buildDirectory.dir('dist')
+    into('libraries') { from coreJar.flatMap { it.archiveFile }; from codecsJar.flatMap { it.archiveFile }; from imagesJar.flatMap { it.archiveFile } }
+    into('modules') { from tasks.named('ysmJar', Jar).flatMap { it.archiveFile } }
+}
+
+tasks.named('check') {
+    dependsOn 'verifyYsmCore', 'verifyYsmRenderSetup', 'verifyModuleLibraries', 'verifyYsmPackage'
+}
+
+def ysmBundles = []
+moonsBuild.supportedVersions.each { version, directory ->
+    def previous = ysmBundles.isEmpty() ? null : ysmBundles.last()
+    def bundle = tasks.register("ysmBundleMinecraft${directory}", Exec) {
+        group = 'build'
+        description = "Builds the YSM adapter package for Minecraft ${version}."
+        if (previous != null) mustRunAfter previous
+        workingDir project.projectDir
+        executable moonsToolchains.gradleExecutable.absolutePath
+        def nestedBuild = layout.buildDirectory.dir("ysm-versions/${directory}").get().asFile
+        args moonsToolchains.nestedGradleArguments([
+                'ysmBundle',
+                "-Pminecraft_version=${version}",
+                "-Pmoons_build_directory=${nestedBuild.absolutePath}"
+        ].collect { it.toString() })
+        doLast {
+            copy {
+                from new File(nestedBuild, "dist/moons-ysm-${version}.zip")
+                into layout.buildDirectory.dir('dist')
+            }
+        }
+    }
+    ysmBundles.add(bundle)
+}
+
+def universalYsm = tasks.register('ysmUniversalBundle', Zip) {
+    group = 'build'
+    description = 'Packages one shared YSM runtime and every supported game adapter.'
+    dependsOn ysmBundles
+    archiveFileName = 'moons-ysm-all.zip'
+    destinationDirectory = layout.buildDirectory.dir('dist')
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    moonsBuild.supportedVersions.each { version, directory ->
+        from({ zipTree(layout.buildDirectory.file("dist/moons-ysm-${version}.zip").get().asFile) })
+    }
+    doFirst {
+        def shared = [:]
+        moonsBuild.supportedVersions.each { version, directory ->
+            def archive = new java.util.zip.ZipFile(layout.buildDirectory.file("dist/moons-ysm-${version}.zip").get().asFile)
+            try {
+                ['core', 'codecs', 'images'].each { library ->
+                    def name = "libraries/moons-ysm-${library}.jar"
+                    def entry = archive.getEntry(name)
+                    if (entry == null) throw new GradleException("Missing ${name} for ${version}")
+                    def bytes = archive.getInputStream(entry).withCloseable { it.readAllBytes() }
+                    def hash = java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance('SHA-256').digest(bytes))
+                    if (shared.containsKey(name) && shared[name] != hash)
+                        throw new GradleException("YSM shared library differs between versions: ${name}")
+                    shared[name] = hash
+                }
+            } finally { archive.close() }
+        }
+    }
+}
+
+def packageCheckExe = tasks.register('ysmPackageVerificationExe', Exec) {
+    onlyIf { moonsBuild.windowsHost }
+    def sources = files('src/tools/launcher/csharp/YsmPackage.cs',
+            'src/tools/launcher/csharp/ZipEntries.cs', 'src/tools/shared/Hashing.cs',
+            'src/test/launcher/YsmPackageVerification.cs')
+    def output = layout.buildDirectory.file('verification/ysm-package.exe')
+    inputs.files(sources)
+    outputs.file(output)
+    doFirst {
+        output.get().asFile.parentFile.mkdirs()
+        executable moonsToolchains.locateCSharpCompiler().absolutePath
+        args '/nologo', '/target:exe', '/reference:System.IO.Compression.dll',
+                "/out:${output.get().asFile.absolutePath}"
+        args sources.files.collect { it.absolutePath }.sort()
+    }
+}
+tasks.register('verifyYsmPackage', Exec) {
+    group = 'verification'
+    description = 'Verifies automatic YSM install, update, idempotence and rollback on Windows.'
+    onlyIf { moonsBuild.windowsHost }
+    dependsOn packageCheckExe
+    executable layout.buildDirectory.file('verification/ysm-package.exe').get().asFile.absolutePath
+}
+
+tasks.register('ysmAllVersions') {
+    group = 'build'
+    description = 'Builds YSM packages for every supported version without running tests.'
+    dependsOn universalYsm
+}

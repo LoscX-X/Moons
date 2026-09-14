@@ -1,7 +1,7 @@
 package com.blanoir.moons.agent.core;
 
 import com.blanoir.moons.agent.PayloadCache;
-import com.blanoir.moons.api.AgentMode;
+import com.blanoir.moons.api.LoadMode;
 import com.blanoir.moons.api.bridge.RuntimeBridge;
 
 import java.io.IOException;
@@ -25,7 +25,7 @@ final class RuntimeLoader implements AutoCloseable {
     static RuntimeLoader startNative(
             Path outerJar,
             Path home,
-            AgentMode mode,
+            LoadMode mode,
             ClassLoader gameLoader,
             String minecraftVersion)
             throws Exception {
@@ -36,7 +36,7 @@ final class RuntimeLoader implements AutoCloseable {
     private static RuntimeLoader load(
             Path outerJar,
             Path home,
-            AgentMode mode,
+            LoadMode mode,
             String minecraftVersion,
             ClassLoader gameLoader)
             throws Exception {
@@ -61,7 +61,7 @@ final class RuntimeLoader implements AutoCloseable {
                     Class.forName("com.blanoir.moons.runtime.RuntimeEntrypoint", true, loader);
             Method start =
                     entrypoint.getMethod(
-                            "start", Path.class, Path.class, AgentMode.class, String.class);
+                            "start", Path.class, Path.class, LoadMode.class, String.class);
             RuntimeBridge bridge =
                     (RuntimeBridge) start.invoke(null, home, outerJar, mode, minecraftVersion);
             return new RuntimeLoader(loader, bridge);

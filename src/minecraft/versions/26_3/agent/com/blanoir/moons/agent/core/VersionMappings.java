@@ -2,12 +2,12 @@ package com.blanoir.moons.agent.core;
 
 import java.util.List;
 
-/** Exact logical-to-runtime targets for Minecraft 26.3-pre-3. */
+/** Exact logical-to-runtime targets for Minecraft 26.3-rc-2. */
 final class VersionMappings {
     private VersionMappings() {}
 
     static String version() {
-        return "26.3-pre-3";
+        return "26.3-rc-2";
     }
 
     static MappingService create() {
@@ -345,6 +345,52 @@ final class VersionMappings {
                                 "(Lnet/minecraft/core/BlockPos;)V",
                                 TargetMethod.HookKind.BOOLEAN_GATE),
                         new TargetMethod(
+                                "audio.ysm-stream",
+                                List.of("net/minecraft/client/sounds/SoundBufferLibrary"),
+                                List.of("getStream"),
+                                "(Lnet/minecraft/resources/Identifier;Z)Ljava/util/concurrent/CompletableFuture;",
+                                TargetMethod.HookKind.VERSION_SPECIFIC,
+                                YsmHooks::audioStream),
+                        new TargetMethod(
+                                "render.ysm-capture",
+                                List.of(
+                                        "net/minecraft/client/renderer/entity/EntityRenderDispatcher"),
+                                List.of("extractEntity"),
+                                "(Lnet/minecraft/world/entity/Entity;F)Lnet/minecraft/client/renderer/entity/state/EntityRenderState;",
+                                TargetMethod.HookKind.VERSION_SPECIFIC,
+                                YsmHooks::capture),
+                        new TargetMethod(
+                                "render.ysm-sub-entity",
+                                List.of(
+                                        "net/minecraft/client/renderer/entity/EntityRenderDispatcher"),
+                                List.of("submit"),
+                                "(Lnet/minecraft/client/renderer/entity/state/EntityRenderState;Lnet/minecraft/client/renderer/state/level/CameraRenderState;DDDLcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;)V",
+                                TargetMethod.HookKind.BOXED_ARGS_VOID_GATE),
+                        new TargetMethod(
+                                "render.ysm-player",
+                                List.of(
+                                        "net/minecraft/client/renderer/entity/LivingEntityRenderer"),
+                                List.of("submit"),
+                                "(Lnet/minecraft/client/renderer/entity/state/LivingEntityRenderState;"
+                                        + "Lcom/mojang/blaze3d/vertex/PoseStack;"
+                                        + "Lnet/minecraft/client/renderer/SubmitNodeCollector;"
+                                        + "Lnet/minecraft/client/renderer/state/level/CameraRenderState;)V",
+                                TargetMethod.HookKind.BOXED_ARGS_VOID_GATE),
+                        new TargetMethod(
+                                "render.ysm-right-hand",
+                                List.of(
+                                        "net/minecraft/client/renderer/entity/player/AvatarRenderer"),
+                                List.of("renderRightHand"),
+                                "(Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;ILnet/minecraft/resources/Identifier;Z)V",
+                                TargetMethod.HookKind.BOXED_ARGS_VOID_GATE),
+                        new TargetMethod(
+                                "render.ysm-left-hand",
+                                List.of(
+                                        "net/minecraft/client/renderer/entity/player/AvatarRenderer"),
+                                List.of("renderLeftHand"),
+                                "(Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;ILnet/minecraft/resources/Identifier;Z)V",
+                                TargetMethod.HookKind.BOXED_ARGS_VOID_GATE),
+                        new TargetMethod(
                                 "render.clip-occlusion",
                                 List.of("net/minecraft/client/renderer/chunk/VisibilitySet"),
                                 List.of("visibilityBetween"),
@@ -390,6 +436,33 @@ final class VersionMappings {
                                 "render.armor-hide",
                                 List.of(
                                         "net/minecraft/client/renderer/entity/layers/HumanoidArmorLayer"),
+                                List.of("submit"),
+                                "(Lcom/mojang/blaze3d/vertex/PoseStack;"
+                                        + "Lnet/minecraft/client/renderer/SubmitNodeCollector;I"
+                                        + "Lnet/minecraft/client/renderer/entity/state/HumanoidRenderState;FF)V",
+                                TargetMethod.HookKind.BOOLEAN_GATE),
+                        new TargetMethod(
+                                "render.armor-hide.head",
+                                List.of(
+                                        "net/minecraft/client/renderer/entity/layers/CustomHeadLayer"),
+                                List.of("submit"),
+                                "(Lcom/mojang/blaze3d/vertex/PoseStack;"
+                                        + "Lnet/minecraft/client/renderer/SubmitNodeCollector;I"
+                                        + "Lnet/minecraft/client/renderer/entity/state/LivingEntityRenderState;FF)V",
+                                TargetMethod.HookKind.BOOLEAN_GATE),
+                        new TargetMethod(
+                                "render.armor-hide.head-item",
+                                List.of("net/minecraft/client/renderer/item/ItemModelResolver"),
+                                List.of("updateForTopItem"),
+                                "(Lnet/minecraft/client/renderer/item/ItemStackRenderState;"
+                                        + "Lnet/minecraft/world/item/ItemStack;"
+                                        + "Lnet/minecraft/world/item/ItemDisplayContext;"
+                                        + "Lnet/minecraft/world/level/Level;"
+                                        + "Lnet/minecraft/world/entity/ItemOwner;I)V",
+                                TargetMethod.HookKind.BOXED_ARGS_VOID_GATE),
+                        new TargetMethod(
+                                "render.armor-hide.wings",
+                                List.of("net/minecraft/client/renderer/entity/layers/WingsLayer"),
                                 List.of("submit"),
                                 "(Lcom/mojang/blaze3d/vertex/PoseStack;"
                                         + "Lnet/minecraft/client/renderer/SubmitNodeCollector;I"

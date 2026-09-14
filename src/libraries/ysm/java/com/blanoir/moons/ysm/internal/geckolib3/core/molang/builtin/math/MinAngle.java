@@ -1,0 +1,36 @@
+package com.blanoir.moons.ysm.internal.geckolib3.core.molang.builtin.math;
+
+import com.blanoir.moons.ysm.internal.molang.runtime.ExecutionContext;
+import com.blanoir.moons.ysm.internal.molang.runtime.ExpressionEvaluator;
+import com.blanoir.moons.ysm.internal.molang.runtime.Function;
+
+public class MinAngle implements Function {
+    @Override
+    public Object evaluate(ExecutionContext<?> context, ArgumentCollection arguments) {
+        float angle = arguments.getAsFloat(context, 0) % 360.0f;
+        if (angle >= 180.0f) {
+            return angle - 360.0f;
+        } else if (angle < -180.0f) {
+            return angle + 360.0f;
+        } else {
+            return angle;
+        }
+    }
+
+    @Override
+    public float evaluateFloat(ExpressionEvaluator<?> context, ArgumentCollection arguments) {
+        float angle = arguments.getAsFloatRaw(context, 0) % 360.0f;
+        if (angle >= 180.0f) {
+            return angle - 360.0f;
+        } else if (angle < -180.0f) {
+            return angle + 360.0f;
+        } else {
+            return angle;
+        }
+    }
+
+    @Override
+    public boolean validateArgumentSize(int size) {
+        return size == 1;
+    }
+}

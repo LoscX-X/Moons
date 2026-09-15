@@ -18,7 +18,7 @@ Set-Location E:\McEnv\moons
 
 产物是 `build\dist\moon-install.exe` 和 `build\dist\moon.exe`。先运行安装器安装/更新 UI 运行库、共享 YSM 库及所有游戏版本适配模块，再运行加载器。加载器只校验已安装依赖，缺失、损坏或版本不匹配时提示运行匹配的安装器。
 
-安装器内置完整 UI runtime、共享 YSM 库和各版本适配模块，安装和更新完全离线。提取后校验 SHA-256 和大小；已安装内容相同则跳过。CI 仅通过安装器分发 runtime，不发布单独 runtime JAR 或提供下载地址。
+安装器内置 UI runtime、共享 YSM 库和各版本适配模块，支持离线安装和更新。
 
 | 命令 | `build\dist` 下的产物 |
 | --- | --- |
@@ -30,25 +30,22 @@ Set-Location E:\McEnv\moons
 | `ysmBundle -Pminecraft_version=26.2` | `moons-ysm-26.2.zip` |
 | `moonsJar -Pminecraft_version=26.2` | `agent\26_2\moons.jar`，由加载器加载 |
 
-指定单版本只影响对应任务；加载器始终包含全部受支持版本的载荷。完整版任务已移除。
-
 ## 客户端与依赖版本
 
 - `gradle.properties` 的 `load_version` 是客户端版本，使用 `major.minor.patch`，可带预发布后缀。
-- 依赖版本由 UI 哈希和全部 YSM 文件哈希自动生成；分别保留 UI、YSM 编号。界面显示前 12 位，完整 SHA-256 用于文件校验。
-- 客户端版本和构建编号不参与依赖编号计算；依赖内容不变时无需重复安装。
+- 依赖版本由 UI 和全部 YSM 文件的哈希生成，界面显示前 12 位。
 - 两个 EXE 显示客户端/依赖版本，Windows 文件属性包含客户端版本，`--version` 输出详细元数据。
-- 安装成功后版本记录保存在 `MOONS_HOME/libraries/moons-dependencies.properties`。此记录用于展示，不能替代实际文件校验。
+- 依赖版本记录位于 `MOONS_HOME/libraries/moons-dependencies.properties`。
 - CI 以 `GITHUB_SHA` 标识构建，本地默认为 `local`，可用 `-Pmoons_build_id=<id>` 指定。
 - CI 摘要和构建日志显示客户端版本、实际检出的 commit；打包后补充依赖、UI 和 YSM 编号。Release 标题包含版本和短 commit，说明及 `moons-build-info` 产物保留完整构建信息。
 
 ## CI 文件命名与按需更新
 
-成功发布后，CI 保留最近 5 个 `build-<run>-<attempt>` 自动预发布版本，清理更旧的预发布附件和对应标签；当前运行发布的版本、正式版本、草稿和不可变版本保留。Actions 构建附件保留 7 天，发布后也会清理本工作流已完成运行中超过 7 天的旧附件。清理不删除运行记录或 Git 提交。
+自动预发布版本保留最近 5 个，当前运行发布的版本、正式版本、草稿和不可变版本保留。Actions 构建附件保留 7 天。
 
-CI 下载附件和 Release 中的 EXE 命名为 `moon-<load_version>-<8位commit>.exe`、`moon-install-<load_version>-<8位commit>.exe`。本地构建继续输出 `moon.exe` 和 `moon-install.exe`。
+CI 下载附件和 Release 中的 EXE 命名为 `moon-<load_version>-<8位commit>.exe`、`moon-install-<load_version>-<8位commit>.exe`。YSM 合集为 `moons-ysm-all.zip`。
 
-文件名标识客户端构建，依赖编号决定是否需要重新安装：依赖版本不变且已安装文件完好时，只更新加载器即可。依赖内容变化或文件损坏时，运行匹配的安装器；安装器仅替换内容不同的依赖，不会因为客户端版本或 commit 改变而重复安装全部文件。
+依赖版本不变且已安装文件完好时，只需更新加载器。依赖内容变化或文件损坏时，运行匹配的安装器。
 
 ## YSM 库与热更新
 
@@ -66,11 +63,11 @@ MOONS_HOME/
     moons-ysm-26.3-rc-3.jar
 ```
 
-三个 Minecraft 版本共用上面的三份库，仅适配模块不同。无需为每个模型复制 libs。也可把 `moons-ysm-all.zip` 解压至 `MOONS_HOME`，或运行 `build\dist\moon-install.exe --install-only` 无界面安装全部依赖（退出码 0 表示成功）。`moon.exe --verify-dependencies` 只校验，不安装、不连接游戏。
+将 `moons-ysm-all.zip` 解压至 `MOONS_HOME` 可安装 YSM 库和适配模块。运行 `build\dist\moon-install.exe --install-only` 可无界面安装全部依赖，退出码 0 表示成功。使用 `moon.exe --verify-dependencies` 检查依赖是否完整。
 
-仅修改 YSM 库/模块时，可通过模块重载更新；修改 bootstrap API、宿主渲染钩子或注入位置后，须退出旧游戏并用新 EXE 注入新启动的游戏。`ysmAllVersions` 不生成 EXE，无法升级进程中的旧宿主。
+修改 YSM 库或模块后，可通过模块重载更新。修改 bootstrap API、宿主渲染钩子或注入位置后，需要重新构建 EXE、重启游戏并重新注入。
 
-避免从另一份仓库或旧目录启动，构建完成后确认绝对路径和时间：
+查看构建产物路径和时间，并运行加载器：
 
 ```powershell
 Get-Item .\build\dist\moon.exe | Select-Object FullName, LastWriteTime, Length
@@ -90,13 +87,13 @@ Get-Item .\build\dist\moon.exe | Select-Object FullName, LastWriteTime, Length
 | 失败安装留下的 YSM 备份 | 2 份 | 64 MiB | 7 天 |
 | 旧 `%TEMP%/moons` runtime 缓存 | 8 份 | 64 MiB | 7 天 |
 
-成功更新的 YSM 临时备份会立即删除。新写入文件保留 10 分钟宽限期；当前 UI 版本始终保护，因此上限属于可安全清理时的目标，不会为了压低体积强删正在使用的文件。超量时优先移除较旧条目。
+YSM 临时备份在更新成功后删除。缓存清理保留当前 UI 版本和写入不足 10 分钟的文件，超量时优先移除较旧条目；受保护或被占用的文件可能使缓存暂时超过上限。
 
-新 runtime 缓存统一写入 `MOONS_HOME/cache/runtime`，不再另写系统临时目录。仅清理已知文件名和哈希目录；配置、模型、预设和 `MOONS_HOME/modules` 中的正式模块不属于清理范围。
+Runtime 缓存位于 `MOONS_HOME/cache/runtime`。配置、模型、预设和 `MOONS_HOME/modules` 中的正式模块不属于缓存清理范围。
 
 ## 按需验证
 
-普通打包不强制执行自定义测试。重复的核心检查、源码/EXE 字符串扫描以及未使用的格式检查分支已移除。保留编译失败、包文件缺失、跨版本共享库不一致等会直接影响产物正确性的检查。
+按修改范围选择验证任务：
 
 ```powershell
 # 仅编译全部版本的正式源码
@@ -115,11 +112,11 @@ Get-Item .\build\dist\moon.exe | Select-Object FullName, LastWriteTime, Length
 
 `verifyYsmCore` 使用所选 Minecraft 的 Java 依赖运行一次核心验证，包括头部追踪、第一人称过滤、动画和队列快照。`verifyYsmRenderSetup` 检查该版本的材质与顶点变换；`benchmarkYsm` 测 CPU 时间和分配量，不代表游戏 FPS。最终视觉效果仍需进游戏确认第三人称抬头/低头、第一人称双臂、持物、透明材质和动作切换。
 
-CI 在 push、PR 和默认的手动运行中先执行 `verifyMinecraftTransformers checkAllVersions`，通过后再打包。`checkAllVersions` 包含各受支持版本的编译、Transformer 和 YSM 验证；手动运行时可取消默认勾选的 `verify` 来跳过验证。格式化按需运行 `formatCode`，不挂在打包路径上。
+CI 在 push、PR 和默认的手动运行中先执行 `verifyMinecraftTransformers checkAllVersions`，通过后再打包。手动运行时可取消勾选 `verify` 来跳过验证。使用 `formatCode` 格式化代码。
 
 ## Windows bootstrap 中文路径验证
 
-桥接配置使用 UTF-8；调用 Windows JVMTI 文件接口时，桥接按目标进程的系统代码页无损转换路径，并保留短路径和标准编码兼容处理。无需移动中文目录。日志会记录实际 bootstrap JAR 路径及采用的编码。系统代码页无法表示的生僻字符依赖可用的短文件名或 JVM 的 Unicode 路径支持，不会用 `?` 替换后误加载其他文件。
+桥接配置使用 UTF-8，日志记录 bootstrap JAR 路径及加载时采用的编码。系统代码页无法表示的字符需要短文件名或 JVM 的 Unicode 路径支持。
 
 在已配置 CMake 的开发环境中运行以下可选检查（`$jdk` 指向实际 JDK）：
 

@@ -152,13 +152,13 @@ jobs:
           retention-days: 7
           path: build/ci/build-info.md
           if-no-files-found: error
-      - name: Upload YSM bundles
+      - name: Upload combined YSM bundle
         uses: actions/upload-artifact@v6
         with:
           name: moons-ysm
           retention-days: 7
           overwrite: true
-          path: build/dist/moons-ysm-*.zip
+          path: build/dist/moons-ysm-all.zip
           if-no-files-found: error
           compression-level: 0
       - name: Upload dependency installer
@@ -216,7 +216,6 @@ jobs:
           - If the dependency version is unchanged and the installed files are intact, updating only the loader is enough. The installer skips files whose content is unchanged.
           - The installer contains the runtime; no separate JAR or dependency download is required.
           - `moons-ysm-all.zip`: standalone YSM bundle with one shared library set and all supported adapters.
-          - `moons-ysm-<version>.zip`: optional standalone bundle for one game version.
 
           Only assets selected for this run are included. The loader supports Minecraft 26.1.2, 26.2, 26.3-rc-2 and 26.3-rc-3.
           NOTES

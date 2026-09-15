@@ -50,6 +50,10 @@ The outputs are `build/dist/moon-install.exe`, `build/dist/moon.exe` and `build/
 - Open an [issue](https://github.com/LoscX-X/Moons/issues) with the Minecraft version, reproduction steps and relevant logs.
 - For code changes, compile and check the affected functionality, then submit a PR. See [build and verification](docs/BUILDING.md).
 
+## Project Activity
+
+![Moons repository activity](https://repobeats.axiom.co/api/embed/fbaacbea8a2feb78305a937b23e2981cf6bf564a.svg "Repobeats analytics image")
+
 ## Inspired Projects
 
 - [CCBlueX/LiquidBounce](https://github.com/CCBlueX/LiquidBounce)

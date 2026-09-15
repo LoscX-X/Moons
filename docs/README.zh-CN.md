@@ -50,6 +50,10 @@ Moons 持续维护最近四个 Minecraft 稳定版本系列。
 - 在 [Issues](https://github.com/LoscX-X/Moons/issues) 中附上 Minecraft 版本、复现步骤和相关日志。
 - 修改代码后，完成受影响功能的编译和相关检查，再提交 PR。验证方式见 [构建文档](BUILDING.md)。
 
+## 项目活跃度
+
+![Moons 仓库活跃度](https://repobeats.axiom.co/api/embed/fbaacbea8a2feb78305a937b23e2981cf6bf564a.svg "Repobeats analytics image")
+
 ## Inspired Projects
 
 - [CCBlueX/LiquidBounce](https://github.com/CCBlueX/LiquidBounce)

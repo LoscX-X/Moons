@@ -44,6 +44,8 @@ Set-Location E:\McEnv\moons
 
 ## CI 文件命名与按需更新
 
+成功发布后，CI 保留最近 5 个 `build-<run>-<attempt>` 自动预发布版本，清理更旧的预发布附件和对应标签；当前运行发布的版本、正式版本、草稿和不可变版本保留。Actions 构建附件保留 7 天，发布后也会清理本工作流已完成运行中超过 7 天的旧附件。清理不删除运行记录或 Git 提交。
+
 CI 下载附件和 Release 中的 EXE 命名为 `moon-<load_version>-<8位commit>.exe`、`moon-install-<load_version>-<8位commit>.exe`。本地构建继续输出 `moon.exe` 和 `moon-install.exe`。
 
 文件名标识客户端构建，依赖编号决定是否需要重新安装：依赖版本不变且已安装文件完好时，只更新加载器即可。依赖内容变化或文件损坏时，运行匹配的安装器；安装器仅替换内容不同的依赖，不会因为客户端版本或 commit 改变而重复安装全部文件。

@@ -149,12 +149,14 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: moons-build-info
+          retention-days: 7
           path: build/ci/build-info.md
           if-no-files-found: error
       - name: Upload YSM bundles
         uses: actions/upload-artifact@v6
         with:
           name: moons-ysm
+          retention-days: 7
           overwrite: true
           path: build/dist/moons-ysm-*.zip
           if-no-files-found: error
@@ -164,6 +166,7 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: moons-install-${{ steps.version.outputs.client_version }}-${{ steps.version.outputs.short_sha }}
+          retention-days: 7
           overwrite: true
           path: build/ci/packages/${{ steps.assets.outputs.installer_name }}
           if-no-files-found: error
@@ -173,6 +176,7 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: moons-loader-${{ steps.version.outputs.client_version }}-${{ steps.version.outputs.short_sha }}
+          retention-days: 7
           overwrite: true
           path: build/ci/packages/${{ steps.assets.outputs.loader_name }}
           if-no-files-found: error
@@ -183,8 +187,12 @@ jobs:
     if: needs.check.outputs.release_tag != ''
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    concurrency:
+      group: moons-release-publish
+      cancel-in-progress: false
     permissions:
       contents: write
+      actions: write
     steps:
       - uses: actions/download-artifact@v7
         with:
@@ -220,3 +228,54 @@ jobs:
               --title "Moons $CLIENT_VERSION · $SHORT_SHA (Build $GITHUB_RUN_NUMBER)" \
               --prerelease --latest=false --notes-file release-notes.md
           fi
+      - name: Clean up old automatic releases and artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.check.outputs.release_tag }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          function Invoke-GhJson {
+            param([string[]] $Arguments)
+            $output = & gh @Arguments
+            if ($LASTEXITCODE -ne 0) { throw "GitHub request failed: $Arguments" }
+            ($output -join "`n") | ConvertFrom-Json
+          }
+          function Remove-GhObject {
+            param([string[]] $Arguments)
+            & gh @Arguments
+            if ($LASTEXITCODE -ne 0) { throw "GitHub deletion failed: $Arguments" }
+          }
+          $repo = $env:GITHUB_REPOSITORY
+          $pages = Invoke-GhJson -Arguments @('api', '--paginate', '--slurp', "repos/$repo/releases?per_page=100")
+          $releases = @(foreach ($page in $pages) { foreach ($release in $page) { $release } })
+          $automatic = @($releases | Where-Object {
+            $_.prerelease -eq $true -and !$_.draft -and !$_.immutable -and
+            $_.tag_name -cmatch '^build-[0-9]+-[0-9]+$'
+          } | Sort-Object -Property published_at, id -Descending)
+          $deletedReleases = 0
+          foreach ($release in ($automatic | Select-Object -Skip 5)) {
+            if ($release.tag_name -eq $env:RELEASE_TAG) { continue }
+            # Recheck in case a prerelease was promoted after the listing.
+            $fresh = Invoke-GhJson -Arguments @('api', "repos/$repo/releases/$($release.id)")
+            if ($fresh.prerelease -ne $true -or $fresh.draft -or $fresh.immutable -or
+                $fresh.tag_name -cne $release.tag_name) { continue }
+            Remove-GhObject -Arguments @('release', 'delete', $release.tag_name, '--repo', $repo, '--cleanup-tag', '--yes')
+            $deletedReleases++
+          }
+          $cutoff = [DateTimeOffset]::UtcNow.AddDays(-7)
+          $pages = Invoke-GhJson -Arguments @('api', '--paginate', '--slurp', "repos/$repo/actions/artifacts?per_page=100")
+          $artifacts = @(foreach ($page in $pages) { $page.artifacts })
+          $deletedArtifacts = 0
+          foreach ($artifact in $artifacts) {
+            if ($artifact.name -cnotmatch '^moons-(build-info|ysm|install(?:-.+)?|loader(?:-.+)?)$' -or
+                [DateTimeOffset]::Parse($artifact.created_at) -ge $cutoff -or
+                !$artifact.workflow_run.id -or $artifact.workflow_run.id -eq $env:GITHUB_RUN_ID) { continue }
+            $run = Invoke-GhJson -Arguments @('api', "repos/$repo/actions/runs/$($artifact.workflow_run.id)")
+            if ($run.path -cne '.github/workflows/check.yml' -or $run.status -ne 'completed') { continue }
+            Remove-GhObject -Arguments @('api', '--method', 'DELETE', "repos/$repo/actions/artifacts/$($artifact.id)")
+            $deletedArtifacts++
+          }
+          @('', '## Build retention', '',
+            "Removed $deletedReleases old automatic prereleases and their tags; retain the newest 5 (and this run).",
+            "Removed $deletedArtifacts workflow artifacts older than 7 days.") >> $env:GITHUB_STEP_SUMMARY

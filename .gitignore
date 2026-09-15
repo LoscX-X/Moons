@@ -124,5 +124,8 @@ runs/
 *.exe
 *.dll
 
+# Required AVIF runtime resource, pinned and verified by AvifImages.
+!/src/libraries/ysm-images/resources/avif/windows-x64/avifdec.exe
+
 # Avoid ignoring Gradle wrapper jar file (.jar files are usually ignored)
 !gradle-wrapper.jar

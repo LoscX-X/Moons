@@ -146,7 +146,7 @@ public final class Nametags {
                         && player.isAlive()
                         && player.isAttackable()
                         && !player.isSpectator()
-                        && !AntiBot.isBot(player)
+                        && !AntiBot.shouldHide(player)
                         && currentPlayer.distanceToSqr(player) <= range * range;
         return validTarget
                 && (!SAFE_MODE.get()

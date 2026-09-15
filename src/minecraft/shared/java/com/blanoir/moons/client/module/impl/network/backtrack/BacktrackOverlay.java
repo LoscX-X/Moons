@@ -3,6 +3,7 @@ package com.blanoir.moons.client.module.impl.network.backtrack;
 import com.blanoir.moons.client.access.MinecraftClientAccess;
 import com.blanoir.moons.client.config.Settings;
 import com.blanoir.moons.client.event.frame.WorldRenderEvent;
+import com.blanoir.moons.client.module.impl.misc.antibot.AntiBot;
 import com.blanoir.moons.client.utils.render.ColorCodec;
 import com.mojang.blaze3d.vertex.PoseStack;
 
@@ -148,7 +149,9 @@ final class BacktrackOverlay {
     }
 
     private static boolean visible(LivingEntity target, Vec3 real) {
-        if (target == null || real.distanceToSqr(target.position()) < 0.0025) return false;
+        if (target == null
+                || AntiBot.shouldHide(target)
+                || real.distanceToSqr(target.position()) < 0.0025) return false;
         Minecraft client = Minecraft.getInstance();
         return client != null
                 && client.player != null

@@ -6,12 +6,12 @@ import com.blanoir.moons.agent.core.hooks.YsmHooks;
 
 import java.util.List;
 
-/** Exact logical-to-runtime targets shared by Minecraft 26.3-rc-2 and 26.3-rc-3. */
+/** Exact logical-to-runtime targets for Minecraft 26.3 release. */
 final class VersionMappings {
     private VersionMappings() {}
 
     static String version() {
-        return "26.3-rc-3";
+        return "26.3";
     }
 
     static MappingService create() {
@@ -378,6 +378,13 @@ final class VersionMappings {
                                 YsmHooks::capture),
                         new TargetMethod(
                                 "render.ysm-sub-entity",
+                                List.of(
+                                        "net/minecraft/client/renderer/entity/EntityRenderDispatcher"),
+                                List.of("submit"),
+                                "(Lnet/minecraft/client/renderer/entity/state/EntityRenderState;Lnet/minecraft/client/renderer/state/level/CameraRenderState;DDDLcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;)V",
+                                TargetMethod.HookKind.BOXED_ARGS_VOID_GATE),
+                        new TargetMethod(
+                                "render.antibot-hide",
                                 List.of(
                                         "net/minecraft/client/renderer/entity/EntityRenderDispatcher"),
                                 List.of("submit"),

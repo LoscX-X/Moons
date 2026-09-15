@@ -7,6 +7,7 @@ import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.management.targeting.Targeting;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.entity.state.AvatarRenderState;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 
@@ -17,6 +18,8 @@ public final class AntiBot {
     private static final AntiBotState STATE = new AntiBotState();
     private static final BooleanSetting ENABLED =
             new BooleanSetting.Builder().name("antibot.enabled").defaultValue(false).build();
+    private static final BooleanSetting HIDE_BOT =
+            new BooleanSetting.Builder().name("antibot.hideBot").defaultValue(false).build();
     // All retired mode IDs, including Custom, resolve to the single Advanced option.
     private static final ModeSetting<String> MODE =
             new ModeSetting.Builder<String>()
@@ -41,6 +44,7 @@ public final class AntiBot {
     public static boolean isBot(Entity entity) {
         Minecraft client = Minecraft.getInstance();
         if (!isEnabled()
+                || client == null
                 || client.player == null
                 || entity == client.player
                 || !(entity instanceof Player player)) return false;
@@ -49,6 +53,27 @@ public final class AntiBot {
 
     public static boolean isEnabled() {
         return ENABLED.get();
+    }
+
+    public static boolean isHideBotActive() {
+        return isEnabled() && HIDE_BOT.get();
+    }
+
+    public static boolean shouldHide(Entity entity) {
+        return isHideBotActive() && isBot(entity);
+    }
+
+    public static boolean shouldHideRenderState(Object state) {
+        if (!isHideBotActive() || !(state instanceof AvatarRenderState avatar)) return false;
+        Minecraft client = Minecraft.getInstance();
+        return client != null
+                && client.level != null
+                && shouldHide(client.level.getEntity(avatar.id));
+    }
+
+    public static int setHideBot(Minecraft ignoredClient, boolean value) {
+        HIDE_BOT.set(value);
+        return 1;
     }
 
     public static String hudTag() {

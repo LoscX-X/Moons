@@ -1,6 +1,6 @@
 # 构建与更新
 
-在仓库根目录运行 PowerShell。当前构建目标为 Minecraft **26.1.2、26.2、26.3-rc-3**；26.3 载荷同时兼容 **26.3-rc-2**。
+在仓库根目录运行 PowerShell。当前构建目标为 Minecraft **26.1.2、26.2、26.3**；26.3 分支仅支持正式版，不支持 pre / rc / snapshot。
 
 ## 环境
 
@@ -60,7 +60,7 @@ MOONS_HOME/
   modules/
     moons-ysm-26.1.2.jar
     moons-ysm-26.2.jar
-    moons-ysm-26.3-rc-3.jar
+    moons-ysm-26.3.jar
 ```
 
 将 `moons-ysm-all.zip` 解压至 `MOONS_HOME` 可安装 YSM 库和适配模块。运行 `build\dist\moon-install.exe --install-only` 可无界面安装全部依赖，退出码 0 表示成功。使用 `moon.exe --verify-dependencies` 检查依赖是否完整。
@@ -103,7 +103,7 @@ Runtime 缓存位于 `MOONS_HOME/cache/runtime`。配置、模型、预设和 `M
 .\gradlew.bat checkAllVersions
 
 # 局部修改只跑相关检查
-.\gradlew.bat verifyYsmCore verifyYsmRenderSetup '-Pminecraft_version=26.3-rc-3'
+.\gradlew.bat verifyYsmCore verifyYsmRenderSetup '-Pminecraft_version=26.3'
 .\gradlew.bat verifyYsmCore '-Pysm_test_model=C:\Models\example.ysm'
 .\gradlew.bat verifyYsmPackage
 .\gradlew.bat verifyLauncherPackages # 隔离目录验证两个真实 EXE，不注入游戏

@@ -1,0 +1,12 @@
+{
+  "README.md": "4c0aaf584c339a183d2157fd81aea044fb8a936881c6bf13dd42add009ba0a30",
+  "gru48/best.pt": "76c16c81811866b694581b340f92dae8402cdb0a34fa61ea9a50936a4b7b50aa",
+  "gru48/data-manifest.json": "46b042bea9f5d1c92d3aab0ce6e49ef6222a935250658f8057ed746e9fc1172b",
+  "gru48/environment.json": "68436e08d736eb387c0906998878bca48d66f0f87ac1b43f94c7602d4a447ef0",
+  "gru48/history.jsonl": "7a29900fb9b9875ecd4794db0ea8b4198b130aef8f8575fcb66e240277731302",
+  "gru48/last.pt": "7d8c8e13d4811c3d8d304e5075b9f18fcfe4555eb4de27a0404f773b51ee83a8",
+  "gru48/model-metadata.json": "e7682a3936bf48217b712cfea7b0cba5e9863a9b09842cbd730cdc2938a472eb",
+  "gru48/resource-usage.json": "1fe23cd8bc2b43c59a4bdbe6ce3ab5e2600df318dac0e13faaf0d305662c0c00",
+  "gru48/train.log": "8ef389d090603a66266c69007e7a85418562e3a4a5a72e81a4bc2560c839e8eb",
+  "gru48/validation.json": "70624e9132d30deeb5f5d1df6efe74caecb5ba393b4ebb7c474ddc061fc97448"
+}

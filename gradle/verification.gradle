@@ -6,6 +6,7 @@ tasks.named("test", Test) {
 sourceSets {
     renderTest {
         java.setSrcDirs(['src/test/render/java'])
+        resources.setSrcDirs(['src/test/render/resources'])
         compileClasspath += sourceSets.features.output + sourceSets.client.output + sourceSets.agent.output + sourceSets.runtime.output + sourceSets.api.output + sourceSets.features.compileClasspath + configurations.agentRuntimeClasspath
         runtimeClasspath += compileClasspath
     }
@@ -32,19 +33,33 @@ tasks.register('verifyNicknameShuffle', JavaExec) {
 }
 
 [
+        verifySilentAuraPoints: 'com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraPointVerification',
+        verifyLearnedAim: 'com.blanoir.moons.client.module.impl.combat.silentaura.LearnedAimVerification',
+        verifyAntiBot: 'com.blanoir.moons.client.module.impl.misc.antibot.AdvancedBotDetectorVerification',
         verifyBacktrackFlow: 'com.blanoir.moons.client.module.impl.network.backtrack.BacktrackFlowVerification',
         verifyAntiWebCycle: 'com.blanoir.moons.client.module.impl.player.AntiWebCycleVerification',
         verifyPlacementRays: 'com.blanoir.moons.client.utils.world.placement.PlacementRaycastVerification'
 ].each { taskName, entryPoint ->
     tasks.register(taskName, JavaExec) {
         group = 'verification'
-        description = 'Checks packet flow, bounded interaction cycles or placement geometry without a GPU.'
+        description = 'Checks target filtering, packet flow, bounded interaction cycles or placement geometry without a GPU.'
         dependsOn 'renderTestClasses'
         classpath = sourceSets.renderTest.runtimeClasspath
         mainClass = entryPoint
         systemProperty 'moons.home', layout.buildDirectory.dir("${taskName}-fixture/home").get().asFile.absolutePath
         workingDir layout.buildDirectory.get().asFile
     }
+}
+
+tasks.register('simulateSilentAuraRotation', JavaExec) {
+    group = 'verification'
+    description = 'Runs seeded frame/packet rotation experiments and exports component metrics and traces.'
+    dependsOn 'renderTestClasses'
+    classpath = sourceSets.renderTest.runtimeClasspath
+    mainClass = 'com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraRotationSimulation'
+    args layout.buildDirectory.dir('rotation-simulation').get().asFile.absolutePath
+    systemProperty 'moons.home', layout.buildDirectory.dir('rotation-simulation/home').get().asFile.absolutePath
+    workingDir layout.buildDirectory.get().asFile
 }
 
 tasks.register("verifyMinecraftTransformers", JavaExec) {
@@ -69,7 +84,7 @@ tasks.register("verifyMinecraftTransformers", JavaExec) {
 
 
 tasks.named("check").configure {
-    dependsOn "clientClasses", "featuresClasses", "verifyMinecraftTransformers", "verifyArmorHide", "verifyNicknameShuffle", "verifyBacktrackFlow", "verifyAntiWebCycle", "verifyPlacementRays"
+    dependsOn "clientClasses", "featuresClasses", "verifyMinecraftTransformers", "verifyArmorHide", "verifyNicknameShuffle", "verifySilentAuraPoints", "verifyAntiBot", "verifyBacktrackFlow", "verifyAntiWebCycle", "verifyPlacementRays"
 }
 
 def versionChecks = []
@@ -126,6 +141,7 @@ tasks.register('verifyLoadSession', Exec) {
 }
 
 tasks.named('check').configure { dependsOn 'verifyLoadSession' }
+tasks.named('check').configure { dependsOn 'verifyLearnedAim' }
 
 tasks.register('verifyLauncherPackages', Exec) {
     group = 'verification'

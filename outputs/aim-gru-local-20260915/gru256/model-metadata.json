@@ -1,0 +1,41 @@
+{
+  "features": [
+    "yaw_step_deg",
+    "pitch_step_deg",
+    "yaw_step_change_deg",
+    "pitch_step_change_deg",
+    "horizontal_reference_error_deg",
+    "horizontal_distance",
+    "observed_dt_ms"
+  ],
+  "window": 16,
+  "hidden": 256,
+  "mean": [
+    -0.03190160551784509,
+    0.024025468494775153,
+    0.0005261834115014249,
+    0.0010504585098847488,
+    -0.7496881798954131,
+    2.6078094508426415,
+    49.9975048295601
+  ],
+  "std": [
+    8.149450261659798,
+    3.143614564473049,
+    6.160904138963608,
+    2.5224254308570053,
+    29.35760245778575,
+    4.421024381483953,
+    2.7340236986197075
+  ],
+  "target_scale": [
+    8.218632077528525,
+    3.0764827936438546
+  ],
+  "output": [
+    "next_yaw_step_deg",
+    "next_pitch_step_deg"
+  ],
+  "normalization": "Embedded in model.forward; input raw features exactly once",
+  "scope": "Offline motion predictor, missing verified target pitch; not a complete aiming controller"
+}

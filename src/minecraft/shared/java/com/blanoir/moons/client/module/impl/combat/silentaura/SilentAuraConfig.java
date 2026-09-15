@@ -49,6 +49,9 @@ public final class SilentAuraConfig {
                     .build();
     private static final IntSetting HURT_TIME = integer("silentaura.hurtTime", 10, 0, 10);
     private static final DoubleSetting SMOOTH = decimal("silentaura.smooth", 0.58D, 0.05D, 1.0D);
+    private static final BooleanSetting LEARNED_ASSIST = bool("silentaura.learned.assist", false);
+    private static final DoubleSetting LEARNED_STRENGTH =
+            decimal("silentaura.learned.strength", .35D, 0D, 1D);
     private static final IntSetting FULL_LOCK_ANGLE_STEP =
             integer("silentaura.fullLock.angleStep", 90, 30, 180);
     private static final DoubleSetting FULL_LOCK_SMOOTHING =
@@ -104,6 +107,19 @@ public final class SilentAuraConfig {
                     .build();
     private static final DoubleSetting PREDICTION =
             decimal("silentaura.predictionStrength", 1.0D, 0.0D, 3.0D);
+    private static final BooleanSetting POINT_LAZY = bool("silentaura.aimPoint.lazy", false);
+    private static final DoubleSetting POINT_LAZY_THRESHOLD =
+            decimal("silentaura.aimPoint.lazyThreshold", .15D, .01D, .4D);
+    private static final BooleanSetting POINT_GAUSSIAN =
+            bool("silentaura.aimPoint.gaussian", false);
+    private static final DoubleSetting POINT_HORIZONTAL_DEVIATION =
+            decimal("silentaura.aimPoint.horizontalDeviation", .05D, 0D, .3D);
+    private static final DoubleSetting POINT_VERTICAL_DEVIATION =
+            decimal("silentaura.aimPoint.verticalDeviation", .025D, 0D, .2D);
+    private static final DoubleSetting POINT_OFFSET_RESPONSE =
+            decimal("silentaura.aimPoint.offsetResponse", .2D, .01D, 1D);
+    private static final IntSetting POINT_OFFSET_INTERVAL =
+            integer("silentaura.aimPoint.offsetInterval", 8, 1, 40);
     private static final DoubleSetting MIN_CHARGE =
             decimal("silentaura.minCharge", 0.7D, 0.7D, 1.3D);
     private static final DoubleSetting MAX_CHARGE =
@@ -162,18 +178,37 @@ public final class SilentAuraConfig {
             TARGET_MODE.describe("target_mode", "Target mode", SilentAura::setTargetMode),
             HURT_TIME.describe("hurt_time", "Maximum hurt time", 1, SilentAura::setHurtTime),
             AIM_MODE.describe("aim_mode", "Aim mode", SilentAura::setAimMode),
+            LEARNED_ASSIST.describe(
+                    "learned_assist",
+                    "Learned assist",
+                    (client, value) -> {
+                        LEARNED_ASSIST.set(value);
+                        SilentAuraRuntime.resetLearnedAssist();
+                        return 1;
+                    }),
+            LEARNED_STRENGTH
+                    .describe(
+                            "learned_strength",
+                            "Learned strength",
+                            .05,
+                            (client, value) -> {
+                                LEARNED_STRENGTH.set(value);
+                                SilentAuraRuntime.resetLearnedAssist();
+                                return 1;
+                            })
+                    .visibleWhen(SilentAuraConfig::learnedAssist),
             SMOOTH.describe("smooth", "Smooth", .01, SilentAura::setSmooth)
-                    .visibleWhen(() -> !SilentAuraConfig.fullLockMode()),
+                    .visibleWhen(() -> SilentAuraConfig.traditionalAim()),
             RETURN_ROTATION.describe(
                     "return_rotation", "Return rotation", SilentAura::setReturnRotation),
             RETURN_SMOOTH
                     .describe("return_smooth", "Return smooth", .01, SilentAura::setReturnSmooth)
                     .visibleWhen(SilentAuraConfig::returnRotation),
             JITTER.describe("jitter", "Path jitter", .01, SilentAura::setJitter)
-                    .visibleWhen(() -> !SilentAuraConfig.fullLockMode()),
+                    .visibleWhen(() -> SilentAuraConfig.traditionalAim()),
             JITTER_SPEED
                     .describe("jitter_speed", "Jitter speed", .05, SilentAura::setJitterSpeed)
-                    .visibleWhen(() -> !SilentAuraConfig.fullLockMode()),
+                    .visibleWhen(() -> SilentAuraConfig.traditionalAim()),
             SETTLED_JITTER
                     .describe("settled_jitter", "Settled sway", .01, SilentAura::setSettledJitter)
                     .visibleWhen(SilentAuraConfig::balanceMode),
@@ -187,7 +222,7 @@ public final class SilentAuraConfig {
             PREDICTION_LEAD
                     .describe(
                             "prediction_lead", "Velocity lead", .05, SilentAura::setPredictionLead)
-                    .visibleWhen(() -> !SilentAuraConfig.fullLockMode()),
+                    .visibleWhen(() -> SilentAuraConfig.traditionalAim()),
             FULL_LOCK_ANGLE_STEP
                     .describe(
                             "full_lock_angle_step",
@@ -216,35 +251,35 @@ public final class SilentAuraConfig {
                             "Max target speed (blocks/tick)",
                             .05,
                             SilentAura::setPredictionMaxSpeed)
-                    .visibleWhen(() -> !SilentAuraConfig.fullLockMode()),
+                    .visibleWhen(() -> SilentAuraConfig.traditionalAim()),
             PREDICTION_MAX_ACCELERATION
                     .describe(
                             "prediction_max_acceleration",
                             "Max target acceleration",
                             .01,
                             SilentAura::setPredictionMaxAcceleration)
-                    .visibleWhen(() -> !SilentAuraConfig.fullLockMode()),
+                    .visibleWhen(() -> SilentAuraConfig.traditionalAim()),
             PREDICTION_MAX_HORIZON
                     .describe(
                             "prediction_max_horizon",
                             "Max lead ticks",
                             .05,
                             SilentAura::setPredictionMaxHorizon)
-                    .visibleWhen(() -> !SilentAuraConfig.fullLockMode()),
+                    .visibleWhen(() -> SilentAuraConfig.traditionalAim()),
             PREDICTION_VERTICAL_SCALE
                     .describe(
                             "prediction_vertical_scale",
                             "Vertical lead weight",
                             .01,
                             SilentAura::setPredictionVerticalScale)
-                    .visibleWhen(() -> !SilentAuraConfig.fullLockMode()),
+                    .visibleWhen(() -> SilentAuraConfig.traditionalAim()),
             PREDICTION_MAX_TURN_RATE
                     .describe(
                             "prediction_max_turn_rate",
                             "Max movement turn (deg/tick)",
                             1,
                             SilentAura::setPredictionMaxTurnRate)
-                    .visibleWhen(() -> !SilentAuraConfig.fullLockMode()),
+                    .visibleWhen(() -> SilentAuraConfig.traditionalAim()),
             PREDICTION_MAX_TURN_ANGLE
                     .describe(
                             "prediction_max_turn_angle",
@@ -253,7 +288,7 @@ public final class SilentAuraConfig {
                             SilentAura::setPredictionMaxTurnAngle)
                     .visibleWhen(
                             () ->
-                                    !SilentAuraConfig.fullLockMode()
+                                    SilentAuraConfig.traditionalAim()
                                             && SilentAuraConfig.predictionTurningEnabled()),
             PREDICTION_MIN_RESPONSE
                     .describeRange(
@@ -262,20 +297,84 @@ public final class SilentAuraConfig {
                             PREDICTION_MAX_RESPONSE,
                             .05,
                             SilentAura::setPredictionResponse)
-                    .visibleWhen(() -> !SilentAuraConfig.fullLockMode()),
+                    .visibleWhen(() -> SilentAuraConfig.traditionalAim()),
             MATRIX_COMPATIBILITY
-                    .describe("matrix", "Limitation", SilentAura::setMatrixCompatibility)
-                    .visibleWhen(() -> !SilentAuraConfig.fullLockMode()),
+                    .describe("matrix", "Optimize", SilentAura::setMatrixCompatibility)
+                    .visibleWhen(() -> SilentAuraConfig.traditionalAim()),
             CRITICAL_INTEGRATION
                     .describe("critical", "Critical", SilentAura::setCriticalIntegration)
                     .visibleWhen(() -> !SilentAuraConfig.legacyCombat()),
             AIM_POINT
                     .describe("aim_point", "Aim point", SilentAura::setAimPoint)
                     .visibleWhen(() -> !SilentAuraConfig.fullLockMode()),
+            POINT_LAZY.describe(
+                    "point_lazy",
+                    "AimPoint Lazy",
+                    (client, value) -> {
+                        POINT_LAZY.set(value);
+                        return 1;
+                    }),
+            POINT_LAZY_THRESHOLD
+                    .describe(
+                            "point_lazy_threshold",
+                            "Lazy threshold (blocks)",
+                            .01,
+                            (client, value) -> {
+                                POINT_LAZY_THRESHOLD.set(value);
+                                return 1;
+                            })
+                    .visibleWhen(POINT_LAZY::get),
+            POINT_GAUSSIAN.describe(
+                    "point_gaussian",
+                    "AimPoint Gaussian",
+                    (client, value) -> {
+                        POINT_GAUSSIAN.set(value);
+                        return 1;
+                    }),
+            POINT_HORIZONTAL_DEVIATION
+                    .describe(
+                            "point_horizontal_deviation",
+                            "Horizontal stddev (blocks)",
+                            .005,
+                            (client, value) -> {
+                                POINT_HORIZONTAL_DEVIATION.set(value);
+                                return 1;
+                            })
+                    .visibleWhen(POINT_GAUSSIAN::get),
+            POINT_VERTICAL_DEVIATION
+                    .describe(
+                            "point_vertical_deviation",
+                            "Vertical stddev (blocks)",
+                            .005,
+                            (client, value) -> {
+                                POINT_VERTICAL_DEVIATION.set(value);
+                                return 1;
+                            })
+                    .visibleWhen(POINT_GAUSSIAN::get),
+            POINT_OFFSET_RESPONSE
+                    .describe(
+                            "point_offset_response",
+                            "Offset response / tick",
+                            .01,
+                            (client, value) -> {
+                                POINT_OFFSET_RESPONSE.set(value);
+                                return 1;
+                            })
+                    .visibleWhen(POINT_GAUSSIAN::get),
+            POINT_OFFSET_INTERVAL
+                    .describe(
+                            "point_offset_interval",
+                            "Offset interval (ticks)",
+                            1,
+                            (client, value) -> {
+                                POINT_OFFSET_INTERVAL.set(value);
+                                return 1;
+                            })
+                    .visibleWhen(POINT_GAUSSIAN::get),
             PREDICTION
                     .describe(
                             "prediction", "Turn prediction", .05, SilentAura::setPredictionStrength)
-                    .visibleWhen(() -> !SilentAuraConfig.fullLockMode()),
+                    .visibleWhen(() -> SilentAuraConfig.traditionalAim()),
             MIN_CHARGE
                     .describeRange(
                             "charge", "Attack charge", MAX_CHARGE, .01, SilentAura::setCharge)
@@ -476,6 +575,18 @@ public final class SilentAuraConfig {
         return AIM_MODE.get() == AimMode.FULL_LOCK;
     }
 
+    public static boolean learnedAssist() {
+        return LEARNED_ASSIST.get();
+    }
+
+    public static double learnedStrength() {
+        return LEARNED_STRENGTH.get();
+    }
+
+    private static boolean traditionalAim() {
+        return !fullLockMode();
+    }
+
     public static int fullLockAngleStep() {
         return FULL_LOCK_ANGLE_STEP.get();
     }
@@ -489,7 +600,7 @@ public final class SilentAuraConfig {
     }
 
     public static boolean matrixCompatibility() {
-        return MATRIX_COMPATIBILITY.get() && !fullLockMode();
+        return MATRIX_COMPATIBILITY.get() && traditionalAim();
     }
 
     public static boolean criticalIntegration() {
@@ -518,6 +629,17 @@ public final class SilentAuraConfig {
 
     public static double prediction() {
         return PREDICTION.get();
+    }
+
+    static SilentAuraPointProcessor.Parameters pointParameters() {
+        return new SilentAuraPointProcessor.Parameters(
+                POINT_LAZY.get(),
+                POINT_LAZY_THRESHOLD.get(),
+                POINT_GAUSSIAN.get(),
+                POINT_HORIZONTAL_DEVIATION.get(),
+                POINT_VERTICAL_DEVIATION.get(),
+                POINT_OFFSET_RESPONSE.get(),
+                POINT_OFFSET_INTERVAL.get());
     }
 
     public static double minCharge() {

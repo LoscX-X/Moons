@@ -1,0 +1,15 @@
+{
+  "status": "passed",
+  "torch": "2.13.0+cpu",
+  "device": "cpu",
+  "checks": [
+    "interleaved UUID split isolation",
+    "chunk invariance",
+    "finite windows",
+    "future input isolation",
+    "training",
+    "checkpoint reload",
+    "resume",
+    "20-step replay"
+  ]
+}

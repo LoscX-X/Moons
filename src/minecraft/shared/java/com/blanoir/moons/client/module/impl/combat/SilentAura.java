@@ -442,7 +442,8 @@ public final class SilentAura {
                     + " profile="
                     + (SilentAuraConfig.fullLockMode()
                             ? "full-lock"
-                            : SilentAuraConfig.matrixCompatibility() ? "matrix" : "generic"),
+                            : SilentAuraConfig.matrixCompatibility() ? "optimize" : "generic")
+                    + (SilentAuraConfig.learnedAssist() ? " assist=" + SilentAuraRuntime.learnedStatus() : ""),
             "candidate="
                     + candidateRay
                     + " sent="

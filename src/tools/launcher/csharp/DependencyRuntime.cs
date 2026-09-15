@@ -82,7 +82,7 @@ namespace Moons.WindowsLauncher
         internal static readonly string[] YsmPackageNames = {
             "libraries/moons-ysm-core.jar", "libraries/moons-ysm-codecs.jar",
             "libraries/moons-ysm-images.jar", "modules/moons-ysm-26.1.2.jar",
-            "modules/moons-ysm-26.2.jar", "modules/moons-ysm-26.3-rc-3.jar"
+            "modules/moons-ysm-26.2.jar", "modules/moons-ysm-26.3.jar"
         };
 
         internal static void PublishUiRuntime(string home)

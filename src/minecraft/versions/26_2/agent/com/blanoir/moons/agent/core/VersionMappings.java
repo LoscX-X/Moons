@@ -391,6 +391,13 @@ final class VersionMappings {
                                 "(Lnet/minecraft/client/renderer/entity/state/EntityRenderState;Lnet/minecraft/client/renderer/state/level/CameraRenderState;DDDLcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;)V",
                                 TargetMethod.HookKind.BOXED_ARGS_VOID_GATE),
                         new TargetMethod(
+                                "render.antibot-hide",
+                                List.of(
+                                        "net/minecraft/client/renderer/entity/EntityRenderDispatcher"),
+                                List.of("submit"),
+                                "(Lnet/minecraft/client/renderer/entity/state/EntityRenderState;Lnet/minecraft/client/renderer/state/level/CameraRenderState;DDDLcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;)V",
+                                TargetMethod.HookKind.BOXED_ARGS_VOID_GATE),
+                        new TargetMethod(
                                 "render.ysm-player",
                                 List.of(
                                         "net/minecraft/client/renderer/entity/LivingEntityRenderer"),

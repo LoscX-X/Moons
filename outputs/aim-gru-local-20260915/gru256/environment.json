@@ -1,0 +1,10 @@
+{
+  "device": "cpu",
+  "torch": "2.13.0+cpu",
+  "cuda": null,
+  "gpu": null,
+  "batch_size": 512,
+  "vram_gib": 0,
+  "threads": 8,
+  "parameters": 204034
+}

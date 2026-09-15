@@ -20,6 +20,7 @@ import com.blanoir.moons.client.module.impl.misc.AntiNick;
 import com.blanoir.moons.client.module.impl.misc.ArmorHide;
 import com.blanoir.moons.client.module.impl.misc.ChatFilter;
 import com.blanoir.moons.client.module.impl.misc.StaticFov;
+import com.blanoir.moons.client.module.impl.misc.antibot.AntiBot;
 import com.blanoir.moons.client.module.impl.movement.KeepSprint;
 import com.blanoir.moons.client.module.impl.movement.NoJumpDelay;
 import com.blanoir.moons.client.module.impl.movement.Sprint;
@@ -103,6 +104,7 @@ public final class FeatureHooks {
             case "render.full-bright" -> FullBright.isEnabled();
             case "render.static-fov" -> StaticFov.isEnabled();
             case "render.scoreboard" -> Scoreboard.isEnabled();
+            case "render.antibot-hide" -> AntiBot.isHideBotActive();
             case "render.silent-aura-animation", "render.silent-aura-animation.replace-vanilla" ->
                     Animations.renderingEnabled();
             case "render.trim", "render.trim.direct" -> Trim.isEnabled();
@@ -236,6 +238,13 @@ public final class FeatureHooks {
                 }
             }
 
+            case "render.antibot-hide" -> {
+                if (hook.argument() instanceof Object[] args
+                        && args.length > 0
+                        && AntiBot.shouldHideRenderState(args[0])) {
+                    hook.value(false);
+                }
+            }
             case "render.present" -> ComposeRenderBridge.renderCurrentScreen();
             case "render.scoreboard" -> {
                 if (hook.argument() instanceof Object[] values

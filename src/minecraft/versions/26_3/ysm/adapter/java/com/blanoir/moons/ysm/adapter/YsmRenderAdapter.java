@@ -18,7 +18,7 @@ import net.minecraft.resources.Identifier;
 import java.io.*;
 import java.util.*;
 
-/** Minecraft 26.3-rc-3 rendering and observations. This class belongs to this version only. */
+/** Minecraft 26.3 rendering and observations. This class belongs to this version only. */
 final class YsmRenderAdapter implements AutoCloseable {
     private final LocalYsmModel model;
     private final boolean handlesFallFlyingPitch;

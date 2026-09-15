@@ -1,0 +1,7 @@
+{
+  "success": true,
+  "wall_seconds_this_invocation": 293.09959890000755,
+  "peak_working_set_bytes": 434688000,
+  "peak_commit_bytes": 1254277120,
+  "memory_scope": "This Python training process, including imports; CPU execution"
+}

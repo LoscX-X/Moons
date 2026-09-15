@@ -80,6 +80,13 @@ sourceSets.client.resources.setSrcDirs([
         "src/minecraft/versions/${selectedVersionDirectory}/client/resources"
 ])
 
+tasks.named("processClientResources") {
+    from(layout.projectDirectory.dir("lib/aim")) {
+        include("aim-gru128-epoch7.bin", "aim-gru128-epoch7.json")
+        into("assets/moons/models")
+    }
+}
+
 tasks.named("processFeaturesResources") {
     inputs.property("minecraftVersion", selectedMinecraftVersion)
     filesMatching("META-INF/moons-module.properties") {

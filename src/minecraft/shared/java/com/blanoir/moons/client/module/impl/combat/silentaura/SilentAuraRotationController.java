@@ -20,6 +20,7 @@ public final class SilentAuraRotationController {
     private final AimState state = new AimState();
     private final AimProfile aimType;
     private final boolean fullLockMode;
+    private Vec3 learnedPoint;
 
     public SilentAuraRotationController(boolean lockMode) {
         this(lockMode, false);
@@ -65,6 +66,7 @@ public final class SilentAuraRotationController {
         state.active = true;
         state.returning = false;
         state.targetId = target.getId();
+        learnedPoint = point;
         AimParameters parameters = parameters();
         AimSolverB.observe(state, aimType, parameters, client, target, deltaSeconds);
         if (fullLockMode) {
@@ -76,6 +78,7 @@ public final class SilentAuraRotationController {
     }
 
     public void returnToCamera(Minecraft client, double deltaSeconds) {
+        learnedPoint = null;
         var currentPlayer = client == null ? null : client.player;
         state.targetId = -1;
         state.crossingTarget = false;
@@ -128,6 +131,10 @@ public final class SilentAuraRotationController {
         return state.active;
     }
 
+    Vec3 learnedPoint() {
+        return learnedPoint;
+    }
+
     public void beginFrom(float yaw, float pitch) {
         clear();
         state.yaw = yaw;
@@ -164,6 +171,7 @@ public final class SilentAuraRotationController {
     }
 
     public void clear() {
+        learnedPoint = null;
         state.active = state.returning = false;
         state.targetId = -1;
         state.yawVelocity = state.pitchVelocity = 0.0F;

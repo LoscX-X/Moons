@@ -4,8 +4,8 @@ import com.blanoir.moons.client.utils.rotation.Rotation;
 
 /**
  * One place selects the active mode's state owners; callers invoke the owners directly.
- * Array order is Lock, Balance, FullLock. Target history is also independent for Latest
- * and Legacy, while frame/packet history retains the original three-way separation.
+ * Array order is Lock, Balance, FullLock. The learned helper is shared and reset
+ * when control or mode changes; each mode retains its own primary controller.
  * Reset methods retain the original all-mode scope and iteration order.
  */
 final class SilentAuraModes {
@@ -21,6 +21,7 @@ final class SilentAuraModes {
         new PacketRotationSmoother(false),
         new PacketRotationSmoother(true, true)
     };
+    private final LearnedPacketRotation learned = new LearnedPacketRotation();
 
     private static SilentAuraTargets[] targetsForModes() {
         return new SilentAuraTargets[] {
@@ -32,6 +33,10 @@ final class SilentAuraModes {
 
     private static int index() {
         return SilentAuraConfig.fullLockMode() ? 2 : SilentAuraConfig.lockMode() ? 0 : 1;
+    }
+
+    LearnedPacketRotation learned() {
+        return learned;
     }
 
     SilentAuraTargets targets() {
@@ -55,7 +60,8 @@ final class SilentAuraModes {
             boolean lockMode,
             double sensitivity,
             boolean overlappingTarget,
-            boolean matrixCompatibility) {
+            boolean matrixCompatibility,
+            boolean assist) {
         PacketRotationSmoother smoother = packets[lockMode ? 0 : 1];
         if (SilentAuraConfig.fullLockMode()) smoother = packets[2];
         return smoother.sample(
@@ -68,7 +74,30 @@ final class SilentAuraModes {
                 overlappingTarget,
                 matrixCompatibility,
                 SilentAuraConfig.fullLockAngleStep(),
-                SilentAuraConfig.fullLockSmoothing());
+                SilentAuraConfig.fullLockSmoothing(),
+                assist
+                        ? (base,
+                                primary,
+                                previousYaw,
+                                previousPitch,
+                                yawMax,
+                                pitchMax,
+                                yawAccel,
+                                pitchAccel) ->
+                                learned.adjust(
+                                        tick,
+                                        System.nanoTime(),
+                                        base,
+                                        primary,
+                                        sensitivity,
+                                        SilentAuraConfig.learnedStrength(),
+                                        previousYaw,
+                                        previousPitch,
+                                        yawMax,
+                                        pitchMax,
+                                        yawAccel,
+                                        pitchAccel)
+                        : null);
     }
 
     void clearTargets() {
@@ -82,5 +111,6 @@ final class SilentAuraModes {
 
     void resetPackets() {
         for (var packet : packets) packet.reset();
+        learned.reset();
     }
 }

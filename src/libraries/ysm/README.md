@@ -5,7 +5,7 @@ YSM 通过 Moons 的 JNI/JVMTI 宿主热加载，核心不依赖 Fabric、Mixin�
 ## 使用与升级
 
 1. 首次使用此版本须退出旧游戏进程，以新构建的 `moons.exe` 或 `moons-full.exe` 注入新启动的游戏。旧宿主缺少本次 bootstrap API 和注入点，不能仅靠替换 YSM jar 升级。两个 EXE 均包含相同功能，区别在公共依赖打包方式。
-2. 新版启动器会自动安装与自身配套的三个共享库和 `26.1.2`、`26.2`、`26.3-rc-2` 适配模块；文件摘要一致时不重复写入。只需构建和运行 `moons.exe`，无需手动逐个复制 libs。升级失败会恢复已替换的文件；旧文件备份保留在 `MOONS_HOME/cache/ysm-install/`。独立分发时可将 `moons-ysm-all.zip` 一次解压到 `MOONS_HOME`。
+2. 新版启动器会自动安装与自身配套的三个共享库和 `26.1.2`、`26.2`、`26.3` 适配模块；文件摘要一致时不重复写入。只需构建和运行 `moons.exe`，无需手动逐个复制 libs。升级失败会恢复已替换的文件；旧文件备份保留在 `MOONS_HOME/cache/ysm-install/`。独立分发时可将 `moons-ysm-all.zip` 一次解压到 `MOONS_HOME`。
 3. 模型放入 `MOONS_HOME/data/ysm/models/`，支持 crypto3 `.ysm`、模型 zip 和解压目录。默认 Windows 路径为 `%APPDATA%/.moons/data/ysm/models/`。
 4. 打开 Moons 设置的 YSM 页面，Refresh 后选择模型并 Apply。Use vanilla 恢复原版。模型失败时保留此前可用实例，错误显示在页面中。
 

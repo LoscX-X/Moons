@@ -4,7 +4,7 @@
 
 Moons is a Windows client for Minecraft Java Edition with configurable modules, local presets and YSM models.
 
-Supports **26.1.2**, **26.2**, **26.3-rc-2** and **26.3-rc-3**.
+Supports **26.1.2**, **26.2**, **26.3**.
 
 ## Version Support
 

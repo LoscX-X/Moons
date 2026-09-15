@@ -1,0 +1,2081 @@
+{
+  "scope": "Validation-only model selection; not an untouched test estimate",
+  "selection_rule": "Mean GRU/ridge_geometry MAE ratio, equal weights for yaw/pitch and horizons 5/20",
+  "selected_rollout_epoch": 4,
+  "epochs": [
+    {
+      "epoch": 1,
+      "checkpoint": "epoch-001.pt",
+      "rollout_selection_score": 0.9417498819139315,
+      "one_step": {
+        "mae_deg": [
+          2.4352988649316973,
+          1.1521060798165648
+        ],
+        "rmse_deg": [
+          4.649365399490999,
+          1.9299318875986442
+        ],
+        "uuid_macro_mae_deg": [
+          2.3910797139707736,
+          1.2026942557956006
+        ]
+      },
+      "rollout": {
+        "uuid_windows": 295,
+        "horizons": {
+          "zero": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                3.3582863807678223,
+                1.7165762186050415
+              ],
+              "combined_p95_deg": 14.395359992980957
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                14.874364852905273,
+                7.051040172576904
+              ],
+              "combined_p95_deg": 55.06086730957031
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                36.92599868774414,
+                10.932939529418945
+              ],
+              "combined_p95_deg": 138.7794647216797
+            }
+          },
+          "persistence": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.8932008743286133,
+                1.509683609008789
+              ],
+              "combined_p95_deg": 12.406140327453613
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                18.200489044189453,
+                11.113251686096191
+              ],
+              "combined_p95_deg": 85.7731704711914
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                52.27989196777344,
+                38.82905197143555
+              ],
+              "combined_p95_deg": 170.9186553955078
+            }
+          },
+          "ridge_history": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.4524292945861816,
+                1.1972637176513672
+              ],
+              "combined_p95_deg": 11.24655818939209
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                14.151714324951172,
+                6.598709583282471
+              ],
+              "combined_p95_deg": 50.28245544433594
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                36.577449798583984,
+                10.63701057434082
+              ],
+              "combined_p95_deg": 133.74429321289062
+            }
+          },
+          "ridge_geometry": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.359466552734375,
+                1.2001559734344482
+              ],
+              "combined_p95_deg": 10.18215560913086
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                10.652325630187988,
+                6.604348182678223
+              ],
+              "combined_p95_deg": 41.56892395019531
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                16.335756301879883,
+                10.656390190124512
+              ],
+              "combined_p95_deg": 80.04480743408203
+            }
+          },
+          "gru": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.125337600708008,
+                1.1554749011993408
+              ],
+              "combined_p95_deg": 9.011222839355469
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                10.276690483093262,
+                6.2151312828063965
+              ],
+              "combined_p95_deg": 39.74470520019531
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                15.620375633239746,
+                9.64391040802002
+              ],
+              "combined_p95_deg": 76.87803649902344
+            }
+          }
+        },
+        "scope": "20-step self-fed angles with externally replayed world geometry; no output clamps",
+        "zero_pitch_outside_90": 0,
+        "persistence_pitch_outside_90": 267,
+        "ridge_history_pitch_outside_90": 0,
+        "ridge_geometry_pitch_outside_90": 0,
+        "gru_pitch_outside_90": 0
+      }
+    },
+    {
+      "epoch": 2,
+      "checkpoint": "epoch-002.pt",
+      "rollout_selection_score": 0.9705142500706264,
+      "one_step": {
+        "mae_deg": [
+          2.386513688257823,
+          1.1321528610282667
+        ],
+        "rmse_deg": [
+          4.561450732567592,
+          1.8863088065124194
+        ],
+        "uuid_macro_mae_deg": [
+          2.3345829314779976,
+          1.1731100152424077
+        ]
+      },
+      "rollout": {
+        "uuid_windows": 295,
+        "horizons": {
+          "zero": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                3.3582863807678223,
+                1.7165762186050415
+              ],
+              "combined_p95_deg": 14.395359992980957
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                14.874364852905273,
+                7.051040172576904
+              ],
+              "combined_p95_deg": 55.06086730957031
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                36.92599868774414,
+                10.932939529418945
+              ],
+              "combined_p95_deg": 138.7794647216797
+            }
+          },
+          "persistence": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.8932008743286133,
+                1.509683609008789
+              ],
+              "combined_p95_deg": 12.406140327453613
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                18.200489044189453,
+                11.113251686096191
+              ],
+              "combined_p95_deg": 85.7731704711914
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                52.27989196777344,
+                38.82905197143555
+              ],
+              "combined_p95_deg": 170.9186553955078
+            }
+          },
+          "ridge_history": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.4524292945861816,
+                1.1972637176513672
+              ],
+              "combined_p95_deg": 11.24655818939209
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                14.151714324951172,
+                6.598709583282471
+              ],
+              "combined_p95_deg": 50.28245544433594
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                36.577449798583984,
+                10.63701057434082
+              ],
+              "combined_p95_deg": 133.74429321289062
+            }
+          },
+          "ridge_geometry": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.359466552734375,
+                1.2001559734344482
+              ],
+              "combined_p95_deg": 10.18215560913086
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                10.652325630187988,
+                6.604348182678223
+              ],
+              "combined_p95_deg": 41.56892395019531
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                16.335756301879883,
+                10.656390190124512
+              ],
+              "combined_p95_deg": 80.04480743408203
+            }
+          },
+          "gru": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.0449514389038086,
+                1.1371455192565918
+              ],
+              "combined_p95_deg": 8.527263641357422
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                10.08012866973877,
+                6.354612350463867
+              ],
+              "combined_p95_deg": 33.50465393066406
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                15.436761856079102,
+                10.961363792419434
+              ],
+              "combined_p95_deg": 63.232059478759766
+            }
+          }
+        },
+        "scope": "20-step self-fed angles with externally replayed world geometry; no output clamps",
+        "zero_pitch_outside_90": 0,
+        "persistence_pitch_outside_90": 267,
+        "ridge_history_pitch_outside_90": 0,
+        "ridge_geometry_pitch_outside_90": 0,
+        "gru_pitch_outside_90": 0
+      }
+    },
+    {
+      "epoch": 3,
+      "checkpoint": "epoch-003.pt",
+      "rollout_selection_score": 0.9554492698778212,
+      "one_step": {
+        "mae_deg": [
+          2.345882798513546,
+          1.1049099297649594
+        ],
+        "rmse_deg": [
+          4.49377258413383,
+          1.8706528825573787
+        ],
+        "uuid_macro_mae_deg": [
+          2.2972506119247624,
+          1.1480594481288908
+        ]
+      },
+      "rollout": {
+        "uuid_windows": 295,
+        "horizons": {
+          "zero": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                3.3582863807678223,
+                1.7165762186050415
+              ],
+              "combined_p95_deg": 14.395359992980957
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                14.874364852905273,
+                7.051040172576904
+              ],
+              "combined_p95_deg": 55.06086730957031
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                36.92599868774414,
+                10.932939529418945
+              ],
+              "combined_p95_deg": 138.7794647216797
+            }
+          },
+          "persistence": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.8932008743286133,
+                1.509683609008789
+              ],
+              "combined_p95_deg": 12.406140327453613
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                18.200489044189453,
+                11.113251686096191
+              ],
+              "combined_p95_deg": 85.7731704711914
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                52.27989196777344,
+                38.82905197143555
+              ],
+              "combined_p95_deg": 170.9186553955078
+            }
+          },
+          "ridge_history": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.4524292945861816,
+                1.1972637176513672
+              ],
+              "combined_p95_deg": 11.24655818939209
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                14.151714324951172,
+                6.598709583282471
+              ],
+              "combined_p95_deg": 50.28245544433594
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                36.577449798583984,
+                10.63701057434082
+              ],
+              "combined_p95_deg": 133.74429321289062
+            }
+          },
+          "ridge_geometry": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.359466552734375,
+                1.2001559734344482
+              ],
+              "combined_p95_deg": 10.18215560913086
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                10.652325630187988,
+                6.604348182678223
+              ],
+              "combined_p95_deg": 41.56892395019531
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                16.335756301879883,
+                10.656390190124512
+              ],
+              "combined_p95_deg": 80.04480743408203
+            }
+          },
+          "gru": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.052715301513672,
+                1.1416082382202148
+              ],
+              "combined_p95_deg": 8.410758972167969
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                10.089170455932617,
+                6.046153545379639
+              ],
+              "combined_p95_deg": 33.35567092895508
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                16.285503387451172,
+                10.254212379455566
+              ],
+              "combined_p95_deg": 71.59012603759766
+            }
+          }
+        },
+        "scope": "20-step self-fed angles with externally replayed world geometry; no output clamps",
+        "zero_pitch_outside_90": 0,
+        "persistence_pitch_outside_90": 267,
+        "ridge_history_pitch_outside_90": 0,
+        "ridge_geometry_pitch_outside_90": 0,
+        "gru_pitch_outside_90": 0
+      }
+    },
+    {
+      "epoch": 4,
+      "checkpoint": "epoch-004.pt",
+      "rollout_selection_score": 0.9104102192176927,
+      "one_step": {
+        "mae_deg": [
+          2.334359421886809,
+          1.1069713555725877
+        ],
+        "rmse_deg": [
+          4.488603280153522,
+          1.8427127469893785
+        ],
+        "uuid_macro_mae_deg": [
+          2.289236954935464,
+          1.140829320567727
+        ]
+      },
+      "rollout": {
+        "uuid_windows": 295,
+        "horizons": {
+          "zero": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                3.3582863807678223,
+                1.7165762186050415
+              ],
+              "combined_p95_deg": 14.395359992980957
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                14.874364852905273,
+                7.051040172576904
+              ],
+              "combined_p95_deg": 55.06086730957031
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                36.92599868774414,
+                10.932939529418945
+              ],
+              "combined_p95_deg": 138.7794647216797
+            }
+          },
+          "persistence": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.8932008743286133,
+                1.509683609008789
+              ],
+              "combined_p95_deg": 12.406140327453613
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                18.200489044189453,
+                11.113251686096191
+              ],
+              "combined_p95_deg": 85.7731704711914
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                52.27989196777344,
+                38.82905197143555
+              ],
+              "combined_p95_deg": 170.9186553955078
+            }
+          },
+          "ridge_history": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.4524292945861816,
+                1.1972637176513672
+              ],
+              "combined_p95_deg": 11.24655818939209
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                14.151714324951172,
+                6.598709583282471
+              ],
+              "combined_p95_deg": 50.28245544433594
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                36.577449798583984,
+                10.63701057434082
+              ],
+              "combined_p95_deg": 133.74429321289062
+            }
+          },
+          "ridge_geometry": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.359466552734375,
+                1.2001559734344482
+              ],
+              "combined_p95_deg": 10.18215560913086
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                10.652325630187988,
+                6.604348182678223
+              ],
+              "combined_p95_deg": 41.56892395019531
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                16.335756301879883,
+                10.656390190124512
+              ],
+              "combined_p95_deg": 80.04480743408203
+            }
+          },
+          "gru": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.0611448287963867,
+                1.1537282466888428
+              ],
+              "combined_p95_deg": 8.777205467224121
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                9.600672721862793,
+                6.125971794128418
+              ],
+              "combined_p95_deg": 33.413490295410156
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                15.121780395507812,
+                9.453429222106934
+              ],
+              "combined_p95_deg": 59.04984664916992
+            }
+          }
+        },
+        "scope": "20-step self-fed angles with externally replayed world geometry; no output clamps",
+        "zero_pitch_outside_90": 0,
+        "persistence_pitch_outside_90": 267,
+        "ridge_history_pitch_outside_90": 0,
+        "ridge_geometry_pitch_outside_90": 0,
+        "gru_pitch_outside_90": 0
+      }
+    },
+    {
+      "epoch": 5,
+      "checkpoint": "epoch-005.pt",
+      "rollout_selection_score": 0.927877774190253,
+      "one_step": {
+        "mae_deg": [
+          2.330481134695395,
+          1.0905200923730485
+        ],
+        "rmse_deg": [
+          4.487728198469114,
+          1.8382151398544542
+        ],
+        "uuid_macro_mae_deg": [
+          2.276789479436547,
+          1.1283334016838134
+        ]
+      },
+      "rollout": {
+        "uuid_windows": 295,
+        "horizons": {
+          "zero": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                3.3582863807678223,
+                1.7165762186050415
+              ],
+              "combined_p95_deg": 14.395359992980957
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                14.874364852905273,
+                7.051040172576904
+              ],
+              "combined_p95_deg": 55.06086730957031
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                36.92599868774414,
+                10.932939529418945
+              ],
+              "combined_p95_deg": 138.7794647216797
+            }
+          },
+          "persistence": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.8932008743286133,
+                1.509683609008789
+              ],
+              "combined_p95_deg": 12.406140327453613
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                18.200489044189453,
+                11.113251686096191
+              ],
+              "combined_p95_deg": 85.7731704711914
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                52.27989196777344,
+                38.82905197143555
+              ],
+              "combined_p95_deg": 170.9186553955078
+            }
+          },
+          "ridge_history": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.4524292945861816,
+                1.1972637176513672
+              ],
+              "combined_p95_deg": 11.24655818939209
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                14.151714324951172,
+                6.598709583282471
+              ],
+              "combined_p95_deg": 50.28245544433594
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                36.577449798583984,
+                10.63701057434082
+              ],
+              "combined_p95_deg": 133.74429321289062
+            }
+          },
+          "ridge_geometry": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.359466552734375,
+                1.2001559734344482
+              ],
+              "combined_p95_deg": 10.18215560913086
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                10.652325630187988,
+                6.604348182678223
+              ],
+              "combined_p95_deg": 41.56892395019531
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                16.335756301879883,
+                10.656390190124512
+              ],
+              "combined_p95_deg": 80.04480743408203
+            }
+          },
+          "gru": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.0133230686187744,
+                1.1311619281768799
+              ],
+              "combined_p95_deg": 8.50052547454834
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                9.466407775878906,
+                6.07486629486084
+              ],
+              "combined_p95_deg": 34.19368362426758
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                15.765633583068848,
+                9.994762420654297
+              ],
+              "combined_p95_deg": 69.33963012695312
+            }
+          }
+        },
+        "scope": "20-step self-fed angles with externally replayed world geometry; no output clamps",
+        "zero_pitch_outside_90": 0,
+        "persistence_pitch_outside_90": 267,
+        "ridge_history_pitch_outside_90": 0,
+        "ridge_geometry_pitch_outside_90": 0,
+        "gru_pitch_outside_90": 0
+      }
+    },
+    {
+      "epoch": 6,
+      "checkpoint": "epoch-006.pt",
+      "rollout_selection_score": 0.9507517703504937,
+      "one_step": {
+        "mae_deg": [
+          2.3205340526000375,
+          1.0912820526583709
+        ],
+        "rmse_deg": [
+          4.461768828118102,
+          1.8311476474121828
+        ],
+        "uuid_macro_mae_deg": [
+          2.284432889233062,
+          1.1350704561761802
+        ]
+      },
+      "rollout": {
+        "uuid_windows": 295,
+        "horizons": {
+          "zero": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                3.3582863807678223,
+                1.7165762186050415
+              ],
+              "combined_p95_deg": 14.395359992980957
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                14.874364852905273,
+                7.051040172576904
+              ],
+              "combined_p95_deg": 55.06086730957031
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                36.92599868774414,
+                10.932939529418945
+              ],
+              "combined_p95_deg": 138.7794647216797
+            }
+          },
+          "persistence": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.8932008743286133,
+                1.509683609008789
+              ],
+              "combined_p95_deg": 12.406140327453613
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                18.200489044189453,
+                11.113251686096191
+              ],
+              "combined_p95_deg": 85.7731704711914
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                52.27989196777344,
+                38.82905197143555
+              ],
+              "combined_p95_deg": 170.9186553955078
+            }
+          },
+          "ridge_history": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.4524292945861816,
+                1.1972637176513672
+              ],
+              "combined_p95_deg": 11.24655818939209
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                14.151714324951172,
+                6.598709583282471
+              ],
+              "combined_p95_deg": 50.28245544433594
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                36.577449798583984,
+                10.63701057434082
+              ],
+              "combined_p95_deg": 133.74429321289062
+            }
+          },
+          "ridge_geometry": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.359466552734375,
+                1.2001559734344482
+              ],
+              "combined_p95_deg": 10.18215560913086
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                10.652325630187988,
+                6.604348182678223
+              ],
+              "combined_p95_deg": 41.56892395019531
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                16.335756301879883,
+                10.656390190124512
+              ],
+              "combined_p95_deg": 80.04480743408203
+            }
+          },
+          "gru": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.0130457878112793,
+                1.1568094491958618
+              ],
+              "combined_p95_deg": 7.775145530700684
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                9.407143592834473,
+                6.378983974456787
+              ],
+              "combined_p95_deg": 33.982666015625
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                17.073633193969727,
+                9.685105323791504
+              ],
+              "combined_p95_deg": 98.34103393554688
+            }
+          }
+        },
+        "scope": "20-step self-fed angles with externally replayed world geometry; no output clamps",
+        "zero_pitch_outside_90": 0,
+        "persistence_pitch_outside_90": 267,
+        "ridge_history_pitch_outside_90": 0,
+        "ridge_geometry_pitch_outside_90": 0,
+        "gru_pitch_outside_90": 0
+      }
+    },
+    {
+      "epoch": 7,
+      "checkpoint": "epoch-007.pt",
+      "rollout_selection_score": 0.9162504130028282,
+      "one_step": {
+        "mae_deg": [
+          2.3188478750725716,
+          1.079339969538628
+        ],
+        "rmse_deg": [
+          4.460894277190217,
+          1.823441858161155
+        ],
+        "uuid_macro_mae_deg": [
+          2.2993284000017997,
+          1.1221574795146259
+        ]
+      },
+      "rollout": {
+        "uuid_windows": 295,
+        "horizons": {
+          "zero": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                3.3582863807678223,
+                1.7165762186050415
+              ],
+              "combined_p95_deg": 14.395359992980957
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                14.874364852905273,
+                7.051040172576904
+              ],
+              "combined_p95_deg": 55.06086730957031
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                36.92599868774414,
+                10.932939529418945
+              ],
+              "combined_p95_deg": 138.7794647216797
+            }
+          },
+          "persistence": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.8932008743286133,
+                1.509683609008789
+              ],
+              "combined_p95_deg": 12.406140327453613
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                18.200489044189453,
+                11.113251686096191
+              ],
+              "combined_p95_deg": 85.7731704711914
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                52.27989196777344,
+                38.82905197143555
+              ],
+              "combined_p95_deg": 170.9186553955078
+            }
+          },
+          "ridge_history": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.4524292945861816,
+                1.1972637176513672
+              ],
+              "combined_p95_deg": 11.24655818939209
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                14.151714324951172,
+                6.598709583282471
+              ],
+              "combined_p95_deg": 50.28245544433594
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                36.577449798583984,
+                10.63701057434082
+              ],
+              "combined_p95_deg": 133.74429321289062
+            }
+          },
+          "ridge_geometry": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.359466552734375,
+                1.2001559734344482
+              ],
+              "combined_p95_deg": 10.18215560913086
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                10.652325630187988,
+                6.604348182678223
+              ],
+              "combined_p95_deg": 41.56892395019531
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                16.335756301879883,
+                10.656390190124512
+              ],
+              "combined_p95_deg": 80.04480743408203
+            }
+          },
+          "gru": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.016594409942627,
+                1.1421856880187988
+              ],
+              "combined_p95_deg": 8.079462051391602
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                9.485787391662598,
+                5.784605979919434
+              ],
+              "combined_p95_deg": 34.90156173706055
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                16.271709442138672,
+                9.617968559265137
+              ],
+              "combined_p95_deg": 87.88754272460938
+            }
+          }
+        },
+        "scope": "20-step self-fed angles with externally replayed world geometry; no output clamps",
+        "zero_pitch_outside_90": 0,
+        "persistence_pitch_outside_90": 267,
+        "ridge_history_pitch_outside_90": 0,
+        "ridge_geometry_pitch_outside_90": 0,
+        "gru_pitch_outside_90": 0
+      }
+    },
+    {
+      "epoch": 8,
+      "checkpoint": "epoch-008.pt",
+      "rollout_selection_score": 0.970159331336873,
+      "one_step": {
+        "mae_deg": [
+          2.333822927970633,
+          1.0868934164835515
+        ],
+        "rmse_deg": [
+          4.468301491846916,
+          1.8244570120270374
+        ],
+        "uuid_macro_mae_deg": [
+          2.3074489918981067,
+          1.1376465232996862
+        ]
+      },
+      "rollout": {
+        "uuid_windows": 295,
+        "horizons": {
+          "zero": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                3.3582863807678223,
+                1.7165762186050415
+              ],
+              "combined_p95_deg": 14.395359992980957
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                14.874364852905273,
+                7.051040172576904
+              ],
+              "combined_p95_deg": 55.06086730957031
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                36.92599868774414,
+                10.932939529418945
+              ],
+              "combined_p95_deg": 138.7794647216797
+            }
+          },
+          "persistence": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.8932008743286133,
+                1.509683609008789
+              ],
+              "combined_p95_deg": 12.406140327453613
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                18.200489044189453,
+                11.113251686096191
+              ],
+              "combined_p95_deg": 85.7731704711914
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                52.27989196777344,
+                38.82905197143555
+              ],
+              "combined_p95_deg": 170.9186553955078
+            }
+          },
+          "ridge_history": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.4524292945861816,
+                1.1972637176513672
+              ],
+              "combined_p95_deg": 11.24655818939209
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                14.151714324951172,
+                6.598709583282471
+              ],
+              "combined_p95_deg": 50.28245544433594
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                36.577449798583984,
+                10.63701057434082
+              ],
+              "combined_p95_deg": 133.74429321289062
+            }
+          },
+          "ridge_geometry": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.359466552734375,
+                1.2001559734344482
+              ],
+              "combined_p95_deg": 10.18215560913086
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                10.652325630187988,
+                6.604348182678223
+              ],
+              "combined_p95_deg": 41.56892395019531
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                16.335756301879883,
+                10.656390190124512
+              ],
+              "combined_p95_deg": 80.04480743408203
+            }
+          },
+          "gru": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.068401336669922,
+                1.1501774787902832
+              ],
+              "combined_p95_deg": 8.450239181518555
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                10.28176498413086,
+                6.245982646942139
+              ],
+              "combined_p95_deg": 33.60848617553711
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                16.30219268798828,
+                10.355249404907227
+              ],
+              "combined_p95_deg": 72.3407211303711
+            }
+          }
+        },
+        "scope": "20-step self-fed angles with externally replayed world geometry; no output clamps",
+        "zero_pitch_outside_90": 0,
+        "persistence_pitch_outside_90": 267,
+        "ridge_history_pitch_outside_90": 0,
+        "ridge_geometry_pitch_outside_90": 0,
+        "gru_pitch_outside_90": 0
+      }
+    },
+    {
+      "epoch": 9,
+      "checkpoint": "epoch-009.pt",
+      "rollout_selection_score": 0.965168443006486,
+      "one_step": {
+        "mae_deg": [
+          2.3687699636946666,
+          1.091980169042892
+        ],
+        "rmse_deg": [
+          4.516365139494615,
+          1.8249084960776238
+        ],
+        "uuid_macro_mae_deg": [
+          2.378435670969733,
+          1.1291502517691474
+        ]
+      },
+      "rollout": {
+        "uuid_windows": 295,
+        "horizons": {
+          "zero": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                3.3582863807678223,
+                1.7165762186050415
+              ],
+              "combined_p95_deg": 14.395359992980957
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                14.874364852905273,
+                7.051040172576904
+              ],
+              "combined_p95_deg": 55.06086730957031
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                36.92599868774414,
+                10.932939529418945
+              ],
+              "combined_p95_deg": 138.7794647216797
+            }
+          },
+          "persistence": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.8932008743286133,
+                1.509683609008789
+              ],
+              "combined_p95_deg": 12.406140327453613
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                18.200489044189453,
+                11.113251686096191
+              ],
+              "combined_p95_deg": 85.7731704711914
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                52.27989196777344,
+                38.82905197143555
+              ],
+              "combined_p95_deg": 170.9186553955078
+            }
+          },
+          "ridge_history": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.4524292945861816,
+                1.1972637176513672
+              ],
+              "combined_p95_deg": 11.24655818939209
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                14.151714324951172,
+                6.598709583282471
+              ],
+              "combined_p95_deg": 50.28245544433594
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                36.577449798583984,
+                10.63701057434082
+              ],
+              "combined_p95_deg": 133.74429321289062
+            }
+          },
+          "ridge_geometry": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.359466552734375,
+                1.2001559734344482
+              ],
+              "combined_p95_deg": 10.18215560913086
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                10.652325630187988,
+                6.604348182678223
+              ],
+              "combined_p95_deg": 41.56892395019531
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                16.335756301879883,
+                10.656390190124512
+              ],
+              "combined_p95_deg": 80.04480743408203
+            }
+          },
+          "gru": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.050656795501709,
+                1.1380500793457031
+              ],
+              "combined_p95_deg": 7.755613327026367
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                9.932963371276855,
+                6.008558750152588
+              ],
+              "combined_p95_deg": 38.726131439208984
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                17.36886215209961,
+                10.178711891174316
+              ],
+              "combined_p95_deg": 107.42053985595703
+            }
+          }
+        },
+        "scope": "20-step self-fed angles with externally replayed world geometry; no output clamps",
+        "zero_pitch_outside_90": 0,
+        "persistence_pitch_outside_90": 267,
+        "ridge_history_pitch_outside_90": 0,
+        "ridge_geometry_pitch_outside_90": 0,
+        "gru_pitch_outside_90": 0
+      }
+    },
+    {
+      "epoch": 10,
+      "checkpoint": "epoch-010.pt",
+      "rollout_selection_score": 0.9717248535535701,
+      "one_step": {
+        "mae_deg": [
+          2.334860177323881,
+          1.0985433015106958
+        ],
+        "rmse_deg": [
+          4.49693091433229,
+          1.8299544285293936
+        ],
+        "uuid_macro_mae_deg": [
+          2.309379012106627,
+          1.1352526737479587
+        ]
+      },
+      "rollout": {
+        "uuid_windows": 295,
+        "horizons": {
+          "zero": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                3.3582863807678223,
+                1.7165762186050415
+              ],
+              "combined_p95_deg": 14.395359992980957
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                14.874364852905273,
+                7.051040172576904
+              ],
+              "combined_p95_deg": 55.06086730957031
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                36.92599868774414,
+                10.932939529418945
+              ],
+              "combined_p95_deg": 138.7794647216797
+            }
+          },
+          "persistence": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.8932008743286133,
+                1.509683609008789
+              ],
+              "combined_p95_deg": 12.406140327453613
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                18.200489044189453,
+                11.113251686096191
+              ],
+              "combined_p95_deg": 85.7731704711914
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                52.27989196777344,
+                38.82905197143555
+              ],
+              "combined_p95_deg": 170.9186553955078
+            }
+          },
+          "ridge_history": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.4524292945861816,
+                1.1972637176513672
+              ],
+              "combined_p95_deg": 11.24655818939209
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                14.151714324951172,
+                6.598709583282471
+              ],
+              "combined_p95_deg": 50.28245544433594
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                36.577449798583984,
+                10.63701057434082
+              ],
+              "combined_p95_deg": 133.74429321289062
+            }
+          },
+          "ridge_geometry": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.359466552734375,
+                1.2001559734344482
+              ],
+              "combined_p95_deg": 10.18215560913086
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                10.652325630187988,
+                6.604348182678223
+              ],
+              "combined_p95_deg": 41.56892395019531
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                16.335756301879883,
+                10.656390190124512
+              ],
+              "combined_p95_deg": 80.04480743408203
+            }
+          },
+          "gru": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.0477521419525146,
+                1.152292013168335
+              ],
+              "combined_p95_deg": 8.238178253173828
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                9.589883804321289,
+                6.355893611907959
+              ],
+              "combined_p95_deg": 33.57851791381836
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                16.034975051879883,
+                11.111095428466797
+              ],
+              "combined_p95_deg": 100.48827362060547
+            }
+          }
+        },
+        "scope": "20-step self-fed angles with externally replayed world geometry; no output clamps",
+        "zero_pitch_outside_90": 0,
+        "persistence_pitch_outside_90": 267,
+        "ridge_history_pitch_outside_90": 0,
+        "ridge_geometry_pitch_outside_90": 0,
+        "gru_pitch_outside_90": 0
+      }
+    },
+    {
+      "epoch": 11,
+      "checkpoint": "epoch-011.pt",
+      "rollout_selection_score": 0.93276185883095,
+      "one_step": {
+        "mae_deg": [
+          2.382593885694111,
+          1.0919473994588709
+        ],
+        "rmse_deg": [
+          4.497932848805567,
+          1.831893203081821
+        ],
+        "uuid_macro_mae_deg": [
+          2.3759764355519053,
+          1.1273389632948119
+        ]
+      },
+      "rollout": {
+        "uuid_windows": 295,
+        "horizons": {
+          "zero": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                3.3582863807678223,
+                1.7165762186050415
+              ],
+              "combined_p95_deg": 14.395359992980957
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                14.874364852905273,
+                7.051040172576904
+              ],
+              "combined_p95_deg": 55.06086730957031
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                36.92599868774414,
+                10.932939529418945
+              ],
+              "combined_p95_deg": 138.7794647216797
+            }
+          },
+          "persistence": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.8932008743286133,
+                1.509683609008789
+              ],
+              "combined_p95_deg": 12.406140327453613
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                18.200489044189453,
+                11.113251686096191
+              ],
+              "combined_p95_deg": 85.7731704711914
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                52.27989196777344,
+                38.82905197143555
+              ],
+              "combined_p95_deg": 170.9186553955078
+            }
+          },
+          "ridge_history": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.4524292945861816,
+                1.1972637176513672
+              ],
+              "combined_p95_deg": 11.24655818939209
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                14.151714324951172,
+                6.598709583282471
+              ],
+              "combined_p95_deg": 50.28245544433594
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                36.577449798583984,
+                10.63701057434082
+              ],
+              "combined_p95_deg": 133.74429321289062
+            }
+          },
+          "ridge_geometry": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.359466552734375,
+                1.2001559734344482
+              ],
+              "combined_p95_deg": 10.18215560913086
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                10.652325630187988,
+                6.604348182678223
+              ],
+              "combined_p95_deg": 41.56892395019531
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                16.335756301879883,
+                10.656390190124512
+              ],
+              "combined_p95_deg": 80.04480743408203
+            }
+          },
+          "gru": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.0748283863067627,
+                1.1282768249511719
+              ],
+              "combined_p95_deg": 8.622907638549805
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                9.395499229431152,
+                5.987058639526367
+              ],
+              "combined_p95_deg": 34.86967468261719
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                16.828744888305664,
+                9.722061157226562
+              ],
+              "combined_p95_deg": 104.53617095947266
+            }
+          }
+        },
+        "scope": "20-step self-fed angles with externally replayed world geometry; no output clamps",
+        "zero_pitch_outside_90": 0,
+        "persistence_pitch_outside_90": 267,
+        "ridge_history_pitch_outside_90": 0,
+        "ridge_geometry_pitch_outside_90": 0,
+        "gru_pitch_outside_90": 0
+      }
+    },
+    {
+      "epoch": 12,
+      "checkpoint": "epoch-012.pt",
+      "rollout_selection_score": 0.9781309199051751,
+      "one_step": {
+        "mae_deg": [
+          2.3608436717673587,
+          1.1051951187146136
+        ],
+        "rmse_deg": [
+          4.556002439463623,
+          1.8371337453591428
+        ],
+        "uuid_macro_mae_deg": [
+          2.354495624030916,
+          1.14508612259457
+        ]
+      },
+      "rollout": {
+        "uuid_windows": 295,
+        "horizons": {
+          "zero": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                3.3582863807678223,
+                1.7165762186050415
+              ],
+              "combined_p95_deg": 14.395359992980957
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                14.874364852905273,
+                7.051040172576904
+              ],
+              "combined_p95_deg": 55.06086730957031
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                36.92599868774414,
+                10.932939529418945
+              ],
+              "combined_p95_deg": 138.7794647216797
+            }
+          },
+          "persistence": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.8932008743286133,
+                1.509683609008789
+              ],
+              "combined_p95_deg": 12.406140327453613
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                18.200489044189453,
+                11.113251686096191
+              ],
+              "combined_p95_deg": 85.7731704711914
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                52.27989196777344,
+                38.82905197143555
+              ],
+              "combined_p95_deg": 170.9186553955078
+            }
+          },
+          "ridge_history": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.4524292945861816,
+                1.1972637176513672
+              ],
+              "combined_p95_deg": 11.24655818939209
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                14.151714324951172,
+                6.598709583282471
+              ],
+              "combined_p95_deg": 50.28245544433594
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                36.577449798583984,
+                10.63701057434082
+              ],
+              "combined_p95_deg": 133.74429321289062
+            }
+          },
+          "ridge_geometry": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.359466552734375,
+                1.2001559734344482
+              ],
+              "combined_p95_deg": 10.18215560913086
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                10.652325630187988,
+                6.604348182678223
+              ],
+              "combined_p95_deg": 41.56892395019531
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                16.335756301879883,
+                10.656390190124512
+              ],
+              "combined_p95_deg": 80.04480743408203
+            }
+          },
+          "gru": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.0765011310577393,
+                1.1504727602005005
+              ],
+              "combined_p95_deg": 8.784940719604492
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                10.160099983215332,
+                6.225492000579834
+              ],
+              "combined_p95_deg": 37.0662956237793
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                17.019044876098633,
+                10.38218879699707
+              ],
+              "combined_p95_deg": 104.7584228515625
+            }
+          }
+        },
+        "scope": "20-step self-fed angles with externally replayed world geometry; no output clamps",
+        "zero_pitch_outside_90": 0,
+        "persistence_pitch_outside_90": 267,
+        "ridge_history_pitch_outside_90": 0,
+        "ridge_geometry_pitch_outside_90": 0,
+        "gru_pitch_outside_90": 0
+      }
+    }
+  ],
+  "references": {
+    "gru48_epoch1": {
+      "epoch": 1,
+      "one_step": {
+        "mae_deg": [
+          2.498272656210163,
+          1.1732824882230526
+        ],
+        "rmse_deg": [
+          4.897678999192635,
+          1.9668121741033417
+        ],
+        "uuid_macro_mae_deg": [
+          2.4623473767072834,
+          1.215101310233218
+        ]
+      },
+      "rollout": {
+        "uuid_windows": 295,
+        "horizons": {
+          "zero": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                3.3582863807678223,
+                1.7165762186050415
+              ],
+              "combined_p95_deg": 14.395359992980957
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                14.874364852905273,
+                7.051040172576904
+              ],
+              "combined_p95_deg": 55.06086730957031
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                36.92599868774414,
+                10.932939529418945
+              ],
+              "combined_p95_deg": 138.7794647216797
+            }
+          },
+          "persistence": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.8932008743286133,
+                1.509683609008789
+              ],
+              "combined_p95_deg": 12.406140327453613
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                18.200489044189453,
+                11.113251686096191
+              ],
+              "combined_p95_deg": 85.7731704711914
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                52.27989196777344,
+                38.82905197143555
+              ],
+              "combined_p95_deg": 170.9186553955078
+            }
+          },
+          "ridge_history": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.4524292945861816,
+                1.1972637176513672
+              ],
+              "combined_p95_deg": 11.24655818939209
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                14.151714324951172,
+                6.598709583282471
+              ],
+              "combined_p95_deg": 50.28245544433594
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                36.577449798583984,
+                10.63701057434082
+              ],
+              "combined_p95_deg": 133.74429321289062
+            }
+          },
+          "ridge_geometry": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.359466552734375,
+                1.2001559734344482
+              ],
+              "combined_p95_deg": 10.18215560913086
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                10.652325630187988,
+                6.604348182678223
+              ],
+              "combined_p95_deg": 41.56892395019531
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                16.335756301879883,
+                10.656390190124512
+              ],
+              "combined_p95_deg": 80.04480743408203
+            }
+          },
+          "gru": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.167454481124878,
+                1.1500484943389893
+              ],
+              "combined_p95_deg": 9.009221076965332
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                9.611746788024902,
+                6.173939228057861
+              ],
+              "combined_p95_deg": 37.7004508972168
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                14.808719635009766,
+                10.026030540466309
+              ],
+              "combined_p95_deg": 69.34717559814453
+            }
+          }
+        },
+        "scope": "20-step self-fed angles with externally replayed world geometry; no output clamps",
+        "zero_pitch_outside_90": 0,
+        "persistence_pitch_outside_90": 267,
+        "ridge_history_pitch_outside_90": 0,
+        "ridge_geometry_pitch_outside_90": 0,
+        "gru_pitch_outside_90": 0
+      },
+      "initial_error_breakdown": {
+        "reference_error_0_to_5_deg": {
+          "uuid_windows": 133,
+          "yaw_pitch_mae_deg": [
+            10.369121551513672,
+            9.102736473083496
+          ]
+        },
+        "reference_error_5_to_30_deg": {
+          "uuid_windows": 141,
+          "yaw_pitch_mae_deg": [
+            12.884869575500488,
+            9.932500839233398
+          ]
+        },
+        "reference_error_over_30_deg": {
+          "uuid_windows": 21,
+          "yaw_pitch_mae_deg": [
+            55.84352493286133,
+            16.501480102539062
+          ]
+        }
+      }
+    },
+    "gru48_one_step_best": {
+      "epoch": 20,
+      "one_step": {
+        "mae_deg": [
+          2.307028304767585,
+          1.0967046182753595
+        ],
+        "rmse_deg": [
+          4.496172930942983,
+          1.8426579301105377
+        ],
+        "uuid_macro_mae_deg": [
+          2.2785872229750574,
+          1.1290890032879026
+        ]
+      },
+      "rollout": {
+        "uuid_windows": 295,
+        "horizons": {
+          "zero": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                3.3582863807678223,
+                1.7165762186050415
+              ],
+              "combined_p95_deg": 14.395359992980957
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                14.874364852905273,
+                7.051040172576904
+              ],
+              "combined_p95_deg": 55.06086730957031
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                36.92599868774414,
+                10.932939529418945
+              ],
+              "combined_p95_deg": 138.7794647216797
+            }
+          },
+          "persistence": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.8932008743286133,
+                1.509683609008789
+              ],
+              "combined_p95_deg": 12.406140327453613
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                18.200489044189453,
+                11.113251686096191
+              ],
+              "combined_p95_deg": 85.7731704711914
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                52.27989196777344,
+                38.82905197143555
+              ],
+              "combined_p95_deg": 170.9186553955078
+            }
+          },
+          "ridge_history": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.4524292945861816,
+                1.1972637176513672
+              ],
+              "combined_p95_deg": 11.24655818939209
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                14.151714324951172,
+                6.598709583282471
+              ],
+              "combined_p95_deg": 50.28245544433594
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                36.577449798583984,
+                10.63701057434082
+              ],
+              "combined_p95_deg": 133.74429321289062
+            }
+          },
+          "ridge_geometry": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.359466552734375,
+                1.2001559734344482
+              ],
+              "combined_p95_deg": 10.18215560913086
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                10.652325630187988,
+                6.604348182678223
+              ],
+              "combined_p95_deg": 41.56892395019531
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                16.335756301879883,
+                10.656390190124512
+              ],
+              "combined_p95_deg": 80.04480743408203
+            }
+          },
+          "gru": {
+            "1": {
+              "yaw_pitch_mae_deg": [
+                2.097900390625,
+                1.1443860530853271
+              ],
+              "combined_p95_deg": 9.351764678955078
+            },
+            "5": {
+              "yaw_pitch_mae_deg": [
+                9.562479019165039,
+                6.142545223236084
+              ],
+              "combined_p95_deg": 40.559051513671875
+            },
+            "20": {
+              "yaw_pitch_mae_deg": [
+                16.222911834716797,
+                10.000840187072754
+              ],
+              "combined_p95_deg": 78.61415100097656
+            }
+          }
+        },
+        "scope": "20-step self-fed angles with externally replayed world geometry; no output clamps",
+        "zero_pitch_outside_90": 0,
+        "persistence_pitch_outside_90": 267,
+        "ridge_history_pitch_outside_90": 0,
+        "ridge_geometry_pitch_outside_90": 0,
+        "gru_pitch_outside_90": 0
+      },
+      "initial_error_breakdown": {
+        "reference_error_0_to_5_deg": {
+          "uuid_windows": 133,
+          "yaw_pitch_mae_deg": [
+            11.900278091430664,
+            9.245789527893066
+          ]
+        },
+        "reference_error_5_to_30_deg": {
+          "uuid_windows": 141,
+          "yaw_pitch_mae_deg": [
+            12.913246154785156,
+            9.763371467590332
+          ]
+        },
+        "reference_error_over_30_deg": {
+          "uuid_windows": 21,
+          "yaw_pitch_mae_deg": [
+            65.82170104980469,
+            16.377220153808594
+          ]
+        }
+      }
+    }
+  }
+}

@@ -2,6 +2,7 @@ package com.blanoir.moons.client.module.impl.combat.silentaura;
 
 import com.blanoir.moons.client.utils.combat.CombatReach;
 import com.blanoir.moons.client.utils.entity.EntityDistance;
+import com.blanoir.moons.client.utils.raytrace.RaytraceUtils;
 import com.blanoir.moons.client.utils.rotation.aim.AimPointsA;
 import com.blanoir.moons.client.utils.rotation.aim.AimPointsB;
 import com.blanoir.moons.client.utils.rotation.aim.AimPointsD;
@@ -24,6 +25,9 @@ final class SilentAuraTargets {
     private int selectionTick = Integer.MIN_VALUE;
     private final AimPointsA.State center = new AimPointsA.State();
     private final AimPointsB.State closest = new AimPointsB.State();
+    private final SilentAuraPointProcessor pointProcessor = new SilentAuraPointProcessor();
+    private Object pointWorld;
+    private LivingEntity pointTarget;
     private boolean reevaluateAfterAttack;
     private int reevaluateTick = Integer.MIN_VALUE;
 
@@ -98,19 +102,40 @@ final class SilentAuraTargets {
 
     public Vec3 aimPoint(Minecraft client, LivingEntity target, Vec3 look) {
         if (!validClient(client) || target == null) return null;
-        // Never reuse a world-space aim point. Resolve it from the target's
-        // current bounding box on every frame, including in balance mode.
-        if (target.getId() == targetId
-                && TargetSelectorA.trackingEligible(
-                        selectionParameters(), client, target, scanRange(client))) {
-            return AimPointsD.trackingAimPoint(pointContext(), client, target, look);
+        if (pointWorld != client.level || pointTarget != target) {
+            center.reset();
+            closest.reset();
+            pointProcessor.reset();
+            pointWorld = client.level;
+            pointTarget = target;
         }
         double attackRange = attackRange(client);
         double range =
                 EntityDistance.squaredToEntity(client, target) <= attackRange * attackRange
                         ? attackRange
                         : scanRange(client);
-        return AimPointsD.visibleAimPoint(pointContext(), client, target, look, range);
+        // Never reuse a world-space aim point. Resolve it from the target's
+        // current bounding box on every frame, including in balance mode.
+        Vec3 preferred;
+        if (target.getId() == targetId
+                && TargetSelectorA.trackingEligible(
+                        selectionParameters(), client, target, scanRange(client))) {
+            preferred = AimPointsD.trackingAimPoint(pointContext(), client, target, look);
+        } else {
+            preferred = AimPointsD.visibleAimPoint(pointContext(), client, target, look, range);
+        }
+        Vec3 eye = client.player.getEyePosition();
+        return pointProcessor.process(
+                client.level,
+                target,
+                client.player.tickCount,
+                target.getBoundingBox(),
+                preferred,
+                SilentAuraConfig.pointParameters(),
+                point ->
+                        eye.distanceToSqr(point) <= range * range
+                                && RaytraceUtils.canRayTraceTo(
+                                        client, eye, point, SilentAuraConfig.throughBlocks()));
     }
 
     public void clear() {
@@ -118,6 +143,9 @@ final class SilentAuraTargets {
         selectionTick = Integer.MIN_VALUE;
         center.reset();
         closest.reset();
+        pointProcessor.reset();
+        pointWorld = null;
+        pointTarget = null;
         reevaluateAfterAttack = false;
         reevaluateTick = Integer.MIN_VALUE;
     }

@@ -140,6 +140,7 @@ final class Misc {
                                 AntiBot::hudTag,
                                 AntiBot.modeOptions(),
                                 AntiBot::setMode)
-                        .withDefault("advanced"));
+                        .withDefault("advanced"),
+                bool("hide_bot", "HideBot", "antibot.hideBot", false, AntiBot::setHideBot));
     }
 }

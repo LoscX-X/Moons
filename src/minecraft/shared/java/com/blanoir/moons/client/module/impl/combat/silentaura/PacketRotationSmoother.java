@@ -1,12 +1,15 @@
 package com.blanoir.moons.client.module.impl.combat.silentaura;
 
 import com.blanoir.moons.client.utils.math.MathUtils;
+import com.blanoir.moons.client.utils.math.RandomMath;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 import com.blanoir.moons.client.utils.rotation.aim.AimSamplingA;
 import com.blanoir.moons.client.utils.rotation.smooth.SmoothF;
 import com.blanoir.moons.client.utils.rotation.smooth.SmoothJ;
 
 import net.minecraft.util.Mth;
+
+import java.util.function.DoubleBinaryOperator;
 
 /**
  * Converts a render-cadence aim into one packet-cadence rotation sample.
@@ -18,8 +21,22 @@ import net.minecraft.util.Mth;
  * domain and derives every step from the last two rotations actually sent.
  */
 public final class PacketRotationSmoother {
+    @FunctionalInterface
+    interface StepAdjustment {
+        Rotation apply(
+                Rotation base,
+                Rotation primary,
+                float previousYaw,
+                float previousPitch,
+                double yawMax,
+                double pitchMax,
+                double yawAcceleration,
+                double pitchAcceleration);
+    }
+
     private final boolean lockMode;
     private final boolean fullLockMode;
+    private final DoubleBinaryOperator random;
 
     private boolean confirmed;
     private float confirmedYaw;
@@ -38,8 +55,14 @@ public final class PacketRotationSmoother {
     }
 
     public PacketRotationSmoother(boolean lockMode, boolean fullLockMode) {
+        this(lockMode, fullLockMode, RandomMath::between);
+    }
+
+    /** Package-local deterministic replay seam; live callers retain their original source. */
+    PacketRotationSmoother(boolean lockMode, boolean fullLockMode, DoubleBinaryOperator random) {
         this.lockMode = lockMode;
         this.fullLockMode = fullLockMode;
+        this.random = random;
     }
 
     public Rotation sample(
@@ -75,6 +98,32 @@ public final class PacketRotationSmoother {
             boolean matrixCompatibility,
             int fullLockAngleStep,
             double fullLockSmoothing) {
+        return sample(
+                tick,
+                cameraYaw,
+                cameraPitch,
+                desiredYaw,
+                desiredPitch,
+                sensitivity,
+                overlappingTarget,
+                matrixCompatibility,
+                fullLockAngleStep,
+                fullLockSmoothing,
+                null);
+    }
+
+    Rotation sample(
+            int tick,
+            float cameraYaw,
+            float cameraPitch,
+            float desiredYaw,
+            float desiredPitch,
+            double sensitivity,
+            boolean overlappingTarget,
+            boolean matrixCompatibility,
+            int fullLockAngleStep,
+            double fullLockSmoothing,
+            StepAdjustment adjustment) {
         if (sampledTick == tick) return sampled;
 
         sampledTick = tick;
@@ -88,6 +137,21 @@ public final class PacketRotationSmoother {
                             fullLockAngleStep,
                             fullLockSmoothing,
                             sensitivity);
+            if (adjustment != null) {
+                double cap =
+                        Mth.clamp(fullLockAngleStep, 0, 180)
+                                * (1 - .5 * Mth.clamp(fullLockSmoothing, 0, 1));
+                sampled =
+                        adjustment.apply(
+                                new Rotation(sampledBaseYaw, sampledBasePitch),
+                                sampled,
+                                previousYawStep,
+                                previousPitchStep,
+                                cap,
+                                cap,
+                                Double.POSITIVE_INFINITY,
+                                Double.POSITIVE_INFINITY);
+            }
             return sampled;
         }
         float yawDemand = MathUtils.wrappedAngleDifference(sampledBaseYaw, desiredYaw);
@@ -99,8 +163,8 @@ public final class PacketRotationSmoother {
         // the generic profile can respond faster.
         AimSamplingA.PacketMotion motion =
                 matrixCompatibility
-                        ? AimSamplingA.samplePacketMotion(lockMode, urgency)
-                        : AimSamplingA.sampleResponsivePacketMotion(lockMode, urgency);
+                        ? AimSamplingA.samplePacketMotion(lockMode, urgency, random)
+                        : AimSamplingA.sampleResponsivePacketMotion(lockMode, urgency, random);
         if (previousMotion != null) {
             motion =
                     new AimSamplingA.PacketMotion(
@@ -127,6 +191,18 @@ public final class PacketRotationSmoother {
                         motion.yawAcceleration(),
                         motion.pitchAcceleration(),
                         matrixCompatibility && overlappingTarget);
+        if (adjustment != null) {
+            sampled =
+                    adjustment.apply(
+                            new Rotation(sampledBaseYaw, sampledBasePitch),
+                            sampled,
+                            previousYawStep,
+                            previousPitchStep,
+                            matrixCompatibility && overlappingTarget ? 18 : 48,
+                            32,
+                            motion.yawAcceleration(),
+                            motion.pitchAcceleration());
+        }
         return sampled;
     }
 

@@ -1,0 +1,33 @@
+{
+  "format": "AGRU big-endian v1",
+  "hidden": 128,
+  "window": 16,
+  "epoch": 7,
+  "parameters": 52866,
+  "resource_bytes": 211588,
+  "resource_sha256": "08c61de4af703b580fb20417bc0f17c9796998bcb9f597776d4dd8a87d65ebec",
+  "checkpoint_sha256": "e8da7f0e9c30515405f360532f727c29dffc0396503469dcfa4d1b6a9ac04691",
+  "features": [
+    "yaw_step_deg",
+    "pitch_step_deg",
+    "yaw_step_change_deg",
+    "pitch_step_change_deg",
+    "horizontal_reference_error_deg",
+    "horizontal_distance",
+    "observed_dt_ms"
+  ],
+  "tensor_order": [
+    "mean",
+    "std",
+    "target_scale",
+    "gru.weight_ih_l0",
+    "gru.weight_hh_l0",
+    "gru.bias_ih_l0",
+    "gru.bias_hh_l0",
+    "head.weight",
+    "head.bias"
+  ],
+  "normalization": "Embedded; raw feature inputs, outputs degrees/update",
+  "architecture": "Single-layer PyTorch GRU (reset, update, new), zero hidden state per 16-row window, linear head",
+  "scope": "Motion predictor; no target pitch error. Live helper applies bounded residual corrections to a primary aim mode."
+}

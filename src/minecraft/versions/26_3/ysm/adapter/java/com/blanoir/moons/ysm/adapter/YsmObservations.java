@@ -16,7 +16,7 @@ import net.minecraft.world.phys.*;
 
 import java.util.*;
 
-/** Minecraft 26.3-rc-3 observations for the portable Molang bindings. */
+/** Minecraft 26.3 observations for the portable Molang bindings. */
 final class YsmObservations {
     private final java.util.function.Consumer<String> diagnostic;
 

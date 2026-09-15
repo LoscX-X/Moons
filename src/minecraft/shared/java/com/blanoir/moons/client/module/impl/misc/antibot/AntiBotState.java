@@ -55,15 +55,10 @@ final class AntiBotState {
             tracked.detector.observe(
                     new AdvancedBotDetector.Facts(
                             player.tickCount,
-                            player.getId(),
                             player.getXRot(),
                             tracked.invalidGroundVl,
                             info == null,
-                            profileNames.getOrDefault(name, 0) > ownEntry,
-                            (info == null ? player.getGameProfile() : info.getProfile())
-                                    .properties()
-                                    .isEmpty(),
-                            info == null ? -1 : info.getLatency()));
+                            !name.isEmpty() && profileNames.getOrDefault(name, 0) > ownEntry));
         }
         trackedPlayers.keySet().retainAll(present);
     }

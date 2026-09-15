@@ -217,7 +217,7 @@ jobs:
           - The installer contains the runtime; no separate JAR or dependency download is required.
           - `moons-ysm-all.zip`: standalone YSM bundle with one shared library set and all supported adapters.
 
-          Only assets selected for this run are included. The loader supports Minecraft 26.1.2, 26.2, 26.3-rc-2 and 26.3-rc-3.
+          Only assets selected for this run are included. The loader supports Minecraft 26.1.2, 26.2, 26.3.
           NOTES
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" artifacts/* --repo "$GITHUB_REPOSITORY" --clobber

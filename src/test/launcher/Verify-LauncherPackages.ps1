@@ -34,6 +34,7 @@ function Installed-State {
 }
 
 try {
+    Run-Tool $loader '--self-test-version-detection' 0
     Run-Tool $installer '--version' 0
     $installerVersion = Get-Content (Join-Path $fixture ('run-' + $script:attempt + '.out')) -Raw
     Run-Tool $loader '--version' 0

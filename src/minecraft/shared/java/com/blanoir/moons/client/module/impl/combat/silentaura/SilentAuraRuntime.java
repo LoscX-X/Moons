@@ -87,6 +87,7 @@ public final class SilentAuraRuntime {
                         : client.player.getViewVector(1.0F);
         LivingEntity target = MODES.targets().select(client, referenceLook);
         if (target == null) {
+            MODES.learned().reset();
             sent = SentRotation.invalid();
             MODES.rotation().returnToCamera(client, deltaSeconds);
             if (!MODES.rotation().active()) MODES.resetPackets();
@@ -105,6 +106,7 @@ public final class SilentAuraRuntime {
                         : referenceLook;
         Vec3 point = MODES.targets().aimPoint(client, target, aimReferenceLook);
         if (point == null) {
+            MODES.learned().reset();
             MODES.clearTargets();
             sent = SentRotation.invalid();
             MODES.rotation().returnToCamera(client, deltaSeconds);
@@ -125,10 +127,30 @@ public final class SilentAuraRuntime {
                     })) return;
         }
         MODES.rotation().track(client, target, point, deltaSeconds);
+        if (SilentAuraConfig.learnedAssist()) observeLearned(client, target, point);
         syncLease();
     }
 
+    private static void observeLearned(Minecraft client, LivingEntity target, Vec3 point) {
+        Vec3 eye = client.player.getEyePosition();
+        MODES.learned()
+                .observe(
+                        client.level,
+                        target,
+                        new LearnedPacketRotation.Geometry(
+                                eye.x, eye.y, eye.z, point.x, point.y, point.z));
+    }
+
+    public static void resetLearnedAssist() {
+        MODES.learned().reset();
+    }
+
+    public static String learnedStatus() {
+        return MODES.learned().status();
+    }
+
     private static void finishTracking(Minecraft client, double deltaSeconds) {
+        MODES.learned().reset();
         MODES.clearTargets();
         sent = SentRotation.invalid();
         MODES.rotation().returnToCamera(client, deltaSeconds);
@@ -255,6 +277,9 @@ public final class SilentAuraRuntime {
         var currentPlayer = client == null ? null : client.player;
         if (!shouldApplyRotation() || client == null || currentPlayer == null) return;
         MODES.packets().confirm(yaw, pitch);
+        if (SilentAuraConfig.learnedAssist() && !MODES.rotation().returning()) {
+            MODES.learned().confirm(currentPlayer.tickCount, System.nanoTime(), yaw, pitch);
+        }
         int targetId = MODES.rotation().returning() ? -1 : MODES.rotation().targetId();
         sent =
                 new SentRotation(
@@ -379,6 +404,17 @@ public final class SilentAuraRuntime {
         if (client == null || currentPlayer == null) {
             return new Rotation(MODES.rotation().yaw(), MODES.rotation().pitch());
         }
+        boolean assist = SilentAuraConfig.learnedAssist() && !MODES.rotation().returning();
+        if (assist) {
+            LivingEntity target = MODES.targets().current(client);
+            Vec3 point = MODES.rotation().learnedPoint();
+            assist =
+                    target != null
+                            && point != null
+                            && target.getId() == MODES.rotation().targetId();
+            if (assist) observeLearned(client, target, point);
+        }
+        if (!assist) MODES.learned().reset();
         return MODES.samplePacket(
                 currentPlayer.tickCount,
                 currentPlayer.getYRot(),
@@ -388,7 +424,8 @@ public final class SilentAuraRuntime {
                 SilentAuraConfig.lockMode(),
                 client.options.sensitivity().get(),
                 MODES.rotation().crossingTarget(),
-                SilentAuraConfig.matrixCompatibility());
+                SilentAuraConfig.matrixCompatibility(),
+                assist);
     }
 
     private static boolean canApply(Minecraft client) {

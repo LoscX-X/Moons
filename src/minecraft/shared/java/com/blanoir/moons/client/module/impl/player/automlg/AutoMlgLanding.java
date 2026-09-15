@@ -1,6 +1,7 @@
 package com.blanoir.moons.client.module.impl.player.automlg;
 
 import com.blanoir.moons.client.utils.world.placement.BlockPlacementUtils;
+import com.blanoir.moons.client.utils.world.placement.PlacementRaycast;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
@@ -16,6 +17,7 @@ import java.util.List;
 
 /** Finds the first collision of the whole player, including a sliver over a neighbouring ledge. */
 public final class AutoMlgLanding {
+    private static final PlacementRaycast RAYS = new PlacementRaycast("nofall");
     private static final double EPSILON = 1.0E-5;
 
     private AutoMlgLanding() {}
@@ -82,8 +84,7 @@ public final class AutoMlgLanding {
                                         eye, point, client.player.blockInteractionRange()))
                             continue;
                         BlockHitResult hit =
-                                BlockPlacementUtils.visibleFaceHit(
-                                        client, eye, pos, Direction.UP, point, EPSILON);
+                                RAYS.visibleFaceHit(client, eye, pos, Direction.UP, point, EPSILON);
                         if (hit == null) continue;
                         best = hit;
                         bestOverlap = overlap;

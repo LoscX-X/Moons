@@ -17,6 +17,7 @@ import com.blanoir.moons.client.utils.rotation.aim.TargetSelectorF;
 import com.blanoir.moons.client.utils.world.FluidQueries;
 import com.blanoir.moons.client.utils.world.placement.BlockPlacementUtils;
 import com.blanoir.moons.client.utils.world.placement.PlacementCoordinator;
+import com.blanoir.moons.client.utils.world.placement.PlacementRaycast;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
@@ -39,6 +40,7 @@ import net.minecraft.world.phys.Vec3;
 
 /** Covers a newly placed hostile lava source with a hotbar/offhand block. */
 public final class AntiLava {
+    private static final PlacementRaycast RAYS = new PlacementRaycast("antilava");
     private static final double ENEMY_PLACE_REACH = 5.0D;
     private static final double ENEMY_LOOK_DOT = -0.10D;
     private static final double DEFAULT_FOV = 180.0D;
@@ -343,6 +345,7 @@ public final class AntiLava {
 
     private static InteractionResult useOnSilently(
             Minecraft client, InteractionHand hand, BlockHitResult hit) {
+        if (!RAYS.canUse(client, hit)) return InteractionResult.PASS;
         float cameraYaw = client.player.getYRot();
         float cameraPitch = client.player.getXRot();
         client.player.setYRot(SilentPacketRotation.getInteractionYaw(client));
@@ -358,6 +361,7 @@ public final class AntiLava {
     private static BlockHitResult findSupportHit(Minecraft client, BlockPos source) {
         if (!isLavaSource(client, source)) return null;
         return TargetSelectorF.select(
+                RAYS,
                 client,
                 source,
                 client.player.getEyePosition(),

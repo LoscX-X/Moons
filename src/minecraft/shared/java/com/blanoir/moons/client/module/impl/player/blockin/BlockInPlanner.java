@@ -1,6 +1,7 @@
 package com.blanoir.moons.client.module.impl.player.blockin;
 
 import com.blanoir.moons.client.utils.world.placement.BlockPlacementUtils;
+import com.blanoir.moons.client.utils.world.placement.PlacementRaycast;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
@@ -30,6 +31,7 @@ import java.util.function.Predicate;
 
 /** Fixed-footprint shell geometry; every actual click is resolved against the current world. */
 public final class BlockInPlanner {
+    private static final PlacementRaycast RAYS = new PlacementRaycast("blockin");
     private static final double EPSILON = 1.0E-5;
     private static final Direction[] SUPPORTS = {
         Direction.DOWN,
@@ -222,8 +224,7 @@ public final class BlockInPlanner {
                     Vec3 point = BlockPlacementUtils.facePoint(client, support, face, u, v);
                     if (!BlockPlacementUtils.withinReach(eye, point, reach)) continue;
                     BlockHitResult hit =
-                            BlockPlacementUtils.visibleFaceHit(
-                                    client, eye, support, face, point, EPSILON);
+                            RAYS.visibleFaceHit(client, eye, support, face, point, EPSILON);
                     if (hit != null) return hit;
                 }
         }

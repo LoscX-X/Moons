@@ -21,6 +21,32 @@ tasks.register('verifyArmorHide', JavaExec) {
     workingDir layout.buildDirectory.get().asFile
 }
 
+tasks.register('verifyNicknameShuffle', JavaExec) {
+    group = 'verification'
+    description = 'Checks shuffled display names, independent skins, skin recursion and reset without a GPU.'
+    dependsOn 'renderTestClasses'
+    classpath = sourceSets.renderTest.runtimeClasspath
+    mainClass = 'com.blanoir.moons.client.module.impl.render.NicknameShuffleVerification'
+    systemProperty 'moons.home', layout.buildDirectory.dir('nickname-fixture/home').get().asFile.absolutePath
+    workingDir layout.buildDirectory.get().asFile
+}
+
+[
+        verifyBacktrackFlow: 'com.blanoir.moons.client.module.impl.network.backtrack.BacktrackFlowVerification',
+        verifyAntiWebCycle: 'com.blanoir.moons.client.module.impl.player.AntiWebCycleVerification',
+        verifyPlacementRays: 'com.blanoir.moons.client.utils.world.placement.PlacementRaycastVerification'
+].each { taskName, entryPoint ->
+    tasks.register(taskName, JavaExec) {
+        group = 'verification'
+        description = 'Checks packet flow, bounded interaction cycles or placement geometry without a GPU.'
+        dependsOn 'renderTestClasses'
+        classpath = sourceSets.renderTest.runtimeClasspath
+        mainClass = entryPoint
+        systemProperty 'moons.home', layout.buildDirectory.dir("${taskName}-fixture/home").get().asFile.absolutePath
+        workingDir layout.buildDirectory.get().asFile
+    }
+}
+
 tasks.register("verifyMinecraftTransformers", JavaExec) {
     group = "verification"
     description = "Transforms and bytecode-verifies every supported hook against the actual Minecraft JAR."
@@ -43,7 +69,7 @@ tasks.register("verifyMinecraftTransformers", JavaExec) {
 
 
 tasks.named("check").configure {
-    dependsOn "clientClasses", "featuresClasses", "verifyMinecraftTransformers", "verifyArmorHide"
+    dependsOn "clientClasses", "featuresClasses", "verifyMinecraftTransformers", "verifyArmorHide", "verifyNicknameShuffle", "verifyBacktrackFlow", "verifyAntiWebCycle", "verifyPlacementRays"
 }
 
 def versionChecks = []
@@ -74,4 +100,41 @@ tasks.register("checkAllVersions") {
     group = "verification"
     description = "Compiles production sources and verifies hooks and YSM behavior for each supported Minecraft version."
     dependsOn versionChecks
+}
+
+
+def loadSessionCheckExe = tasks.register('loadSessionVerificationExe', Exec) {
+    onlyIf { moonsBuild.windowsHost }
+    def sources = files('src/tools/launcher/csharp/LoadSession.cs', 'src/test/launcher/LoadSessionVerification.cs')
+    def output = layout.buildDirectory.file('verification/load-session.exe')
+    inputs.files(sources)
+    outputs.file(output)
+    doFirst {
+        output.get().asFile.parentFile.mkdirs()
+        executable moonsToolchains.locateCSharpCompiler().absolutePath
+        args '/nologo', '/target:exe', "/out:${output.get().asFile.absolutePath}"
+        args sources.files.collect { it.absolutePath }.sort()
+    }
+}
+
+tasks.register('verifyLoadSession', Exec) {
+    group = 'verification'
+    description = 'Checks launcher attempt isolation, startup logs and cancellation without injecting a process.'
+    onlyIf { moonsBuild.windowsHost }
+    dependsOn loadSessionCheckExe
+    executable layout.buildDirectory.file('verification/load-session.exe').get().asFile.absolutePath
+}
+
+tasks.named('check').configure { dependsOn 'verifyLoadSession' }
+
+tasks.register('verifyLauncherPackages', Exec) {
+    group = 'verification'
+    description = 'Verifies the real installer and loader against an isolated dependency home without loading a game.'
+    onlyIf { moonsBuild.windowsHost }
+    dependsOn 'moonsPackages'
+    executable 'powershell.exe'
+    args '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
+            layout.projectDirectory.file('src/test/launcher/Verify-LauncherPackages.ps1').asFile.absolutePath,
+            '-Distribution', layout.buildDirectory.dir('dist').get().asFile.absolutePath,
+            '-FixtureRoot', layout.buildDirectory.dir('verification/launcher-packages').get().asFile.absolutePath
 }

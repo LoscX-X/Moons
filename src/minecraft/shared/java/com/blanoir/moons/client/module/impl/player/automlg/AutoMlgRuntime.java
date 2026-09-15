@@ -6,6 +6,7 @@ import com.blanoir.moons.client.utils.player.HotbarQueries;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 import com.blanoir.moons.client.utils.world.FluidQueries;
 import com.blanoir.moons.client.utils.world.placement.BlockPlacementUtils;
+import com.blanoir.moons.client.utils.world.placement.PlacementRaycast;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
@@ -19,6 +20,7 @@ import net.minecraft.world.phys.Vec3;
 
 /** AutoMLG timing, placement and recovery state machine. */
 public final class AutoMlgRuntime {
+    private static final PlacementRaycast RAYS = new PlacementRaycast("nofall");
     private float accumulatedFall;
     private double lastY;
     private Integer slotToRestore;
@@ -95,11 +97,12 @@ public final class AutoMlgRuntime {
                 && (bucketPos = findBucketPos(client)) != null) {
             Rotation rotation = rotationToBlock(client, bucketPos);
             BlockHitResult hit =
-                    BlockPlacementUtils.traceOutline(
+                    RAYS.traceOutline(
                             client,
                             rotation,
                             currentPlayer.blockInteractionRange(),
-                            ClipContext.Fluid.SOURCE_ONLY);
+                            ClipContext.Fluid.SOURCE_ONLY,
+                            bucketPos);
             if (hit.getType() != HitResult.Type.MISS && hit.getBlockPos().equals(bucketPos)) {
                 startSilentUse(
                         client,
@@ -229,7 +232,12 @@ public final class AutoMlgRuntime {
                                 SilentPacketRotation.getInteractionPitch(client));
                 double range = client.player.blockInteractionRange();
                 BlockHitResult currentHit =
-                        BlockPlacementUtils.traceOutline(client, sent, range, silentUseFluid);
+                        RAYS.traceOutline(
+                                client,
+                                sent,
+                                range,
+                                silentUseFluid,
+                                silentUseHit == null ? null : silentUseHit.getBlockPos());
                 if (currentHit.getType() == HitResult.Type.MISS
                         || silentUseHit == null
                         || !currentHit.getBlockPos().equals(silentUseHit.getBlockPos())
@@ -259,7 +267,7 @@ public final class AutoMlgRuntime {
                                         currentHit.getBlockPos());
                 // Keep slot sync/use/swing before this tick's movement. The instant
                 // angle stays pinned until that following movement is sent.
-                if (!SilentPacketRotation.invokeUseInPlayerUpdate(
+                if (!RAYS.invokeUseInPlayerUpdate(
                         client, useHit, actionRotation == SilentPacketRotation.Mode.SMOOTH)) {
                     abortSilentUse(client);
                     return;
@@ -328,19 +336,21 @@ public final class AutoMlgRuntime {
         Rotation current =
                 new Rotation(SilentPacketRotation.getYaw(), SilentPacketRotation.getPitch());
         BlockHitResult hit =
-                BlockPlacementUtils.traceOutline(
+                RAYS.traceOutline(
                         client,
                         current,
                         client.player.blockInteractionRange(),
-                        ClipContext.Fluid.SOURCE_ONLY);
+                        ClipContext.Fluid.SOURCE_ONLY,
+                        placedWaterPos);
         boolean reuseRotation = BlockPlacementUtils.matchesBlock(hit, placedWaterPos);
         if (!reuseRotation) {
             hit =
-                    BlockPlacementUtils.traceOutline(
+                    RAYS.traceOutline(
                             client,
                             rotationToBlock(client, placedWaterPos),
                             client.player.blockInteractionRange(),
-                            ClipContext.Fluid.SOURCE_ONLY);
+                            ClipContext.Fluid.SOURCE_ONLY,
+                            placedWaterPos);
             if (!BlockPlacementUtils.matchesBlock(hit, placedWaterPos)) {
                 beginReturn(client);
                 return;
@@ -406,11 +416,12 @@ public final class AutoMlgRuntime {
                     if (distance >= closestDistance) continue;
                     Rotation rotation = rotationToBlock(client, candidate);
                     BlockHitResult hit =
-                            BlockPlacementUtils.traceOutline(
+                            RAYS.traceOutline(
                                     client,
                                     rotation,
                                     client.player.blockInteractionRange(),
-                                    ClipContext.Fluid.SOURCE_ONLY);
+                                    ClipContext.Fluid.SOURCE_ONLY,
+                                    candidate);
                     if (hit.getType() == HitResult.Type.MISS
                             || !hit.getBlockPos().equals(candidate)) continue;
                     closest = candidate;

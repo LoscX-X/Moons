@@ -7,17 +7,10 @@ using Moons.Shared;
 
 namespace Moons.WindowsLauncher
 {
-    /// <summary>Installs one shared runtime and all adapters before attaching to a game.</summary>
+    /// <summary>Installs one shared runtime and all adapters from moon-install.exe.</summary>
     internal static class YsmPackage
     {
-        internal static readonly string[] Files = {
-            "libraries/moons-ysm-core.jar",
-            "libraries/moons-ysm-codecs.jar",
-            "libraries/moons-ysm-images.jar",
-            "modules/moons-ysm-26.1.2.jar",
-            "modules/moons-ysm-26.2.jar",
-            "modules/moons-ysm-26.3-rc-3.jar"
-        };
+        internal static readonly string[] Files = DependencyRuntime.YsmPackageNames;
 
         internal static void Install(string home, byte[] package)
         {
@@ -48,7 +41,7 @@ namespace Moons.WindowsLauncher
                 {
                     try { acquired = mutex.WaitOne(TimeSpan.FromSeconds(30)); }
                     catch (AbandonedMutexException) { acquired = true; }
-                    if (!acquired) throw new IOException("Another launcher is updating YSM. Try again shortly.");
+                    if (!acquired) throw new IOException("Another installer is updating YSM. Try again shortly.");
                     InstallLocked(home, contents);
                 }
                 finally { if (acquired) mutex.ReleaseMutex(); }

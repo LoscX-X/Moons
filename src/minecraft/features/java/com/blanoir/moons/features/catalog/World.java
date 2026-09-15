@@ -13,7 +13,7 @@ final class World {
     private World() {}
 
     static ModuleRegistry.Module fastPlace() {
-        return module(
+        return PlacementOptions.module(
                 "fastplace",
                 "FastPlace",
                 ModuleCategories.PLAYER,
@@ -95,7 +95,7 @@ final class World {
     }
 
     static ModuleRegistry.Module scaffold() {
-        return module(
+        return PlacementOptions.module(
                 "scaffold",
                 "Scaffold",
                 "World",

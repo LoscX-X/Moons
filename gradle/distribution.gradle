@@ -226,79 +226,127 @@ tasks.register("moonsUiRuntime") {
     dependsOn launcherUiMetadata
 }
 
-// Both launchers share payloads, metadata and source; only the full EXE embeds the UI JAR.
-def registerLauncher = { String taskName, String fileName, boolean bundled ->
+// The installer owns dependency updates; the loader carries only game-loading payloads.
+def ysmMetadata = layout.buildDirectory.file("generated/launcher/ysm.properties")
+def ysmPackage = layout.buildDirectory.file('dist/moons-ysm-all.zip')
+def launcherDependencyMetadata = tasks.register('launcherDependencyMetadata') {
+    dependsOn launcherUiMetadata, 'ysmUniversalBundle'
+    inputs.file(ysmPackage)
+    outputs.file(ysmMetadata)
+    doLast {
+        def archive = new java.util.zip.ZipFile(ysmPackage.get().asFile)
+        try {
+            def lines = archive.entries().findAll { !it.directory }.collect { entry ->
+                def hash = java.security.MessageDigest.getInstance('SHA-256')
+                        .digest(archive.getInputStream(entry).withCloseable { it.readAllBytes() })
+                        .collect { String.format('%02x', it & 0xff) }.join()
+                "${entry.name}=${hash}"
+            }.sort()
+            ysmMetadata.get().asFile.parentFile.mkdirs()
+            ysmMetadata.get().asFile.setText(lines.join('\n') + '\n', 'UTF-8')
+        } finally { archive.close() }
+    }
+}
+
+def releaseMetadata = layout.buildDirectory.file('generated/launcher/release.properties')
+def assemblyVersionSource = layout.buildDirectory.file('generated/launcher/LauncherVersion.cs')
+def clientVersion = project.version.toString()
+def launcherBuildId = providers.gradleProperty('moons_build_id')
+        .getOrElse(providers.environmentVariable('GITHUB_SHA').getOrElse('local'))
+def launcherVersionMetadata = tasks.register('launcherVersionMetadata') {
+    dependsOn launcherDependencyMetadata
+    inputs.files(uiMetadata, ysmMetadata)
+    inputs.property('clientVersion', clientVersion)
+    inputs.property('buildId', launcherBuildId)
+    outputs.files(releaseMetadata, assemblyVersionSource)
+    doLast {
+        if (!(clientVersion ==~ /[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?(?:\+[A-Za-z0-9.-]+)?/))
+            throw new GradleException('load_version must use major.minor.patch, optionally with a prerelease/build suffix')
+        if (!(launcherBuildId ==~ /[A-Za-z0-9._-]+/))
+            throw new GradleException('moons_build_id must contain only letters, digits, dots, underscores or dashes')
+        def numeric = clientVersion.split('[-+]')[0]
+        if (numeric.split('\\.').any { it.toBigInteger() > 65534 })
+            throw new GradleException('Version components must fit the Windows version resource (0..65534)')
+        def sha256 = { byte[] bytes -> java.security.MessageDigest.getInstance('SHA-256').digest(bytes)
+                .collect { String.format('%02x', it & 0xff) }.join() }
+        def ui = new Properties()
+        uiMetadata.get().asFile.withInputStream { ui.load(it) }
+        def uiHash = ui.getProperty('sha256')
+        def ysmHash = sha256(ysmMetadata.get().asFile.bytes)
+        // URLs, client releases and build IDs do not affect dependency identity.
+        def dependencyHash = sha256((uiHash + '\n' + ysmHash).getBytes('UTF-8'))
+        releaseMetadata.get().asFile.setText(
+                "format=1\nclient.version=${clientVersion}\nbuild.id=${launcherBuildId}\n"
+                + "dependencies.version=${dependencyHash.take(12)}\n"
+                + "ui.version=${uiHash.take(12)}\nysm.version=${ysmHash.take(12)}\n", 'UTF-8')
+        assemblyVersionSource.get().asFile.setText(
+                "using System.Reflection;\n[assembly: AssemblyVersion(\"${numeric}.0\")]\n"
+                + "[assembly: AssemblyFileVersion(\"${numeric}.0\")]\n"
+                + "[assembly: AssemblyInformationalVersion(\"${clientVersion} (${launcherBuildId})\")]\n", 'UTF-8')
+    }
+}
+
+def registerLauncher = { String taskName, String fileName, boolean installer ->
     tasks.register(taskName, Exec) {
-        group = "build"
-        description = bundled
-                ? "Builds one Windows loader with its UI runtime embedded."
-                : "Builds one Windows loader that downloads and caches its UI runtime."
-        dependsOn universalPayloadPatch, universalPayload26_3Patch, apiJar, bridgeDll, moonsHwidExe, launcherUiMetadata
-        dependsOn 'ysmUniversalBundle'
-
-        def source = layout.projectDirectory.file("src/tools/launcher/csharp/MoonsExeLauncher.cs")
-        def hardwareIdGenerator = layout.projectDirectory.file("src/tools/shared/HardwareIdGenerator.cs")
-        def processEvidenceCache = layout.projectDirectory.file("src/tools/launcher/csharp/ProcessEvidenceCache.cs")
-        def loadLease = layout.projectDirectory.file("src/tools/launcher/csharp/LoadLease.cs")
-        def bridgeAttemptMonitor = layout.projectDirectory.file("src/tools/launcher/csharp/BridgeAttemptMonitor.cs")
-        def utilitySources = files(
-                "src/tools/shared/Hashing.cs",
-                "src/tools/shared/StagedFile.cs",
-                "src/tools/launcher/csharp/RuntimeMetadata.cs",
-                "src/tools/launcher/csharp/YsmPackage.cs",
-                "src/tools/launcher/csharp/ZipEntries.cs")
-        def payload26_1 = layout.buildDirectory.file("universal/26.1/moons.jar")
-        def payload26_2Patch = layout.buildDirectory.file("universal/moons-26.2.patch.zip")
-        def payload26_3Patch = layout.buildDirectory.file("universal/moons-26.3.patch.zip")
-        def ysmPackage = layout.buildDirectory.file('dist/moons-ysm-all.zip')
-        def bootstrapApi = apiJar.flatMap { it.archiveFile }
-        def bridge = layout.buildDirectory.file("${moonsBuild.loaderStagingDirectory}/moons-bridge.dll")
+        group = 'build'
+        description = installer ? 'Builds the dependency installer/updater.' : 'Builds the game loader using installed dependencies.'
+        dependsOn launcherVersionMetadata
+        if (!installer) dependsOn universalPayloadPatch, universalPayload26_3Patch, apiJar, bridgeDll, moonsHwidExe
+        def sources = files(
+                'src/tools/shared/Hashing.cs', 'src/tools/shared/StagedFile.cs',
+                'src/tools/launcher/csharp/RuntimeMetadata.cs',
+                'src/tools/launcher/csharp/DependencyRuntime.cs', assemblyVersionSource)
+        if (installer) {
+            sources += files('src/tools/launcher/csharp/DependencyInstaller.cs',
+                    'src/tools/launcher/csharp/YsmPackage.cs', 'src/tools/launcher/csharp/ZipEntries.cs')
+        } else {
+            sources += files('src/tools/launcher/csharp/MoonsExeLauncher.cs',
+                    'src/tools/shared/HardwareIdGenerator.cs',
+                    'src/tools/launcher/csharp/ProcessEvidenceCache.cs',
+                    'src/tools/launcher/csharp/LoadSession.cs', 'src/tools/launcher/csharp/ZipEntries.cs')
+        }
+        def resources = [
+                'Moons.UiRuntime.properties': uiMetadata,
+                'Moons.Ysm.properties': ysmMetadata,
+                'Moons.Release.properties': releaseMetadata]
+        if (installer) {
+            resources['Moons.Ysm.zip'] = ysmPackage
+        } else {
+            resources['Moons.Payload.26_1.jar'] = layout.buildDirectory.file('universal/26.1/moons.jar')
+            resources['Moons.Payload.26_2.patch'] = layout.buildDirectory.file('universal/moons-26.2.patch.zip')
+            resources['Moons.Payload.26_3.patch'] = layout.buildDirectory.file('universal/moons-26.3.patch.zip')
+            resources['Moons.Api.jar'] = apiJar.flatMap { it.archiveFile }
+            resources['Moons.Bridge.dll'] = layout.buildDirectory.file("${moonsBuild.loaderStagingDirectory}/moons-bridge.dll")
+        }
         def output = layout.buildDirectory.file("dist/${fileName}")
-        inputs.files(source, hardwareIdGenerator, processEvidenceCache, loadLease, bridgeAttemptMonitor)
-        inputs.files(utilitySources)
-        inputs.files(payload26_1, payload26_2Patch, payload26_3Patch, bootstrapApi, bridge, uiMetadata)
-        inputs.file(ysmPackage)
-        if (bundled) inputs.file(uiRuntime)
+        inputs.files(sources)
+        inputs.files(resources.values())
         outputs.file(output)
-
         doFirst {
             if (!moonsBuild.windowsHost) throw new GradleException("${taskName} requires Windows")
             output.get().asFile.parentFile.mkdirs()
             executable locateCSharpCompiler().absolutePath
-            args(
-                    "/nologo", "/target:winexe", "/optimize+", "/platform:x64",
-                    "/reference:System.Windows.Forms.dll", "/reference:System.Management.dll",
-                    "/reference:System.IO.Compression.dll", "/reference:System.IO.Compression.FileSystem.dll",
-                    "/out:${output.get().asFile.absolutePath}",
-                    "/resource:${uiMetadata.get().asFile.absolutePath},Moons.UiRuntime.properties",
-                    "/resource:${payload26_1.get().asFile.absolutePath},Moons.Payload.26_1.jar",
-                    "/resource:${payload26_2Patch.get().asFile.absolutePath},Moons.Payload.26_2.patch",
-                    "/resource:${payload26_3Patch.get().asFile.absolutePath},Moons.Payload.26_3.patch",
-                    "/resource:${ysmPackage.get().asFile.absolutePath},Moons.Ysm.zip",
-                    "/resource:${bootstrapApi.get().asFile.absolutePath},Moons.Api.jar",
-                    "/resource:${bridge.get().asFile.absolutePath},Moons.Bridge.dll"
-            )
-            if (bundled) args "/resource:${uiRuntime.get().asFile.absolutePath},Moons.UiRuntime.jar"
-            args hardwareIdGenerator.asFile.absolutePath, processEvidenceCache.asFile.absolutePath,
-                    loadLease.asFile.absolutePath, bridgeAttemptMonitor.asFile.absolutePath, source.asFile.absolutePath
-            args utilitySources.files.collect { it.absolutePath }.sort()
+            args '/nologo', '/target:winexe', '/optimize+', '/platform:x64',
+                    '/reference:System.Windows.Forms.dll', '/reference:System.Management.dll',
+                    '/reference:System.IO.Compression.dll', '/reference:System.IO.Compression.FileSystem.dll',
+                    "/out:${output.get().asFile.absolutePath}"
+            args resources.collect { name, path -> "/resource:${path.get().asFile.absolutePath},${name}" }
+            args sources.files.collect { it.absolutePath }.sort()
         }
     }
 }
 
-def moonsExe = registerLauncher("moonsExe", "moons.exe", false)
-def moonsFullExe = registerLauncher("moonsFullExe", "moons-full.exe", true)
+def moonsExe = registerLauncher('moonsExe', 'moon.exe', false)
+def moonsInstallExe = registerLauncher('moonsInstallExe', 'moon-install.exe', true)
 
-tasks.register("moonsPackages") {
-    group = "build"
-    description = "Builds both Windows launchers and the standalone UI runtime in one invocation."
-    dependsOn moonsExe, moonsFullExe
+tasks.register('moonsPackages') {
+    group = 'build'
+    description = 'Builds moon-install.exe, moon.exe and the matching standalone UI runtime.'
+    dependsOn moonsExe, moonsInstallExe
 }
 
-tasks.named("assemble").configure {
-    dependsOn tasks.named("moonsJar")
-    dependsOn moonsExe
-    dependsOn bridgeDll
+tasks.named('assemble').configure {
+    dependsOn tasks.named('moonsJar'), moonsExe, moonsInstallExe, bridgeDll
 }
 
 publishing {

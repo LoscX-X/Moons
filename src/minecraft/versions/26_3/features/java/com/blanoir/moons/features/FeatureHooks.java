@@ -30,12 +30,14 @@ import com.blanoir.moons.client.module.impl.render.Clip;
 import com.blanoir.moons.client.module.impl.render.FullBright;
 import com.blanoir.moons.client.module.impl.render.Nametags;
 import com.blanoir.moons.client.module.impl.render.Nickname;
+import com.blanoir.moons.client.module.impl.render.NicknameShuffle;
 import com.blanoir.moons.client.module.impl.render.Scoreboard;
 import com.blanoir.moons.client.module.impl.render.Trim;
 import com.blanoir.moons.client.module.impl.render.xray.XrayTerrain;
 import com.blanoir.moons.client.module.impl.world.scaffold.Scaffold;
 import com.blanoir.moons.client.ui.compose.ComposeRenderBridge;
 import com.blanoir.moons.client.utils.render.SodiumQuadAlpha;
+import com.blanoir.moons.client.utils.world.placement.PlacementRaycast;
 import com.blanoir.moons.features.command.ClientCommands;
 import com.blanoir.moons.runtime.RuntimeEvents;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -61,6 +63,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Input;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.player.PlayerSkin;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.state.BlockState;
@@ -74,6 +77,7 @@ public final class FeatureHooks {
     /** Called before the runtime allocates a method-hook event or boxes its values. */
     public static boolean isActive(String id) {
         return switch (id) {
+            case "placement.item-ray" -> PlacementRaycast.hasItemRay();
             case "client.timer-speed" -> TimerManager.active(Minecraft.getInstance());
             case "render.antidebuff.blend", "render.antidebuff.fog", "render.antidebuff.sky" ->
                     AntiDebuff.enabled();
@@ -108,6 +112,7 @@ public final class FeatureHooks {
                     "render.armor-hide.wings" ->
                     ArmorHide.isEnabled();
             case "render.player-nametag" -> Nametags.isEnabled();
+            case "render.player-skin" -> NicknameShuffle.isEnabled();
             case "render.chams-draw",
                     "render.chams-draw-oit",
                     "render.chams-type",
@@ -125,6 +130,7 @@ public final class FeatureHooks {
 
     public static void apply(RuntimeEvents.MethodHook hook) {
         switch (hook.id()) {
+            case "placement.item-ray" -> hook.value(PlacementRaycast.itemRay(hook.value()));
             case "client.timer-speed" -> {
                 if (hook.owner() instanceof Minecraft client && hook.value() instanceof Float value)
                     hook.value(TimerManager.adjustTickMillis(client, value));
@@ -386,18 +392,18 @@ public final class FeatureHooks {
                     hook.value(PremiumCheckCommand.decorate(player, named));
                 }
             }
+            case "render.player-skin" -> {
+                if (hook.owner() instanceof PlayerInfo info
+                        && hook.value() instanceof PlayerSkin skin) {
+                    hook.value(NicknameShuffle.skin(info, skin));
+                }
+            }
             case "render.tab-name" -> {
                 if (hook.argument() instanceof PlayerInfo info
-                        && hook.value() instanceof Component component
-                        && Nickname.appliesTo(info)) {
-                    Component named =
-                            AntiNick.applyTabName(info, Nickname.replaceOwnName(component));
-                    hook.value(PremiumCheckCommand.decorate(info, named));
-                } else if (hook.argument() instanceof PlayerInfo info
                         && hook.value() instanceof Component component) {
-                    hook.value(
-                            PremiumCheckCommand.decorate(
-                                    info, AntiNick.applyTabName(info, component)));
+                    Component named =
+                            AntiNick.applyTabName(info, Nickname.replaceTabName(info, component));
+                    hook.value(PremiumCheckCommand.decorate(info, named));
                 }
             }
             case "render.chat-system-name", "render.chat-player-name" -> {

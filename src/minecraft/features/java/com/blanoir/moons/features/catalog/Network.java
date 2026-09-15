@@ -60,7 +60,7 @@ final class Network {
                                                 value.getAsJsonArray().get(0).getAsInt()
                                                         + "-"
                                                         + value.getAsJsonArray().get(1).getAsInt()))
-                        .withDefault(100, 150),
+                        .withDefault(50, 70),
                 numeric(
                                 "range",
                                 "Max range",
@@ -71,7 +71,7 @@ final class Network {
                                 .1,
                                 (client, value) ->
                                         Backtrack.setRange(client, Double.toString(value)))
-                        .withDefault(6.0),
+                        .withDefault(4.0),
                 choice(
                         "esp",
                         "ESP",
@@ -84,21 +84,21 @@ final class Network {
                         "next_min",
                         "Next delay min",
                         "backtrack.nextBacktrackDelay.min",
-                        0,
+                        100,
                         0,
                         2000),
                 internalInt(
                         "next_max",
                         "Next delay max",
                         "backtrack.nextBacktrackDelay.max",
-                        10,
+                        150,
                         0,
                         2000),
                 internalInt(
                         "tracking_buffer",
                         "Tracking buffer",
                         "backtrack.trackingBuffer",
-                        500,
+                        150,
                         0,
                         2000),
                 internalNumber("chance", "Chance", "backtrack.chance", 100, 0, 100),
@@ -113,8 +113,7 @@ final class Network {
                         1000,
                         0,
                         5000),
-                internalInt("max_queue", "Queue limit", "backtrack.maxQueueSize", 256, 32, 1024),
-                internalNumber("speed_factor", "Speed factor", "backtrack.speedFactor", 8, 0, 30),
+                internalInt("max_queue", "Queue limit", "backtrack.maxQueueSize", 64, 32, 1024),
                 internalNumber("ping_ratio", "Ping ratio", "backtrack.pingRatio", 0, 0, 3),
                 internalBool("actionbar", "Action bar", "backtrack.actionbar", false));
     }

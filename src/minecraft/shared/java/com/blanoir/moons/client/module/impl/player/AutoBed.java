@@ -16,6 +16,7 @@ import com.blanoir.moons.client.utils.math.MathUtils;
 import com.blanoir.moons.client.utils.player.HotbarQueries;
 import com.blanoir.moons.client.utils.world.placement.BlockPlacementUtils;
 import com.blanoir.moons.client.utils.world.placement.PlacementCoordinator;
+import com.blanoir.moons.client.utils.world.placement.PlacementRaycast;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
@@ -59,6 +60,7 @@ import java.util.Set;
  * may build a support beside the target before placing and exploding the bed.
  */
 public final class AutoBed {
+    private static final PlacementRaycast RAYS = new PlacementRaycast("autobed");
     private static final int MAX_ACTION_WAIT_TICKS = 30;
     private static final int MAX_CONFIRM_TICKS = 10;
     private static final int MAX_POINT_RETRIES = 48;
@@ -1343,7 +1345,7 @@ public final class AutoBed {
     /** Returns the exact visible point so a shield or wall cannot hide the support face. */
     private static BlockHitResult visibleFaceHit(
             Minecraft client, BlockPos support, Direction face, Vec3 requestedPoint) {
-        return BlockPlacementUtils.visibleFaceHit(
+        return RAYS.visibleFaceHit(
                 client, client.player.getEyePosition(), support, face, requestedPoint, RAY_EPSILON);
     }
 
@@ -1354,6 +1356,8 @@ public final class AutoBed {
             Direction face,
             Vec3 requested,
             BlockPos projectedShield) {
+        if (RAYS.entityBlocked(client, client.player.getEyePosition(), requested)) return null;
+        if (RAYS.throughBlocks()) return new BlockHitResult(requested, face, futureSupport, false);
         if (projectedShieldBlocksRay(client.player.getEyePosition(), requested, projectedShield)
                 && !futureSupport.equals(projectedShield)) {
             return null;
@@ -1687,13 +1691,7 @@ public final class AutoBed {
                                     pos.getY() + 0.55D,
                                     pos.getZ() + 0.5D + zOffset);
                     BlockHitResult hit =
-                            client.level.clip(
-                                    new ClipContext(
-                                            eye,
-                                            insideTop,
-                                            ClipContext.Block.OUTLINE,
-                                            ClipContext.Fluid.NONE,
-                                            client.player));
+                            RAYS.clip(client, eye, insideTop, ClipContext.Fluid.NONE, pos);
                     if (hit.getType() != HitResult.Type.BLOCK
                             || !hit.getBlockPos().equals(pos)
                             || !withinReach(client, hit.getLocation())) {
@@ -1726,10 +1724,10 @@ public final class AutoBed {
                                     pos.getX() + 0.5D + xOffset,
                                     pos.getY() + 0.55D,
                                     pos.getZ() + 0.5D + zOffset);
-                    if (!withinReach(client, point)
-                            || projectedShieldBlocksRay(eye, point, projectedShield)) {
+                    if (!withinReach(client, point) || RAYS.entityBlocked(client, eye, point))
                         continue;
-                    }
+                    if (RAYS.throughBlocks()) return true;
+                    if (projectedShieldBlocksRay(eye, point, projectedShield)) continue;
                     Vec3 towardEye = eye.subtract(point);
                     if (towardEye.lengthSqr() < 1.0E-10D) {
                         return true;
@@ -1759,14 +1757,12 @@ public final class AutoBed {
                 eye.add(
                         SilentPacketRotation.getInteractionLookVector(client)
                                 .scale(client.player.blockInteractionRange()));
-        BlockHitResult hit =
-                client.level.clip(
-                        new ClipContext(
-                                eye,
-                                end,
-                                ClipContext.Block.OUTLINE,
-                                ClipContext.Fluid.NONE,
-                                client.player));
+        BlockHitResult hit = RAYS.clip(client, eye, end, ClipContext.Fluid.NONE, foot);
+        BlockHitResult headHit = RAYS.clip(client, eye, end, ClipContext.Fluid.NONE, head);
+        if (headHit.getType() == HitResult.Type.BLOCK
+                && (hit.getType() != HitResult.Type.BLOCK
+                        || eye.distanceToSqr(headHit.getLocation())
+                                < eye.distanceToSqr(hit.getLocation()))) hit = headHit;
         if (hit.getType() != HitResult.Type.BLOCK
                 || (!hit.getBlockPos().equals(foot) && !hit.getBlockPos().equals(head))
                 || !(client.level.getBlockState(hit.getBlockPos()).getBlock() instanceof BedBlock)
@@ -1778,6 +1774,7 @@ public final class AutoBed {
 
     private static InteractionResult useOnSilently(
             Minecraft client, InteractionHand hand, BlockHitResult hit) {
+        if (!RAYS.canUse(client, hit)) return InteractionResult.PASS;
         float cameraYaw = client.player.getYRot();
         float cameraPitch = client.player.getXRot();
         client.player.setYRot(SilentPacketRotation.getInteractionYaw(client));

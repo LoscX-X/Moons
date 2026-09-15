@@ -271,6 +271,7 @@ public class AnimationControllerRuntime<T extends AnimatableEntity<?>>
                             this.currentEntry.getHashId(), nextState2.getHashId(), true)) {
                 continue;
             }
+            if (keepCurrentLocomotionLoop(nextState2, evaluator)) continue;
             if (!this.visitedEntries.add(nextState2.getHashId())) {
                 return false;
             }
@@ -279,6 +280,36 @@ public class AnimationControllerRuntime<T extends AnimatableEntity<?>>
             return true;
         }
         return false;
+    }
+
+    private boolean keepCurrentLocomotionLoop(
+            AnimationState next, ExpressionEvaluator<AnimationContext<?>> evaluator) {
+        if (!animationEntries.stableLocomotionLoops()
+                || !hasActiveLoop(currentEntry, evaluator)
+                || !hasActiveLoop(next, evaluator)) return false;
+        // Overlapping predicates such as idle||jump and walk||jump can enable both
+        // directions at once. Keep the valid loop instead of restarting a clip every frame.
+        for (var reverse : next.getTransitions()) {
+            if (reverse.leftInt() == currentEntry.getHashId()
+                    && reverse.right().evalAsBoolean(evaluator)) return true;
+        }
+        return false;
+    }
+
+    private boolean hasActiveLoop(
+            AnimationState state, ExpressionEvaluator<AnimationContext<?>> evaluator) {
+        boolean active = false;
+        for (var entry : state.getAnimations()) {
+            Animation animation = animatable.getAnimation(entry.getLeft());
+            if (animation == null
+                    || animation.loop
+                            != com.blanoir.moons.ysm.internal.geckolib3.core.builder.ILoopType
+                                    .EDefaultLoopTypes.LOOP
+                    || !animation.soundKeyFrames.isEmpty()
+                    || !animation.customInstructionKeyframes.isEmpty()) return false;
+            active |= entry.getRight() != null && entry.getRight().evalAsBoolean(evaluator);
+        }
+        return active;
     }
 
     private boolean hasSoundTrigger(AnimationState state) {

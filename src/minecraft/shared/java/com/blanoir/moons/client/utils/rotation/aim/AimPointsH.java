@@ -3,6 +3,7 @@ package com.blanoir.moons.client.utils.rotation.aim;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 import com.blanoir.moons.client.utils.rotation.quantize.QuantizerA;
 import com.blanoir.moons.client.utils.world.placement.BlockPlacementUtils;
+import com.blanoir.moons.client.utils.world.placement.PlacementRaycast;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.Direction;
@@ -25,6 +26,7 @@ public final class AimPointsH {
     private static final double[] HEIGHTS = {.75, .5, .9, .25, .1};
 
     public static BlockAim resolve(
+            PlacementRaycast rays,
             Minecraft client,
             BlockTarget target,
             Vec3 eye,
@@ -41,7 +43,7 @@ public final class AimPointsH {
                                         client, target.support(), target.face(), .5, height),
                         raw -> quantizer.relative(preferred, raw),
                         candidate ->
-                                BlockPlacementUtils.traceFace(
+                                rays.traceFace(
                                                 client,
                                                 eye,
                                                 candidate.yaw(),
@@ -52,7 +54,7 @@ public final class AimPointsH {
                                         != null);
         if (rotation == null) return null;
         BlockHitResult hit =
-                BlockPlacementUtils.traceFace(
+                rays.traceFace(
                         client,
                         eye,
                         rotation.yaw(),

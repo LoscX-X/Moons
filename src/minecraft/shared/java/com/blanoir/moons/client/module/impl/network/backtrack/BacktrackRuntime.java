@@ -4,6 +4,7 @@ import com.blanoir.moons.client.access.PacketAccess;
 import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.event.frame.FrameEvent;
 import com.blanoir.moons.client.event.frame.WorldRenderEvent;
+import com.blanoir.moons.client.management.network.LagUtils;
 import com.blanoir.moons.client.management.network.TrackedEntityPosition;
 import com.blanoir.moons.client.utils.math.RandomMath;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -35,7 +36,6 @@ public final class BacktrackRuntime {
     private final BacktrackConfig config;
     private final TrackedEntityPosition position = new TrackedEntityPosition();
     private final BacktrackPacketQueue<Snapshot> packets = new BacktrackPacketQueue<>(1024);
-    private final BacktrackWindow window = new BacktrackWindow();
     private final BacktrackOverlay overlay;
     private LivingEntity target;
     private int tick;
@@ -44,7 +44,6 @@ public final class BacktrackRuntime {
     private long lastInRange;
     private int baseDelay;
     private int currentDelay;
-    private boolean armed;
 
     public BacktrackRuntime(BacktrackConfig config) {
         this.config = config;
@@ -82,28 +81,35 @@ public final class BacktrackRuntime {
 
     private void select(Minecraft client, LivingEntity entity) {
         if (entity == null) {
-            release();
+            packets.drain(nowMillis());
             return;
         }
         long now = nowMillis();
         if (now < blockedUntil) return;
+        // An expired attack window may drain existing history, but cannot create new history.
+        if (target == null
+                && !config.targetMode()
+                        .acceptsAttackAge(
+                                attackedAt < 0 ? -1 : now - attackedAt, config.lastAttackMillis()))
+            return;
         double distance = distanceSquared(client, entity, entity.position());
         if (distance < config.minRange() * config.minRange() || distance > maxRangeSquared())
             return;
         if (entity != target) {
+            if (target != null) {
+                packets.drain(now);
+                return;
+            }
             if (!RandomMath.chancePercent(config.chance())) {
                 release();
                 blockedUntil = now + RandomMath.betweenInclusive(100, 150);
                 return;
             }
-            packets.releaseAll(this::replay);
-            resetTarget();
             target = entity;
             position.setBaseFrom(target);
-            window.seed(position.base(), tick);
             baseDelay = RandomMath.betweenInclusive(config.minDelayMillis(), config.delayMillis());
-            currentDelay = dynamicDelay(client);
-            armed = true;
+            currentDelay = sessionDelay(client);
+            packets.start(currentDelay);
         }
         lastInRange = now;
     }
@@ -118,37 +124,29 @@ public final class BacktrackRuntime {
         }
         if (!validate(client) || !movesTarget(packet, client.level)) return false;
 
+        // Relative teleport flags are interpreted by vanilla after prior deltas replay.
+        if (packet instanceof ClientboundTeleportEntityPacket) {
+            release();
+            return false;
+        }
         long now = nowMillis();
         packets.releaseDue(now, this::replay);
         Vec3 previous = position.base();
         Vec3 real = position.handlePacket(packet, client.level, target);
         if (real == null) return false;
-        double realDistance = distanceSquared(client, target, real);
-        BacktrackWindow.Decision decision =
-                window.observe(
-                        previous,
-                        real,
-                        tick,
-                        distanceSquared(client, target, previous),
-                        realDistance,
-                        distanceSquared(client, target, target.position()));
-        if (decision == BacktrackWindow.Decision.RESET || realDistance > maxRangeSquared()) {
+        // Discontinuous teleports end history. Direction changes never restart its delay.
+        if (previous.distanceToSqr(real) > 25.0) {
             release();
             return false;
         }
-        if (decision == BacktrackWindow.Decision.RELEASE || !window.motionReady(tick)) {
-            if (!window.motionReady(tick)) armed = false;
-            packets.releaseAll(this::replay);
-            return false;
-        }
+        if (distanceSquared(client, target, real) > maxRangeSquared()) packets.drain(now);
         if (packets.size() >= config.queueLimit()
                 || !packets.offer(
-                        new Snapshot(packet, client.getConnection(), client.level),
-                        now,
-                        currentDelay)) {
+                        new Snapshot(packet, client.getConnection(), client.level), now)) {
             release();
             return false;
         }
+        packets.releaseDue(now, this::replay);
         return true;
     }
 
@@ -159,9 +157,12 @@ public final class BacktrackRuntime {
             discard();
             return;
         }
-        if (config.targetMode() != BacktrackConfig.TargetMode.ATTACK)
+        if (target == null && config.targetMode() != BacktrackConfig.TargetMode.ATTACK)
             select(client, BacktrackTargets.find(client, config));
-        if (target != null) currentDelay += Math.clamp(dynamicDelay(client) - currentDelay, -4, 4);
+        if (target != null
+                && config.targetMode() == BacktrackConfig.TargetMode.INTENT
+                && !BacktrackTargets.intended(client, target, config.maxRange()))
+            packets.drain(nowMillis());
         advance(client);
         if (config.actionBar() && tick % 4 == 0)
             ClientChat.actionBar(client, "Backtrack " + hudStats());
@@ -175,19 +176,9 @@ public final class BacktrackRuntime {
 
     private void advance(Minecraft client) {
         if (!validate(client)) return;
-        if (window.motionReady(tick) && !armed) {
-            baseDelay = RandomMath.betweenInclusive(config.minDelayMillis(), config.delayMillis());
-            currentDelay = dynamicDelay(client);
-            armed = true;
-        }
-        if (!window.motionReady(tick)
-                || !BacktrackWindow.useful(
-                        distanceSquared(client, target, position.base()),
-                        distanceSquared(client, target, target.position()))) {
-            packets.releaseAll(this::replay);
-        } else {
-            packets.releaseDue(nowMillis(), this::replay);
-        }
+        long now = nowMillis();
+        packets.releaseDue(now, this::replay);
+        if (packets.drained(now)) finishTarget(now);
     }
 
     private boolean validate(Minecraft client) {
@@ -217,19 +208,20 @@ public final class BacktrackRuntime {
                 || !inRange && now - lastInRange > config.trackingBufferMillis()
                 || config.pauseOnHurt() && target.hurtTime >= config.hurtTime()
                 || distanceSquared(client, target, position.base()) > maxRangeSquared()) {
-            release();
-            return false;
+            packets.drain(now);
         }
         return true;
     }
 
     public void release() {
         packets.releaseAll(this::replay);
+        finishTarget(nowMillis());
+    }
+
+    private void finishTarget(long now) {
         if (target != null)
             blockedUntil =
-                    nowMillis()
-                            + RandomMath.betweenInclusive(
-                                    config.nextDelayMin(), config.nextDelayMax());
+                    now + RandomMath.betweenInclusive(config.nextDelayMin(), config.nextDelayMax());
         resetTarget();
     }
 
@@ -242,9 +234,7 @@ public final class BacktrackRuntime {
 
     private void resetTarget() {
         target = null;
-        armed = false;
         position.base(Vec3.ZERO);
-        window.reset();
         overlay.reset();
     }
 
@@ -256,7 +246,7 @@ public final class BacktrackRuntime {
         return config.minDelayMillis() + "–" + config.delayMillis() + " ms";
     }
 
-    private int dynamicDelay(Minecraft client) {
+    private int sessionDelay(Minecraft client) {
         int maximum = config.delayMillis();
         if (config.pingRatio() > 0 && client.getConnection() != null) {
             var info = client.getConnection().getPlayerInfo(client.player.getUUID());
@@ -267,12 +257,7 @@ public final class BacktrackRuntime {
                                 config.minDelayMillis(),
                                 maximum);
         }
-        return (int)
-                Math.round(
-                        Math.clamp(
-                                baseDelay + window.speed() * config.speedFactor(),
-                                config.minDelayMillis(),
-                                maximum));
+        return (int) Math.round(Math.clamp(baseDelay, config.minDelayMillis(), maximum));
     }
 
     public void renderEsp(WorldRenderEvent event) {
@@ -343,7 +328,7 @@ public final class BacktrackRuntime {
     }
 
     private static long nowMillis() {
-        return System.nanoTime() / 1_000_000L;
+        return LagUtils.nowMillis();
     }
 
     private record Snapshot(Packet<?> packet, ClientPacketListener listener, ClientLevel level) {}

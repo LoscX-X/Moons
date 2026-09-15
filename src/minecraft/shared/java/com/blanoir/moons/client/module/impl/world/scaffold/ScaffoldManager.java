@@ -36,7 +36,7 @@ import com.blanoir.moons.client.utils.rotation.smooth.InstantA;
 import com.blanoir.moons.client.utils.rotation.smooth.InstantB;
 import com.blanoir.moons.client.utils.rotation.smooth.SmoothD;
 import com.blanoir.moons.client.utils.rotation.smooth.SmoothE;
-import com.blanoir.moons.client.utils.world.placement.BlockPlacementUtils;
+import com.blanoir.moons.client.utils.world.placement.PlacementRaycast;
 import com.mojang.blaze3d.vertex.PoseStack;
 
 import net.minecraft.client.Minecraft;
@@ -70,6 +70,7 @@ import java.util.Locale;
  * routing interactions through modern vanilla {@code useItemOn}.</p>
  */
 public final class ScaffoldManager {
+    private static final PlacementRaycast RAYS = new PlacementRaycast("scaffold");
     private static final QuantizerA.Adapter AIM_QUANTIZER =
             new QuantizerA.Adapter(
                     SilentPacketRotation::quantizePacketYaw,
@@ -999,7 +1000,7 @@ public final class ScaffoldManager {
                 BlockHitResult jitterHit =
                         hit == null
                                 ? null
-                                : BlockPlacementUtils.traceFace(
+                                : RAYS.traceFace(
                                         client,
                                         client.player.getEyePosition(),
                                         jitteredYaw,
@@ -1026,7 +1027,7 @@ public final class ScaffoldManager {
                         yaw -> SilentPacketRotation.quantizePacketYaw(sentYaw(), yaw),
                         yaw ->
                                 !requireHit
-                                        || BlockPlacementUtils.traceFace(
+                                        || RAYS.traceFace(
                                                         client,
                                                         client.player.getEyePosition(),
                                                         yaw,
@@ -1042,7 +1043,7 @@ public final class ScaffoldManager {
         }
         if (variedYaw != pubYaw && requireHit) {
             hit =
-                    BlockPlacementUtils.traceFace(
+                    RAYS.traceFace(
                             client,
                             client.player.getEyePosition(),
                             variedYaw,
@@ -1588,7 +1589,11 @@ public final class ScaffoldManager {
             return false;
         }
         InteractionHand hand = placementHand(client);
-        if (hand == null || blockCount <= 0) return false;
+        if (hand == null
+                || blockCount <= 0
+                || !RAYS.canUse(
+                        client, new BlockHitResult(hitVec, target.face(), target.support(), false)))
+            return false;
         var committed = RotationLease.submission();
         ScaffoldPlacementDebugger.begin(
                 client,
@@ -1798,6 +1803,7 @@ public final class ScaffoldManager {
     private static BlockAim findGodBridgeAim(
             Minecraft client, Vec3 position, Vec3 eye, BlockPos desired) {
         return TargetSelectorD.select(
+                RAYS,
                 client,
                 eye,
                 desired.getY(),
@@ -1812,6 +1818,7 @@ public final class ScaffoldManager {
     private static BlockAim findVanillaTowerAim(
             Minecraft client, Vec3 playerPosition, Vec3 eye, BlockPos desired) {
         return TargetSelectorE.select(
+                RAYS,
                 client,
                 eye,
                 desired,
@@ -1823,6 +1830,7 @@ public final class ScaffoldManager {
     private static BlockAim findFaceAim(Minecraft client, BlockTarget target, Vec3 eye) {
         Rotation base = new Rotation(placementBaseYaw(client), placementBasePitch(client));
         return AimPointsG.resolve(
+                RAYS,
                 switch (FACE_SAMPLING.get()) {
                     case STANDARD -> AimPointsG.Sampling.STANDARD;
                     case CENTER -> AimPointsG.Sampling.CENTER;
@@ -1866,7 +1874,7 @@ public final class ScaffoldManager {
         }
 
         BlockHitResult hit =
-                BlockPlacementUtils.traceFace(
+                RAYS.traceFace(
                         client,
                         eye,
                         limitedYaw,

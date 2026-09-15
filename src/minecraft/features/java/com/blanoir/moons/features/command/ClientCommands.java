@@ -7,6 +7,7 @@ import com.blanoir.moons.client.command.PremiumCheckCommand;
 import com.blanoir.moons.client.management.targeting.Targeting;
 import com.blanoir.moons.client.module.framework.ModuleRegistry;
 import com.blanoir.moons.client.module.impl.render.Nickname;
+import com.blanoir.moons.client.module.impl.render.NicknameShuffle;
 import com.blanoir.moons.client.ui.clickgui.ModuleGui;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -72,6 +73,10 @@ public final class ClientCommands {
             Nickname.commandStatus(client);
         } else if (tail.equalsIgnoreCase("reset")) {
             Nickname.commandReset(client);
+        } else if (tail.matches("(?i)all\\s+reset")) {
+            NicknameShuffle.commandReset(client);
+        } else if (tail.equalsIgnoreCase("all")) {
+            NicknameShuffle.command(client);
         } else {
             Nickname.commandSet(client, tail);
         }

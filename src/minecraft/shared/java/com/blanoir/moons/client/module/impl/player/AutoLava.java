@@ -20,6 +20,7 @@ import com.blanoir.moons.client.utils.rotation.aim.AimPointsF;
 import com.blanoir.moons.client.utils.world.FluidQueries;
 import com.blanoir.moons.client.utils.world.placement.BlockPlacementUtils;
 import com.blanoir.moons.client.utils.world.placement.PlacementCoordinator;
+import com.blanoir.moons.client.utils.world.placement.PlacementRaycast;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
@@ -37,6 +38,7 @@ import net.minecraft.world.phys.Vec3;
 
 /** Critical-triggered lava place/collect cycle using vanilla bucket actions. */
 public final class AutoLava {
+    private static final PlacementRaycast RAYS = new PlacementRaycast("autolava");
     private static final int MAX_BUCKET_SYNC_TICKS = 10;
     private static final int MAX_ACTION_WAIT_TICKS = 24;
     private static final int MAX_CYCLE_TICKS = 60;
@@ -410,7 +412,7 @@ public final class AutoLava {
                 return;
             }
             selectSlot(client, bucketSlot);
-            if (SilentPacketRotation.invokeUseInPlayerUpdate(client, placementHit)) {
+            if (RAYS.invokeUseInPlayerUpdate(client, placementHit)) {
                 transition(CyclePhase.CLICKING_TO_PLACE);
             } else if (phaseTicks > MAX_ACTION_WAIT_TICKS) {
                 abortCycle(client);
@@ -441,7 +443,7 @@ public final class AutoLava {
                 beginReturnRotation(client);
                 return;
             }
-            if (SilentPacketRotation.invokeUseInPlayerUpdate(client, lavaSourceHit(lavaPos))) {
+            if (RAYS.invokeUseInPlayerUpdate(client, lavaSourceHit(lavaPos))) {
                 transition(CyclePhase.CLICKING_TO_PICKUP);
             } else if (phaseTicks > MAX_ACTION_WAIT_TICKS) {
                 abortCycle(client);
@@ -517,7 +519,7 @@ public final class AutoLava {
         }
         BlockHitResult pickupHit = lavaSourceHit(lavaPos);
         if (sentLookReachesLavaSource(client, lavaPos)) {
-            if (SilentPacketRotation.invokeUseInPlayerUpdate(client, pickupHit)) {
+            if (RAYS.invokeUseInPlayerUpdate(client, pickupHit)) {
                 transition(CyclePhase.CLICKING_TO_PICKUP);
             }
             return;
@@ -659,12 +661,13 @@ public final class AutoLava {
     private static boolean sentLookReachesLavaSource(Minecraft client, BlockPos source) {
         Vec3 eye = client.player.getEyePosition();
         BlockHitResult hit =
-                BlockPlacementUtils.traceOutline(
+                RAYS.traceOutline(
                         client,
                         eye,
                         SilentPacketRotation.getInteractionLookVector(client),
                         client.player.blockInteractionRange(),
-                        ClipContext.Fluid.SOURCE_ONLY);
+                        ClipContext.Fluid.SOURCE_ONLY,
+                        source);
         return BlockPlacementUtils.matchesBlock(hit, source);
     }
 
@@ -672,12 +675,13 @@ public final class AutoLava {
     private static boolean sentLookMatchesPlacement(Minecraft client, BlockHitResult plannedHit) {
         Vec3 eye = client.player.getEyePosition();
         BlockHitResult hit =
-                BlockPlacementUtils.traceOutline(
+                RAYS.traceOutline(
                         client,
                         eye,
                         SilentPacketRotation.getInteractionLookVector(client),
                         client.player.blockInteractionRange(),
-                        ClipContext.Fluid.NONE);
+                        ClipContext.Fluid.NONE,
+                        plannedHit.getBlockPos());
         return BlockPlacementUtils.matchesFace(hit, plannedHit);
     }
 
@@ -910,7 +914,7 @@ public final class AutoLava {
     /** Confirms that aiming at the selected plane point really reaches that face. */
     private static BlockHitResult visibleFaceHit(
             Minecraft client, BlockPos supportPos, Direction face, Vec3 planePoint) {
-        return BlockPlacementUtils.visibleFaceHit(
+        return RAYS.visibleFaceHit(
                 client, client.player.getEyePosition(), supportPos, face, planePoint, RAY_EPSILON);
     }
 

@@ -51,6 +51,7 @@ import com.blanoir.moons.client.module.impl.render.FullBright;
 import com.blanoir.moons.client.module.impl.render.InventorySee;
 import com.blanoir.moons.client.module.impl.render.Nametags;
 import com.blanoir.moons.client.module.impl.render.Nickname;
+import com.blanoir.moons.client.module.impl.render.NicknameShuffle;
 import com.blanoir.moons.client.module.impl.render.Scoreboard;
 import com.blanoir.moons.client.module.impl.render.TargetInfoHud;
 import com.blanoir.moons.client.module.impl.render.Trim;
@@ -211,6 +212,7 @@ final class FeatureBootstrap {
         RemoteConfigClient.shutdown();
         PremiumCheckCommand.shutdown();
         AntiNick.shutdown();
+        NicknameShuffle.reset();
         OreScanner.shutdown();
         OreHighlighter.close();
         Chams.close();

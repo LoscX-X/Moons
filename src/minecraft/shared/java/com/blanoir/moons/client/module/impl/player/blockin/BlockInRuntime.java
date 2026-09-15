@@ -8,6 +8,7 @@ import com.blanoir.moons.client.management.rotation.SilentPacketRotation;
 import com.blanoir.moons.client.utils.client.ClientReady;
 import com.blanoir.moons.client.utils.world.placement.BlockPlacementUtils;
 import com.blanoir.moons.client.utils.world.placement.PlacementCoordinator;
+import com.blanoir.moons.client.utils.world.placement.PlacementRaycast;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
@@ -20,6 +21,7 @@ import java.util.Map;
 
 /** Plans a single fixed enclosure and serializes placement through the shared interaction lock. */
 public final class BlockInRuntime {
+    private static final PlacementRaycast RAYS = new PlacementRaycast("blockin");
     private static final int MAX_ATTEMPTS = 3;
     private static final int STALL_TICKS = 120;
     private static final int ACTION_TIMEOUT = 40;
@@ -215,12 +217,13 @@ public final class BlockInRuntime {
     private static void advance(Minecraft client) {
         if (phase == Phase.READY) {
             BlockHitResult actual =
-                    BlockPlacementUtils.traceOutline(
+                    RAYS.traceOutline(
                             client,
                             client.player.getEyePosition(),
                             SilentPacketRotation.getInteractionLookVector(client),
                             client.player.blockInteractionRange(),
-                            ClipContext.Fluid.NONE);
+                            ClipContext.Fluid.NONE,
+                            plan.hit().getBlockPos());
             if (!HOTBAR.active()
                     || HOTBAR.leasedSlot() != client.player.getInventory().getSelectedSlot()
                     || !BlockPlacementUtils.matchesFace(actual, plan.hit())
@@ -229,7 +232,7 @@ public final class BlockInRuntime {
                 finishAction(client);
                 return;
             }
-            if (SilentPacketRotation.invokeUseInPlayerUpdate(client, actual, false)) {
+            if (RAYS.invokeUseInPlayerUpdate(client, actual, false)) {
                 attempts.merge(plan.position(), 1, Integer::sum);
                 pending.put(
                         plan.position(), new Pending(client.player.tickCount, settleTicks(client)));

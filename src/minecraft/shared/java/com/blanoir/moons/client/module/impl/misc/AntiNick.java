@@ -5,6 +5,7 @@ import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.IntSetting;
 import com.blanoir.moons.client.config.settings.StringSetting;
 import com.blanoir.moons.client.event.EventBus;
+import com.blanoir.moons.client.module.impl.render.NicknameShuffle;
 import com.blanoir.moons.client.service.profile.MojangProfileClient;
 
 import net.minecraft.ChatFormatting;
@@ -22,6 +23,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class AntiNick {
     private static final BooleanSetting ENABLED = bool("antinick.enabled", false);
     private static final BooleanSetting MARK_NICK_UUID = bool("antinick.markNickUuid", true);
+    private static final BooleanSetting IGNORE_SELF = bool("antinick.ignoreSelf", true);
     private static final BooleanSetting RESOLVE_NAMES = bool("antinick.resolveNames", true);
     private static final StringSetting SUFFIX = string("antinick.suffix", "[Nick]");
     private static final IntSetting REFRESH_MS = integer("antinick.refreshMs", 5000, 500, 15000);
@@ -39,7 +41,11 @@ public final class AntiNick {
 
     private static void tick(Minecraft client) {
         var connection = client == null ? null : client.getConnection();
-        if (!ENABLED.get() || !RESOLVE_NAMES.get() || client == null || connection == null) return;
+        if (!ENABLED.get()
+                || !RESOLVE_NAMES.get()
+                || NicknameShuffle.isEnabled()
+                || client == null
+                || connection == null) return;
         long now = System.currentTimeMillis();
         if (now < nextRefreshAt) return;
         nextRefreshAt = now + REFRESH_MS.get();
@@ -47,6 +53,7 @@ public final class AntiNick {
             UUID uuid = info.getProfile().id();
             String visibleName = info.getProfile().name();
             if (uuid == null
+                    || ignored(client, uuid)
                     || visibleName == null
                     || resolvedNames.containsKey(uuid)
                     || inFlight.contains(uuid)
@@ -59,6 +66,8 @@ public final class AntiNick {
                                             () -> {
                                                 inFlight.remove(uuid);
                                                 if (!ENABLED.get()
+                                                        || ignored(client, uuid)
+                                                        || NicknameShuffle.isEnabled()
                                                         || client.getConnection() != connection)
                                                     return;
                                                 if (failure != null) {
@@ -101,7 +110,11 @@ public final class AntiNick {
     }
 
     private static Component decorate(UUID uuid, String visibleName, Component original) {
-        if (!ENABLED.get() || uuid == null || original == null) return original;
+        if (!ENABLED.get()
+                || uuid == null
+                || original == null
+                || NicknameShuffle.isEnabled()
+                || ignored(Minecraft.getInstance(), uuid)) return original;
         String plain = original.getString();
         Component result = original.copy();
         String resolved = resolvedNames.get(uuid);
@@ -124,6 +137,19 @@ public final class AntiNick {
                                             .withStyle(ChatFormatting.YELLOW, ChatFormatting.BOLD));
         }
         return result;
+    }
+
+    private static boolean ignored(Minecraft client, UUID uuid) {
+        if (!IGNORE_SELF.get() || client == null || uuid == null) return false;
+        if (client.player != null && uuid.equals(client.player.getUUID())) return true;
+        var connection = client.getConnection();
+        return connection != null && uuid.equals(connection.getLocalGameProfile().id());
+    }
+
+    public static int setIgnoreSelf(Minecraft ignoredClient, boolean value) {
+        IGNORE_SELF.set(value);
+        nextRefreshAt = 0L;
+        return 1;
     }
 
     public static void shutdown() {

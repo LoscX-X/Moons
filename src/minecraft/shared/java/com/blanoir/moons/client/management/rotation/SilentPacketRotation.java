@@ -13,6 +13,7 @@ import com.blanoir.moons.client.utils.rotation.smooth.InstantA;
 import com.blanoir.moons.client.utils.rotation.smooth.SmoothA;
 import com.blanoir.moons.client.utils.rotation.smooth.SmoothB;
 import com.blanoir.moons.client.utils.rotation.smooth.SmoothG;
+import com.blanoir.moons.client.utils.world.placement.PlacementRaycast;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
@@ -77,6 +78,7 @@ public final class SilentPacketRotation {
     private static boolean rotationPacketSent;
 
     private static BlockHitResult simulatedUseHit;
+    private static BlockHitResult simulatedItemRay;
     private static float simulatedUseYaw;
     private static float simulatedUsePitch;
     private static boolean simulatedUseQueued;
@@ -405,9 +407,19 @@ public final class SilentPacketRotation {
      */
     public static boolean invokeUseInPlayerUpdate(
             Minecraft client, BlockHitResult hit, boolean requirePreviousRotation) {
+        return invokeUseInPlayerUpdate(client, hit, requirePreviousRotation, null);
+    }
+
+    /** Retain this use's bucket ray if an input hook delays the actual invocation. */
+    public static boolean invokeUseInPlayerUpdate(
+            Minecraft client,
+            BlockHitResult hit,
+            boolean requirePreviousRotation,
+            BlockHitResult itemRay) {
         if ((requirePreviousRotation && !rotationPacketSent) || !prepareUse(client, hit)) {
             return false;
         }
+        simulatedItemRay = itemRay;
         invokeSimulatedUse(client);
         return simulatedUseCompleted;
     }
@@ -416,7 +428,8 @@ public final class SilentPacketRotation {
         boolean previousInvocation = invokingSimulatedUse;
         invokingSimulatedUse = true;
         try {
-            GameAccess.invokeStartUseItem(client);
+            PlacementRaycast.withItemRay(
+                    simulatedItemRay, () -> GameAccess.invokeStartUseItem(client));
         } finally {
             invokingSimulatedUse = previousInvocation;
         }
@@ -675,6 +688,7 @@ public final class SilentPacketRotation {
         lastRotationFrameNanos = 0L;
         rotationPacketSent = false;
         simulatedUseHit = null;
+        simulatedItemRay = null;
         simulatedUseYaw = 0.0F;
         simulatedUsePitch = 0.0F;
         simulatedUseQueued = false;

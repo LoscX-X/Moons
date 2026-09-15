@@ -3,7 +3,6 @@ package com.blanoir.moons.runtime.module;
 import com.blanoir.moons.api.Branding;
 import com.blanoir.moons.api.ModuleServices;
 import com.blanoir.moons.api.MoonsModule;
-import com.blanoir.moons.api.ScopedResources;
 import com.blanoir.moons.runtime.RuntimeEvents;
 import com.blanoir.moons.runtime.lifecycle.DefaultResourceScope;
 
@@ -115,21 +114,26 @@ public final class ModuleManager implements AutoCloseable {
         LoadedModule candidate = loadCandidate(source, cached, cachedLibraries, descriptor);
         try {
             if (previous != null && previous.enabled) {
-                previous.instance.disable();
-                previous.enabled = false;
+                previous.disable();
             }
-            enable(candidate);
-            candidate.enabled = true;
+            candidate.enable();
             loaded.put(candidate.descriptor.id(), candidate);
         } catch (Throwable failure) {
-            closeModule(candidate);
+            try {
+                candidate.close();
+            } catch (Throwable cleanup) {
+                failure.addSuppressed(cleanup);
+            }
             if (previous != null && !previous.enabled) {
-                enable(previous);
-                previous.enabled = true;
+                try {
+                    previous.enable();
+                } catch (Throwable restore) {
+                    failure.addSuppressed(restore);
+                }
             }
             throw failure;
         }
-        if (previous != null) closeModule(previous);
+        if (previous != null) previous.close();
         System.out.println(
                 Branding.prefix()
                         + " Module active: "
@@ -148,16 +152,15 @@ public final class ModuleManager implements AutoCloseable {
         LoadedModule module = loaded.get(id);
         if (module == null) return false;
         if (module.enabled == enabled) return true;
-        if (enabled) enable(module);
-        else module.instance.disable();
-        module.enabled = enabled;
+        if (enabled) module.enable();
+        else module.disable();
         return true;
     }
 
     public synchronized boolean unload(String id) throws Exception {
         LoadedModule module = loaded.remove(id);
         if (module == null) return false;
-        closeModule(module);
+        module.close();
         return true;
     }
 
@@ -191,18 +194,30 @@ public final class ModuleManager implements AutoCloseable {
             Class<?> entrypoint = Class.forName(descriptor.entrypoint(), true, loader);
             MoonsModule instance = (MoonsModule) entrypoint.getDeclaredConstructor().newInstance();
             Files.createDirectories(home.resolve("data").resolve(descriptor.id()));
-            DefaultModuleContext context =
-                    new DefaultModuleContext(
-                            descriptor.id(),
-                            home.resolve("data").resolve(descriptor.id()),
+            LoadedModule module =
+                    new LoadedModule(
+                            descriptor,
+                            source,
+                            cached,
+                            cachedLibraries,
+                            loader,
                             resources,
+                            instance,
+                            home.resolve("data").resolve(descriptor.id()),
                             Map.of(RuntimeEvents.class, events, ModuleServices.class, services));
-            ScopedResources.run(resources, () -> instance.load(context));
-            return new LoadedModule(
-                    descriptor, source, cached, cachedLibraries, loader, resources, instance);
+            module.load();
+            return module;
         } catch (Throwable failure) {
-            resources.close();
-            loader.close();
+            try {
+                resources.close();
+            } catch (Throwable cleanup) {
+                failure.addSuppressed(cleanup);
+            }
+            try {
+                loader.close();
+            } catch (Throwable cleanup) {
+                failure.addSuppressed(cleanup);
+            }
             throw failure;
         }
     }
@@ -328,38 +343,8 @@ public final class ModuleManager implements AutoCloseable {
             return;
         }
         loaded.remove(matched.descriptor.id());
-        closeModule(matched);
+        matched.close();
         System.out.println(Branding.prefix() + " Module removed: " + matched.descriptor.id());
-    }
-
-    private static void enable(LoadedModule module) throws Exception {
-        ScopedResources.run(module.resources, module.instance::enable);
-    }
-
-    private static void closeModule(LoadedModule module) throws Exception {
-        Exception aggregate = null;
-        if (module.enabled) {
-            try {
-                module.instance.disable();
-                module.enabled = false;
-            } catch (Exception failure) {
-                aggregate = failure;
-            }
-        }
-        try {
-            module.resources.close();
-        } catch (Exception failure) {
-            if (aggregate == null) aggregate = failure;
-            else aggregate.addSuppressed(failure);
-        }
-        try {
-            module.instance.unload();
-        } catch (Exception failure) {
-            if (aggregate == null) aggregate = failure;
-            else aggregate.addSuppressed(failure);
-        }
-        module.classLoader.close();
-        if (aggregate != null) throw aggregate;
     }
 
     @Override
@@ -379,7 +364,7 @@ public final class ModuleManager implements AutoCloseable {
         queuedReloads.clear();
         for (int index = modules.length - 1; index >= 0; index--) {
             try {
-                closeModule(modules[index]);
+                modules[index].close();
             } catch (Exception failure) {
                 System.err.println(
                         Branding.prefix() + " Module did not unload cleanly: " + failure);

@@ -13,32 +13,37 @@
 
 ```powershell
 Set-Location E:\McEnv\moons
-.\gradlew.bat moonsExe
+.\gradlew.bat moonsPackages
 ```
 
-产物为 `build\dist\moons.exe`。这个命令会构建三个版本的宿主、共享 YSM 库和三个适配模块，并把 YSM 包内置到 EXE；无需再单独执行 YSM 打包命令。
+产物是 `build\dist\moon-install.exe` 和 `build\dist\moon.exe`。先运行安装器安装/更新 UI 运行库、共享 YSM 库及所有游戏版本适配模块，再运行加载器。加载器只校验已安装依赖，缺失、损坏或版本不匹配时提示运行匹配的安装器。
 
-`moons.exe` 使用缓存的 UI 运行库。向其他电脑分发时，用 `-Pmoons_ui_download_url=https://.../moons-ui-runtime.jar` 指定同次构建的 UI 包下载地址；没有缓存或下载地址时，选择包含 UI 依赖的完整版：
-
-```powershell
-.\gradlew.bat moonsFullExe
-```
+本地安装器优先读取旁边的 `moons-ui-runtime.jar` 或 `dependencies\moons-ui-runtime.jar`。向其他电脑分发时，可用 `-Pmoons_ui_download_url=https://.../moons-ui-runtime.jar` 固定同次发布的 UI 下载地址；下载与本地文件均校验 SHA-256 和大小。CI 自动写入当前 Release 的地址。安装器每次更新到自身构建匹配的依赖，更新客户端时应使用同次发布的两个 EXE。
 
 | 命令 | `build\dist` 下的产物 |
 | --- | --- |
-| `moonsExe` | `moons.exe`，下载/缓存 UI 依赖 |
-| `moonsFullExe` | `moons-full.exe`，内置 UI 依赖 |
-| `moonsPackages` | 两种 EXE 和 UI 运行库 |
+| `moonsExe` | `moon.exe`，校验依赖并加载游戏 |
+| `moonsInstallExe` | `moon-install.exe`，安装/更新依赖，不加载游戏 |
+| `moonsPackages` | 安装器、加载器和 UI 运行库 |
 | `moonsUiRuntime` | `dependencies\moons-ui-runtime.jar` 及 SHA-256 文件 |
 | `ysmAllVersions` | `moons-ysm-all.zip` 和三个单版本 ZIP |
 | `ysmBundle -Pminecraft_version=26.2` | `moons-ysm-26.2.zip` |
-| `moonsJar -Pminecraft_version=26.2` | `agent\26_2\moons.jar`，由启动器加载 |
+| `moonsJar -Pminecraft_version=26.2` | `agent\26_2\moons.jar`，由加载器加载 |
 
-指定单版本只影响对应任务；EXE 始终包含全部受支持版本。
+指定单版本只影响对应任务；加载器始终包含全部受支持版本的载荷。完整版任务已移除。
+
+## 客户端与依赖版本
+
+- `gradle.properties` 的 `load_version` 是客户端版本，使用 `major.minor.patch`，可带预发布后缀。
+- 依赖版本由 UI 哈希和全部 YSM 文件哈希自动生成；分别保留 UI、YSM 编号。界面显示前 12 位，完整 SHA-256 用于文件校验。
+- 客户端版本、构建编号和下载地址不参与依赖编号计算；依赖内容不变时无需重复安装。
+- 两个 EXE 显示客户端/依赖版本，Windows 文件属性包含客户端版本，`--version` 输出详细元数据。
+- 安装成功后版本记录保存在 `MOONS_HOME/libraries/moons-dependencies.properties`。此记录用于展示，不能替代实际文件校验。
+- CI 以 `GITHUB_SHA` 标识构建，本地默认为 `local`，可用 `-Pmoons_build_id=<id>` 指定。
 
 ## YSM 库与热更新
 
-两个 EXE 启动时均自动安装匹配的文件；内容相同的文件跳过，更新失败时回滚。`MOONS_HOME` 默认是 `%APPDATA%\.moons`，也可通过同名环境变量指定。
+`moon-install.exe` 安装匹配的文件；内容相同的文件跳过，更新失败时回滚。`MOONS_HOME` 默认是 `%APPDATA%\.moons`，也可通过同名环境变量指定。
 
 ```text
 MOONS_HOME/
@@ -52,15 +57,15 @@ MOONS_HOME/
     moons-ysm-26.3-rc-3.jar
 ```
 
-三个 Minecraft 版本共用上面的三份库，仅适配模块不同。无需为每个模型复制 libs。也可把 `moons-ysm-all.zip` 解压至 `MOONS_HOME`，或运行 `build\dist\moons.exe --install-ysm-only` 只安装 YSM。
+三个 Minecraft 版本共用上面的三份库，仅适配模块不同。无需为每个模型复制 libs。也可把 `moons-ysm-all.zip` 解压至 `MOONS_HOME`，或运行 `build\dist\moon-install.exe --install-only` 无界面安装全部依赖（退出码 0 表示成功）。`moon.exe --verify-dependencies` 只校验，不安装、不连接游戏。
 
 仅修改 YSM 库/模块时，可通过模块重载更新；修改 bootstrap API、宿主渲染钩子或注入位置后，须退出旧游戏并用新 EXE 注入新启动的游戏。`ysmAllVersions` 不生成 EXE，无法升级进程中的旧宿主。
 
 避免从另一份仓库或旧目录启动，构建完成后确认绝对路径和时间：
 
 ```powershell
-Get-Item .\build\dist\moons.exe | Select-Object FullName, LastWriteTime, Length
-& .\build\dist\moons.exe
+Get-Item .\build\dist\moon.exe | Select-Object FullName, LastWriteTime, Length
+& .\build\dist\moon.exe
 ```
 
 ## 按需验证
@@ -78,6 +83,7 @@ Get-Item .\build\dist\moons.exe | Select-Object FullName, LastWriteTime, Length
 .\gradlew.bat verifyYsmCore verifyYsmRenderSetup '-Pminecraft_version=26.3-rc-3'
 .\gradlew.bat verifyYsmCore '-Pysm_test_model=C:\Models\example.ysm'
 .\gradlew.bat verifyYsmPackage
+.\gradlew.bat verifyLauncherPackages # 隔离目录验证两个真实 EXE，不注入游戏
 .\gradlew.bat benchmarkYsm
 ```
 

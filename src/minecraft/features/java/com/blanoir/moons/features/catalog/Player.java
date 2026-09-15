@@ -48,7 +48,7 @@ final class Player {
     }
 
     static ModuleRegistry.Module blockIn() {
-        return module(
+        return PlacementOptions.module(
                 "blockin",
                 "BlockIn",
                 ModuleCategories.EXPERIMENT,
@@ -59,7 +59,7 @@ final class Player {
     }
 
     static ModuleRegistry.Module autoWeb() {
-        return module(
+        return PlacementOptions.module(
                 "autoweb",
                 "AutoWeb",
                 ModuleCategories.WORLD,
@@ -137,7 +137,7 @@ final class Player {
     }
 
     static ModuleRegistry.Module autoLava() {
-        return module(
+        return PlacementOptions.module(
                 "autolava",
                 "AutoLava",
                 ModuleCategories.WORLD,
@@ -232,7 +232,7 @@ final class Player {
     }
 
     static ModuleRegistry.Module autoBed() {
-        return module(
+        return PlacementOptions.module(
                 "autobed",
                 "AutoBed",
                 ModuleCategories.EXPERIMENT,
@@ -320,7 +320,7 @@ final class Player {
     }
 
     static ModuleRegistry.Module antiLava() {
-        return module(
+        return PlacementOptions.module(
                 "antilava",
                 "AntiLava",
                 ModuleCategories.MOVEMENT,
@@ -343,7 +343,7 @@ final class Player {
     }
 
     static ModuleRegistry.Module antiWeb() {
-        return module(
+        return PlacementOptions.module(
                 "antiweb",
                 "AntiWeb",
                 ModuleCategories.MOVEMENT,
@@ -372,7 +372,7 @@ final class Player {
                         "act_ticks",
                         "Act ticks",
                         "antiweb.actTicks",
-                        4,
+                        2,
                         1,
                         20,
                         1,
@@ -535,7 +535,7 @@ final class Player {
     }
 
     static ModuleRegistry.Module autoMlg() {
-        return module(
+        return PlacementOptions.module(
                 "nofall",
                 "AutoMLG",
                 "Player",

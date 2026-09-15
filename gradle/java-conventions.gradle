@@ -52,7 +52,7 @@ sourceSets {
     }
 }
 
-version = project.mod_version
+version = project.load_version
 group = project.maven_group
 
 base {

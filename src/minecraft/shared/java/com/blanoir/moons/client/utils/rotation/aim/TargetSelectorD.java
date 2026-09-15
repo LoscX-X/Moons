@@ -2,6 +2,7 @@ package com.blanoir.moons.client.utils.rotation.aim;
 
 import com.blanoir.moons.client.utils.rotation.Rotation;
 import com.blanoir.moons.client.utils.rotation.quantize.QuantizerA;
+import com.blanoir.moons.client.utils.world.placement.PlacementRaycast;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
@@ -41,6 +42,7 @@ public final class TargetSelectorD {
     }
 
     public static BlockAim select(
+            PlacementRaycast rays,
             Minecraft client,
             Vec3 eye,
             int row,
@@ -60,6 +62,7 @@ public final class TargetSelectorD {
                         || state.getCollisionShape(client.level, support).isEmpty()) continue;
                 BlockAim aim =
                         AimPointsH.resolve(
+                                rays,
                                 client,
                                 new BlockTarget(support, face),
                                 eye,

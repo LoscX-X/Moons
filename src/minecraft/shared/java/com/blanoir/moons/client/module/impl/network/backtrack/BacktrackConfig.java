@@ -19,7 +19,7 @@ public final class BacktrackConfig {
     private final IntSetting delay =
             new IntSetting.Builder()
                     .name("backtrack.delay.max")
-                    .defaultValue(150)
+                    .defaultValue(70)
                     .range(0, 1000)
                     .build();
     private final ModeSetting<TargetMode> targetMode =
@@ -33,7 +33,7 @@ public final class BacktrackConfig {
     private final DoubleSetting range =
             new DoubleSetting.Builder()
                     .name("backtrack.range.max")
-                    .defaultValue(6.0)
+                    .defaultValue(4.0)
                     .range(0.0, 10.0)
                     .build();
     private final ModeSetting<EspMode> esp =
@@ -59,7 +59,7 @@ public final class BacktrackConfig {
     }
 
     public int minDelayMillis() {
-        return Math.clamp(Settings.getInt("backtrack.delay.min", 100), 0, delayMillis());
+        return Math.clamp(Settings.getInt("backtrack.delay.min", 50), 0, delayMillis());
     }
 
     public double minRange() {
@@ -83,7 +83,7 @@ public final class BacktrackConfig {
     }
 
     int trackingBufferMillis() {
-        return Math.clamp(Settings.getInt("backtrack.trackingBuffer", 500), 0, 2000);
+        return Math.clamp(Settings.getInt("backtrack.trackingBuffer", 150), 0, 2000);
     }
 
     double chance() {
@@ -91,12 +91,12 @@ public final class BacktrackConfig {
     }
 
     int nextDelayMin() {
-        return Math.clamp(Settings.getInt("backtrack.nextBacktrackDelay.min", 0), 0, 2000);
+        return Math.clamp(Settings.getInt("backtrack.nextBacktrackDelay.min", 100), 0, 2000);
     }
 
     int nextDelayMax() {
         return Math.clamp(
-                Settings.getInt("backtrack.nextBacktrackDelay.max", 10), nextDelayMin(), 2000);
+                Settings.getInt("backtrack.nextBacktrackDelay.max", 150), nextDelayMin(), 2000);
     }
 
     boolean pauseOnHurt() {
@@ -108,11 +108,7 @@ public final class BacktrackConfig {
     }
 
     int queueLimit() {
-        return Math.clamp(Settings.getInt("backtrack.maxQueueSize", 256), 32, 1024);
-    }
-
-    double speedFactor() {
-        return Math.clamp(Settings.getDouble("backtrack.speedFactor", 8), 0, 30);
+        return Math.clamp(Settings.getInt("backtrack.maxQueueSize", 64), 32, 1024);
     }
 
     double pingRatio() {
@@ -129,7 +125,7 @@ public final class BacktrackConfig {
 
     public double maxRange() {
         double value = range.get();
-        return Double.isFinite(value) ? value : 6.0;
+        return Double.isFinite(value) ? value : 4.0;
     }
 
     EspMode espMode() {

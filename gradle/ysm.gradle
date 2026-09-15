@@ -189,6 +189,8 @@ def universalYsm = tasks.register('ysmUniversalBundle', Zip) {
 def packageCheckExe = tasks.register('ysmPackageVerificationExe', Exec) {
     onlyIf { moonsBuild.windowsHost }
     def sources = files('src/tools/launcher/csharp/YsmPackage.cs',
+            'src/tools/launcher/csharp/DependencyRuntime.cs', 'src/tools/launcher/csharp/RuntimeMetadata.cs',
+            'src/tools/shared/StagedFile.cs',
             'src/tools/launcher/csharp/ZipEntries.cs', 'src/tools/shared/Hashing.cs',
             'src/test/launcher/YsmPackageVerification.cs')
     def output = layout.buildDirectory.file('verification/ysm-package.exe')

@@ -28,6 +28,7 @@ import com.blanoir.moons.client.utils.prediction.TrajectoryPrediction;
 import com.blanoir.moons.client.utils.prediction.TrajectoryPrediction.TrajectoryStep;
 import com.blanoir.moons.client.utils.world.placement.BlockPlacementUtils;
 import com.blanoir.moons.client.utils.world.placement.PlacementCoordinator;
+import com.blanoir.moons.client.utils.world.placement.PlacementRaycast;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
@@ -46,6 +47,7 @@ import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 
 public final class AutoWeb {
+    private static final PlacementRaycast RAYS = new PlacementRaycast("autoweb");
     private static final int MIN_WALL_PREDICTION_TICKS = 3;
     private static final int MAX_WALL_PREDICTION_TICKS = 6;
     private static final int ATTACK_REQUEST_LIFETIME_TICKS = 24;
@@ -380,7 +382,7 @@ public final class AutoWeb {
             failPlacement(client);
             return;
         }
-        if (SilentPacketRotation.invokeUseInPlayerUpdate(client, confirmedHit)) {
+        if (RAYS.invokeUseInPlayerUpdate(client, confirmedHit)) {
             placeConfirmTicks = 0;
             phase = WebActionPhase.CLICKING_TO_PLACE;
         }
@@ -964,20 +966,7 @@ public final class AutoWeb {
 
     /** Whether any player entity's collision box blocks the ray between the points. */
     private static boolean rayBlockedByEntity(Minecraft client, Vec3 eye, Vec3 target) {
-        Vec3 direction = target.subtract(eye);
-        double distanceSqr = direction.lengthSqr();
-        if (distanceSqr < 1.0E-8D) {
-            return false;
-        }
-        for (Player other : client.level.players()) {
-            if (other == client.player) {
-                continue;
-            }
-            if (other.getBoundingBox().clip(eye, target).isPresent()) {
-                return true;
-            }
-        }
-        return false;
+        return RAYS.entityBlocked(client, eye, target);
     }
 
     /** Follow measured displacement; stale delta movement can retain old knockback. */
@@ -1026,7 +1015,7 @@ public final class AutoWeb {
             for (double second : FACE_SAMPLES) {
                 Vec3 requested = pointOnFace(supportPos, supportFace, first, second);
                 BlockHitResult actual =
-                        BlockPlacementUtils.visibleFaceHit(
+                        RAYS.visibleFaceHit(
                                 client,
                                 client.player.getEyePosition(),
                                 supportPos,
@@ -1095,15 +1084,14 @@ public final class AutoWeb {
 
         Vec3 eye = client.player.getEyePosition();
         double reach = Math.min(RANGE.get(), client.player.blockInteractionRange());
-        Vec3 end = eye.add(SilentPacketRotation.getInteractionLookVector(client).scale(reach));
         BlockHitResult actual =
-                client.level.clip(
-                        new ClipContext(
-                                eye,
-                                end,
-                                ClipContext.Block.OUTLINE,
-                                ClipContext.Fluid.NONE,
-                                client.player));
+                RAYS.traceOutline(
+                        client,
+                        eye,
+                        SilentPacketRotation.getInteractionLookVector(client),
+                        reach,
+                        ClipContext.Fluid.NONE,
+                        plan.hit().getBlockPos());
         if (actual.getType() != HitResult.Type.BLOCK
                 || !actual.getBlockPos().equals(plan.hit().getBlockPos())
                 || actual.getDirection() != plan.hit().getDirection()

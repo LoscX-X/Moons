@@ -4,6 +4,7 @@ import com.blanoir.moons.client.utils.rotation.Rotation;
 import com.blanoir.moons.client.utils.rotation.quantize.QuantizerA;
 import com.blanoir.moons.client.utils.world.placement.BlockPlacementUtils;
 import com.blanoir.moons.client.utils.world.placement.FaceScanA;
+import com.blanoir.moons.client.utils.world.placement.PlacementRaycast;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.phys.Vec3;
@@ -41,6 +42,7 @@ public final class AimPointsG {
     }
 
     public static BlockAim resolve(
+            PlacementRaycast rays,
             Sampling sampling,
             Minecraft client,
             BlockTarget target,
@@ -48,19 +50,22 @@ public final class AimPointsG {
             Rotation base,
             QuantizerA.Adapter quantizer) {
         return switch (sampling) {
-            case STANDARD -> scan(client, target, eye, base, STANDARD_FACE_OFFSETS, quantizer);
-            case CENTER -> scan(client, target, eye, base, PRIMARY_FACE_OFFSETS, quantizer);
-            case DENSE -> scan(client, target, eye, base, DENSE_FACE_OFFSETS, quantizer);
+            case STANDARD ->
+                    scan(rays, client, target, eye, base, STANDARD_FACE_OFFSETS, quantizer);
+            case CENTER -> scan(rays, client, target, eye, base, PRIMARY_FACE_OFFSETS, quantizer);
+            case DENSE -> scan(rays, client, target, eye, base, DENSE_FACE_OFFSETS, quantizer);
             case ADAPTIVE -> {
-                BlockAim primary = scan(client, target, eye, base, PRIMARY_FACE_OFFSETS, quantizer);
+                BlockAim primary =
+                        scan(rays, client, target, eye, base, PRIMARY_FACE_OFFSETS, quantizer);
                 yield primary != null
                         ? primary
-                        : scan(client, target, eye, base, DENSE_FACE_OFFSETS, quantizer);
+                        : scan(rays, client, target, eye, base, DENSE_FACE_OFFSETS, quantizer);
             }
         };
     }
 
     public static BlockAim scan(
+            PlacementRaycast rays,
             Minecraft client,
             BlockTarget target,
             Vec3 eye,
@@ -76,7 +81,7 @@ public final class AimPointsG {
                                         client, target.support(), target.face(), u, v),
                         point -> AimSolverE.solve(eye, point, base, quantizer),
                         rotation ->
-                                BlockPlacementUtils.traceFace(
+                                rays.traceFace(
                                         client,
                                         eye,
                                         rotation.yaw(),
@@ -92,8 +97,7 @@ public final class AimPointsG {
     }
 
     public static double score(FaceScanA.Sample sample, Rotation base) {
-        double angleScore =
-                AimSolverE.distance(sample.rotation(), base.yaw(), base.pitch());
+        double angleScore = AimSolverE.distance(sample.rotation(), base.yaw(), base.pitch());
         double centerScore =
                 (sample.u() - 0.5D) * (sample.u() - 0.5D)
                         + (sample.v() - 0.5D) * (sample.v() - 0.5D);

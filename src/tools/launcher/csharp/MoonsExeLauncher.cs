@@ -6,7 +6,6 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.IO;
 using System.IO.Compression;
-using System.Net;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -19,8 +18,6 @@ using Moons.Shared;
 [assembly: AssemblyDescription("Moons JNI/JVMTI loader with cached UI runtime")]
 [assembly: AssemblyCompany("Moons")]
 [assembly: AssemblyProduct("Moons Loader")]
-[assembly: AssemblyVersion("1.0.0.0")]
-[assembly: AssemblyFileVersion("1.0.0.0")]
 
 namespace Moons.WindowsLauncher
 {
@@ -38,13 +35,10 @@ namespace Moons.WindowsLauncher
         private const string Payload26_1Resource = "Moons.Payload.26_1.jar";
         private const string Payload26_2PatchResource = "Moons.Payload.26_2.patch";
         private const string Payload26_3PatchResource = "Moons.Payload.26_3.patch";
-        private const string YsmPackageResource = "Moons.Ysm.zip";
         private const string FeaturesJarEntry =
             "META-INF/moons/modules/moons-core-features.jar";
         private const string BootstrapApiResource = "Moons.Api.jar";
         private const string BridgeResource = "Moons.Bridge.dll";
-        private const string UiRuntimeMetadataResource = "Moons.UiRuntime.properties";
-        private const string UiRuntimeResource = "Moons.UiRuntime.jar";
 
         [DllImport("dwmapi.dll")]
         private static extern int DwmSetWindowAttribute(
@@ -135,30 +129,31 @@ namespace Moons.WindowsLauncher
         [STAThread]
         private static int Main(string[] arguments)
         {
+            if (Array.IndexOf(arguments, "--version") >= 0)
+            {
+                Console.WriteLine(DependencyRuntime.VersionDetails());
+                return 0;
+            }
             if (Contains(arguments, "--self-test-version-detection"))
             {
                 return SelfTestVersionDetection();
             }
+            if (Contains(arguments, "--verify-dependencies"))
+            {
+                try { DependencyRuntime.Verify(ResolveHome()); return 0; }
+                catch (Exception error) { Console.Error.WriteLine(error.Message); return 1; }
+            }
             if (Contains(arguments, "--install-ysm-only"))
             {
-                try
-                {
-                    YsmPackage.Install(ResolveHome(), ReadResourceBytes(YsmPackageResource));
-                    return 0;
-                }
-                catch (Exception error)
-                {
-                    Console.Error.WriteLine(error);
-                    return 1;
-                }
+                Console.Error.WriteLine("Run moon-install.exe to install or update dependencies.");
+                return 1;
             }
             if (Contains(arguments, "--extract-only"))
             {
                 try
                 {
                     string home = ResolveHome();
-                    YsmPackage.Install(home, ReadResourceBytes(YsmPackageResource));
-                    EnsureUiRuntime(home, arguments, null, null, delegate { return false; });
+                    DependencyRuntime.Verify(home);
                     ExtractPayload(home, "26.1");
                     ExtractPayload(home, "26.2");
                     ExtractPayload(home, "26.3");
@@ -512,7 +507,7 @@ namespace Moons.WindowsLauncher
         {
             string home = ResolveHome();
             progress(4, "Checking UI runtime dependencies");
-            EnsureUiRuntime(home, arguments, progress, downloadProgress, cancelled);
+            DependencyRuntime.Verify(home);
             progress(18, "Extracting shared " + DisplayName + " JVMTI components");
             string hardwareId = HardwareIdGenerator.Generate();
             string bootstrapApi = ExtractBootstrapApi(home);
@@ -557,8 +552,6 @@ namespace Moons.WindowsLauncher
             string detectedVersion = DetectMinecraftVersion(
                 target, OptionArgument(arguments, "--minecraft-version"));
             ThrowIfCancelled(cancelled);
-            progress(40, "Installing matching YSM libraries and modules");
-            YsmPackage.Install(home, ReadResourceBytes(YsmPackageResource));
             progress(43, "Minecraft " + detectedVersion + " selected: " + target.Label);
             string payload = ExtractPayload(home, detectedVersion);
             progress(48, "Loaded embedded Minecraft " + detectedVersion + " payload");
@@ -605,7 +598,7 @@ namespace Moons.WindowsLauncher
             internal LoaderForm(string[] arguments, bool autoStart)
             {
                 this.arguments = arguments;
-                Text = DisplayName + " Loader";
+                Text = DisplayName + " " + DependencyRuntime.VersionLabel();
                 ClientSize = new Size(640, 360);
                 BackColor = WindowBackground;
                 ForeColor = Color.White;
@@ -629,7 +622,7 @@ namespace Moons.WindowsLauncher
                 Controls.Add(title);
 
                 Label subtitle = new Label();
-                subtitle.Text = "CLIENT LOADER";
+                subtitle.Text = DependencyRuntime.VersionLabel();
                 subtitle.AutoSize = true;
                 subtitle.Top = 139;
                 subtitle.ForeColor = Muted;
@@ -1276,14 +1269,7 @@ namespace Moons.WindowsLauncher
 
         private static string ResolveHome()
         {
-            string configured = Environment.GetEnvironmentVariable("MOONS_HOME");
-            if (!String.IsNullOrWhiteSpace(configured))
-            {
-                return Path.GetFullPath(configured.Trim());
-            }
-            return Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                ".moons");
+            return DependencyRuntime.ResolveHome();
         }
 
         private static string ResolveDisplayName()
@@ -1344,204 +1330,6 @@ namespace Moons.WindowsLauncher
                 return null;
             }
             return normalized.Length <= 32 ? normalized : normalized.Substring(0, 32);
-        }
-
-        private static string EnsureUiRuntime(
-            string home,
-            string[] arguments,
-            Action<int, string> progress,
-            Action<int, string> downloadProgress,
-            Func<bool> cancelled)
-        {
-            Dictionary<string, string> metadata = RuntimeMetadata.Parse(
-                Encoding.UTF8.GetString(ReadResourceBytes(UiRuntimeMetadataResource)));
-            string expectedHash;
-            if (!metadata.TryGetValue("sha256", out expectedHash)
-                || !Regex.IsMatch(expectedHash, "^[0-9a-fA-F]{64}$"))
-            {
-                throw new InvalidDataException("The embedded UI runtime hash is invalid.");
-            }
-            expectedHash = expectedHash.ToLowerInvariant();
-
-            long expectedSize = 0L;
-            string configuredSize;
-            if (metadata.TryGetValue("size", out configuredSize))
-            {
-                Int64.TryParse(configuredSize, out expectedSize);
-            }
-
-            string libraryRoot = Path.Combine(home, "libraries");
-            string versionDirectory = Path.Combine(libraryRoot, expectedHash);
-            string target = Path.Combine(versionDirectory, "moons-ui-runtime.jar");
-            Directory.CreateDirectory(versionDirectory);
-            if (!IsExpectedFile(target, expectedHash, expectedSize))
-            {
-                if (progress != null) progress(6, "Preparing UI runtime dependencies");
-                StagedFile.Write(target, temporary =>
-                {
-                    if (!ExtractBundledUiRuntime(temporary, cancelled))
-                    {
-                        string url = ResolveUiRuntimeUrl(home, arguments, metadata);
-                        if (String.IsNullOrWhiteSpace(url))
-                        {
-                            throw new InvalidOperationException(
-                                "The UI runtime is not cached and no download URL is configured.\r\n\r\n"
-                                + "Set --ui-dependency-url, MOONS_UI_DOWNLOAD_URL, "
-                                + "ui.dependency-url in .moons\\config\\moons.properties, or build with "
-                                + "-Pmoons_ui_download_url=https://.../moons-ui-runtime.jar.");
-                        }
-                        if (progress != null) progress(6, "Downloading UI runtime dependencies");
-                        DownloadFile(CreateDownloadUri(url), temporary, expectedSize,
-                            progress, downloadProgress, cancelled);
-                    }
-                    if (!IsExpectedFile(temporary, expectedHash, expectedSize))
-                    {
-                        throw new InvalidDataException(
-                            "The UI runtime failed its SHA-256 or size check.");
-                    }
-                });
-                if (downloadProgress != null)
-                {
-                    downloadProgress(100, "UI runtime dependencies ready");
-                }
-            }
-
-            WriteUiRuntimePointer(libraryRoot, expectedHash);
-            if (progress != null) progress(17, "UI runtime dependencies are ready");
-            return target;
-        }
-
-        private static bool ExtractBundledUiRuntime(string target, Func<bool> cancelled)
-        {
-            using (Stream source = Assembly.GetExecutingAssembly().GetManifestResourceStream(UiRuntimeResource))
-            {
-                if (source == null) return false;
-                if (cancelled()) throw new OperationCanceledException();
-                using (FileStream output = new FileStream(target, FileMode.Create, FileAccess.Write, FileShare.None))
-                {
-                    source.CopyTo(output);
-                }
-                if (cancelled()) throw new OperationCanceledException();
-                return true;
-            }
-        }
-
-        private static string ResolveUiRuntimeUrl(
-            string home,
-            string[] arguments,
-            IDictionary<string, string> metadata)
-        {
-            string value = OptionArgument(arguments, "--ui-dependency-url");
-            if (!String.IsNullOrWhiteSpace(value)) return value.Trim();
-
-            value = Environment.GetEnvironmentVariable("MOONS_UI_DOWNLOAD_URL");
-            if (!String.IsNullOrWhiteSpace(value)) return value.Trim();
-
-            string config = Path.Combine(home, "config", "moons.properties");
-            if (File.Exists(config))
-            {
-                Dictionary<string, string> properties = RuntimeMetadata.Parse(
-                    File.ReadAllText(config, Encoding.UTF8));
-                if (properties.TryGetValue("ui.dependency-url", out value)
-                    && !String.IsNullOrWhiteSpace(value))
-                {
-                    return value.Trim();
-                }
-            }
-
-            return metadata.TryGetValue("url", out value) ? value.Trim() : String.Empty;
-        }
-
-        private static Uri CreateDownloadUri(string value)
-        {
-            Uri uri;
-            if (!Uri.TryCreate(value, UriKind.Absolute, out uri))
-            {
-                uri = new Uri(Path.GetFullPath(value));
-            }
-            if (!String.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
-                && !String.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
-                && !String.Equals(uri.Scheme, Uri.UriSchemeFile, StringComparison.OrdinalIgnoreCase))
-            {
-                throw new InvalidOperationException(
-                    "Unsupported UI dependency URL scheme: " + uri.Scheme);
-            }
-            return uri;
-        }
-
-        private static void DownloadFile(
-            Uri source,
-            string target,
-            long expectedSize,
-            Action<int, string> progress,
-            Action<int, string> downloadProgress,
-            Func<bool> cancelled)
-        {
-            ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
-            using (WebClient client = new WebClient())
-            {
-                client.Headers[HttpRequestHeader.UserAgent] = "Moons-Launcher/1.0";
-                using (Stream input = client.OpenRead(source))
-                using (FileStream output = new FileStream(
-                    target, FileMode.Create, FileAccess.Write, FileShare.None))
-                {
-                    long total = expectedSize;
-                    long headerSize;
-                    if (client.ResponseHeaders != null
-                        && Int64.TryParse(client.ResponseHeaders["Content-Length"],
-                            out headerSize)
-                        && headerSize > 0L)
-                    {
-                        total = headerSize;
-                    }
-
-                    byte[] buffer = new byte[128 * 1024];
-                    long written = 0L;
-                    if (downloadProgress != null)
-                    {
-                        downloadProgress(0, "0.0 MB / " + FormatMegabytes(total));
-                    }
-                    int count;
-                    while ((count = input.Read(buffer, 0, buffer.Length)) > 0)
-                    {
-                        ThrowIfCancelled(cancelled);
-                        output.Write(buffer, 0, count);
-                        written += count;
-                        if (progress != null && total > 0L)
-                        {
-                            int percent = 6 + (int)Math.Min(10L, written * 10L / total);
-                            progress(percent, "Downloading UI runtime dependencies");
-                        }
-                        if (downloadProgress != null && total > 0L)
-                        {
-                            int percent = (int)Math.Min(100L, written * 100L / total);
-                            downloadProgress(percent, percent + "%   "
-                                + FormatMegabytes(written) + " / " + FormatMegabytes(total));
-                        }
-                    }
-                }
-            }
-        }
-
-        private static string FormatMegabytes(long bytes)
-        {
-            return (bytes / 1048576.0).ToString("0.0") + " MB";
-        }
-
-        private static bool IsExpectedFile(string path, string hash, long size)
-        {
-            if (!File.Exists(path)) return false;
-            FileInfo file = new FileInfo(path);
-            return (size <= 0L || file.Length == size)
-                && String.Equals(Hashing.Sha256(path), hash, StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static void WriteUiRuntimePointer(string libraryRoot, string hash)
-        {
-            Directory.CreateDirectory(libraryRoot);
-            string pointer = Path.Combine(libraryRoot, "moons-ui-runtime.current");
-            StagedFile.Write(pointer, temporary => File.WriteAllText(temporary,
-                hash + "/moons-ui-runtime.jar\n", new UTF8Encoding(false)));
         }
 
         private static string ExtractPayload(string home, string version)
@@ -1778,10 +1566,10 @@ namespace Moons.WindowsLauncher
                 throw new InvalidOperationException("The JVMTI launcher must run as a 64-bit process.");
             }
 
-            using (LoadLease lease = LoadLease.Acquire(pid, cancelled))
+            using (LoadSession session = LoadSession.Acquire(pid, cancelled))
             {
                 LoadBridgeLocked(bridge, payload, bootstrapApi, home, hardwareId,
-                    pid, progress, cancelled);
+                    pid, session, progress, cancelled);
             }
         }
 
@@ -1792,6 +1580,7 @@ namespace Moons.WindowsLauncher
             string home,
             string hardwareId,
             int pid,
+            LoadSession session,
             Action<int, string> progress,
             Func<bool> cancelled)
         {
@@ -1836,7 +1625,6 @@ namespace Moons.WindowsLauncher
             IntPtr remotePath = IntPtr.Zero;
             IntPtr remoteThread = IntPtr.Zero;
             bool remoteThreadCompleted = false;
-            string configPath = null;
             try
             {
                 if (GetProcessId(processHandle) != (uint)pid)
@@ -1889,22 +1677,9 @@ namespace Moons.WindowsLauncher
 
                 progress(60, "Preparing one-shot JVM bridge configuration");
                 ThrowIfCancelled(cancelled);
-                string attempt = Guid.NewGuid().ToString("N");
                 string dataDirectory = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                    ".moons");
-                Directory.CreateDirectory(dataDirectory);
-                Directory.CreateDirectory(home);
-                configPath = Path.Combine(dataDirectory, "bridge-" + pid + ".conf");
-                File.WriteAllText(configPath,
-                    "payload=" + payload + Environment.NewLine
-                    + "bootstrap=" + bootstrapApi + Environment.NewLine
-                    + "home=" + home + Environment.NewLine
-                    + "name=" + DisplayName + Environment.NewLine
-                    + "hwid=" + hardwareId + Environment.NewLine
-                    + "attempt=" + attempt,
-                    new UTF8Encoding(false));
-                long bridgeLogOffset = BridgeAttemptMonitor.CaptureOffset(dataDirectory);
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), ".moons");
+                session.Prepare(dataDirectory, payload, bootstrapApi, home, DisplayName, hardwareId);
 
                 progress(70, "Loading JVMTI bridge into target JVM");
                 byte[] pathBytes = Encoding.Unicode.GetBytes(bridge + "\0");
@@ -1969,8 +1744,7 @@ namespace Moons.WindowsLauncher
                 }
 
                 progress(86, "Waiting for Runtime and initial retransformation");
-                BridgeAttemptMonitor.WaitForReady(
-                    dataDirectory, attempt, processHandle, bridgeLogOffset, cancelled);
+                session.WaitForReady(processHandle);
                 progress(100, "Runtime and JVMTI hooks are ready for the selected process");
             }
             finally

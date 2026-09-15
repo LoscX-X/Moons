@@ -229,9 +229,37 @@ public final class AnimationMapper {
                     rac.animationName,
                     new AnimationController(
                             rac.initialState.isEmpty() ? "default" : rac.initialState,
-                            states.toArray(new AnimationState[0])));
+                            states.toArray(new AnimationState[0]),
+                            pureLocomotionController(rac)));
         }
         return result;
+    }
+
+    // Only side-effect-free movement predicates are eligible for cycle stabilization.
+    // Timers, animation-finished queries, variables, nested controllers and event-driven
+    // state machines retain the author's transition semantics.
+    private static boolean pureLocomotionController(RawYsmModel.RawAnimationController controller) {
+        if (controller.states.size() < 2) return false;
+        for (var state : controller.states) {
+            if (!state.onEntry.isEmpty()
+                    || !state.onExit.isEmpty()
+                    || !state.soundEffects.isEmpty()
+                    || state.animations.isEmpty()) return false;
+            for (String expression : state.animations.values())
+                if (!pureLocomotionPredicate(expression)) return false;
+            for (String expression : state.transitions.values())
+                if (!pureLocomotionPredicate(expression)) return false;
+        }
+        return true;
+    }
+
+    private static boolean pureLocomotionPredicate(String expression) {
+        if (expression == null || !expression.contains("ctrl.")) return false;
+        String remainder =
+                expression.replaceAll(
+                        "ctrl\\.(?:idle|walk|run|jump|fly|elytra_fly|swim|swim_stand|sneak|sneaking|climb|climbing|ladder_up|ladder_down|ladder_stillness|riptide|sleep|death|attacked)\\b",
+                        "1");
+        return remainder.matches("[01\\s!&|()]+");
     }
 
     public static List<IValue> parse(List<String> array, boolean mergeMultilineExpr) {

@@ -2,7 +2,7 @@ package com.blanoir.moons.agent.core;
 
 import java.util.List;
 
-public record TargetMethod(
+public  record TargetMethod(
         String id,
         List<String> classNames,
         List<String> methodNames,

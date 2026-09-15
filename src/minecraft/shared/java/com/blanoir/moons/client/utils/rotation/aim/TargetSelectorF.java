@@ -1,6 +1,7 @@
 package com.blanoir.moons.client.utils.rotation.aim;
 
 import com.blanoir.moons.client.utils.world.placement.FaceScanA;
+import com.blanoir.moons.client.utils.world.placement.PlacementRaycast;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
@@ -18,6 +19,7 @@ public final class TargetSelectorF {
     private TargetSelectorF() {}
 
     public static BlockHitResult select(
+            PlacementRaycast rays,
             Minecraft client,
             BlockPos source,
             Vec3 eye,
@@ -34,6 +36,7 @@ public final class TargetSelectorF {
             }
             FaceScanA.Result candidate =
                     AimPointsJ.scan(
+                            rays,
                             client,
                             new BlockTarget(supportPos, face),
                             eye,

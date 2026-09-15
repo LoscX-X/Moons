@@ -18,6 +18,12 @@ final class VersionMappings {
         return new MappingService(
                 List.of(
                         new TargetMethod(
+                                "placement.item-ray",
+                                List.of("net/minecraft/world/item/Item"),
+                                List.of("getPlayerPOVHitResult"),
+                                "(Lnet/minecraft/world/level/Level;Lnet/minecraft/world/entity/player/Player;Lnet/minecraft/world/level/ClipContext$Fluid;)Lnet/minecraft/world/phys/BlockHitResult;",
+                                TargetMethod.HookKind.OBJECT_RETURN),
+                        new TargetMethod(
                                 "client.timer-speed",
                                 List.of("net/minecraft/client/Minecraft"),
                                 List.of("getTickTargetMillis"),
@@ -261,6 +267,12 @@ final class VersionMappings {
                                 List.of("net/minecraft/world/entity/player/Player"),
                                 List.of("getName", "getDisplayName"),
                                 "()Lnet/minecraft/network/chat/Component;",
+                                TargetMethod.HookKind.OBJECT_RETURN),
+                        new TargetMethod(
+                                "render.player-skin",
+                                List.of("net/minecraft/client/multiplayer/PlayerInfo"),
+                                List.of("getSkin"),
+                                "()Lnet/minecraft/world/entity/player/PlayerSkin;",
                                 TargetMethod.HookKind.OBJECT_RETURN),
                         new TargetMethod(
                                 "render.tab-name",

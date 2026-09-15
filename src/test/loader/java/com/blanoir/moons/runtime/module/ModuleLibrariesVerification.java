@@ -35,12 +35,17 @@ public final class ModuleLibrariesVerification {
                     public class Module implements MoonsModule {
                         private boolean enabled;
                         public void load(ModuleContext context) {
+                            if (!context.moduleId().equals("fixture") || context.dataDirectory() == null)
+                                throw new AssertionError("module context");
+                            if (lib.Value.get().equals("broken")) context.resources().own(() -> {
+                                throw new IllegalStateException("resource cleanup");
+                            });
                             context.resources().own(context.service(RuntimeEvents.class).methodHook()
                                 .subscribe(event -> { if (enabled) event.value(lib.Value.get()); }));
                         }
                         public void enable() { if (lib.Value.get().equals("broken")) throw new IllegalStateException("fixture"); enabled=true; }
                         public void disable() { enabled=false; }
-                        public void unload() {}
+                        public void unload() { if (lib.Value.get().equals("broken")) throw new IllegalStateException("unload cleanup"); }
                     }
                     """,
                                     "fixture/Empty.java",
@@ -93,6 +98,13 @@ public final class ModuleLibrariesVerification {
                     manager.replace(module);
                     throw new AssertionError("broken enable accepted");
                 } catch (IllegalStateException expected) {
+                    check(
+                            expected.getMessage().equals("fixture"),
+                            "original enable failure preserved");
+                    check(expected.getSuppressed().length == 1, "cleanup failure attached");
+                    check(
+                            expected.getSuppressed()[0].getSuppressed().length == 2,
+                            "resource and unload failures retained");
                 }
                 check("two".equals(value(events)), "failed candidate kept previous library");
                 check(

@@ -53,4 +53,11 @@ final class BacktrackTargets {
         }
         return best;
     }
+
+    static boolean intended(Minecraft client, LivingEntity target, double range) {
+        Vec3 eye = client.player.getEyePosition();
+        var box = target.getBoundingBox().inflate(target.getPickRadius() + .15);
+        return box.contains(eye)
+                || box.clip(eye, eye.add(client.player.getViewVector(1).scale(range))).isPresent();
+    }
 }

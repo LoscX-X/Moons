@@ -1,7 +1,7 @@
 package com.blanoir.moons.client.utils.rotation.aim;
 
 import com.blanoir.moons.client.utils.rotation.Rotation;
-import com.blanoir.moons.client.utils.world.placement.BlockPlacementUtils;
+import com.blanoir.moons.client.utils.world.placement.PlacementRaycast;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.phys.BlockHitResult;
@@ -16,9 +16,14 @@ public final class AimPointsI {
     private AimPointsI() {}
 
     public static BlockAim resolve(
-            Minecraft client, BlockTarget target, Vec3 eye, Rotation direction, double range) {
+            PlacementRaycast rays,
+            Minecraft client,
+            BlockTarget target,
+            Vec3 eye,
+            Rotation direction,
+            double range) {
         BlockHitResult hit =
-                BlockPlacementUtils.traceFace(
+                rays.traceFace(
                         client,
                         eye,
                         direction.yaw(),

@@ -48,6 +48,7 @@ final class YsmRuntimeVerification {
         verifyEffects();
         YsmAudioVerification.verify();
         verifyControllerOrder();
+        verifyContinuousLocomotionLoops();
         verifyPose(directory);
         verifySeek();
         verifyInterleavedRenderTimes();
@@ -428,8 +429,14 @@ final class YsmRuntimeVerification {
             var mesh = session.frame(5.05, world);
             var repeated = session.frame(5.01, preview);
             near(session.time(), before, "older inventory/world pass keeps animation time");
-            near(session.model().runtime().variableValue("keep"), 37, "render ordering does not reset variables");
-            near(session.model().runtime().variableValue("updates"), updates, "older render does not replay updates");
+            near(
+                    session.model().runtime().variableValue("keep"),
+                    37,
+                    "render ordering does not reset variables");
+            near(
+                    session.model().runtime().variableValue("updates"),
+                    updates,
+                    "older render does not replay updates");
             if (!Arrays.equals(mesh.vertices(), repeated.vertices()))
                 throw new AssertionError("An older render must preserve the current pose");
             session.frame(5.025, preview);
@@ -668,6 +675,80 @@ final class YsmRuntimeVerification {
             if (sounds.stream().anyMatch(s -> !s.stopped))
                 throw new AssertionError("World reset must release sound handles");
         }
+    }
+
+    private static void verifyContinuousLocomotionLoops() {
+        for (int fps : new int[] {20, 60, 300}) {
+            var raw = fixture();
+            var file = raw.mainEntity.animationFiles.get("main");
+            var controller = new RawAnimationController();
+            controller.animationName = "player.pre_main";
+            controller.initialState = "idle";
+            for (String action : List.of("idle", "walk", "run")) {
+                var animation = animation("accessory_" + action, "root", 0, 0, 0);
+                var start = new RawKeyframe();
+                start.postData = new Object[] {0f, 0f, 0f};
+                var end = new RawKeyframe();
+                end.timestamp = 1;
+                end.postData = new Object[] {0f, 16f, 0f};
+                animation.boneAnimations.getFirst().position.addAll(List.of(start, end));
+                file.animations.put(animation.name, animation);
+                var state = new RawControllerState();
+                state.name = action;
+                state.animations.put(animation.name, "ctrl." + action + "||ctrl.jump");
+                for (String target : List.of("idle", "walk", "run"))
+                    if (!action.equals(target))
+                        state.transitions.put(target, "ctrl." + target + "||ctrl.jump");
+                controller.states.add(state);
+            }
+            var controllers = new RawAnimationControllerFile();
+            controllers.controllers.put(controller.animationName, controller);
+            raw.mainEntity.animationControllerFiles.add(controllers);
+            try (var model = new LocalYsmModel(raw)) {
+                String[] actions = {"walk", "jump", "idle", "run", "jump", "walk"};
+                String[] expected = {"walk", "walk", "idle", "run", "run", "walk"};
+                for (int phase = 0; phase < actions.length; phase++) {
+                    float min = Float.POSITIVE_INFINITY, max = Float.NEGATIVE_INFINITY;
+                    var observations =
+                            Map.<String, Object>of(
+                                    "is_on_ground",
+                                    !actions[phase].equals("jump"),
+                                    "ground_speed",
+                                    actions[phase].equals("idle") ? 0d : 4d,
+                                    "is_sprinting",
+                                    actions[phase].equals("run"));
+                    for (int frame = 0; frame < fps * 2; frame++) {
+                        model.frame(phase * 2d + (double) frame / fps, observations, "");
+                        if (frame < fps / 4) continue;
+                        String selected = model.runtime().controllerStates().get("player.pre_main");
+                        if (!expected[phase].equals(selected))
+                            throw new AssertionError(
+                                    "Accessory loop changed during "
+                                            + actions[phase]
+                                            + " at "
+                                            + fps
+                                            + " FPS: "
+                                            + selected);
+                        float y = model.runtime().bone("root").position.y;
+                        min = Math.min(min, y);
+                        max = Math.max(max, y);
+                    }
+                    if (max - min < 12)
+                        throw new AssertionError(
+                                "Accessory playback froze during " + actions[phase]);
+                }
+            }
+            // Event-bearing state machines must still execute authored transitions.
+            controller.states.getFirst().onEntry.add("v.entries=(v.entries??0)+1;");
+            try (var model = new LocalYsmModel(raw)) {
+                for (int i = 0; i < 20; i++)
+                    model.frame(i / 20d, Map.of("is_on_ground", false), "");
+                if (model.runtime().variableValue("v.entries") < 2)
+                    throw new AssertionError("Event-driven transition semantics changed");
+            }
+        }
+        System.out.println(
+                "YSM_ACCESSORY_LOOPS_VERIFIED fps=20+60+300 moving+jumping=continuous landing=transitions events=preserved");
     }
 
     private static void verifyControllerOrder() {

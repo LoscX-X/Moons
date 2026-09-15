@@ -16,12 +16,12 @@ Moons 持续维护最近四个 Minecraft 稳定版本系列。
 
 ## 如何使用
 
-1. 从 [Releases](https://github.com/LoscX-X/Moons/releases) 下载 `moons-full.exe`。
-2. 启动受支持版本的 Minecraft。
-3. 运行启动器，选择游戏进程并加载 Moons。
+1. 从同一次 [Release](https://github.com/LoscX-X/Moons/releases) 下载 `moon-install.exe` 和 `moon.exe`。
+2. 运行 `moon-install.exe` 安装或更新依赖。
+3. 启动受支持版本的 Minecraft，再运行 `moon.exe`，选择游戏进程并加载 Moons。
 4. 按 **右 Shift** 打开 ClickGUI，这是默认按键。
 
-体积较小的 `moons.exe` 会在首次使用时下载并缓存匹配的 UI 运行库。开发构建可从 [Actions](https://github.com/LoscX-X/Moons/actions) 获取。
+更新时先运行匹配版本的安装器。离线安装时，将同次发布的 `moons-ui-runtime.jar` 放在安装器旁边。开发构建可从 [Actions](https://github.com/LoscX-X/Moons/actions) 获取。
 
 ## 如何保存配置
 
@@ -40,10 +40,10 @@ Moons 持续维护最近四个 Minecraft 稳定版本系列。
 准备 Windows x64、JDK 25，以及 [BUILDING.md](BUILDING.md) 列出的本地编译工具。在项目目录打开 PowerShell：
 
 ```powershell
-.\gradlew.bat moonsFullExe
+.\gradlew.bat moonsPackages
 ```
 
-产物位于 `build/dist/moons-full.exe`。使用 IDE 时，以 JDK 25 导入 Gradle 项目并执行同名任务。
+产物为 `build/dist/moon-install.exe`、`build/dist/moon.exe` 和 `build/dist/dependencies/moons-ui-runtime.jar`。使用 IDE 时，以 JDK 25 导入 Gradle 项目并执行同名任务。
 
 ## 如何参与开发
 

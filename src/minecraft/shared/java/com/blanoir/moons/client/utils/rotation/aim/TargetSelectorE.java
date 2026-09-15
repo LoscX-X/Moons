@@ -1,6 +1,7 @@
 package com.blanoir.moons.client.utils.rotation.aim;
 
 import com.blanoir.moons.client.utils.rotation.Rotation;
+import com.blanoir.moons.client.utils.world.placement.PlacementRaycast;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
@@ -20,6 +21,7 @@ public final class TargetSelectorE {
     private TargetSelectorE() {}
 
     public static BlockAim select(
+            PlacementRaycast rays,
             Minecraft client,
             Vec3 eye,
             BlockPos desired,
@@ -40,6 +42,7 @@ public final class TargetSelectorE {
         for (BlockTarget target : targets) {
             BlockAim aim =
                     AimPointsI.resolve(
+                            rays,
                             client,
                             target,
                             eye,

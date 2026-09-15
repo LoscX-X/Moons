@@ -11,8 +11,8 @@ on:
         default: all
         options:
           - all
-          - full
-          - download
+          - install
+          - loader
           - ui-runtime
       verify:
         description: Verify Minecraft hooks, YSM rendering and update behavior
@@ -53,15 +53,19 @@ jobs:
         shell: pwsh
         env:
           PACKAGE_KIND: ${{ inputs.package || 'all' }}
+          VERIFY_PACKAGES: ${{ github.event_name != 'workflow_dispatch' || inputs.verify }}
         run: |
           $ErrorActionPreference = 'Stop'
           $tasks = @(switch ($env:PACKAGE_KIND) {
             'all'        { @('moonsPackages') }
-            'full'       { @('moonsFullExe') }
-            'download'   { @('moonsExe') }
+            'install'    { @('moonsInstallExe') }
+            'loader'     { @('moonsExe') }
             'ui-runtime' { @('moonsUiRuntime') }
             default     { throw "Unknown package: $env:PACKAGE_KIND" }
           })
+          if ($env:PACKAGE_KIND -eq 'all' -and $env:VERIFY_PACKAGES -eq 'true') {
+            $tasks += 'verifyLauncherPackages'
+          }
           $tag = "build-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
           $runtimeUrl = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$tag/moons-ui-runtime.jar"
           "release_tag=$tag" >> $env:GITHUB_OUTPUT
@@ -88,22 +92,22 @@ jobs:
             build/dist/dependencies/moons-ui-runtime.jar.sha256
           if-no-files-found: error
           compression-level: 0
-      - name: Upload full launcher
-        if: steps.package.outputs.kind == 'all' || steps.package.outputs.kind == 'full'
+      - name: Upload dependency installer
+        if: steps.package.outputs.kind == 'all' || steps.package.outputs.kind == 'install'
         uses: actions/upload-artifact@v6
         with:
-          name: moons-full
+          name: moons-install
           overwrite: true
-          path: build/dist/moons-full.exe
+          path: build/dist/moon-install.exe
           if-no-files-found: error
           compression-level: 0
-      - name: Upload download launcher
-        if: steps.package.outputs.kind == 'all' || steps.package.outputs.kind == 'download'
+      - name: Upload game loader
+        if: steps.package.outputs.kind == 'all' || steps.package.outputs.kind == 'loader'
         uses: actions/upload-artifact@v6
         with:
-          name: moons-download
+          name: moons-loader
           overwrite: true
-          path: build/dist/moons.exe
+          path: build/dist/moon.exe
           if-no-files-found: error
           compression-level: 0
 
@@ -128,14 +132,14 @@ jobs:
         run: |
           set -euo pipefail
           cat > release-notes.md <<'NOTES'
-          - `moons-full.exe`: includes the UI runtime; no separate UI dependency download.
-          - `moons.exe`: downloads and caches the matching UI runtime from this release.
+          - `moon-install.exe`: installs or updates matching UI dependencies, shared YSM libraries and game adapters. Run this first.
+          - `moon.exe`: validates installed dependencies and loads Moons into Minecraft. Run the matching installer again when updating.
           - `moons-ui-runtime.jar`: standalone UI dependency, with a SHA-256 sidecar.
-          - Both launchers automatically install their matching shared YSM libraries and all game-version adapters.
+          - For offline installation, place this release's `moons-ui-runtime.jar` beside `moon-install.exe`.
           - `moons-ysm-all.zip`: standalone YSM bundle with one shared library set and all supported adapters.
           - `moons-ysm-<version>.zip`: optional standalone bundle for one game version.
 
-          Only assets selected for this run are included. Both launchers support Minecraft 26.1.2, 26.2, 26.3-rc-2 and 26.3-rc-3.
+          Only assets selected for this run are included. The loader supports Minecraft 26.1.2, 26.2, 26.3-rc-2 and 26.3-rc-3.
           NOTES
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" artifacts/* --repo "$GITHUB_REPOSITORY" --clobber

@@ -18,7 +18,7 @@ import net.minecraft.world.entity.player.Player;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
-/** Local-only replacement for the signed-in player's visible name. */
+/** Local-only styled nickname and shuffled player-name rendering. */
 public final class Nickname {
     private static final int MAX_CODE_POINTS = 64;
     private static final int MAX_MARKUP_CODE_POINTS = 512;
@@ -41,6 +41,7 @@ public final class Nickname {
     private Nickname() {}
 
     public static void init() {
+        NicknameShuffle.init();
         EventBus.FRAME.register(
                 "Nickname.frame",
                 event -> {
@@ -115,7 +116,26 @@ public final class Nickname {
     }
 
     public static Component replaceLocalPlayerName(Player player, Component original) {
+        String shuffled = player == null ? null : NicknameShuffle.name(player.getUUID());
+        if (shuffled != null) return anonymize(original, player.getGameProfile().name(), shuffled);
         return appliesTo(player) ? replace(original, realName(), false) : original;
+    }
+
+    public static Component replaceTabName(PlayerInfo info, Component original) {
+        String shuffled = NicknameShuffle.name(info.getProfile().id());
+        if (shuffled != null) return anonymize(original, info.getProfile().name(), shuffled);
+        return appliesTo(info) ? replaceOwnName(original) : original;
+    }
+
+    private static Component anonymize(Component original, String realName, String alias) {
+        Component replaced =
+                replaceWithFlatFallback(original, realName, false, Component.literal(alias));
+        if (original != null
+                && replaced.getString().equals(original.getString())
+                && indexOfIgnoreCase(original.getString(), alias, 0) < 0) {
+            return Component.literal(alias).setStyle(original.getStyle());
+        }
+        return replaced;
     }
 
     /** Replaces the real local name inside chat/tab components without flattening their styles. */
@@ -125,6 +145,7 @@ public final class Nickname {
 
     /** Chat mentions use the animated text but omit private-use resource-pack icons. */
     public static Component replaceOwnNameInChat(Component original) {
+        if (NicknameShuffle.isEnabled()) return NicknameShuffle.chat(original);
         // Chat messages can contain arbitrary server IDs. Only replace a
         // structured component that represents the exact local name; never
         // flatten and animate a matching substring in the whole line.
@@ -132,7 +153,14 @@ public final class Nickname {
     }
 
     private static Component replace(Component original, String realName, boolean chatVariant) {
-        if (original == null || realName.isBlank() || realName.equals(VALUE.get())) {
+        return replace(original, realName, chatVariant, null);
+    }
+
+    private static Component replace(
+            Component original, String realName, boolean chatVariant, Component fixedValue) {
+        if (original == null
+                || realName.isBlank()
+                || realName.equals(fixedValue == null ? VALUE.get() : fixedValue.getString())) {
             return original;
         }
 
@@ -144,7 +172,7 @@ public final class Nickname {
                 MutableComponent unchanged =
                         MutableComponent.create(contents).setStyle(original.getStyle());
                 for (Component sibling : original.getSiblings()) {
-                    unchanged.append(replace(sibling, realName, true));
+                    unchanged.append(replace(sibling, realName, true, fixedValue));
                 }
                 return unchanged;
             }
@@ -156,14 +184,17 @@ public final class Nickname {
                     if (occurrence > start) {
                         replaced.append(Component.literal(text.substring(start, occurrence)));
                     }
-                    replaced.append(chatVariant ? chatStyledValue() : styledValue());
+                    replaced.append(
+                            fixedValue != null
+                                    ? fixedValue
+                                    : chatVariant ? chatStyledValue() : styledValue());
                     start = occurrence + realName.length();
                 }
                 if (start < text.length()) {
                     replaced.append(Component.literal(text.substring(start)));
                 }
                 for (Component sibling : original.getSiblings()) {
-                    replaced.append(replace(sibling, realName, chatVariant));
+                    replaced.append(replace(sibling, realName, chatVariant, fixedValue));
                 }
                 return replaced;
             }
@@ -172,10 +203,11 @@ public final class Nickname {
             for (int index = 0; index < arguments.length; index++) {
                 Object argument = arguments[index];
                 if (argument instanceof Component component) {
-                    arguments[index] = replace(component, realName, chatVariant);
+                    arguments[index] = replace(component, realName, chatVariant, fixedValue);
                 } else if (argument instanceof String text
                         && indexOfIgnoreCase(text, realName, 0) >= 0) {
-                    arguments[index] = replace(Component.literal(text), realName, chatVariant);
+                    arguments[index] =
+                            replace(Component.literal(text), realName, chatVariant, fixedValue);
                 }
             }
             replacedContents =
@@ -186,7 +218,7 @@ public final class Nickname {
         MutableComponent replaced =
                 MutableComponent.create(replacedContents).setStyle(original.getStyle());
         for (Component sibling : original.getSiblings()) {
-            replaced.append(replace(sibling, realName, chatVariant));
+            replaced.append(replace(sibling, realName, chatVariant, fixedValue));
         }
         return replaced;
     }
@@ -220,7 +252,12 @@ public final class Nickname {
 
     private static Component replaceWithFlatFallback(
             Component original, String realName, boolean chatVariant) {
-        Component replaced = replace(original, realName, chatVariant);
+        return replaceWithFlatFallback(original, realName, chatVariant, null);
+    }
+
+    private static Component replaceWithFlatFallback(
+            Component original, String realName, boolean chatVariant, Component fixedValue) {
+        Component replaced = replace(original, realName, chatVariant, fixedValue);
         if (original == null
                 || !replaced.getString().equals(original.getString())
                 || indexOfIgnoreCase(original.getString(), realName, 0) < 0) {
@@ -232,7 +269,10 @@ public final class Nickname {
         int occurrence;
         while ((occurrence = indexOfIgnoreCase(text, realName, start)) >= 0) {
             if (occurrence > start) flattened.append(text.substring(start, occurrence));
-            flattened.append(chatVariant ? chatStyledValue() : styledValue());
+            flattened.append(
+                    fixedValue != null
+                            ? fixedValue
+                            : chatVariant ? chatStyledValue() : styledValue());
             start = occurrence + realName.length();
         }
         if (start < text.length()) flattened.append(text.substring(start));
@@ -306,16 +346,22 @@ public final class Nickname {
 
     public static void commandReset(Minecraft client) {
         VALUE.set("");
-        ClientChat.send(client, "Local nickname reset to your account name.");
+        ClientChat.send(client, "已重置自己的昵称；全员混淆状态保持不变。");
     }
 
     public static void commandStatus(Minecraft client) {
+        if (NicknameShuffle.isEnabled()) {
+            ClientChat.send(
+                    client,
+                    "全员随机假名和皮肤混淆已开启。.nick all 重新混淆，.nick all reset 关闭，.nick reset 仅重置自己的昵称。");
+            return;
+        }
         ClientChat.send(
                 client,
                 isEnabled()
                         ? "Local nickname: "
                                 + VALUE.get()
-                                + ". Usage: .nickname <name> or .nickname reset."
-                        : "Local nickname is disabled. Usage: .nickname <name>; [] and MiniMessage-style colors are supported.");
+                                + ". Usage: .nick <name>, .nick all, .nick all reset, .nick reset."
+                        : "Usage: .nick <name>, .nick all, .nick all reset, .nick reset; [] and MiniMessage-style colors are supported.");
     }
 }

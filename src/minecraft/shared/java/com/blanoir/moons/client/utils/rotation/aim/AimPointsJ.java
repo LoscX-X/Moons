@@ -2,6 +2,7 @@ package com.blanoir.moons.client.utils.rotation.aim;
 
 import com.blanoir.moons.client.utils.world.placement.BlockPlacementUtils;
 import com.blanoir.moons.client.utils.world.placement.FaceScanA;
+import com.blanoir.moons.client.utils.world.placement.PlacementRaycast;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.phys.Vec3;
@@ -15,6 +16,7 @@ public final class AimPointsJ {
     private AimPointsJ() {}
 
     public static FaceScanA.Result scan(
+            PlacementRaycast rays,
             Minecraft client,
             BlockTarget target,
             Vec3 eye,
@@ -31,7 +33,7 @@ public final class AimPointsJ {
                     return AimSolverD.rotationTo(eye, requested);
                 },
                 rotation ->
-                        BlockPlacementUtils.traceFace(
+                        rays.traceFace(
                                 client,
                                 eye,
                                 rotation.yaw(),

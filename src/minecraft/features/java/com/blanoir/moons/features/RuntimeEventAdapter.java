@@ -46,6 +46,7 @@ import com.blanoir.moons.client.module.impl.player.AutoWeb;
 import com.blanoir.moons.client.module.impl.render.Animations;
 import com.blanoir.moons.client.module.impl.render.xray.OreScanner;
 import com.blanoir.moons.client.module.impl.world.AutoTool;
+import com.blanoir.moons.client.module.impl.world.FastPlace;
 import com.blanoir.moons.client.module.impl.world.scaffold.Scaffold;
 import com.blanoir.moons.client.ui.clickgui.ModuleGui;
 import com.blanoir.moons.client.ui.clickgui.MoonsComposeScreen;
@@ -428,6 +429,13 @@ final class RuntimeEventAdapter {
                 player.setXRot(SilentPacketRotation.getSimulatedUsePitch());
             }
             client.hitResult = SilentPacketRotation.getSimulatedUseHit();
+        } else {
+            var hit = FastPlace.placementHit(client);
+            if (hit != null) {
+                capture.manualUseActive = true;
+                capture.manualUseHit = client.hitResult;
+                client.hitResult = hit;
+            }
         }
     }
 
@@ -458,6 +466,10 @@ final class RuntimeEventAdapter {
             capture.usePlayer = null;
             capture.useHit = null;
             SilentPacketRotation.finishSimulatedUse();
+        } else if (kind == RuntimeEvents.Kind.USE && capture.manualUseActive) {
+            client.hitResult = capture.manualUseHit;
+            capture.manualUseHit = null;
+            capture.manualUseActive = false;
         }
     }
 
@@ -678,6 +690,8 @@ final class RuntimeEventAdapter {
         Entity attackTarget;
         boolean autoLavaCriticalEligible;
         boolean useActive;
+        boolean manualUseActive;
+        HitResult manualUseHit;
         LocalPlayer usePlayer;
         HitResult useHit;
         float useYaw;

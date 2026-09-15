@@ -16,12 +16,12 @@ Older preview builds and retired Minecraft versions may remain available through
 
 ## How to Use
 
-1. Download `moons-full.exe` from [Releases](https://github.com/LoscX-X/Moons/releases).
-2. Start a supported Minecraft version.
-3. Run the launcher, select the game process, and load Moons.
+1. Download `moon-install.exe` and `moon.exe` from the same [release](https://github.com/LoscX-X/Moons/releases).
+2. Run `moon-install.exe` to install or update dependencies.
+3. Start a supported Minecraft version, then run `moon.exe` to select the game and load Moons.
 4. Press **Right Shift** to open ClickGUI (default binding).
 
-The smaller `moons.exe` downloads and caches the matching UI runtime on first use. Development builds are available from [Actions](https://github.com/LoscX-X/Moons/actions).
+Run the matching installer again when updating. For offline installation, place `moons-ui-runtime.jar` from the same release beside the installer. Development builds are available from [Actions](https://github.com/LoscX-X/Moons/actions).
 
 ## How to Save a Config
 
@@ -40,10 +40,10 @@ The smaller `moons.exe` downloads and caches the matching UI runtime on first us
 Prepare Windows x64, JDK 25 and the native build tools listed in [BUILDING.md](BUILDING.md). Open PowerShell in the project folder:
 
 ```powershell
-.\gradlew.bat moonsFullExe
+.\gradlew.bat moonsPackages
 ```
 
-The result is `build/dist/moons-full.exe`. In an IDE, import the Gradle project with JDK 25 and run the same task.
+The outputs are `build/dist/moon-install.exe`, `build/dist/moon.exe` and `build/dist/dependencies/moons-ui-runtime.jar`. In an IDE, import the Gradle project with JDK 25 and run the same task.
 
 ## How to Contribute
 

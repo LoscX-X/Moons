@@ -95,7 +95,9 @@ public final class BlockPlacementUtils {
     }
 
     public static boolean matchesBlock(BlockHitResult hit, BlockPos block) {
-        return hit.getType() == HitResult.Type.BLOCK && hit.getBlockPos().equals(block);
+        return hit != null
+                && hit.getType() == HitResult.Type.BLOCK
+                && hit.getBlockPos().equals(block);
     }
 
     public static boolean matchesFace(BlockHitResult hit, BlockPos block, Direction face) {
@@ -104,7 +106,8 @@ public final class BlockPlacementUtils {
 
     /** Does not inspect the planned hit after a miss or a different support block. */
     public static boolean matchesFace(BlockHitResult hit, BlockHitResult planned) {
-        return hit.getType() == HitResult.Type.BLOCK
+        return hit != null
+                && hit.getType() == HitResult.Type.BLOCK
                 && hit.getBlockPos().equals(planned.getBlockPos())
                 && hit.getDirection() == planned.getDirection();
     }
@@ -173,7 +176,8 @@ public final class BlockPlacementUtils {
                                 ClipContext.Block.OUTLINE,
                                 ClipContext.Fluid.NONE,
                                 client.player));
-        return hit.getType() == HitResult.Type.BLOCK
+        return hit != null
+                        && hit.getType() == HitResult.Type.BLOCK
                         && hit.getBlockPos().equals(support)
                         && hit.getDirection() == face
                 ? hit

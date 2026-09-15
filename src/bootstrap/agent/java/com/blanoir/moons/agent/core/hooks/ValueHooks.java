@@ -199,7 +199,12 @@ final class ValueHooks {
     static boolean loadObjectReturn(MethodNode method, String id) {
         int result = method.maxLocals++;
         String returnType = org.objectweb.asm.Type.getReturnType(method.desc).getInternalName();
-        boolean hasArgument = org.objectweb.asm.Type.getArgumentTypes(method.desc).length > 0;
+        boolean isStatic = (method.access & Opcodes.ACC_STATIC) != 0;
+        var arguments = org.objectweb.asm.Type.getArgumentTypes(method.desc);
+        boolean hasArgument =
+                arguments.length > 0
+                        && (arguments[0].getSort() == org.objectweb.asm.Type.OBJECT
+                                || arguments[0].getSort() == org.objectweb.asm.Type.ARRAY);
         beforeReturns(
                 method,
                 Opcodes.ARETURN,
@@ -207,10 +212,13 @@ final class ValueHooks {
                     InsnList hook = new InsnList();
                     hook.add(new VarInsnNode(Opcodes.ASTORE, result));
                     hook.add(new LdcInsnNode(id));
-                    hook.add(new VarInsnNode(Opcodes.ALOAD, 0));
+                    hook.add(
+                            isStatic
+                                    ? new InsnNode(Opcodes.ACONST_NULL)
+                                    : new VarInsnNode(Opcodes.ALOAD, 0));
                     hook.add(
                             hasArgument
-                                    ? new VarInsnNode(Opcodes.ALOAD, 1)
+                                    ? new VarInsnNode(Opcodes.ALOAD, isStatic ? 0 : 1)
                                     : new InsnNode(Opcodes.ACONST_NULL));
                     hook.add(new VarInsnNode(Opcodes.ALOAD, result));
                     hook.add(

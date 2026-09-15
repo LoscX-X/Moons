@@ -97,6 +97,12 @@ final class Misc {
                 AntiNick::setEnabled,
                 AntiNick::hudTag,
                 bool(
+                        "ignore_self",
+                        "Ignore self",
+                        "antinick.ignoreSelf",
+                        true,
+                        AntiNick::setIgnoreSelf),
+                bool(
                         "mark_nick_uuid",
                         "Mark nick UUID",
                         "antinick.markNickUuid",

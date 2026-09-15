@@ -5,14 +5,17 @@ import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.DoubleSetting;
 import com.blanoir.moons.client.event.EventBus;
+import com.blanoir.moons.client.utils.world.placement.PlacementRaycast;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.item.context.UseOnContext;
+import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.block.AnvilBlock;
 import net.minecraft.world.level.block.BaseEntityBlock;
 import net.minecraft.world.level.block.BedBlock;
@@ -28,6 +31,8 @@ import net.minecraft.world.level.block.LeverBlock;
 import net.minecraft.world.level.block.TrapDoorBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.CollisionContext;
 
 import java.text.DecimalFormat;
@@ -36,6 +41,7 @@ import java.util.Locale;
 
 /** Controls the right-click cooldown. */
 public final class FastPlace {
+    private static final PlacementRaycast RAYS = new PlacementRaycast("fastplace");
     private static final DecimalFormat DELAY_FORMAT =
             new DecimalFormat("0.0#", DecimalFormatSymbols.getInstance(Locale.US));
 
@@ -114,10 +120,63 @@ public final class FastPlace {
         return !BLOCKS_ONLY.get();
     }
 
-    private static boolean canPlaceAtCrosshair(Minecraft client, BlockItem blockItem) {
-        if (!(client.hitResult instanceof BlockHitResult hit)) {
-            return false;
+    /** Manual placement: choose the next usable support behind the first block on the look ray. */
+    public static BlockHitResult placementHit(Minecraft client) {
+        if (!ENABLED.get()
+                || client.player == null
+                || client.level == null
+                || (!RAYS.throughEntity() && !RAYS.throughBlocks())
+                || !(client.player.getMainHandItem().getItem() instanceof BlockItem)) return null;
+        Vec3 eye = client.player.getEyePosition();
+        Vec3 end =
+                eye.add(client.player.getLookAngle().scale(client.player.blockInteractionRange()));
+        BlockHitResult first =
+                client.level.clip(
+                        new ClipContext(
+                                eye,
+                                end,
+                                ClipContext.Block.OUTLINE,
+                                ClipContext.Fluid.NONE,
+                                client.player));
+        if (!RAYS.throughBlocks()) {
+            return first.getType() == HitResult.Type.BLOCK
+                            && !RAYS.entityBlocked(client, eye, first.getLocation())
+                    ? first
+                    : null;
         }
+        BlockHitResult best = null;
+        double bestDistance = Double.MAX_VALUE;
+        for (BlockPos pos :
+                BlockPos.betweenClosed(BlockPos.containing(eye), BlockPos.containing(end))) {
+            if (first.getType() == HitResult.Type.BLOCK && pos.equals(first.getBlockPos()))
+                continue;
+            BlockHitResult candidate = RAYS.clip(client, eye, end, ClipContext.Fluid.NONE, pos);
+            if (candidate.getType() != HitResult.Type.BLOCK) continue;
+            BlockPlaceContext context =
+                    new BlockPlaceContext(
+                            new UseOnContext(client.player, InteractionHand.MAIN_HAND, candidate));
+            if (!context.canPlace()) continue;
+            double distance = eye.distanceToSqr(candidate.getLocation());
+            if (distance < bestDistance) {
+                best = candidate;
+                bestDistance = distance;
+            }
+        }
+        return best != null
+                ? best
+                : first.getType() == HitResult.Type.BLOCK
+                                && !RAYS.entityBlocked(client, eye, first.getLocation())
+                        ? first
+                        : null;
+    }
+
+    private static boolean canPlaceAtCrosshair(Minecraft client, BlockItem blockItem) {
+        BlockHitResult replacement = placementHit(client);
+        BlockHitResult hit =
+                replacement != null
+                        ? replacement
+                        : client.hitResult instanceof BlockHitResult original ? original : null;
+        if (hit == null || hit.getType() != HitResult.Type.BLOCK) return false;
         double reach = client.player.blockInteractionRange();
         if (hit.getLocation().distanceToSqr(client.player.getEyePosition()) > reach * reach) {
             return false;

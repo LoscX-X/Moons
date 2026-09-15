@@ -15,11 +15,18 @@ import java.util.stream.Collectors;
 public class AnimationController {
     // initial_state
     private final int stateId;
+    private final boolean stableLocomotionLoops;
 
     // 控制器内容
     private final Int2ReferenceMap<AnimationState> states;
 
     public AnimationController(String initialState, AnimationState[] animationStates) {
+        this(initialState, animationStates, false);
+    }
+
+    public AnimationController(
+            String initialState, AnimationState[] animationStates, boolean stableLocomotionLoops) {
+        this.stableLocomotionLoops = stableLocomotionLoops;
         this.stateId = StringPool.computeIfAbsent(initialState);
         this.states =
                 Int2ReferenceMaps.unmodifiable(
@@ -29,6 +36,10 @@ public class AnimationController {
                                                 Collectors.toMap(
                                                         AnimationState::getHashId,
                                                         state -> state))));
+    }
+
+    public boolean stableLocomotionLoops() {
+        return stableLocomotionLoops;
     }
 
     public int getStateId() {

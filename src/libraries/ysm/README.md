@@ -75,7 +75,7 @@ ${env:ORG_GRADLE_PROJECT_kotlin.incremental}='false'
 ./gradlew.bat checkAllVersions ysmAllVersions benchmarkYsm '-Pmoons_build_directory=build/ysm-performance' --project-cache-dir build/ysm-performance/.gradle-project-cache --offline --no-parallel --no-daemon
 ```
 
-独立输出目录用于避开旧产物的 Windows 文件锁。`ysmAllVersions` 逐版构建适配器并打包，不运行自定义验证，三个 zip 集中输出到该构建目录的 `dist`。`ysmBundle` 构建当前 `-Pminecraft_version` 对应的包；公共库可单独构建 `ysmCoreJar ysmCodecsJar ysmImagesJar`。`compileAllVersions` 包含所有 YSM 适配器，`checkAllVersions` 包含 YSM 核心、材质及模块生命周期检查。原来重复执行的 `verifyYsmGameLibraries` 已合并到 `verifyYsmCore`。普通打包不强制执行自定义验证；CI 构建并上传版本包。详细命令见 [构建文档](../../../BUILDING.md)。验证夹具不进入产物。
+独立输出目录用于避开旧产物的 Windows 文件锁。`ysmAllVersions` 逐版构建适配器并打包，不运行自定义验证，三个 zip 集中输出到该构建目录的 `dist`。`ysmBundle` 构建当前 `-Pminecraft_version` 对应的包；公共库可单独构建 `ysmCoreJar ysmCodecsJar ysmImagesJar`。`compileAllVersions` 包含所有 YSM 适配器，`checkAllVersions` 包含 YSM 核心、材质及模块生命周期检查。原来重复执行的 `verifyYsmGameLibraries` 已合并到 `verifyYsmCore`。普通打包不强制执行自定义验证；CI 构建并上传版本包。详细命令见 [构建文档](../../../docs/BUILDING.md)。验证夹具不进入产物。
 
 ## 来源
 

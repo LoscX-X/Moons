@@ -1,6 +1,6 @@
 <h1 align="center">Moons</h1>
 
-<p align="center">简体中文 · <a href="readme.md">English</a></p>
+<p align="center">简体中文 · <a href="../readme.md">English</a></p>
 
 Moons 是面向 Minecraft Java Edition 的 Windows 客户端，提供功能模块、本地配置和 YSM 模型支持。
 
@@ -48,11 +48,15 @@ Moons 持续维护最近四个 Minecraft 稳定版本系列。
 ## 如何参与开发
 
 - 在 [Issues](https://github.com/LoscX-X/Moons/issues) 中附上 Minecraft 版本、复现步骤和相关日志。
-- 修改代码后，完成受影响功能的编译和相关检查，再提交 PR。验证方式见 [构建文档](BUILDING.md)；网络功能修改参考 [开发约定](NETWORK_DEVELOPMENT.md)。
+- 修改代码后，完成受影响功能的编译和相关检查，再提交 PR。验证方式见 [构建文档](BUILDING.md)。
+
+## Inspired Projects
+
+- [CCBlueX/LiquidBounce](https://github.com/CCBlueX/LiquidBounce)
 
 ## 许可证
 
-[GPL-3.0](LICENSE)。第三方代码保留原有许可证和声明。
+[GPL-3.0](../LICENSE)。第三方代码保留原有许可证和声明。
 
 完整的安全协议、免责声明与使用须知见 [免责声明](DISCLAIMER.zh-CN.md)。
 

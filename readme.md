@@ -1,6 +1,6 @@
 <h1 align="center">Moons</h1>
 
-<p align="center"><a href="README.zh-CN.md">简体中文</a> · English</p>
+<p align="center"><a href="docs/README.zh-CN.md">简体中文</a> · English</p>
 
 Moons is a Windows client for Minecraft Java Edition with configurable modules, local presets and YSM models.
 
@@ -37,7 +37,7 @@ If the dependency version is unchanged and the installed files are intact, only 
 
 ## How to Build
 
-Prepare Windows x64, JDK 25 and the native build tools listed in [BUILDING.md](BUILDING.md). Open PowerShell in the project folder:
+Prepare Windows x64, JDK 25 and the native build tools listed in [BUILDING.md](docs/BUILDING.md). Open PowerShell in the project folder:
 
 ```powershell
 .\gradlew.bat moonsPackages
@@ -48,12 +48,17 @@ The outputs are `build/dist/moon-install.exe`, `build/dist/moon.exe` and `build/
 ## How to Contribute
 
 - Open an [issue](https://github.com/LoscX-X/Moons/issues) with the Minecraft version, reproduction steps and relevant logs.
-- For code changes, compile and check the affected functionality, then submit a PR. See [build and verification](BUILDING.md); network changes should follow [these conventions](NETWORK_DEVELOPMENT.md).
+- For code changes, compile and check the affected functionality, then submit a PR. See [build and verification](docs/BUILDING.md).
 
+## Inspired Projects
+
+- [CCBlueX/LiquidBounce](https://github.com/CCBlueX/LiquidBounce)
+- [sdf123098/Sparkle-Morpher](https://github.com/sdf123098/Sparkle-Morpher)
+- [IamNespola/OpenMyau-Plus](https://github.com/IamNespola/OpenMyau-Plus)
 ## License
 
 [GPL-3.0](LICENSE). Third-party code retains its original license and notices.
 
-Read the full [security agreement, disclaimer and usage notice](DISCLAIMER.md).
+Read the full [security agreement, disclaimer and usage notice](docs/DISCLAIMER.md).
 
 Not an official Minecraft product. Not approved by or associated with Mojang or Microsoft.

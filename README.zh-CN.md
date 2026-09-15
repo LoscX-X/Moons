@@ -16,12 +16,12 @@ Moons 持续维护最近四个 Minecraft 稳定版本系列。
 
 ## 如何使用
 
-1. 从同一次 [Release](https://github.com/LoscX-X/Moons/releases) 下载 `moon-install.exe` 和 `moon.exe`。
-2. 运行 `moon-install.exe` 安装或更新依赖。
-3. 启动受支持版本的 Minecraft，再运行 `moon.exe`，选择游戏进程并加载 Moons。
+1. 从同一次 [Release](https://github.com/LoscX-X/Moons/releases) 下载 `moon-install-<版本>-<commit>.exe` 和 `moon-<版本>-<commit>.exe`。
+2. 运行安装器安装或更新依赖。
+3. 启动受支持版本的 Minecraft，再运行加载器，选择游戏进程并加载 Moons。
 4. 按 **右 Shift** 打开 ClickGUI，这是默认按键。
 
-更新时先运行匹配版本的安装器。离线安装时，将同次发布的 `moons-ui-runtime.jar` 放在安装器旁边。开发构建可从 [Actions](https://github.com/LoscX-X/Moons/actions) 获取。
+依赖编号不变且已安装文件完好时，只需更新加载器；依赖有变化时再运行匹配版本的安装器。离线安装时，将同次发布的 `moons-ui-runtime.jar` 放在安装器旁边。开发构建可从 [Actions](https://github.com/LoscX-X/Moons/actions) 获取。
 
 ## 如何保存配置
 

@@ -40,6 +40,13 @@ Set-Location E:\McEnv\moons
 - 两个 EXE 显示客户端/依赖版本，Windows 文件属性包含客户端版本，`--version` 输出详细元数据。
 - 安装成功后版本记录保存在 `MOONS_HOME/libraries/moons-dependencies.properties`。此记录用于展示，不能替代实际文件校验。
 - CI 以 `GITHUB_SHA` 标识构建，本地默认为 `local`，可用 `-Pmoons_build_id=<id>` 指定。
+- CI 摘要和构建日志显示客户端版本、实际检出的 commit；打包后补充依赖、UI 和 YSM 编号。Release 标题包含版本和短 commit，说明及 `moons-build-info` 产物保留完整构建信息。
+
+## CI 文件命名与按需更新
+
+CI 下载附件和 Release 中的 EXE 命名为 `moon-<load_version>-<8位commit>.exe`、`moon-install-<load_version>-<8位commit>.exe`。本地构建继续输出 `moon.exe` 和 `moon-install.exe`。
+
+文件名标识客户端构建，依赖编号决定是否需要重新安装：依赖版本不变且已安装文件完好时，只更新加载器即可。依赖内容变化或文件损坏时，运行匹配的安装器；安装器仅替换内容不同的依赖，不会因为客户端版本或 commit 改变而重复安装全部文件。
 
 ## YSM 库与热更新
 

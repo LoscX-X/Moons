@@ -16,12 +16,12 @@ Older preview builds and retired Minecraft versions may remain available through
 
 ## How to Use
 
-1. Download `moon-install.exe` and `moon.exe` from the same [release](https://github.com/LoscX-X/Moons/releases).
-2. Run `moon-install.exe` to install or update dependencies.
-3. Start a supported Minecraft version, then run `moon.exe` to select the game and load Moons.
+1. Download `moon-install-<version>-<commit>.exe` and `moon-<version>-<commit>.exe` from the same [release](https://github.com/LoscX-X/Moons/releases).
+2. Run the installer to install or update dependencies.
+3. Start a supported Minecraft version, then run the loader to select the game and load Moons.
 4. Press **Right Shift** to open ClickGUI (default binding).
 
-Run the matching installer again when updating. For offline installation, place `moons-ui-runtime.jar` from the same release beside the installer. Development builds are available from [Actions](https://github.com/LoscX-X/Moons/actions).
+If the dependency version is unchanged and the installed files are intact, only the loader needs updating. Otherwise, run the matching installer. For offline installation, place `moons-ui-runtime.jar` from the same release beside the installer. Development builds are available from [Actions](https://github.com/LoscX-X/Moons/actions).
 
 ## How to Save a Config
 

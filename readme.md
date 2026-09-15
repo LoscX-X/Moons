@@ -55,6 +55,7 @@ The outputs are `build/dist/moon-install.exe`, `build/dist/moon.exe` and `build/
 - [CCBlueX/LiquidBounce](https://github.com/CCBlueX/LiquidBounce)
 - [sdf123098/Sparkle-Morpher](https://github.com/sdf123098/Sparkle-Morpher)
 - [IamNespola/OpenMyau-Plus](https://github.com/IamNespola/OpenMyau-Plus)
+
 ## License
 
 [GPL-3.0](LICENSE). Third-party code retains its original license and notices.

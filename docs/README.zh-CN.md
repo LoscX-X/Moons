@@ -53,6 +53,8 @@ Moons 持续维护最近四个 Minecraft 稳定版本系列。
 ## Inspired Projects
 
 - [CCBlueX/LiquidBounce](https://github.com/CCBlueX/LiquidBounce)
+- [sdf123098/Sparkle-Morpher](https://github.com/sdf123098/Sparkle-Morpher)
+- [IamNespola/OpenMyau-Plus](https://github.com/IamNespola/OpenMyau-Plus)
 
 ## 许可证
 

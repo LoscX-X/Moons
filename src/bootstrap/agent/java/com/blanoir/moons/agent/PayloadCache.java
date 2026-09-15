@@ -11,11 +11,11 @@ import java.util.HexFormat;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
-/** Extracts nested JARs into a content-addressed temporary cache. */
+/** Extracts nested JARs into a content-addressed cache inside MOONS_HOME. */
 public final class PayloadCache {
     private PayloadCache() {}
 
-    public static Path extract(Path outerJar, String entryName, String fileName)
+    public static Path extract(Path outerJar, Path home, String entryName, String fileName)
             throws IOException {
         try (JarFile jar = new JarFile(outerJar.toFile())) {
             JarEntry entry = jar.getJarEntry(entryName);
@@ -28,7 +28,7 @@ public final class PayloadCache {
             }
 
             String digest = sha256(bytes);
-            Path directory = Path.of(System.getProperty("java.io.tmpdir"), "moons", digest);
+            Path directory = home.resolve("cache/runtime").resolve(digest);
             Files.createDirectories(directory);
             Path target = directory.resolve(fileName);
             if (!Files.isRegularFile(target) || Files.size(target) != bytes.length) {

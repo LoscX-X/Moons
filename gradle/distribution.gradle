@@ -197,25 +197,20 @@ def moonsHwidExe = tasks.register("moonsHwidExe", Exec) {
 def uiRuntime = uiDependenciesJar.flatMap { it.archiveFile }
 def uiMetadata = layout.buildDirectory.file("generated/launcher/ui-runtime.properties")
 def uiChecksum = uiRuntime.map { file("${it.asFile.absolutePath}.sha256") }
-def uiDownloadUrl = providers.gradleProperty("moons_ui_download_url").getOrElse("").trim()
 
 def launcherUiMetadata = tasks.register("launcherUiMetadata") {
     dependsOn uiDependenciesJar
     inputs.file(uiRuntime)
-    inputs.property("moonsUiDownloadUrl", uiDownloadUrl)
     outputs.file(uiMetadata)
     outputs.file(uiChecksum)
     doLast {
-        if (uiDownloadUrl.contains("\r") || uiDownloadUrl.contains("\n")) {
-            throw new GradleException("moons_ui_download_url must be a single URL")
-        }
         def runtimeFile = uiRuntime.get().asFile
         def sha = java.security.MessageDigest.getInstance("SHA-256")
                 .digest(java.nio.file.Files.readAllBytes(runtimeFile.toPath()))
                 .collect { String.format("%02x", it & 0xff) }.join()
         def metadataFile = uiMetadata.get().asFile
         metadataFile.parentFile.mkdirs()
-        metadataFile.setText("format=1\nurl=${uiDownloadUrl}\nsha256=${sha}\nsize=${runtimeFile.length()}\n", "UTF-8")
+        metadataFile.setText("format=1\nsha256=${sha}\nsize=${runtimeFile.length()}\n", "UTF-8")
         uiChecksum.get().setText(sha + "\n", "US-ASCII")
     }
 }
@@ -273,7 +268,7 @@ def launcherVersionMetadata = tasks.register('launcherVersionMetadata') {
         uiMetadata.get().asFile.withInputStream { ui.load(it) }
         def uiHash = ui.getProperty('sha256')
         def ysmHash = sha256(ysmMetadata.get().asFile.bytes)
-        // URLs, client releases and build IDs do not affect dependency identity.
+        // Client releases and build IDs do not affect dependency identity.
         def dependencyHash = sha256((uiHash + '\n' + ysmHash).getBytes('UTF-8'))
         releaseMetadata.get().asFile.setText(
                 "format=1\nclient.version=${clientVersion}\nbuild.id=${launcherBuildId}\n"
@@ -295,7 +290,8 @@ def registerLauncher = { String taskName, String fileName, boolean installer ->
         def sources = files(
                 'src/tools/shared/Hashing.cs', 'src/tools/shared/StagedFile.cs',
                 'src/tools/launcher/csharp/RuntimeMetadata.cs',
-                'src/tools/launcher/csharp/DependencyRuntime.cs', assemblyVersionSource)
+                'src/tools/launcher/csharp/DependencyRuntime.cs',
+                'src/tools/launcher/csharp/CacheMaintenance.cs', assemblyVersionSource)
         if (installer) {
             sources += files('src/tools/launcher/csharp/DependencyInstaller.cs',
                     'src/tools/launcher/csharp/YsmPackage.cs', 'src/tools/launcher/csharp/ZipEntries.cs')
@@ -311,6 +307,7 @@ def registerLauncher = { String taskName, String fileName, boolean installer ->
                 'Moons.Release.properties': releaseMetadata]
         if (installer) {
             resources['Moons.Ysm.zip'] = ysmPackage
+            resources['Moons.UiRuntime.jar'] = uiRuntime
         } else {
             resources['Moons.Payload.26_1.jar'] = layout.buildDirectory.file('universal/26.1/moons.jar')
             resources['Moons.Payload.26_2.patch'] = layout.buildDirectory.file('universal/moons-26.2.patch.zip')

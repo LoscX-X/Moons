@@ -18,7 +18,7 @@ Set-Location E:\McEnv\moons
 
 产物是 `build\dist\moon-install.exe` 和 `build\dist\moon.exe`。先运行安装器安装/更新 UI 运行库、共享 YSM 库及所有游戏版本适配模块，再运行加载器。加载器只校验已安装依赖，缺失、损坏或版本不匹配时提示运行匹配的安装器。
 
-本地安装器优先读取旁边的 `moons-ui-runtime.jar` 或 `dependencies\moons-ui-runtime.jar`。向其他电脑分发时，可用 `-Pmoons_ui_download_url=https://.../moons-ui-runtime.jar` 固定同次发布的 UI 下载地址；下载与本地文件均校验 SHA-256 和大小。CI 自动写入当前 Release 的地址。安装器每次更新到自身构建匹配的依赖，更新客户端时应使用同次发布的两个 EXE。
+安装器内置完整 UI runtime、共享 YSM 库和各版本适配模块，安装和更新完全离线。提取后校验 SHA-256 和大小；已安装内容相同则跳过。CI 仅通过安装器分发 runtime，不发布单独 runtime JAR 或提供下载地址。
 
 | 命令 | `build\dist` 下的产物 |
 | --- | --- |
@@ -36,7 +36,7 @@ Set-Location E:\McEnv\moons
 
 - `gradle.properties` 的 `load_version` 是客户端版本，使用 `major.minor.patch`，可带预发布后缀。
 - 依赖版本由 UI 哈希和全部 YSM 文件哈希自动生成；分别保留 UI、YSM 编号。界面显示前 12 位，完整 SHA-256 用于文件校验。
-- 客户端版本、构建编号和下载地址不参与依赖编号计算；依赖内容不变时无需重复安装。
+- 客户端版本和构建编号不参与依赖编号计算；依赖内容不变时无需重复安装。
 - 两个 EXE 显示客户端/依赖版本，Windows 文件属性包含客户端版本，`--version` 输出详细元数据。
 - 安装成功后版本记录保存在 `MOONS_HOME/libraries/moons-dependencies.properties`。此记录用于展示，不能替代实际文件校验。
 - CI 以 `GITHUB_SHA` 标识构建，本地默认为 `local`，可用 `-Pmoons_build_id=<id>` 指定。
@@ -74,6 +74,23 @@ MOONS_HOME/
 Get-Item .\build\dist\moon.exe | Select-Object FullName, LastWriteTime, Length
 & .\build\dist\moon.exe
 ```
+
+## 缓存限制
+
+加载器启动、安装器成功完成更新时会尝试清理可再生成的缓存。存在 `java` / `javaw` 进程时延后到之后运行，避免删除延迟加载仍需使用的 JAR；文件被占用、访问受限或路径含目录链接时也会跳过。
+
+| 类别 | 保留上限 | 体积上限 | 过期时间 |
+| --- | --- | --- | --- |
+| UI runtime | 当前版本及一个旧版本 | 256 MiB | 旧版本 30 天 |
+| 载荷 / DLL / API 缓存 | 12 份 | 128 MiB | 30 天 |
+| 模块和库副本 | 32 份 | 256 MiB | 30 天 |
+| 宿主 runtime 副本 | 8 份 | 64 MiB | 30 天 |
+| 失败安装留下的 YSM 备份 | 2 份 | 64 MiB | 7 天 |
+| 旧 `%TEMP%/moons` runtime 缓存 | 8 份 | 64 MiB | 7 天 |
+
+成功更新的 YSM 临时备份会立即删除。新写入文件保留 10 分钟宽限期；当前 UI 版本始终保护，因此上限属于可安全清理时的目标，不会为了压低体积强删正在使用的文件。超量时优先移除较旧条目。
+
+新 runtime 缓存统一写入 `MOONS_HOME/cache/runtime`，不再另写系统临时目录。仅清理已知文件名和哈希目录；配置、模型、预设和 `MOONS_HOME/modules` 中的正式模块不属于清理范围。
 
 ## 按需验证
 

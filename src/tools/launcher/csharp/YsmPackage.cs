@@ -54,6 +54,7 @@ namespace Moons.WindowsLauncher
             string backupRoot = Path.Combine(home, "cache", "ysm-install", attempt);
             var pending = new List<Replacement>();
             var committed = new List<Replacement>();
+            bool completed = false;
             try
             {
                 foreach (string name in Files)
@@ -85,6 +86,7 @@ namespace Moons.WindowsLauncher
                         File.Move(replacement.Temporary, replacement.Target);
                     committed.Add(replacement);
                 }
+                completed = true;
             }
             catch (Exception failure)
             {
@@ -108,6 +110,7 @@ namespace Moons.WindowsLauncher
             {
                 foreach (var replacement in pending)
                     if (File.Exists(replacement.Temporary)) File.Delete(replacement.Temporary);
+                if (completed) CacheMaintenance.DiscardCompletedBackup(home, backupRoot);
             }
         }
 

@@ -5,9 +5,10 @@ $fixture = Join-Path ([IO.Path]::GetFullPath($FixtureRoot)) ([Guid]::NewGuid().T
 New-Item -ItemType Directory -Path $fixture -Force | Out-Null
 $previousHome = $env:MOONS_HOME
 $env:MOONS_HOME = Join-Path $fixture 'home'
-$installer = Join-Path $Distribution 'moon-install.exe'
+# Run the installer alone, away from build outputs and standalone runtime JARs.
+$installer = Join-Path $fixture 'moon-install.exe'
+Copy-Item -LiteralPath (Join-Path $Distribution 'moon-install.exe') -Destination $installer
 $loader = Join-Path $Distribution 'moon.exe'
-$runtime = Join-Path $Distribution 'dependencies/moons-ui-runtime.jar'
 $script:attempt = 0
 
 function Run-Tool([string]$Executable, [string]$Argument, [int]$Expected) {
@@ -45,7 +46,7 @@ try {
         $installerResources -contains 'Moons.Bridge.dll' -or
         $loaderResources -contains 'Moons.Ysm.zip' -or
         $loaderResources -notcontains 'Moons.Bridge.dll' -or
-        $installerResources -contains 'Moons.UiRuntime.jar' -or
+        $installerResources -notcontains 'Moons.UiRuntime.jar' -or
         $loaderResources -contains 'Moons.UiRuntime.jar') { throw 'Incorrect installer/loader resource split.' }
 
     # A clean loader must report missing dependencies without creating the installation.
@@ -75,24 +76,24 @@ try {
         if ($damaged[$name] -ne $after[$name]) { throw "Loader changed damaged installation: $name" }
     }
 
-    # Force the download path with a copied installer and an invalid file URL.
-    $isolated = Join-Path $fixture 'moon-install.exe'
-    Copy-Item -LiteralPath $installer -Destination $isolated
-    $bad = Join-Path $fixture 'bad.jar'
-    [IO.File]::WriteAllText($bad, 'invalid downloaded runtime')
-    Run-Tool $isolated ('--install-only --ui-dependency-url "' + $bad + '"') 1
+    # A locked damaged runtime must leave the installation intact and clean up staging.
+    $locked = [IO.File]::Open($ui, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+    try { Run-Tool $installer '--install-only' 1 }
+    finally { $locked.Dispose() }
     $after = Installed-State
+    if ($damaged.Count -ne $after.Count) { throw 'Failed extraction changed the file set.' }
     foreach ($name in $damaged.Keys) {
-        if ($damaged[$name] -ne $after[$name]) { throw "Failed download changed installation: $name" }
+        if ($damaged[$name] -ne $after[$name]) { throw "Failed extraction changed installation: $name" }
     }
-    if (Get-ChildItem -LiteralPath $env:MOONS_HOME -Filter '*.tmp*' -Recurse) { throw 'Failed download left staging files.' }
-    # A verified download repairs UI, then the installer repairs an outdated YSM dependency.
-    Run-Tool $isolated ('--install-only --ui-dependency-url "' + $runtime + '"') 0
+    if (Get-ChildItem -LiteralPath $env:MOONS_HOME -Filter '*.tmp*' -Recurse) { throw 'Failed extraction left staging files.' }
+    # Repair using only the embedded resource, even when an unrelated local JAR is present.
+    [IO.File]::WriteAllText((Join-Path $fixture 'moons-ui-runtime.jar'), 'unrelated runtime')
+    Run-Tool $installer '--install-only' 0
     $ysm = Join-Path $env:MOONS_HOME 'libraries/moons-ysm-core.jar'
     [IO.File]::WriteAllText($ysm, 'old YSM')
     Run-Tool $loader '--verify-dependencies' 1
     Run-Tool $installer '--install-only' 0
     Run-Tool $loader '--verify-dependencies' 0
-    Write-Output 'LAUNCHER_PACKAGES_VERIFIED: isolated roles, read-only loader, install, idempotence, hash rejection and UI/YSM repair.'
+    Write-Output 'LAUNCHER_PACKAGES_VERIFIED: isolated roles, read-only loader, offline install, idempotence, failed extraction preservation and UI/YSM repair.'
 }
 finally { $env:MOONS_HOME = $previousHome }

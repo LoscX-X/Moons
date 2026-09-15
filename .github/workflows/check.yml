@@ -13,7 +13,6 @@ on:
           - all
           - install
           - loader
-          - ui-runtime
       verify:
         description: Verify Minecraft hooks, YSM rendering and update behavior
         type: boolean
@@ -88,17 +87,15 @@ jobs:
             'all'        { @('moonsPackages') }
             'install'    { @('moonsInstallExe') }
             'loader'     { @('moonsExe') }
-            'ui-runtime' { @('moonsUiRuntime') }
             default     { throw "Unknown package: $env:PACKAGE_KIND" }
           })
           if ($env:PACKAGE_KIND -eq 'all' -and $env:VERIFY_PACKAGES -eq 'true') {
             $tasks += 'verifyLauncherPackages'
           }
           $tag = "build-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
-          $runtimeUrl = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$tag/moons-ui-runtime.jar"
           "release_tag=$tag" >> $env:GITHUB_OUTPUT
           "kind=$env:PACKAGE_KIND" >> $env:GITHUB_OUTPUT
-          .\gradlew.bat @tasks "-Pmoons_ui_download_url=$runtimeUrl" --console=plain
+          .\gradlew.bat @tasks --console=plain
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Name executable release files
         id: assets
@@ -155,23 +152,11 @@ jobs:
           path: build/ci/build-info.md
           if-no-files-found: error
       - name: Upload YSM bundles
-        if: github.event_name != 'workflow_dispatch' || inputs.package != 'ui-runtime'
         uses: actions/upload-artifact@v6
         with:
           name: moons-ysm
           overwrite: true
           path: build/dist/moons-ysm-*.zip
-          if-no-files-found: error
-          compression-level: 0
-      - name: Upload UI runtime
-        if: steps.package.outputs.kind != ''
-        uses: actions/upload-artifact@v6
-        with:
-          name: moons-ui-runtime
-          overwrite: true
-          path: |
-            build/dist/dependencies/moons-ui-runtime.jar
-            build/dist/dependencies/moons-ui-runtime.jar.sha256
           if-no-files-found: error
           compression-level: 0
       - name: Upload dependency installer
@@ -206,7 +191,7 @@ jobs:
           pattern: moons-*
           merge-multiple: true
           path: artifacts
-      - name: Publish matching launchers and UI runtime
+      - name: Publish installer and loader
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ needs.check.outputs.release_tag }}
@@ -218,11 +203,10 @@ jobs:
           cat artifacts/build-info.md > release-notes.md
           printf '\n\n' >> release-notes.md
           cat >> release-notes.md <<'NOTES'
-          - `moon-install-<version>-<commit>.exe`: installs or updates matching UI dependencies, shared YSM libraries and game adapters. Run this for first-time setup or when dependencies change.
+          - `moon-install-<version>-<commit>.exe`: includes and installs matching UI dependencies, shared YSM libraries and game adapters entirely offline. Run this for first-time setup or when dependencies change.
           - `moon-<version>-<commit>.exe`: validates installed dependencies and loads Moons into Minecraft.
           - If the dependency version is unchanged and the installed files are intact, updating only the loader is enough. The installer skips files whose content is unchanged.
-          - `moons-ui-runtime.jar`: standalone UI dependency, with a SHA-256 sidecar.
-          - For offline installation, place this release's `moons-ui-runtime.jar` beside the installer.
+          - The installer contains the runtime; no separate JAR or dependency download is required.
           - `moons-ysm-all.zip`: standalone YSM bundle with one shared library set and all supported adapters.
           - `moons-ysm-<version>.zip`: optional standalone bundle for one game version.
 

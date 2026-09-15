@@ -21,7 +21,7 @@ Older preview builds and retired Minecraft versions may remain available through
 3. Start a supported Minecraft version, then run the loader to select the game and load Moons.
 4. Press **Right Shift** to open ClickGUI (default binding).
 
-If the dependency version is unchanged and the installed files are intact, only the loader needs updating. Otherwise, run the matching installer. For offline installation, place `moons-ui-runtime.jar` from the same release beside the installer. Development builds are available from [Actions](https://github.com/LoscX-X/Moons/actions).
+If the dependency version is unchanged and the installed files are intact, only the loader needs updating. Otherwise, run the matching installer. The installer includes the complete UI runtime and YSM dependencies and works offline. Development builds are available from [Actions](https://github.com/LoscX-X/Moons/actions).
 
 ## How to Save a Config
 

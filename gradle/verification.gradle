@@ -138,3 +138,47 @@ tasks.register('verifyLauncherPackages', Exec) {
             '-Distribution', layout.buildDirectory.dir('dist').get().asFile.absolutePath,
             '-FixtureRoot', layout.buildDirectory.dir('verification/launcher-packages').get().asFile.absolutePath
 }
+
+
+def cacheMaintenanceCheckExe = tasks.register('cacheMaintenanceVerificationExe', Exec) {
+    onlyIf { moonsBuild.windowsHost }
+    def sources = files('src/tools/launcher/csharp/CacheMaintenance.cs',
+            'src/tools/launcher/csharp/DependencyRuntime.cs', 'src/tools/launcher/csharp/RuntimeMetadata.cs',
+            'src/tools/shared/Hashing.cs', 'src/tools/shared/StagedFile.cs',
+            'src/test/launcher/CacheMaintenanceVerification.cs')
+    def output = layout.buildDirectory.file('verification/cache-maintenance.exe')
+    inputs.files(sources)
+    outputs.file(output)
+    doFirst {
+        output.get().asFile.parentFile.mkdirs()
+        executable moonsToolchains.locateCSharpCompiler().absolutePath
+        args '/nologo', '/target:exe', "/out:${output.get().asFile.absolutePath}"
+        args sources.files.collect { it.absolutePath }.sort()
+    }
+}
+
+tasks.register('verifyCacheMaintenance', Exec) {
+    group = 'verification'
+    description = 'Checks cache retention budgets, live-file protection and path boundaries in an isolated fixture.'
+    onlyIf { moonsBuild.windowsHost }
+    dependsOn cacheMaintenanceCheckExe
+    executable layout.buildDirectory.file('verification/cache-maintenance.exe').get().asFile.absolutePath
+    args layout.buildDirectory.dir('verification/cache-maintenance').get().asFile.absolutePath
+}
+
+tasks.named('check').configure { dependsOn 'verifyCacheMaintenance' }
+
+tasks.register('verifyPayloadCache', JavaExec) {
+    group = 'verification'
+    description = 'Verifies nested runtime extraction stays inside MOONS_HOME and reuses its cached copy.'
+    dependsOn 'loaderTestClasses'
+    classpath = sourceSets.loaderTest.runtimeClasspath
+    mainClass = 'com.blanoir.moons.agent.PayloadCacheVerification'
+    def fixture = layout.buildDirectory.dir('verification/payload-cache')
+    doFirst {
+        fixture.get().asFile.mkdirs()
+        args fixture.get().asFile.absolutePath
+    }
+}
+
+tasks.named('check').configure { dependsOn 'verifyPayloadCache' }

@@ -42,7 +42,7 @@ final class RuntimeLoader implements AutoCloseable {
             throws Exception {
         Path runtimeJar =
                 PayloadCache.extract(
-                        outerJar, "META-INF/moons/runtime/moons-runtime.jar", "moons-runtime.jar");
+                        outerJar, home, "META-INF/moons/runtime/moons-runtime.jar", "moons-runtime.jar");
         ClassLoader bridgeParent =
                 new BridgeParentClassLoader(gameLoader, RuntimeLoader.class.getClassLoader());
         Path uiRuntime = resolveUiRuntime(home);

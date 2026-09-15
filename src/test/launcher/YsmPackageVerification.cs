@@ -21,6 +21,8 @@ internal static class YsmPackageVerification
             File.WriteAllText(unrelated, "preserve");
             YsmPackage.Install(home, Package("two", null));
             CheckFiles(home, "two");
+            string backupRoot = Path.Combine(home, "cache", "ysm-install");
+            Check(!Directory.Exists(backupRoot) || Directory.GetDirectories(backupRoot).Length == 0, "Successful install left backup copies");
             Check(File.ReadAllText(unrelated) == "preserve", "Unrelated library changed");
             // A locked module fails after the libraries were published. Rollback must restore them.
             using (var locked = new FileStream(Path.Combine(home, YsmPackage.Files[3]),

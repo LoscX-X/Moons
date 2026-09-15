@@ -501,11 +501,11 @@ namespace Moons.WindowsLauncher
         private static void Execute(
             string[] arguments,
             Action<int, string> progress,
-            Action<int, string> downloadProgress,
             Func<IList<MinecraftTarget>, MinecraftTarget> chooseTarget,
             Func<bool> cancelled)
         {
             string home = ResolveHome();
+            CacheMaintenance.Run(home);
             progress(4, "Checking UI runtime dependencies");
             DependencyRuntime.Verify(home);
             progress(18, "Extracting shared " + DisplayName + " JVMTI components");
@@ -576,8 +576,6 @@ namespace Moons.WindowsLauncher
             private readonly BackgroundWorker worker;
             private readonly Label status;
             private readonly AccentProgressBar progressTrack;
-            private readonly Label downloadStatus;
-            private readonly AccentProgressBar downloadTrack;
             private readonly System.Windows.Forms.Timer progressTimer;
             private readonly Stopwatch progressClock;
             private readonly SolidBrush starBrush = new SolidBrush(Color.White);
@@ -585,7 +583,6 @@ namespace Moons.WindowsLauncher
             private double lastAnimationSeconds;
             private double starAnimationSeconds;
             private int targetProgress;
-            private bool downloadCompleted;
             private bool allowClose;
             private bool highResolutionTimer;
 
@@ -650,26 +647,6 @@ namespace Moons.WindowsLauncher
                 progressTrack.Height = 8;
                 Controls.Add(progressTrack);
 
-                downloadTrack = new AccentProgressBar();
-                downloadTrack.Left = progressTrack.Left;
-                downloadTrack.Top = 218;
-                downloadTrack.Width = progressTrack.Width;
-                downloadTrack.Height = 6;
-                downloadTrack.Visible = false;
-                Controls.Add(downloadTrack);
-
-                downloadStatus = new Label();
-                downloadStatus.AutoEllipsis = true;
-                downloadStatus.TextAlign = ContentAlignment.MiddleCenter;
-                downloadStatus.Left = progressTrack.Left;
-                downloadStatus.Top = 228;
-                downloadStatus.Width = progressTrack.Width;
-                downloadStatus.Height = 18;
-                downloadStatus.ForeColor = Muted;
-                downloadStatus.Font = new Font("Segoe UI", 7.5F);
-                downloadStatus.BackColor = Color.Transparent;
-                downloadStatus.Visible = false;
-                Controls.Add(downloadStatus);
                 InstallWindowChrome(this, true);
 
                 worker = new BackgroundWorker();
@@ -732,11 +709,6 @@ namespace Moons.WindowsLauncher
                         {
                             worker.ReportProgress(value, message);
                         },
-                        delegate(int value, string message)
-                        {
-                            worker.ReportProgress(value,
-                                new DownloadProgressState(value, message));
-                        },
                         SelectTarget,
                         delegate { return worker.CancellationPending; });
                 }
@@ -748,41 +720,10 @@ namespace Moons.WindowsLauncher
 
             private void ProgressChanged(object sender, ProgressChangedEventArgs eventArgs)
             {
-                DownloadProgressState download = eventArgs.UserState as DownloadProgressState;
-                if (download != null)
-                {
-                    downloadTrack.Visible = true;
-                    downloadStatus.Visible = true;
-                    status.Top = 252;
-                    downloadTrack.Value = download.Percentage;
-                    downloadStatus.Text = download.Message;
-                    downloadCompleted = download.Percentage >= 100;
-                    return;
-                }
-
-                if (downloadCompleted)
-                {
-                    downloadTrack.Visible = false;
-                    downloadStatus.Visible = false;
-                    status.Top = 218;
-                    downloadCompleted = false;
-                }
                 int value = Math.Max(0, Math.Min(100, eventArgs.ProgressPercentage));
                 targetProgress = Math.Max(targetProgress, value);
                 status.Text = eventArgs.UserState == null
                     ? "Working..." : eventArgs.UserState.ToString();
-            }
-
-            private sealed class DownloadProgressState
-            {
-                internal readonly int Percentage;
-                internal readonly string Message;
-
-                internal DownloadProgressState(int percentage, string message)
-                {
-                    Percentage = Math.Max(0, Math.Min(100, percentage));
-                    Message = message;
-                }
             }
 
             private void AnimateProgress(object sender, EventArgs eventArgs)
@@ -1360,6 +1301,7 @@ namespace Moons.WindowsLauncher
             Directory.CreateDirectory(directory);
             if (File.Exists(target))
             {
+                CacheMaintenance.Touch(target);
                 return target;
             }
 
@@ -1517,6 +1459,7 @@ namespace Moons.WindowsLauncher
             Directory.CreateDirectory(directory);
             if (File.Exists(target) && Hashing.Sha256(target) == digest)
             {
+                CacheMaintenance.Touch(target);
                 return target;
             }
 

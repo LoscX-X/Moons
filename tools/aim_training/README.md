@@ -1,6 +1,6 @@
 # Aim GRU 迁移训练包
 
-适用：Windows 台式机，9950 / RTX 5080 / 96 GB RAM。先训练一个小型**连续动作预测器**，验证是否超过现有回归模型。GRU128 第 7 轮现已接入客户端可选的 `Learned assist` 辅助层，详见 [模型接入说明](../../lib/aim/README.md)。
+适用：Windows 台式机，9950 / RTX 5080 / 96 GB RAM。先训练一个小型**连续动作预测器**，验证是否超过现有回归模型。GRU128 第 7 轮现已接入客户端可选的 `Learned assist` 辅助层，详见 [模型说明](../../src/libraries/models/aim/README.md)。
 
 ## 数据够不够？
 
@@ -157,7 +157,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -Device cuda -Py
 
 调用时传原始单位，不要预先重复归一化。不能把每帧调用当成训练数据中约 50 ms 一次的动作更新。
 
-训练产物仍是 PyTorch 检查点。GRU128 第 7 轮另经 `export_java.py` 导出为 `lib/aim/aim-gru128-epoch7.bin`，由客户端纯 Java 推理；无需 ONNX。已完成 PyTorch 数值对齐与状态测试，游戏内效果尚待验证。详见 [模型接入说明](../../lib/aim/README.md)。
+训练产物仍是 PyTorch 检查点。GRU128 第 7 轮另经 `export_java.py` 导出为 `src/libraries/models/aim/aim-gru128-epoch7.bin`，由客户端纯 Java 推理；无需 ONNX。已完成 PyTorch 数值对齐与状态测试，游戏内效果尚待验证。详见 [模型说明](../../src/libraries/models/aim/README.md)。
 
 ## 8. 这版实验解决什么、还缺什么？
 

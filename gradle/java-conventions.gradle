@@ -81,7 +81,7 @@ sourceSets.client.resources.setSrcDirs([
 ])
 
 tasks.named("processClientResources") {
-    from(layout.projectDirectory.dir("lib/aim")) {
+    from(layout.projectDirectory.dir("src/libraries/models/aim")) {
         include("aim-gru128-epoch7.bin", "aim-gru128-epoch7.json")
         into("assets/moons/models")
     }

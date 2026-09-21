@@ -27,8 +27,8 @@ public final class AttackSlowdownTracker {
         Vec3 current = player.getDeltaMovement();
         // causeExtraKnockback only applies attack slowdown on the branch that
         // multiplies X/Z by vanilla's 0.6. A zero-knockback call must be left alone.
-        if (!approximately(current.x, snapshot.velocity().x * 0.6D)
-                || !approximately(current.z, snapshot.velocity().z * 0.6D)) {
+        if (approximately(current.x, snapshot.velocity().x * 0.6D)
+                || approximately(current.z, snapshot.velocity().z * 0.6D)) {
             return false;
         }
         player.setDeltaMovement(
@@ -41,7 +41,7 @@ public final class AttackSlowdownTracker {
 
     private static boolean approximately(double first, double second) {
         double scale = Math.max(1.0D, Math.max(Math.abs(first), Math.abs(second)));
-        return Math.abs(first - second) <= 1.0E-9D * scale;
+        return !(Math.abs(first - second) <= 1.0E-9D * scale);
     }
 
     public static void discard(Player player) {

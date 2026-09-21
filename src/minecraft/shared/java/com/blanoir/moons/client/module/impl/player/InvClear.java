@@ -10,6 +10,7 @@ import com.blanoir.moons.client.module.framework.ModuleRegistry;
 import com.blanoir.moons.client.module.impl.player.invclear.InventoryCleanup;
 import com.blanoir.moons.client.module.impl.player.invmanager.*;
 import com.blanoir.moons.client.utils.client.ClientReady;
+import com.blanoir.moons.client.utils.inventory.InventoryClickFailure;
 import com.blanoir.moons.client.utils.inventory.InventoryClicks;
 import com.blanoir.moons.client.utils.world.placement.PlacementCoordinator;
 import com.mojang.blaze3d.platform.InputConstants;
@@ -22,6 +23,7 @@ import java.util.*;
 
 /** Low-priority inventory cleanup. Armor and hotbar sorting always get the first opportunity. */
 public final class InvClear {
+    private static final InventoryClickFailure FAILURE = new InventoryClickFailure("invclear");
     public static final String DEFAULT_JUNK =
             "minecraft:rotten_flesh, minecraft:poisonous_potato, minecraft:spider_eye, minecraft:bowl";
     private static final BooleanSetting ENABLED = flag("enabled", false);
@@ -88,6 +90,7 @@ public final class InvClear {
     }
 
     public static void reset() {
+        FAILURE.reset();
         screen = null;
         session = new InventorySession();
         MOUSE_HELD.clear();
@@ -100,6 +103,7 @@ public final class InvClear {
 
     private static void enter(InventoryScreen current, long now) {
         if (current == screen) return;
+        FAILURE.reset();
         screen = current;
         session = new InventorySession();
         MOUSE_HELD.clear();
@@ -186,6 +190,13 @@ public final class InvClear {
         var drop = plan.getFirst();
         status = "Drop " + drop.item().getHoverName().getString() + " · " + drop.reason();
         if (now < nextActionAt) return;
+        if (FAILURE.beforeClick(
+                client, client.player.inventoryMenu, snapshot.menuSlot(drop.source()), null)) {
+            status = "Misclick · retrying";
+            activityVersion = InventoryClicks.activityVersion();
+            nextActionAt = now + Math.max(50, ACTION_DELAY.get()) * 1_000_000L;
+            return;
+        }
         if (ATTEMPTS.size() >= 100
                 || ATTEMPTS.stream()
                                 .filter(
@@ -261,6 +272,7 @@ public final class InvClear {
 
     public static ModuleRegistry.Setting[] settings() {
         return new ModuleRegistry.Setting[] {
+            FAILURE.setting(),
             EQUIPMENT.describe(
                     "equipment",
                     "Surplus equipment",

@@ -10,6 +10,7 @@ import com.blanoir.moons.client.module.framework.ModuleKeybinds;
 import com.blanoir.moons.client.module.impl.player.AutoTotem;
 import com.blanoir.moons.client.ui.clickgui.MoonsComposeScreen;
 import com.blanoir.moons.client.utils.client.ClientReady;
+import com.blanoir.moons.client.utils.inventory.InventoryClickFailure;
 import com.blanoir.moons.client.utils.inventory.InventoryClicks;
 import com.blanoir.moons.client.utils.world.placement.PlacementCoordinator;
 import com.mojang.blaze3d.platform.InputConstants;
@@ -26,6 +27,13 @@ import java.util.Set;
 
 /** First-stage manager: player-inventory sorting/refill with manual input taking precedence. */
 public final class InvManager {
+    private static final InventoryClickFailure FAILURE = new InventoryClickFailure("invmanager");
+
+    public static com.blanoir.moons.client.module.framework.ModuleRegistry.Setting
+            failureSetting() {
+        return FAILURE.setting();
+    }
+
     public record SlotView(int index, InventoryRole role, ItemStack item, String protection) {}
 
     public record View(String status, List<SlotView> slots, List<String> plan) {}
@@ -34,10 +42,10 @@ public final class InvManager {
     private static InventorySession session = new InventorySession();
     private static final Set<Integer> mouseHeld = new HashSet<>();
     private static boolean once;
-    private static boolean stalled;
     private static long nextActionAt;
     private static long combatUntil;
     private static String status = "Open inventory to organize";
+    private static String lastStatus = "";
     private static Object bindingScreen;
 
     private InvManager() {}
@@ -130,7 +138,6 @@ public final class InvManager {
         if (!(current instanceof InventoryScreen))
             MinecraftClientAccess.setScreen(client, new InventoryScreen(client.player));
         once = true;
-        stalled = false;
         session.retry();
         status = "Organize once queued";
     }
@@ -149,27 +156,28 @@ public final class InvManager {
     }
 
     public static String statusText() {
-        return status;
+        return screen == null && !lastStatus.isEmpty() ? "Last inventory: " + lastStatus : status;
     }
 
     public static void reset() {
+        FAILURE.reset();
         screen = null;
         session = new InventorySession();
         mouseHeld.clear();
         once = false;
-        stalled = false;
         bindingScreen = null;
         nextActionAt = 0;
         combatUntil = 0;
         status = "Open inventory to organize";
+        lastStatus = "";
     }
 
     private static void enter(InventoryScreen current, long now) {
         if (screen == current) return;
+        FAILURE.reset();
         screen = current;
         session = new InventorySession();
         mouseHeld.clear();
-        stalled = false;
         nextActionAt = now + InvManagerConfig.openDelay() * 1_000_000L;
     }
 
@@ -190,12 +198,12 @@ public final class InvManager {
                 || !(MinecraftClientAccess.screen(client) instanceof InventoryScreen current)
                 || client.player.containerMenu != client.player.inventoryMenu) {
             if (screen != null) {
+                lastStatus = status;
                 screen = null;
                 session = new InventorySession();
             }
             mouseHeld.clear();
             once = false;
-            stalled = false;
             status = "Open inventory to organize";
             return;
         }
@@ -207,17 +215,18 @@ public final class InvManager {
         }
         var snapshot = snapshot(client);
         session.observe(snapshot, now);
-        if (stalled) {
-            status = "Slots did not settle · run once to retry";
-            return;
-        }
         String wait = waitReason(client, now);
         if (!wait.isEmpty()) {
             status = wait;
             return;
         }
+        if (now < nextActionAt) return;
         List<InventoryAction> plan = plan(client, snapshot);
         if (plan.isEmpty()) {
+            if (InvManagerConfig.protectSpecial() && !plan(client, snapshot, false).isEmpty()) {
+                status = "Paused · Protect special items blocks sorting";
+                return;
+            }
             status =
                     (once ? "Organized" : "Ready")
                             + (session.protectedSlots().isEmpty()
@@ -228,7 +237,12 @@ public final class InvManager {
         }
         InventoryAction action = plan.getFirst();
         status = action.reason();
-        if (now < nextActionAt) return;
+        if (FAILURE.beforeClick(
+                client, client.player.inventoryMenu, snapshot.menuSlot(action.source()), null)) {
+            status = "Misclick · retrying";
+            nextActionAt = now + Math.max(50, InvManagerConfig.nextDelay()) * 1_000_000L;
+            return;
+        }
         if (!session.reserve(action)
                 || !InventoryClicks.swap(
                         client,
@@ -238,8 +252,8 @@ public final class InvManager {
                         action.target(),
                         action.beforeSource(),
                         action.beforeTarget())) {
-            stalled = true;
-            status = "Slots did not settle · run once to retry";
+            nextActionAt = now + 1_000_000_000L;
+            status = "Inventory changed · waiting to retry";
             return;
         }
         nextActionAt = System.nanoTime() + InvManagerConfig.nextDelay() * 1_000_000L;
@@ -280,6 +294,11 @@ public final class InvManager {
     }
 
     private static List<InventoryAction> plan(Minecraft client, InventorySnapshot snapshot) {
+        return plan(client, snapshot, InvManagerConfig.protectSpecial());
+    }
+
+    private static List<InventoryAction> plan(
+            Minecraft client, InventorySnapshot snapshot, boolean protectSpecial) {
         var blocked = protectedSlots();
         for (int i = 0; i < 41; i++) {
             int slot = snapshot.menuSlot(i);
@@ -294,7 +313,7 @@ public final class InvManager {
                         blocked,
                         InvManagerConfig.sort(),
                         InvManagerConfig.refill(),
-                        InvManagerConfig.protectSpecial()));
+                        protectSpecial));
         return result.stream()
                 .filter(
                         action -> {
@@ -329,6 +348,8 @@ public final class InvManager {
         }
         var actions = snapshot == null ? List.<InventoryAction>of() : plan(client, snapshot);
         return new View(
-                status, List.copyOf(views), actions.stream().map(InventoryAction::reason).toList());
+                statusText(),
+                List.copyOf(views),
+                actions.stream().map(InventoryAction::reason).toList());
     }
 }

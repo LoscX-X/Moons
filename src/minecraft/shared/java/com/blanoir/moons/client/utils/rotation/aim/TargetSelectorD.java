@@ -26,9 +26,10 @@ public final class TargetSelectorD {
     private TargetSelectorD() {}
 
     public static List<BlockPos> cells(AABB feet, Vec3 velocity, int row) {
-        AABB sweep =
-                feet.expandTowards(
-                        Mth.clamp(velocity.x, -.5, .5), 0, Mth.clamp(velocity.z, -.5, .5));
+        double dx = Mth.clamp(velocity.x, -.5, .5);
+        double dz = Mth.clamp(velocity.z, -.5, .5);
+        AABB predicted = feet.move(dx, 0, dz);
+        AABB sweep = feet.expandTowards(dx, 0, dz);
         List<BlockPos> cells = new ArrayList<>();
         for (int x = Mth.floor(sweep.minX); x <= Mth.floor(Math.nextDown(sweep.maxX)); x++) {
             for (int z = Mth.floor(sweep.minZ); z <= Mth.floor(Math.nextDown(sweep.maxZ)); z++) {
@@ -36,9 +37,23 @@ public final class TargetSelectorD {
             }
         }
         Vec3 center =
-                new Vec3((feet.minX + feet.maxX) * .5, row + .5, (feet.minZ + feet.maxZ) * .5);
-        cells.sort(Comparator.comparingDouble(cell -> Vec3.atCenterOf(cell).distanceToSqr(center)));
+                new Vec3(
+                        (predicted.minX + predicted.maxX) * .5,
+                        row + .5,
+                        (predicted.minZ + predicted.maxZ) * .5);
+        // At a diagonal corner, the closest empty cell can be beside/behind the player.
+        // Prioritize support under the next footprint, then use its side cells as stepping stones.
+        cells.sort(
+                Comparator.<BlockPos>comparingDouble(cell -> overlap(predicted, cell))
+                        .reversed()
+                        .thenComparingDouble(cell -> Vec3.atCenterOf(cell).distanceToSqr(center)));
         return cells;
+    }
+
+    private static double overlap(AABB feet, BlockPos cell) {
+        double x = Math.max(0, Math.min(feet.maxX, cell.getX() + 1) - Math.max(feet.minX, cell.getX()));
+        double z = Math.max(0, Math.min(feet.maxZ, cell.getZ() + 1) - Math.max(feet.minZ, cell.getZ()));
+        return x * z;
     }
 
     public static BlockAim select(

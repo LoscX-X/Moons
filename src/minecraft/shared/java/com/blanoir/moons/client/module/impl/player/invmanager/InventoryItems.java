@@ -1,6 +1,7 @@
 package com.blanoir.moons.client.module.impl.player.invmanager;
 
 import net.minecraft.core.component.DataComponents;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.world.entity.EquipmentSlot;
@@ -43,19 +44,21 @@ public final class InventoryItems {
         if (stack.isEmpty()) return false;
         return switch (role) {
             case FREE, LOCKED, CUSTOM -> false;
-            case SWORD -> stack.is(ItemTags.SWORDS);
+            case SWORD -> stack.is(ItemTags.SWORDS) || vanillaTool(stack, "sword");
             // Specialized pickaxes have their own roles and are never silently replaced by a
             // plain pickaxe or each other.
             case PICKAXE ->
-                    stack.is(ItemTags.PICKAXES)
+                    (stack.is(ItemTags.PICKAXES) || vanillaTool(stack, "pickaxe"))
                             && enchant(stack, Enchantments.SILK_TOUCH) == 0
                             && enchant(stack, Enchantments.FORTUNE) == 0;
             case SILK_PICKAXE ->
-                    stack.is(ItemTags.PICKAXES) && enchant(stack, Enchantments.SILK_TOUCH) > 0;
+                    (stack.is(ItemTags.PICKAXES) || vanillaTool(stack, "pickaxe"))
+                            && enchant(stack, Enchantments.SILK_TOUCH) > 0;
             case FORTUNE_PICKAXE ->
-                    stack.is(ItemTags.PICKAXES) && enchant(stack, Enchantments.FORTUNE) > 0;
-            case AXE -> stack.is(ItemTags.AXES);
-            case SHOVEL -> stack.is(ItemTags.SHOVELS);
+                    (stack.is(ItemTags.PICKAXES) || vanillaTool(stack, "pickaxe"))
+                            && enchant(stack, Enchantments.FORTUNE) > 0;
+            case AXE -> stack.is(ItemTags.AXES) || vanillaTool(stack, "axe");
+            case SHOVEL -> stack.is(ItemTags.SHOVELS) || vanillaTool(stack, "shovel");
             case BOW -> stack.is(Items.BOW);
             case CROSSBOW -> stack.is(Items.CROSSBOW);
             case BLOCK -> buildingBlock(stack);
@@ -83,6 +86,18 @@ public final class InventoryItems {
 
     private static boolean buildingBlock(ItemStack stack) {
         return stack.getItem() instanceof BlockItem;
+    }
+
+    /** Some protocol bridges omit vanilla item tags. Never classify by the display name. */
+    private static boolean vanillaTool(ItemStack stack, String kind) {
+        var id = BuiltInRegistries.ITEM.getKey(stack.getItem());
+        if (!id.getNamespace().equals("minecraft")) return false;
+        String path = id.getPath();
+        for (String material :
+                new String[] {
+                    "wooden", "stone", "copper", "iron", "golden", "diamond", "netherite"
+                }) if (path.equals(material + "_" + kind)) return true;
+        return false;
     }
 
     /** Quality excludes stack size. A partly used stack already in place should stay there. */

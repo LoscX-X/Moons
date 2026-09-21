@@ -22,7 +22,7 @@ import java.util.function.UnaryOperator;
 public final class AimPointsH {
     private AimPointsH() {}
 
-    private static final float[] YAW_OFFSETS = {0, .5F, -.5F, 1, -1, 2, -2, 4, -4};
+    private static final float[] YAW_OFFSETS = {0, .5F, -.5F, 1, -1, 2, -2, 4, -4, 8, -8, 12, -12};
     private static final double[] HEIGHTS = {.75, .5, .9, .25, .1};
 
     public static BlockAim resolve(
@@ -43,15 +43,16 @@ public final class AimPointsH {
                                         client, target.support(), target.face(), .5, height),
                         raw -> quantizer.relative(preferred, raw),
                         candidate ->
-                                rays.traceFace(
+                                insideFace(
+                                        rays.traceFace(
                                                 client,
                                                 eye,
                                                 candidate.yaw(),
                                                 candidate.pitch(),
                                                 range,
                                                 target.support(),
-                                                target.face())
-                                        != null);
+                                                target.face()),
+                                        target));
         if (rotation == null) return null;
         BlockHitResult hit =
                 rays.traceFace(
@@ -62,7 +63,17 @@ public final class AimPointsH {
                         range,
                         target.support(),
                         target.face());
-        return hit == null ? null : new BlockAim(target, rotation, hit);
+        return insideFace(hit, target) ? new BlockAim(target, rotation, hit) : null;
+    }
+
+    /** A perfect diagonal can hit the shared edge of two faces; choose a small interior margin. */
+    public static boolean insideFace(BlockHitResult hit, BlockTarget target) {
+        if (hit == null) return false;
+        double side =
+                target.face().getAxis() == Direction.Axis.X
+                        ? hit.getLocation().z - target.support().getZ()
+                        : hit.getLocation().x - target.support().getX();
+        return side >= .015 && side <= .985;
     }
 
     private static Rotation sideAim(

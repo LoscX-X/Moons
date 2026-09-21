@@ -85,8 +85,8 @@ public final class Scaffold {
         return ScaffoldManager.setGodBridgeSneak(client, value);
     }
 
-    public static int setGodBridgeSneakTicks(Minecraft client, int value) {
-        return ScaffoldManager.setGodBridgeSneakTicks(client, value);
+    public static int setGodBridgeSneakTime(Minecraft client, int min, int max) {
+        return ScaffoldManager.setGodBridgeSneakTime(client, min, max);
     }
 
     public static List<String> tellyRotationOptions() {

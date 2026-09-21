@@ -66,6 +66,7 @@ final class Player {
                 cfgBool("autoweb.enabled", false),
                 AutoWeb::setEnabled,
                 AutoWeb::hudTag,
+                AutoWeb.triggerModeSetting(),
                 number("range", "Range", "autoweb.range", 4.5, 2, 6, .1, AutoWeb::setRange),
                 integer("delay", "Delay ticks", "autoweb.delay", 0, 0, 100, 1, AutoWeb::setDelay),
                 integer(
@@ -468,6 +469,7 @@ final class Player {
                 cfgBool("autototem.enabled", false),
                 AutoTotem::setEnabled,
                 AutoTotem::statusText,
+                AutoTotem.failureSetting(),
                 integer(
                         "threshold",
                         "Health threshold",

@@ -180,7 +180,11 @@ public final class TrajectoryPrediction {
     }
 
     public static AABB nextInputBox(Minecraft client) {
-        Input input = client.player.input.keyPresses;
+        return nextInputBox(client, client.player.input.keyPresses);
+    }
+
+    /** Use the caller's raw input when prediction runs before movement correction. */
+    public static AABB nextInputBox(Minecraft client, Input input) {
         int forward = (input.forward() ? 1 : 0) - (input.backward() ? 1 : 0);
         int strafe = (input.left() ? 1 : 0) - (input.right() ? 1 : 0);
         double moveX;

@@ -22,6 +22,8 @@ import java.util.Set;
 /** Settings only. Runtime state deliberately lives outside this class. */
 public final class SilentAuraConfig {
     private static final BooleanSetting ENABLED = bool("silentaura.enabled", false);
+    private static final BooleanSetting REQUIRE_LEFT_CLICK =
+            bool("silentaura.requireLeftClick", true);
     private static final BooleanSetting BLOCK = bool("silentaura.block", true);
     private static final BooleanSetting BLOCK_VISUAL = bool("silentaura.block.visual", true);
     private static final DoubleSetting BLOCK_RANGE =
@@ -139,6 +141,14 @@ public final class SilentAuraConfig {
     private static final class Descriptors {
         private static final ModuleRegistry.Setting[] ALL = {
             COMBAT_MODE.describe("combat_mode", "Combat mode", SilentAura::setCombatMode),
+            REQUIRE_LEFT_CLICK.describe(
+                    "require_left_click",
+                    "Require left click",
+                    (client, value) -> {
+                        REQUIRE_LEFT_CLICK.set(value);
+                        SilentAuraCombat.stop(client);
+                        return 1;
+                    }),
             BLOCK.describe(
                     "block",
                     "Auto block",
@@ -399,6 +409,10 @@ public final class SilentAuraConfig {
 
     public static boolean enabled() {
         return ENABLED.get();
+    }
+
+    public static boolean requireLeftClick() {
+        return REQUIRE_LEFT_CLICK.get();
     }
 
     public static boolean block() {

@@ -116,15 +116,17 @@ final class World {
                                 true,
                                 Scaffold::setGodBridgeSneak)
                         .visibleWhen(Scaffold::godBridgeSelected),
-                integer(
-                                "godbridge_sneak_ticks",
-                                "Sneak time (ticks)",
-                                "scaffold.godBridgeSneakTicks",
-                                1,
-                                1,
-                                2,
-                                1,
-                                Scaffold::setGodBridgeSneakTicks)
+                rangeInts(
+                                "godbridge_sneak_ms",
+                                "Sneak hold (ms)",
+                                "scaffold.godBridgeSneakMinMs",
+                                "scaffold.godBridgeSneakMaxMs",
+                                50,
+                                100,
+                                0,
+                                1000,
+                                5,
+                                Scaffold::setGodBridgeSneakTime)
                         .visibleWhen(Scaffold::godBridgeSneakSelected),
                 rangeInts(
                                 "legit_delay_ms",
@@ -346,12 +348,25 @@ final class World {
                                 ChestStealer::setMode)
                         .withDefault("legit"),
                 bool("all", "All", "cheststealer.all", true, ChestStealer::setAll),
+                ChestStealer.failureSetting(),
                 bool(
                         "auto_close",
                         "Auto close",
                         "cheststealer.autoClose",
                         true,
                         ChestStealer::setAutoClose),
+                rangeValue(
+                                "close_delay_ms",
+                                "Close delay (ms)",
+                                ChestStealer::closeDelayMinMs,
+                                ChestStealer::closeDelayMaxMs,
+                                0,
+                                5000,
+                                10,
+                                (client, low, high) ->
+                                        ChestStealer.setCloseDelayRange(client, (int) low, (int) high))
+                        .withDefault(0, 0)
+                        .visibleWhen(ChestStealer::autoClose),
                 rangeValue(
                                 "delay_ms",
                                 "Delay (ms)",

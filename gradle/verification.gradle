@@ -38,6 +38,9 @@ tasks.register('verifyNicknameShuffle', JavaExec) {
         verifyAntiBot: 'com.blanoir.moons.client.module.impl.misc.antibot.AdvancedBotDetectorVerification',
         verifyBacktrackFlow: 'com.blanoir.moons.client.module.impl.network.backtrack.BacktrackFlowVerification',
         verifyAntiWebCycle: 'com.blanoir.moons.client.module.impl.player.AntiWebCycleVerification',
+        verifyInventoryActions: 'com.blanoir.moons.client.module.impl.player.invmanager.InventoryActionVerification',
+        verifyInventoryFailures: 'com.blanoir.moons.client.utils.inventory.InventoryFailureVerification',
+        verifyGodBridgeSafety: 'com.blanoir.moons.client.module.impl.world.scaffold.GodBridgeSafetyVerification',
         verifyPlacementRays: 'com.blanoir.moons.client.utils.world.placement.PlacementRaycastVerification'
 ].each { taskName, entryPoint ->
     tasks.register(taskName, JavaExec) {

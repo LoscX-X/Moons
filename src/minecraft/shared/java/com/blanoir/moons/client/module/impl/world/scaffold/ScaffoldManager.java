@@ -25,6 +25,7 @@ import com.blanoir.moons.client.utils.math.RandomMath;
 import com.blanoir.moons.client.utils.prediction.TrajectoryPrediction;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 import com.blanoir.moons.client.utils.rotation.aim.AimPointsG;
+import com.blanoir.moons.client.utils.rotation.aim.AimPointsH;
 import com.blanoir.moons.client.utils.rotation.aim.AimSolverE;
 import com.blanoir.moons.client.utils.rotation.aim.BlockAim;
 import com.blanoir.moons.client.utils.rotation.aim.BlockTarget;
@@ -158,8 +159,10 @@ public final class ScaffoldManager {
     private static final BooleanSetting TELLY_FLAT = bool("scaffold.tellyFlat", false);
     private static final BooleanSetting TELLY_FALL_RESCUE = bool("scaffold.tellyFallRescue", false);
     private static final BooleanSetting GOD_BRIDGE_SNEAK = bool("scaffold.godBridgeSneak", true);
-    private static final IntSetting GOD_BRIDGE_SNEAK_TICKS =
-            integer("scaffold.godBridgeSneakTicks", 1, 1, 2);
+    private static final IntSetting GOD_BRIDGE_SNEAK_MIN_MS =
+            integer("scaffold.godBridgeSneakMinMs", 50, 0, 1000);
+    private static final IntSetting GOD_BRIDGE_SNEAK_MAX_MS =
+            integer("scaffold.godBridgeSneakMaxMs", 100, 0, 1000);
 
     private static final IntSetting TOWER_FLAT_TICKS = integer("scaffold.towerFlatTicks", 4, 0, 20);
     private static final IntSetting LEGIT_DELAY_MIN =
@@ -543,8 +546,9 @@ public final class ScaffoldManager {
         return 1;
     }
 
-    public static int setGodBridgeSneakTicks(Minecraft client, int value) {
-        GOD_BRIDGE_SNEAK_TICKS.set(value);
+    public static int setGodBridgeSneakTime(Minecraft client, int min, int max) {
+        GOD_BRIDGE_SNEAK_MIN_MS.set(Math.min(min, max));
+        GOD_BRIDGE_SNEAK_MAX_MS.set(Math.max(min, max));
         return 1;
     }
 
@@ -960,11 +964,35 @@ public final class ScaffoldManager {
 
         transitionTelly(TellyPhase.PLACE, "rotation ready");
         Rotation finalRotation = packetRotation();
-        if (!RotationManager.same(finalRotation, published.rotation())) {
-            tellyDebugReason = "earlier movement owns this angle; retry next tick";
+        if (PLACEMENT_ROTATIONS.wouldRepeatNext(finalRotation.yaw())) {
+            // MoveFix can freeze an older candidate before the varied angle is published.
+            // That frozen look also needs validation: changing only the requested angle
+            // cannot change the rotation that will accompany this interaction.
+            publishSettlingRotation(client, verticalTower);
+            tellyDebugReason = "committed rotation repeats placement delta; waiting for look";
             return;
         }
-        if (place(client, published.target(), published.hit().getLocation())) {
+        BlockHitResult finalHit = published.hit();
+        if (!RotationManager.same(finalRotation, published.rotation())) {
+            // MoveFix may have committed this tick's look before placement planning.
+            // Reuse it when it still reaches the selected face instead of wasting the tick.
+            finalHit =
+                    RAYS.traceFace(
+                            client,
+                            planningEye,
+                            finalRotation.yaw(),
+                            finalRotation.pitch(),
+                            client.player.blockInteractionRange(),
+                            published.target().support(),
+                            published.target().face());
+            if (finalHit == null
+                    || godBridgePlacement() && !AimPointsH.insideFace(finalHit, published.target())) {
+                tellyDebugReason = "committed rotation misses face; retry next tick";
+                return;
+            }
+        }
+        renderHit = finalHit;
+        if (place(client, published.target(), finalHit.getLocation())) {
             if (!verticalTower) {
                 lastTellyPlacePos = target.placePos();
                 lastTellyPlaceTick = client.player.tickCount;
@@ -1025,17 +1053,21 @@ public final class ScaffoldManager {
                         pubYaw,
                         SilentPacketRotation.packetRotationJitter(),
                         yaw -> SilentPacketRotation.quantizePacketYaw(sentYaw(), yaw),
-                        yaw ->
-                                !requireHit
-                                        || RAYS.traceFace(
-                                                        client,
-                                                        client.player.getEyePosition(),
-                                                        yaw,
-                                                        checkedPitch,
-                                                        client.player.blockInteractionRange(),
-                                                        step.target().support(),
-                                                        step.target().face())
-                                                != null);
+                        yaw -> {
+                            if (!requireHit) return true;
+                            BlockHitResult candidateHit =
+                                    RAYS.traceFace(
+                                            client,
+                                            client.player.getEyePosition(),
+                                            yaw,
+                                            checkedPitch,
+                                            client.player.blockInteractionRange(),
+                                            step.target().support(),
+                                            step.target().face());
+                            return candidateHit != null
+                                    && (!godBridgePlacement()
+                                            || AimPointsH.insideFace(candidateHit, step.target()));
+                        });
         if (variedYaw == null) {
             // No reachable nearby alternative: publish a look without placing.
             if (!publishSettlingRotation(client, verticalTower)) return null;
@@ -1140,6 +1172,8 @@ public final class ScaffoldManager {
 
     private static boolean tellyPointCovered(Minecraft client, BlockPos point) {
         if (!replaceable(client, point)) return true;
+        // GodBridge is grounded: an accepted interaction is not support when the cell is air.
+        if (godBridgePlacement()) return false;
         return point.equals(lastTellyPlacePos)
                 && lastTellyPlaceTick != Integer.MIN_VALUE
                 && client.player.tickCount - lastTellyPlaceTick <= 3;
@@ -1332,18 +1366,41 @@ public final class ScaffoldManager {
                 || client.player.getAbilities().flying
                 || client.player.isInWater()
                 || client.player.isInLava()
-                || !moving(client)
-                || blockCount <= 0
                 || towerRequested(client)
                 || tellyBelowRowRescue) {
             GOD_BRIDGE_EDGE_SNEAK.reset();
             return requested;
         }
         // This hook runs before MoveFix, so prediction sees camera-relative raw input.
-        double edgeDistance = legitEdgeDistance(client, TrajectoryPrediction.nextInputBox(client));
-        boolean edge = Double.isNaN(edgeDistance) || edgeDistance > 1.0E-4;
+        AABB intended = TrajectoryPrediction.nextInputBox(client, requested);
+        Vec3 velocity = client.player.getDeltaMovement();
+        AABB inertia = client.player.getBoundingBox().move(velocity.x, 0, velocity.z);
+        // Input alone underestimates speed effects/knockback and misses motion after key release.
+        // Both checks use actual collision shapes, never the recent-placement grace period.
+        boolean diagonal =
+                GodBridgeSneak.diagonalMovement(
+                        client.player.getYRot(),
+                        impulse(requested.forward(), requested.backward()),
+                        impulse(requested.left(), requested.right()));
+        if (!diagonal) GOD_BRIDGE_EDGE_SNEAK.clearPair();
+        // Diagonal bridging needs both cells of each step. Allow a supported footprint to
+        // finish that pair; brake early if even its inset footprint would leave support.
+        double inputEdge =
+                legitEdgeDistance(client, diagonal ? intended.deflate(.05, 0, .05) : intended);
+        double inertiaEdge =
+                legitEdgeDistance(client, diagonal ? inertia.deflate(.05, 0, .05) : inertia);
+        boolean edge =
+                Double.isNaN(inputEdge)
+                        || Double.isNaN(inertiaEdge)
+                        || !diagonal && (inputEdge > 1.0E-4 || inertiaEdge > 1.0E-4);
         if (!GOD_BRIDGE_EDGE_SNEAK.update(
-                client.player.tickCount, edge, GOD_BRIDGE_SNEAK_TICKS.get())) return requested;
+                client.player.tickCount,
+                System.nanoTime(),
+                edge,
+                () ->
+                        RandomMath.betweenInclusive(
+                                GOD_BRIDGE_SNEAK_MIN_MS.get(), GOD_BRIDGE_SNEAK_MAX_MS.get())))
+            return requested;
         client.player.setSprinting(false);
         return new Input(
                 requested.forward(),
@@ -1614,6 +1671,21 @@ public final class ScaffoldManager {
         }
         ScaffoldPlacementDebugger.result(result.toString());
         if (!result.consumesAction()) return false;
+        if (godBridgePlacement()
+                && GOD_BRIDGE_SNEAK.get()
+                && client.player.onGround()
+                && !replaceable(client, target.placePos())) {
+            // Count actual locally placed blocks, not failed/consumed interaction attempts.
+            GOD_BRIDGE_EDGE_SNEAK.placed(
+                    GodBridgeSneak.diagonalMovement(
+                            client.player.getYRot(),
+                            impulse(
+                                    CombatInputController.isPhysicallyDown(client, client.options.keyUp),
+                                    CombatInputController.isPhysicallyDown(client, client.options.keyDown)),
+                            impulse(
+                                    CombatInputController.isPhysicallyDown(client, client.options.keyLeft),
+                                    CombatInputController.isPhysicallyDown(client, client.options.keyRight))));
+        }
         if (!client.player.getAbilities().instabuild) blockCount--;
         MinecraftClientAccess.animatePlacement(client.player, hand, SWING.get());
         PLACED.add(new PlacedMark(target.placePos(), System.currentTimeMillis()));
@@ -2070,6 +2142,10 @@ public final class ScaffoldManager {
 
     private static boolean godBridgeMode() {
         return scaffoldMode() == ScaffoldMode.GODBRIDGE;
+    }
+
+    private static boolean godBridgePlacement() {
+        return godBridgeMode() && scaffoldPath == ScaffoldPath.TELLY;
     }
 
     private static MoveFix moveFix() {

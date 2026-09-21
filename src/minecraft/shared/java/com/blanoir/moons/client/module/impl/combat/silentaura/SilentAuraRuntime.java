@@ -161,7 +161,8 @@ public final class SilentAuraRuntime {
     public static boolean activationHeld(Minecraft client) {
         return baseCanRun(client)
                 && Targeting.isHoldingTriggerWeapon(client)
-                && CombatInputController.isPhysicallyDown(client, client.options.keyAttack);
+                && (!SilentAuraConfig.requireLeftClick()
+                        || CombatInputController.isPhysicallyDown(client, client.options.keyAttack));
     }
 
     public static boolean shouldApplyRotation() {

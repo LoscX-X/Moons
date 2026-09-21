@@ -11,7 +11,10 @@ public final class InventorySession {
     private final BitSet manualSlots = new BitSet(41);
     private InventorySnapshot manualBefore;
     private long manualUntil;
-    private final List<InventoryAction> attempts = new ArrayList<>();
+
+    private record Attempt(InventoryAction action, long at) {}
+
+    private final List<Attempt> attempts = new ArrayList<>();
 
     public void manualInput(InventorySnapshot before, long now, int pauseMs) {
         observe(before, now);
@@ -35,8 +38,15 @@ public final class InventorySession {
     }
 
     public boolean reserve(InventoryAction action) {
+        return reserve(action, System.nanoTime());
+    }
+
+    public boolean reserve(InventoryAction action, long now) {
+        // Bound retries over time, not over the lifetime of an open inventory screen.
+        attempts.removeIf(attempt -> now - attempt.at() >= 5_000_000_000L);
         long previous =
                 attempts.stream()
+                        .map(Attempt::action)
                         .filter(
                                 attempt ->
                                         attempt.source() == action.source()
@@ -49,7 +59,7 @@ public final class InventorySession {
                                                         action.beforeTarget()))
                         .count();
         if (previous >= 2 || attempts.size() >= 100) return false;
-        attempts.add(action);
+        attempts.add(new Attempt(action, now));
         return true;
     }
 

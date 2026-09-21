@@ -49,6 +49,29 @@ public final class InventoryClicks {
         return activityVersion;
     }
 
+    /** A harmless automated misclick. It must never be mistaken for manual inventory input. */
+    public static boolean clickEmpty(
+            Minecraft client, AbstractContainerMenu menu, int slotIndex, Object requester) {
+        if (client.player == null
+                || client.gameMode == null
+                || busyExcept(requester)
+                || client.player.containerMenu != menu
+                || !menu.getCarried().isEmpty()
+                || slotIndex < 0
+                || slotIndex >= menu.slots.size()) return false;
+        var slot = menu.getSlot(slotIndex);
+        if (!slot.isActive() || slot.hasItem()) return false;
+        executing = true;
+        try {
+            client.gameMode.handleContainerInput(
+                    menu.containerId, slotIndex, 0, ContainerInput.QUICK_MOVE, client.player);
+        } finally {
+            executing = false;
+            activityVersion++;
+        }
+        return true;
+    }
+
     public static boolean recentlyBusy(long now) {
         return foreignClickAt != Long.MIN_VALUE && now - foreignClickAt < 200_000_000L;
     }
@@ -119,7 +142,8 @@ public final class InventoryClicks {
             int hotbarButton,
             ItemStack beforeSource,
             ItemStack beforeTarget) {
-        if (client.player == null
+        if (owner != null
+                || client.player == null
                 || client.gameMode == null
                 || client.player.containerMenu != menu
                 || client.player.inventoryMenu != menu
@@ -156,6 +180,46 @@ public final class InventoryClicks {
         return menu.getCarried().isEmpty()
                 && ItemStack.matches(source.getItem(), beforeTarget)
                 && ItemStack.matches(target.getItem(), beforeSource);
+    }
+
+    public static boolean hasEmptyStorage(
+            Minecraft client, AbstractContainerMenu menu, ItemStack item) {
+        return menu.slots.stream()
+                .anyMatch(
+                        slot ->
+                                slot.container == client.player.getInventory()
+                                        && slot.getContainerSlot() >= 0
+                                        && slot.getContainerSlot() < 36
+                                        && slot.getItem().isEmpty()
+                                        && slot.mayPlace(item)
+                                        && slot.getMaxStackSize(item) >= item.getCount());
+    }
+
+    /** A single shift-click never puts an item on the cursor. Replan after each move. */
+    public static boolean quickMove(
+            Minecraft client, AbstractContainerMenu menu, int menuSlot, ItemStack expected) {
+        if (owner != null
+                || client.player == null
+                || client.gameMode == null
+                || client.player.containerMenu != menu
+                || client.player.inventoryMenu != menu
+                || !menu.getCarried().isEmpty()
+                || expected.isEmpty()
+                || menuSlot < 0
+                || menuSlot >= menu.slots.size()) return false;
+        var slot = menu.getSlot(menuSlot);
+        if (slot.container != client.player.getInventory()
+                || !slot.mayPickup(client.player)
+                || !ItemStack.matches(slot.getItem(), expected)) return false;
+        executing = true;
+        try {
+            client.gameMode.handleContainerInput(
+                    menu.containerId, menuSlot, 0, ContainerInput.QUICK_MOVE, client.player);
+        } finally {
+            executing = false;
+            activityVersion++;
+        }
+        return slot.getItem().isEmpty() && menu.getCarried().isEmpty();
     }
 
     /** Drop one complete player-inventory stack only when it still matches the planned item. */

@@ -16,13 +16,16 @@ import net.minecraft.client.Minecraft
 @Composable
 internal fun AutoArmorPreview() {
     var armor by remember { mutableStateOf(AutoArmor.preview(Minecraft.getInstance())) }
+    var status by remember { mutableStateOf(AutoArmor.statusText()) }
     LaunchedEffect(Unit) {
         while (isActive) {
             armor = AutoArmor.preview(Minecraft.getInstance())
+            status = AutoArmor.statusText()
             delay(150)
         }
     }
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(status, color = PanelStyle.muted, fontSize = 9.sp)
         Text(
             "Open inventory to equip. Old armor stays in your inventory.",
             color = PanelStyle.muted,

@@ -6,8 +6,8 @@
  * - Auto: scores feet, body and eye voxels along the target's trajectory.
  * - Wall (attack only): follows observed knockback, resolves the next 3-6 ticks
  *   against block collisions and scores body coverage at the wall contact.
- * A short cooldown after each successful placement keeps the pressure
- * continuous without spamming the same cell.
+ * Continuous mode waits for its cooldown after each successful placement;
+ * single mode disables after one confirmed placement and its slot/rotation cleanup.
  */
 package com.blanoir.moons.client.module.impl.player;
 
@@ -15,11 +15,13 @@ import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.DoubleSetting;
 import com.blanoir.moons.client.config.settings.IntSetting;
+import com.blanoir.moons.client.config.settings.ModeSetting;
 import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.management.input.CombatInputController;
 import com.blanoir.moons.client.management.rotation.SilentPacketRotation;
 import com.blanoir.moons.client.management.targeting.PostHitLandingWindow;
 import com.blanoir.moons.client.management.targeting.Targeting;
+import com.blanoir.moons.client.module.framework.ModuleRegistry;
 import com.blanoir.moons.client.utils.client.ClientReady;
 import com.blanoir.moons.client.utils.math.MathUtils;
 import com.blanoir.moons.client.utils.math.RandomMath;
@@ -73,6 +75,14 @@ public final class AutoWeb {
 
     private static final BooleanSetting ENABLED =
             new BooleanSetting.Builder().name("autoweb.enabled").defaultValue(false).build();
+
+    private static final ModeSetting<String> TRIGGER_MODE =
+            new ModeSetting.Builder<String>()
+                    .name("autoweb.triggerMode")
+                    .defaultValue("continuous")
+                    .option("continuous", "continuous")
+                    .option("single", "single")
+                    .build();
 
     private static final BooleanSetting WALL_ENABLED =
             new BooleanSetting.Builder().name("autoweb.wall").defaultValue(false).build();
@@ -156,6 +166,7 @@ public final class AutoWeb {
     private static boolean postPlaceHoldStarted;
     private static BlockPos pendingPlaceConfirmationPos;
     private static int placeConfirmTicks;
+    private static boolean disableAfterPlacement;
 
     private AutoWeb() {}
 
@@ -178,6 +189,8 @@ public final class AutoWeb {
         }
 
         if (!ClientReady.gameplay(client)) {
+            // A completed single use stays consumed even if a screen/world change interrupts return.
+            if (disableAfterPlacement) ENABLED.set(false);
             resetAll(client);
 
             return;
@@ -200,6 +213,7 @@ public final class AutoWeb {
         }
 
         observePlacementConfirmation(client);
+        if (finishSingleTrigger(client)) return;
 
         if (PlacementCoordinator.busyFor(PlacementCoordinator.Owner.AUTO_WEB)) {
             return;
@@ -207,6 +221,7 @@ public final class AutoWeb {
 
         if (phase != WebActionPhase.IDLE || heldPlan != null) {
             tickPlacement(client);
+            finishSingleTrigger(client);
             return;
         }
         if (remainingCooldownTicks > 0) {
@@ -236,6 +251,7 @@ public final class AutoWeb {
     public static void onAttack(Entity target) {
         Minecraft client = Minecraft.getInstance();
         if (!ENABLED.get()
+                || disableAfterPlacement
                 || !ClientReady.gameplay(client)
                 || !(target instanceof Player player)
                 || !Targeting.isValidTargetPlayer(client, player)
@@ -447,9 +463,20 @@ public final class AutoWeb {
                 WAIT_CONFIRM_ROTATION.get() && phase == WebActionPhase.CLICKING_TO_PLACE;
         clearPlacementConfirmation();
         remainingCooldownTicks = (int) Math.ceil(COOLDOWN_SECONDS.get() * 20.0D);
+        if (TRIGGER_MODE.get().equals("single")) {
+            disableAfterPlacement = true;
+            clearPendingAttack();
+        }
         if (strictWait) {
             beginReturnRotation(client);
         }
+    }
+
+    /** Let the current hold/return finish before disabling; never start a second placement. */
+    private static boolean finishSingleTrigger(Minecraft client) {
+        if (!disableAfterPlacement || isBusy()) return false;
+        setEnabled(client, false);
+        return true;
     }
 
     private static void finishPostPlaceHold(Minecraft client) {
@@ -1178,6 +1205,7 @@ public final class AutoWeb {
     private static void resetAll(Minecraft client) {
         resetPlan(client);
         remainingCooldownTicks = 0;
+        disableAfterPlacement = false;
     }
 
     public static boolean isBusy() {
@@ -1225,7 +1253,18 @@ public final class AutoWeb {
     }
 
     public static String hudTag() {
-        return "Instant";
+        return TRIGGER_MODE.get().equals("single") ? "Single" : "Continuous";
+    }
+
+    public static ModuleRegistry.Setting triggerModeSetting() {
+        return TRIGGER_MODE.describe("trigger_mode", "Trigger mode", AutoWeb::setTriggerMode);
+    }
+
+    public static int setTriggerMode(Minecraft client, String value) {
+        if (!TRIGGER_MODE.tryDeserialize(value))
+            throw new IllegalArgumentException("AutoWeb trigger mode must be continuous or single.");
+        if (TRIGGER_MODE.get().equals("continuous")) disableAfterPlacement = false;
+        return 1;
     }
 
     public static int showStatus(Minecraft client) {
@@ -1233,6 +1272,8 @@ public final class AutoWeb {
                 client,
                 "AutoWeb: "
                         + statusText()
+                        + ", trigger: "
+                        + TRIGGER_MODE.serialized()
                         + ", range: "
                         + format(RANGE.get())
                         + ", delay: "
@@ -1257,14 +1298,13 @@ public final class AutoWeb {
                         + ", wait confirm rotation: "
                         + (WAIT_CONFIRM_ROTATION.get() ? "enabled" : "disabled")
                         + " (post-hit landing window)"
-                        + ". Usage: .moons autoweb <enable|disable|range 2-6|delay 0-100|hold 0-20|cooldown 0-30|prediction 0-12|chance 0-1|wall|ground|wait_confirm_rotation>.");
+                        + ". Usage: .moons autoweb <enable|disable|trigger_mode continuous/single|range 2-6|delay 0-100|hold 0-20|cooldown 0-30|prediction 0-12|chance 0-1|wall|ground|wait_confirm_rotation>.");
         return 1;
     }
 
     public static int setEnabled(Minecraft client, boolean newEnabled) {
         ENABLED.set(newEnabled);
-        resetPlan(client);
-        remainingCooldownTicks = 0;
+        resetAll(client);
         ClientChat.send(client, "AutoWeb " + statusText() + ".");
         return 1;
     }
@@ -1409,8 +1449,9 @@ public final class AutoWeb {
             double score,
             boolean groundOnly) {}
 
-    /** End this feature's pending work without changing its configured toggle. */
+    /** End pending work; a confirmed single use stays consumed across context changes. */
     public static void shutdown(Minecraft client) {
+        if (disableAfterPlacement) ENABLED.set(false);
         resetAll(client);
     }
 }

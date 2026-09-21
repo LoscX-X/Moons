@@ -4,7 +4,7 @@ YSM 通过 Moons 的 JNI/JVMTI 宿主热加载，核心不依赖 Fabric、Mixin�
 
 ## 使用与升级
 
-1. 首次使用此版本须退出旧游戏进程，以新构建的 `moons.exe` 或 `moons-full.exe` 注入新启动的游戏。旧宿主缺少本次 bootstrap API 和注入点，不能仅靠替换 YSM jar 升级。两个 EXE 均包含相同功能，区别在公共依赖打包方式。
+1. 首次使用此版本须退出旧游戏进程，以新构建的 `moons.exe` 注入新启动的游戏。旧宿主缺少本次 bootstrap API 和注入点，不能仅靠替换 YSM jar 升级。
 2. 新版启动器会自动安装与自身配套的三个共享库和 `26.1.2`、`26.2`、`26.3` 适配模块；文件摘要一致时不重复写入。只需构建和运行 `moons.exe`，无需手动逐个复制 libs。升级失败会恢复已替换的文件；旧文件备份保留在 `MOONS_HOME/cache/ysm-install/`。独立分发时可将 `moons-ysm-all.zip` 一次解压到 `MOONS_HOME`。
 3. 模型放入 `MOONS_HOME/data/ysm/models/`，支持 crypto3 `.ysm`、模型 zip 和解压目录。默认 Windows 路径为 `%APPDATA%/.moons/data/ysm/models/`。
 4. 打开 Moons 设置的 YSM 页面，Refresh 后选择模型并 Apply。Use vanilla 恢复原版。模型失败时保留此前可用实例，错误显示在页面中。
@@ -25,7 +25,7 @@ YSM 通过 Moons 的 JNI/JVMTI 宿主热加载，核心不依赖 Fabric、Mixin�
 
 三个 lib jar 在磁盘上各保留一份，供多个版本适配器共用。模块各自使用可关闭 classloader 和带摘要的缓存副本，避免 Windows 文件锁妨碍更新。游戏版本适配器必须严格匹配，宿主根据模块描述中的版本选择适配器。多个版本的模块可以同时放入 `modules`；共享库 API 改动时也需要升级，由启动器自动安装配套文件。不同版本的包若包含不同的共享库，合并构建会直接失败。
 
-`./gradlew.bat moonsExe` 仍是启动器构建命令，现在同时构建并内置完整 YSM 包；`moonsFullExe` 同样如此。`ysmAllVersions` 只构建和打包外部 YSM 库与模块，不生成 EXE，不能用它给旧宿主增加渲染注入点。旧 EXE 缺少注入点时，模型可能显示 Active，但人物外观不变；必须用新 EXE 注入新游戏进程。
+`./gradlew.bat moonsExe` 是启动器构建命令，`moonsInstallExe` 构建携带完整 YSM 包的安装器（`moon-install.exe` 负责安装三个共享库与各版本适配模块）。`ysmAllVersions` 只构建和打包外部 YSM 库与模块，不生成 EXE，不能用它给旧宿主增加渲染注入点。旧 EXE 缺少注入点时，模型可能显示 Active，但人物外观不变；必须用新 EXE 注入新游戏进程。
 
 26.2 使用绑定组渲染管线和新的相机、名字标签接口。26.3 使用 RenderPearl 的原生实体材质及 OIT 透明管线，并适配挥手状态、骨骼旋转、装备提交和 SDL 输入。模型中的 `ysm.keyboard`/`ysm.mouse` 继续接受原来的 GLFW 编号；不受 SDL 支持的键返回 false。
 

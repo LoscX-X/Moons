@@ -1,27 +1,45 @@
 package com.blanoir.moons.client.module.impl.world.scaffold;
 
-/** One timed press per edge encounter, followed by release even if the edge stays exposed. */
+import java.util.function.IntSupplier;
+
+/** Two-block diagonal cadence with minimum-duration protection at exposed edges. */
 public final class GodBridgeSneak {
-    private boolean armed = true;
     private boolean sneaking;
     private int sampledTick = Integer.MIN_VALUE;
-    private int releaseTick;
+    private long releaseAtNanos;
+    private int diagonalPlacements;
+    private boolean pairPending;
 
-    public boolean update(int tick, boolean edge, int duration) {
+    public void placed(boolean diagonal) {
+        if (!diagonal) {
+            clearPair();
+        } else if (++diagonalPlacements >= 2) {
+            diagonalPlacements = 0;
+            pairPending = true;
+        }
+    }
+
+    public void clearPair() {
+        diagonalPlacements = 0;
+        pairPending = false;
+    }
+
+    public static boolean diagonalMovement(float cameraYaw, float forward, float sideways) {
+        if (forward == 0 && sideways == 0) return false;
+        double heading = cameraYaw - Math.toDegrees(Math.atan2(sideways, forward));
+        return Math.floorMod(Math.round(heading / 45.0), 2) == 1;
+    }
+
+    public boolean update(int tick, long nowNanos, boolean edge, IntSupplier durationMs) {
         if (tick == sampledTick) return sneaking;
         if (tick < sampledTick) reset();
         sampledTick = tick;
-        if (!edge) armed = true;
-        if (sneaking) {
-            if (tick < releaseTick) return true;
-            sneaking = false;
-            return false;
-        }
-        if (edge && armed) {
-            armed = false;
+        if (pairPending || edge && !sneaking) {
             sneaking = true;
-            releaseTick = tick + Math.clamp(duration, 1, 2);
+            releaseAtNanos = nowNanos + Math.max(0, durationMs.getAsInt()) * 1_000_000L;
+            pairPending = false;
         }
+        if (!edge && sneaking && nowNanos - releaseAtNanos >= 0) sneaking = false;
         return sneaking;
     }
 
@@ -30,9 +48,9 @@ public final class GodBridgeSneak {
     }
 
     public void reset() {
-        armed = true;
         sneaking = false;
         sampledTick = Integer.MIN_VALUE;
-        releaseTick = 0;
+        releaseAtNanos = 0;
+        clearPair();
     }
 }

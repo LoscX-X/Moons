@@ -15,6 +15,7 @@ import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.IntSetting;
 import com.blanoir.moons.client.event.EventBus;
+import com.blanoir.moons.client.utils.inventory.InventoryClickFailure;
 import com.blanoir.moons.client.utils.prediction.DamagePrediction;
 
 import net.minecraft.client.Minecraft;
@@ -44,6 +45,13 @@ import java.util.Comparator;
 import java.util.List;
 
 public final class AutoTotem {
+    private static final InventoryClickFailure FAILURE = new InventoryClickFailure("autototem");
+
+    public static com.blanoir.moons.client.module.framework.ModuleRegistry.Setting
+            failureSetting() {
+        return FAILURE.setting();
+    }
+
     private static final long RETRY_DELAY_MS = 200L;
     private static final int EXPLOSION_SPHERE_RADIUS = 10;
 
@@ -222,6 +230,17 @@ public final class AutoTotem {
     private static void equipTotem(Minecraft client) {
         int containerId = client.player.inventoryMenu.containerId;
         int inventorySlot = findTotemSlot(client.player.getInventory());
+        if (inventorySlot >= 0
+                && FAILURE.beforeClick(
+                        client,
+                        client.player.inventoryMenu,
+                        inventorySlot < 9
+                                ? Inventory.INVENTORY_SIZE + inventorySlot
+                                : inventorySlot,
+                        INVENTORY_OWNER)) {
+            nextActionAtMs = System.currentTimeMillis() + Math.max(50, SWITCH_DELAY_MS.get());
+            return;
+        }
 
         if (inventorySlot >= 0 && inventorySlot < 9) {
             int menuSlot = Inventory.INVENTORY_SIZE + inventorySlot;
@@ -558,6 +577,7 @@ public final class AutoTotem {
     }
 
     private static void resetState() {
+        FAILURE.reset();
         com.blanoir.moons.client.utils.inventory.InventoryClicks.release(INVENTORY_OWNER);
         dangerEpisodeHandled = false;
         offhandTotemObserved = false;

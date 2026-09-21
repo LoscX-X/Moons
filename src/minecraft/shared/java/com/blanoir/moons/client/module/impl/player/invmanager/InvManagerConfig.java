@@ -75,6 +75,7 @@ public final class InvManagerConfig {
 
     public static ModuleRegistry.Setting[] settings() {
         var result = new ArrayList<ModuleRegistry.Setting>();
+        result.add(InvManager.failureSetting());
         result.add(
                 ModuleRegistry.text(
                                 "item_rules",

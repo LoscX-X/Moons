@@ -9,6 +9,7 @@ import com.blanoir.moons.client.config.settings.ModeSetting;
 import com.blanoir.moons.client.config.settings.StringSetting;
 import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.module.impl.world.cheststealer.ChestStealPlan;
+import com.blanoir.moons.client.utils.inventory.InventoryClickFailure;
 import com.blanoir.moons.client.utils.inventory.InventoryClicks;
 import com.blanoir.moons.client.utils.registry.RegistryLists;
 
@@ -32,6 +33,14 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
 public final class ChestStealer {
+    private static final InventoryClickFailure FAILURE = new InventoryClickFailure("cheststealer");
+    private static long failureResumeAt;
+
+    public static com.blanoir.moons.client.module.framework.ModuleRegistry.Setting
+            failureSetting() {
+        return FAILURE.setting();
+    }
+
     private static final BooleanSetting ENABLED =
             new BooleanSetting.Builder().name("cheststealer.enabled").defaultValue(false).build();
 
@@ -46,6 +55,18 @@ public final class ChestStealer {
                     .build();
     private static final BooleanSetting AUTO_CLOSE =
             new BooleanSetting.Builder().name("cheststealer.autoClose").defaultValue(true).build();
+    private static final IntSetting CLOSE_DELAY_MIN_MS =
+            new IntSetting.Builder()
+                    .name("cheststealer.closeDelayMinMs")
+                    .defaultValue(0)
+                    .range(0, 5000)
+                    .build();
+    private static final IntSetting CLOSE_DELAY_MAX_MS =
+            new IntSetting.Builder()
+                    .name("cheststealer.closeDelayMaxMs")
+                    .defaultValue(0)
+                    .range(0, 5000)
+                    .build();
 
     private static final StringSetting ITEMS =
             new StringSetting.Builder().name("cheststealer.items").defaultValue("").build();
@@ -68,6 +89,7 @@ public final class ChestStealer {
     private static long nextStealAtNanos;
     private static boolean tookItems;
     private static int closeAfterTick = Integer.MIN_VALUE;
+    private static long closeAtNanos;
     private static boolean blatantStalled;
     private static final Object INVENTORY_OWNER = new Object();
 
@@ -109,18 +131,24 @@ public final class ChestStealer {
                 ((AbstractContainerScreen<?>) MinecraftClientAccess.screen(client)).getMenu();
         if (currentPlayer.containerMenu != handler
                 || !handler.getCarried().isEmpty()
-                || InventoryClicks.busyExcept(INVENTORY_OWNER)) return;
+                || InventoryClicks.busyExcept(INVENTORY_OWNER)) {
+            resetCloseState();
+            return;
+        }
         long now = System.nanoTime();
 
         if (handler != lastHandler) {
+            FAILURE.reset();
+            failureResumeAt = 0;
             lastHandler = handler;
             nextStealAtNanos = now + nextDelayMs() * 1_000_000L;
             tookItems = false;
-            closeAfterTick = Integer.MIN_VALUE;
+            resetCloseState();
             blatantStalled = false;
         }
 
         if (!legitMode()) {
+            if (now < failureResumeAt) return;
             if (blatantStalled) return;
             if (closeAfterTick != Integer.MIN_VALUE) {
                 closeIfFinished(client, handler);
@@ -136,11 +164,16 @@ public final class ChestStealer {
             closeIfFinished(client, handler);
             return;
         }
+        resetCloseState();
         if (now - nextStealAtNanos < 0L) {
             return;
         }
 
         Slot source = handler.slots.get(slotIndex.getAsInt());
+        if (FAILURE.beforeClick(client, handler, slotIndex.getAsInt(), INVENTORY_OWNER)) {
+            nextStealAtNanos = now + Math.max(50, nextDelayMs()) * 1_000_000L;
+            return;
+        }
         int before = source.getItem().getCount();
         currentGameMode.handleContainerInput(
                 handler.containerId,
@@ -180,6 +213,10 @@ public final class ChestStealer {
             // Native prediction updates each pair before the next pair in the same client tick.
             // A 36-stack batch uses at most 63 swaps (27 are internal hotbar shuttles).
             for (var action : plan) {
+                if (FAILURE.beforeClick(client, handler, action.slot(), INVENTORY_OWNER)) {
+                    failureResumeAt = System.nanoTime() + Math.max(50, nextDelayMs()) * 1_000_000L;
+                    return;
+                }
                 if (!preparedSwap(client, handler, action)) {
                     blatantStalled = true;
                     return;
@@ -248,35 +285,42 @@ public final class ChestStealer {
         // Finish a real looting session; an opening menu can be temporarily empty
         // before its contents arrive. Failed/full-inventory clicks do not finish it.
         if (!AUTO_CLOSE.get() || !tookItems) {
-            closeAfterTick = Integer.MIN_VALUE;
+            resetCloseState();
             return;
         }
         for (int index = 0; index < handler.slots.size() - 36; index++) {
             ItemStack stack = handler.slots.get(index).getItem();
             if (!stack.isEmpty() && shouldSteal(stack)) {
-                closeAfterTick = Integer.MIN_VALUE;
+                resetCloseState();
                 return;
             }
         }
-        // Keep the menu open through the batch's movement tick. Recheck its
-        // contents on the next tick before closing; late slot updates can add work.
-        if (!legitMode()) {
-            if (closeAfterTick == Integer.MIN_VALUE) {
-                closeAfterTick = client.player.tickCount + 1;
-                return;
-            }
-            if (client.player.tickCount - closeAfterTick < 0) return;
+        // Sample once after looting finishes. Keep Blatant's next-tick safeguard;
+        // every waiting pass still rechecks contents so late slot updates resume looting.
+        long now = System.nanoTime();
+        if (closeAfterTick == Integer.MIN_VALUE) {
+            closeAfterTick = client.player.tickCount + (legitMode() ? 0 : 1);
+            int delay = ThreadLocalRandom.current().nextInt(closeDelayMinMs(), closeDelayMaxMs() + 1);
+            closeAtNanos = now + delay * 1_000_000L;
         }
+        if (client.player.tickCount - closeAfterTick < 0 || now - closeAtNanos < 0L) return;
         client.player.closeContainer();
         resetScreenState();
     }
 
     private static void resetScreenState() {
+        FAILURE.reset();
+        failureResumeAt = 0;
         lastHandler = null;
         nextStealAtNanos = 0L;
         tookItems = false;
-        closeAfterTick = Integer.MIN_VALUE;
+        resetCloseState();
         blatantStalled = false;
+    }
+
+    private static void resetCloseState() {
+        closeAfterTick = Integer.MIN_VALUE;
+        closeAtNanos = 0L;
     }
 
     public static int showStatus(Minecraft client) {
@@ -290,6 +334,11 @@ public final class ChestStealer {
                         + delayMinMs()
                         + "-"
                         + delayMaxMs()
+                        + "ms"
+                        + ", close delay: "
+                        + closeDelayMinMs()
+                        + "-"
+                        + closeDelayMaxMs()
                         + "ms"
                         + ", locked items: "
                         + lockedItemsText()
@@ -347,7 +396,27 @@ public final class ChestStealer {
 
     public static int setAutoClose(Minecraft ignoredClient, boolean autoClose) {
         AUTO_CLOSE.set(autoClose);
+        resetCloseState();
         return 1;
+    }
+
+    public static boolean autoClose() {
+        return AUTO_CLOSE.get();
+    }
+
+    public static int setCloseDelayRange(Minecraft ignoredClient, int minMs, int maxMs) {
+        CLOSE_DELAY_MIN_MS.set(Math.min(minMs, maxMs));
+        CLOSE_DELAY_MAX_MS.set(Math.max(minMs, maxMs));
+        resetCloseState();
+        return 1;
+    }
+
+    public static int closeDelayMinMs() {
+        return Math.min(CLOSE_DELAY_MIN_MS.get(), CLOSE_DELAY_MAX_MS.get());
+    }
+
+    public static int closeDelayMaxMs() {
+        return Math.max(CLOSE_DELAY_MIN_MS.get(), CLOSE_DELAY_MAX_MS.get());
     }
 
     public static boolean legitMode() {

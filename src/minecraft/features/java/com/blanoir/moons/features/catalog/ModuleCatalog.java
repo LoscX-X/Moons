@@ -61,7 +61,6 @@ public final class ModuleCatalog {
         ModuleRegistry.add(World.lightningTracker());
         ModuleRegistry.add(Misc.chatFilter());
         ModuleRegistry.add(Misc.chatPrefix());
-        ModuleRegistry.add(Render.trim());
         ModuleRegistry.add(Render.offlinePlayerDetect());
         ModuleRegistry.add(Misc.premiumCheck());
         ModuleRegistry.add(Misc.staticFov());

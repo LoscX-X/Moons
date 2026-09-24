@@ -44,11 +44,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.blanoir.moons.client.config.ClientBranding
 import com.blanoir.moons.client.module.framework.ModuleCategories
 import com.blanoir.moons.client.module.framework.ModuleRegistry
 import com.blanoir.moons.client.utils.ui.ColorEditor
-import java.util.Locale
 import kotlin.math.roundToInt
 
 /** Left control menu and client-wide GUI settings. */
@@ -144,8 +142,10 @@ internal fun ControlMenu(
                     }
                 }
             } else {
+                SettingsIcon("moon", Modifier.size(17.dp), PanelStyle.text)
+                Spacer(Modifier.width(7.dp))
                 Text(
-                    ClientBranding.name().uppercase(Locale.ROOT),
+                    guiBrandName(),
                     color = PanelStyle.text,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
@@ -253,7 +253,7 @@ private fun GuiSettings(
 ) {
     val presets =
         listOf(
-            "#22c55e",
+            DEFAULT_GUI_THEME,
             "#ff4050",
             "#c84cff",
             "#6c7cff",

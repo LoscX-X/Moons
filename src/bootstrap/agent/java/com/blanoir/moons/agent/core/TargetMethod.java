@@ -2,7 +2,7 @@ package com.blanoir.moons.agent.core;
 
 import java.util.List;
 
-public  record TargetMethod(
+public record TargetMethod(
         String id,
         List<String> classNames,
         List<String> methodNames,
@@ -66,8 +66,6 @@ public  record TargetMethod(
         BOOLEAN_RETURN_ARG,
         OBJECT_RETURN,
         OBJECT_ARGUMENT,
-        ITEM_STACK_ARGUMENT_5,
-        TRIM_RENDER,
         OBJECT_INVOKE_RETURN,
         NAMED_FLOAT_LOCAL,
         SPRINT_DECISIONS,

@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ProvideTextStyle
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -17,7 +16,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.unit.dp
@@ -85,16 +83,7 @@ internal fun MoonsPanelClickGui(
             else -> categories.filter { it in openCategories }
         }
 
-    MaterialTheme(
-        colorScheme =
-            darkColorScheme(
-                primary = PanelStyle.accent,
-                surface = PanelStyle.panel,
-                background = Color.Transparent,
-                onSurface = PanelStyle.text,
-                onPrimary = Color(0xFFF0F4F1),
-            )
-    ) {
+    MaterialTheme(colorScheme = panelColorScheme()) {
         ProvideTextStyle(
             TextStyle(
                 fontFamily = PanelFontFamily,
@@ -105,7 +94,7 @@ internal fun MoonsPanelClickGui(
                     LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.Both),
             )
         ) {
-            val root = Modifier.fillMaxSize().background(Color(0x66303436))
+            val root = Modifier.fillMaxSize().background(PanelStyle.scrim)
             BoxWithConstraints(root) {
                 val logicalWidth = maxWidth.value
                 val logicalHeight = maxHeight.value

@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.blanoir.moons.client.ui.clickgui.PanelFontFamily
@@ -34,24 +35,35 @@ internal fun SettingInput(
     placeholder: String = "",
     modifier: Modifier = Modifier,
 ) {
+    val inputStyle =
+        TextStyle(
+            color = PanelStyle.text,
+            fontSize = 7.sp,
+            lineHeight = 10.sp,
+            fontFamily = PanelFontFamily,
+            lineHeightStyle =
+                LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.Both),
+        )
     BasicTextField(
         value = value,
         onValueChange = onValueChange,
         singleLine = true,
-        textStyle =
-            TextStyle(color = PanelStyle.text, fontSize = 7.sp, fontFamily = PanelFontFamily),
+        textStyle = inputStyle,
         cursorBrush = SolidColor(PanelStyle.controlActive),
-        modifier = modifier.fillMaxWidth().height(22.dp),
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .heightIn(min = 22.dp)
+                .clip(PanelStyle.controlShape)
+                .background(PanelStyle.field)
+                .border(1.dp, PanelStyle.border, PanelStyle.controlShape),
         decorationBox = { input ->
             Box(
-                Modifier.fillMaxSize()
-                    .clip(PanelStyle.controlShape)
-                    .background(PanelStyle.field)
-                    .border(1.dp, PanelStyle.border, PanelStyle.controlShape)
-                    .padding(horizontal = 6.dp),
+                Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 5.dp),
                 contentAlignment = Alignment.CenterStart,
             ) {
-                if (value.isEmpty()) Text(placeholder, color = PanelStyle.muted, fontSize = 7.sp)
+                if (value.isEmpty())
+                    Text(placeholder, style = inputStyle, color = PanelStyle.muted, maxLines = 1)
                 input()
             }
         },

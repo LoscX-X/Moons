@@ -637,37 +637,6 @@ final class Render {
                 .withDefaultEnabled(true);
     }
 
-    static ModuleRegistry.Module trim() {
-        // Keep the persisted ID so existing settings and keybinds survive the display rename.
-        return module(
-                "trim",
-                "Trim",
-                ModuleCategories.EXPERIMENT,
-                Trim::isEnabled,
-                Trim::setEnabled,
-                Trim::hudTag,
-                customChoice(
-                                "trim",
-                                "Hoplite trim",
-                                Trim::patternId,
-                                Trim.patternOptions(),
-                                Trim::setPattern)
-                        .withDefault("frost"),
-                customChoice(
-                                "material",
-                                "Trim material",
-                                Trim::materialId,
-                                Trim.materialOptions(),
-                                Trim::setMaterial)
-                        .withDefault("diamond"),
-                customBool(
-                                "override",
-                                "Override other trims",
-                                Trim::overrideOtherTrims,
-                                Trim::setOverrideOtherTrims)
-                        .withDefault(false));
-    }
-
     static ModuleRegistry.Module offlinePlayerDetect() {
         return module(
                         "offlineplayerdetect",

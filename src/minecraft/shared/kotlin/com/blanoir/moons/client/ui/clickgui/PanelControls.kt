@@ -9,7 +9,6 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -25,7 +24,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -34,10 +32,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -53,16 +49,17 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.PointerButton
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -312,6 +309,30 @@ private fun NumberSetting(module: Module, setting: Setting, onMutated: () -> Uni
     var inputValue by remember(module.id(), setting.id()) { mutableStateOf(formatValue(value)) }
     var inputFocused by remember(module.id(), setting.id()) { mutableStateOf(false) }
     var inputValid by remember(module.id(), setting.id()) { mutableStateOf(true) }
+    val inputStyle =
+        TextStyle(
+            color = if (inputValid) PanelStyle.controlActive else PanelStyle.danger,
+            fontSize = 7.sp,
+            lineHeight = 10.sp,
+            fontFamily = PanelFontFamily,
+            textAlign = TextAlign.End,
+            lineHeightStyle =
+                LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.Both),
+        )
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    // Measure glyphs at the actual font scale, including the cursor and horizontal padding.
+    // Character-count estimates clipped long values and could scroll the entire value out of view.
+    val inputWidth =
+        with(density) {
+                maxOf(
+                        measurer.measure(inputValue.ifEmpty { "0" }, inputStyle).size.width,
+                        measurer.measure(formatValue(min), inputStyle).size.width,
+                        measurer.measure(formatValue(max), inputStyle).size.width,
+                    )
+                    .toDp() + 16.dp
+            }
+            .coerceIn(36.dp, 96.dp)
     LaunchedEffect(value) {
         displayedValue = value
         if (!inputFocused) {
@@ -359,17 +380,18 @@ private fun NumberSetting(module: Module, setting: Setting, onMutated: () -> Uni
                     }
                 },
                 singleLine = true,
-                textStyle =
-                    TextStyle(
-                        color = if (inputValid) PanelStyle.controlActive else Color(0xFFE57373),
-                        fontSize = 7.sp,
-                        fontFamily = PanelFontFamily,
-                        textAlign = TextAlign.End,
-                    ),
+                textStyle = inputStyle,
                 cursorBrush = SolidColor(PanelStyle.controlActive),
                 modifier =
-                    Modifier.width((inputValue.length * 4 + 12).coerceIn(28, 44).dp)
-                        .height(18.dp)
+                    Modifier.width(inputWidth)
+                        .heightIn(min = 18.dp)
+                        .clip(PanelStyle.controlShape)
+                        .background(PanelStyle.field)
+                        .border(
+                            1.dp,
+                            if (inputValid) PanelStyle.border else PanelStyle.danger,
+                            PanelStyle.controlShape,
+                        )
                         .onFocusChanged { state ->
                             val wasFocused = inputFocused
                             inputFocused = state.isFocused
@@ -380,15 +402,7 @@ private fun NumberSetting(module: Module, setting: Setting, onMutated: () -> Uni
                         },
                 decorationBox = { input ->
                     Box(
-                        Modifier.fillMaxSize()
-                            .clip(PanelStyle.controlShape)
-                            .background(PanelStyle.field)
-                            .border(
-                                1.dp,
-                                if (inputValid) PanelStyle.border else Color(0xFFE57373),
-                                PanelStyle.controlShape,
-                            )
-                            .padding(horizontal = 4.dp),
+                        Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp),
                         contentAlignment = Alignment.CenterEnd,
                     ) {
                         input()
@@ -509,12 +523,6 @@ private fun ChoiceSetting(module: Module, setting: Setting, onMutated: () -> Uni
     val options = setting.options()
     var displayedChoice by remember(module.id(), setting.id()) { mutableStateOf(current) }
     LaunchedEffect(current) { displayedChoice = current }
-    if (module.id() == "trim" && setting.id() == "trim") {
-        TrimChoiceSetting(module, setting, options, displayedChoice, onMutated) {
-            displayedChoice = it
-        }
-        return
-    }
     Column(
         Modifier.fillMaxWidth()
             .clip(PanelStyle.controlShape)
@@ -541,142 +549,6 @@ private fun ChoiceSetting(module: Module, setting: Setting, onMutated: () -> Uni
                 ModuleRegistry.setValue(module.id(), setting.id(), JsonPrimitive(next))
                 displayedChoice = runCatching { setting.value().get().asString }.getOrDefault(next)
                 onMutated()
-            }
-        }
-    }
-}
-
-@Composable
-private fun TrimChoiceSetting(
-    module: Module,
-    setting: Setting,
-    options: List<String>,
-    current: String,
-    onMutated: () -> Unit,
-    onSelected: (String) -> Unit,
-) {
-    var expanded by remember(module.id(), setting.id()) { mutableStateOf(false) }
-    val selectedIcon = remember(current) { trimIcon(current) }
-    val selectedName = ModuleRegistry.displayChoice(current).ifBlank { "Select trim" }
-    Column(
-        Modifier.fillMaxWidth()
-            .clip(PanelStyle.controlShape)
-            .background(PanelStyle.row)
-            .padding(horizontal = 6.dp, vertical = 5.dp)
-    ) {
-        Text(settingLabel(setting), color = PanelStyle.muted, fontSize = 7.sp)
-        Spacer(Modifier.height(4.dp))
-        Row(
-            Modifier.fillMaxWidth()
-                .height(30.dp)
-                .clip(PanelStyle.controlShape)
-                .background(PanelStyle.field)
-                .border(
-                    1.dp,
-                    if (expanded) PanelStyle.controlActive else PanelStyle.border,
-                    PanelStyle.controlShape,
-                )
-                .clickable(enabled = options.isNotEmpty()) { expanded = !expanded }
-                .padding(horizontal = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (selectedIcon != null) {
-                Image(
-                    bitmap = selectedIcon,
-                    contentDescription = current,
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.size(20.dp),
-                )
-            } else {
-                Box(Modifier.size(20.dp))
-            }
-            Spacer(Modifier.width(6.dp))
-            Text(
-                selectedName,
-                color = PanelStyle.text,
-                fontSize = 7.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            Text(if (expanded) "⌃" else "⌄", color = PanelStyle.muted, fontSize = 9.sp)
-        }
-        AnimatedVisibility(
-            visible = expanded,
-            enter =
-                expandVertically(animationSpec = tween(140)) + fadeIn(animationSpec = tween(100)),
-            exit =
-                shrinkVertically(animationSpec = tween(120)) + fadeOut(animationSpec = tween(80)),
-        ) {
-            Column(
-                Modifier.fillMaxWidth()
-                    .padding(top = 4.dp)
-                    .heightIn(max = 218.dp)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                options.chunked(3).forEach { rowOptions ->
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        rowOptions.forEach { option ->
-                            val selected = option.equals(current, ignoreCase = true)
-                            val icon = remember(option) { trimIcon(option) }
-                            Column(
-                                Modifier.weight(1f)
-                                    .height(52.dp)
-                                    .clip(PanelStyle.controlShape)
-                                    .background(
-                                        if (selected) PanelStyle.controlSoft else PanelStyle.field
-                                    )
-                                    .border(
-                                        1.dp,
-                                        if (selected) PanelStyle.controlActive
-                                        else PanelStyle.border,
-                                        PanelStyle.controlShape,
-                                    )
-                                    .clickable {
-                                        onSelected(option)
-                                        ModuleRegistry.setValue(
-                                            module.id(),
-                                            setting.id(),
-                                            JsonPrimitive(option),
-                                        )
-                                        expanded = false
-                                        onMutated()
-                                    }
-                                    .padding(horizontal = 3.dp, vertical = 3.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                            ) {
-                                if (icon != null) {
-                                    Image(
-                                        bitmap = icon,
-                                        contentDescription = option,
-                                        contentScale = ContentScale.Fit,
-                                        modifier = Modifier.size(24.dp),
-                                    )
-                                } else {
-                                    Box(Modifier.size(24.dp))
-                                }
-                                Spacer(Modifier.height(1.dp))
-                                Text(
-                                    ModuleRegistry.displayChoice(option),
-                                    color =
-                                        if (selected) PanelStyle.controlActive
-                                        else PanelStyle.muted,
-                                    fontSize = 5.5.sp,
-                                    lineHeight = 6.sp,
-                                    textAlign = TextAlign.Center,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                            }
-                        }
-                        repeat(3 - rowOptions.size) { Spacer(Modifier.weight(1f)) }
-                    }
-                }
             }
         }
     }

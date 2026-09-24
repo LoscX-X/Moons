@@ -409,8 +409,14 @@ private fun StudioSlider(
     var local by remember { mutableStateOf(value.toFloat()) }
     LaunchedEffect(value) { if (!dragging) local = value.coerceIn(min, max).toFloat() }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, fontSize = 12.sp)
-        Text("%.3f".format(local), fontSize = 12.sp, color = PanelStyle.muted)
+        Text(label, Modifier.weight(1f).padding(end = 12.dp), fontSize = 12.sp)
+        Text(
+            "%.3f".format(local),
+            fontSize = 12.sp,
+            color = PanelStyle.muted,
+            maxLines = 1,
+            softWrap = false,
+        )
     }
     Slider(
         local.coerceIn(min.toFloat(), max.toFloat()),

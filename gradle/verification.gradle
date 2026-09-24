@@ -6,6 +6,7 @@ tasks.named("test", Test) {
 sourceSets {
     renderTest {
         java.setSrcDirs(['src/test/render/java'])
+        kotlin.setSrcDirs(['src/test/render/kotlin'])
         resources.setSrcDirs(['src/test/render/resources'])
         compileClasspath += sourceSets.features.output + sourceSets.client.output + sourceSets.agent.output + sourceSets.runtime.output + sourceSets.api.output + sourceSets.features.compileClasspath + configurations.agentRuntimeClasspath
         runtimeClasspath += compileClasspath
@@ -68,6 +69,21 @@ tasks.register('simulateSilentAuraRotation', JavaExec) {
     systemProperty 'moons.home', layout.buildDirectory.dir('rotation-simulation/home').get().asFile.absolutePath
     workingDir layout.buildDirectory.get().asFile
 }
+
+tasks.named('compileRenderTestKotlin', moonsPluginTypes.kotlinCompile) {
+    compilerOptions.freeCompilerArgs.add('-Xfriend-paths=' + layout.buildDirectory.dir('classes/kotlin/client').get().asFile.absolutePath)
+}
+
+tasks.register('verifyClickGuiInputs', JavaExec) {
+    group = 'verification'
+    description = 'Renders real ClickGUI inputs and checks text clipping and focus restoration at multiple scales.'
+    dependsOn 'renderTestClasses'
+    classpath = sourceSets.renderTest.runtimeClasspath + configurations.composeEmbedded
+    mainClass = 'com.blanoir.moons.client.ui.clickgui.ClickGuiInputVerification'
+    args layout.buildDirectory.dir('clickgui-input-verification').get().asFile.absolutePath
+}
+
+tasks.named('check').configure { dependsOn 'verifyClickGuiInputs' }
 
 tasks.register('verifyGameAccess', JavaExec) {
     group = 'verification'

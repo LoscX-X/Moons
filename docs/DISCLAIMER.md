@@ -1,94 +1,93 @@
-# Security Agreement, Disclaimer, and Usage Notice
+# Risk Notice, Disclaimer, and Third-Party Rights
 
 [简体中文](DISCLAIMER.zh-CN.md) · **English**
 
-### 1. Nature of the Project
+Updated: 2026-09-25
 
-This is an open-source research and testing project that runs within Minecraft Java Edition. Its primary purpose is to study, research, and validate runtime injection, event interception, module loading, and related software engineering techniques.
+> **This project is published for learning, research, and technical exchange only and is provided as is. Use may affect software, data, and related services. Users should assess the risks and back up important data.**
+>
+> **To the fullest extent permitted by applicable law, users bear the risks and consequences of use, and the project parties assume no corresponding liability for damages or compensation. Non-excludable liability and statutory rights remain unaffected.**
 
-This project is not an official Minecraft product. It is not endorsed, sponsored, or authorized by Mojang Studios or Microsoft, and does not represent their views.
+## 1. Scope and License Priority
 
-NOT AN OFFICIAL MINECRAFT PRODUCT. NOT APPROVED BY OR ASSOCIATED WITH MOJANG OR MICROSOFT.
+This notice covers Moons source code, builds, and accompanying materials published through this repository. “Project parties” means authors, maintainers, and contributors with respect to their own participation.
 
-### 2. Scope of Use
+Project code is governed by the [GPL-3.0 license](../LICENSE). Third-party components retain their own licenses; recorded sources appear in [third-party notices](../THIRD_PARTY_NOTICES.md). This notice adds no license restrictions. Mandatory law and applicable licenses prevail. Read GPL sections 15–17 as well.
 
-This project is intended solely for lawful software research, personal learning, compatibility testing, and security testing with explicit authorization.
+## 2. Purpose, Modification Scope, and No-Profit Commitment
 
-Users must not use this project in ways that violate applicable laws, platform rules, software license agreements, or the lawful rights and interests of others, including but not limited to:
+**The project's publication and maintenance purpose is learning, research, and technical exchange only.**
 
-- Accessing, modifying, interfering with, or damaging third-party devices, accounts, servers, or data without authorization.
-- Stealing, collecting, uploading, selling, or disclosing personal information, authentication credentials, or other sensitive data.
-- Circumventing access controls, security verification, payment mechanisms, or platform restrictions.
-- Conducting fraud, attacks, extortion, malicious control, persistent unauthorized access, or other unlawful activities.
-- Stealing accounts or tokens, remotely controlling systems, exfiltrating data, maintaining concealed persistence, or bypassing security software.
-- Presenting this project as an official product of Minecraft, Mojang Studios, or Microsoft.
+**The project's game modifications target Minecraft: Java Edition itself as released by Mojang. All such modifications must stay within the permissions of the [Minecraft EULA](https://www.minecraft.net/en-us/eula) and comply with applicable official terms. This modification scope does not extend to independent third-party software, services, or resources.** This describes the project's development scope and compliance requirements, not official approval or a guarantee that every implementation complies. Third-party dependencies and external content remain subject to their own licenses; this notice grants no permissions over them.
 
-### 3. Data and Privacy
+**This project will not generate profit through any means. Maintainers commit to no direct or indirect profit-making through the project. Official source code, builds, and features are provided free of charge.** This commitment covers the maintainers' official publication and operation. It neither guarantees third-party conduct nor adds a noncommercial restriction to the GPL.
 
-This project is not designed to collect, steal, monitor, upload, or disclose to external parties any personal information, account credentials, chat records, device information, or other nonpublic data belonging to users or third parties.
+Educational purpose, absence of profit, and open-source publication do not replace required permissions or automatically exclude liability.
 
-Unless otherwise stated in the project documentation, official releases should not initiate connections to external services unrelated to the project's functionality.
+**NOT AN OFFICIAL MINECRAFT PRODUCT. NOT APPROVED BY OR ASSOCIATED WITH MOJANG OR MICROSOFT.**
 
-Users should independently review the source code, build artifacts, configuration files, and network behavior they use. The project maintainers cannot guarantee the security, integrity, or data-handling behavior of third-party modifications, unofficial builds, redistributed versions, external plugins, or user-added code.
+## 3. Authorization and Responsibility for Conduct
 
-Obtain source code and build artifacts only from the official repository or release channels explicitly listed by this project.
+Users must check applicable laws, licenses, and service rules, obtain necessary permissions, and take legal responsibility for their own use, modifications, and distribution.
 
-### 4. User Responsibilities
+**The project parties cannot individually review, monitor, or control others' actual conduct. Publishing source, maintaining the repository, or providing general technical information does not itself establish direction, approval, participation in, or a guarantee of specific third-party conduct.**
 
-By downloading, compiling, installing, running, modifying, or distributing this project, users acknowledge and agree that:
+Each actor bears the responsibility legally attributable to them and cannot transfer it to the project parties merely because the code originated here. Unless required by law or separately and validly agreed, the project parties assume no guarantee, payment, or indemnity obligation for independent third-party conduct.
 
-- They are responsible for obtaining any necessary authorization and complying with applicable local laws, Minecraft agreements, server rules, and other applicable terms.
-- They must independently assess the security, stability, and compatibility risks associated with runtime injection and changes to game behavior.
-- They should back up important files and prioritize use in isolated test environments, personal worlds, or environments where explicit authorization has been obtained.
-- They bear responsibility for consequences arising from their violations of laws, agreements, server rules, or this notice.
-- The project's name, open-source status, or research purpose does not guarantee that any particular use is lawful, compliant, or safe.
+## 4. Use Risks and Consequences
 
-### 5. Risks
+**Users decide whether to use the project and are responsible for their environment, applicable conditions, and compliance with third-party rules. To the fullest extent permitted by applicable law, users bear the resulting risks, losses, and costs.**
 
-Runtime injection, bytecode modification, hooks, mixins, and similar mechanisms may conflict with other mods, loaders, game versions, security software, or system environments. Possible consequences include:
+The project parties cannot control third-party rules, service availability, or decisions. They guarantee no particular outcome and do not undertake to resolve disputes or restore rights arising from users' own conduct.
 
-- Game crashes, corrupted worlds, or lost configuration.
-- Reduced performance, malfunction, or version incompatibility.
-- Rejected server connections, account restrictions, or other platform actions.
-- Security software warnings, blocking, or false positives.
-- Other losses caused by incorrect configuration, third-party modifications, or improper use.
+**To the fullest extent permitted by applicable law, the project parties have no obligation to pay damages, provide compensation, advance costs, or perform restoration for those consequences.** Free provision, open-source publication, and technical discussions are not promises concerning the outcome of use. Section 8 applies.
 
-Users should decide whether to run this project only after understanding these risks.
+## 5. Technical and Operational Risks
 
-### 6. No Warranty
+The project changes game behavior and may read or write local configuration, caches, and logs. Versions, environments, and external components may affect operation and cause failures, incompatibility, or data loss.
 
-To the fullest extent permitted by applicable law, this project is provided "as is" and "as available", without any express or implied warranties, including warranties of merchantability, fitness for a particular purpose, accuracy, reliability, compatibility, security, or noninfringement.
+Users should verify sources, back up important data, and evaluate the project in an authorized, recoverable environment. Version support, examples, and test records describe particular conditions, not universal or continuing guarantees.
 
-The project authors and maintainers do not guarantee that the project:
+## 6. No Warranty or Service Commitment
 
-- Will always be available, error-free, or uninterrupted.
-- Will support every version of Minecraft, Java, mod loaders, or operating systems.
-- Will avoid triggering security software, platform risk controls, or server detection.
-- Will meet any particular purpose or produce any particular result.
+**TO THE FULLEST EXTENT PERMITTED BY APPLICABLE LAW, THE PROJECT IS PROVIDED AS IS AND AS AVAILABLE, WITHOUT EXPRESS OR IMPLIED WARRANTIES, INCLUDING MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, NONINFRINGEMENT, SECURITY, RELIABILITY, OR COMPATIBILITY.**
 
-To the fullest extent permitted by applicable law, the project authors, maintainers, and contributors are not liable for direct, indirect, incidental, special, punitive, or consequential losses arising from use of, or inability to use, this project.
+The project parties do not guarantee results, continued availability, correction of every issue, or long-term maintenance. Unless required by law or separately and validly agreed, project materials and general technical discussions create no specific service standard, delivery deadline, or support obligation.
 
-Where applicable law does not permit the exclusion or limitation of certain liabilities, liability is limited to the minimum extent permitted by that law.
+## 7. Limitation of Liability
 
-### 7. Intellectual Property
+**TO THE FULLEST EXTENT PERMITTED BY APPLICABLE LAW, AND UNLESS OTHERWISE VALIDLY AGREED, THE PROJECT PARTIES DISCLAIM LIABILITY FOR DAMAGES OR COMPENSATION ARISING FROM USING, BEING UNABLE TO USE, MODIFYING, DISTRIBUTING, OR COMBINING THE PROJECT, INCLUDING LEGALLY EXCLUDABLE DIRECT, INDIRECT, AND CONSEQUENTIAL LOSSES.**
 
-Minecraft, Mojang, Mojang Studios, Microsoft, and their associated names, trademarks, graphics, and game assets belong to their respective rights holders.
+Within the permitted scope, this limitation applies to claims under different legal theories. Responsibility, causation, and the permissible scope of limitation depend on actual facts and applicable law; this notice does not automatically establish or eliminate them.
 
-This project licenses only original code and content created by its authors and contributors under the open-source license included in the repository. This grant does not cover Minecraft itself, modified game clients or servers, official assets, or any third-party content that this project has no authority to relicense.
+## 8. Mandatory Liability and Statutory Rights
 
-When copying, modifying, or distributing this project, users must also comply with:
+**This notice does not exclude or limit liability that cannot lawfully be excluded or limited, transfer the project parties' own legally applicable liability to users, or remove anyone's statutory rights or remedies.**
 
-- The project's open-source license.
-- The Minecraft End User License Agreement and Usage Guidelines.
-- The licenses of dependencies and third-party components used.
-- Applicable local laws and regulations.
+Browsing, downloading, or using the project does not automatically waive statutory rights. Notice requirements, enforceability, and scope depend on applicable law. An invalid provision does not automatically invalidate other independently applicable provisions.
 
-This notice does not replace or modify the rights and obligations established by the repository's open-source license. In the event of a conflict, the applicable license and mandatory legal provisions prevail.
+## 9. Third-Party Rights
 
-### 8. Third-Party Content and Unofficial Versions
+The project's open-source license does not automatically cover third-party content. Users and contributors should verify provenance, permissions, and conditions, and retain required notices.
 
-The project maintainers provide no warranties for third-party websites, mirrors, bundled distributions, derivative projects, modified versions, or unofficial builds, and accept no responsibility for their security, lawfulness, integrity, or availability.
+Compatibility, format support, references, or inclusion do not establish additional permission, endorsement, or a comprehensive rights review. Relevant parties must address rights concerns under applicable law; this notice does not waive their own responsibility.
 
-Third-party modification, redistribution, or combined use of this project does not in itself imply approval, authorization, or cooperation by the project authors or maintainers.
+## 10. Data and External Content
 
-[Project source code](https://github.com/LoscX-X/Moons)
+Operation may involve local configuration, caches, logs, and device-related information; the loader includes device-identifier generation logic. This notice does not replace required data-processing disclosures, notices, or consent.
+
+Remove sensitive information before submitting feedback and ensure permission to provide the material. External content and unofficial versions may operate or process data differently; the project parties cannot control them and give no warranty concerning them.
+
+## 11. Problem and Rights Reports
+
+Submit problems or rights concerns through [project Issues](https://github.com/LoscX-X/Moons/issues) with sufficient information for review. For sensitive matters, first make a contact request without sensitive content and arrange an appropriate communication channel.
+
+Maintainers will review and address matters according to the circumstances and applicable law. This channel does not replace legal remedies or promise additional outcomes or response deadlines.
+
+## 12. Versions and Interpretation
+
+This notice may be updated with the project. Later changes do not automatically revoke existing license or statutory rights retroactively. Both language versions express the same intent; translation differences do not expand exclusions.
+
+This is a general notice about project risks and responsibility, not a legal determination concerning a particular act or dispute.
+
+[Project source](https://github.com/LoscX-X/Moons) · [Back to README](../readme.md)

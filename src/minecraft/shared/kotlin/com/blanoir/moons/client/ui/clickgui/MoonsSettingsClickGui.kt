@@ -21,7 +21,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.Text
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -101,14 +100,7 @@ internal fun MoonsSettingsClickGui(
         configuration = true
     }
 
-    MaterialTheme(
-        colorScheme =
-            darkColorScheme(
-                primary = PanelStyle.accent,
-                surface = PanelStyle.panel,
-                onSurface = PanelStyle.text,
-            )
-    ) {
+    MaterialTheme(colorScheme = panelColorScheme()) {
         ProvideTextStyle(
             TextStyle(
                 fontFamily = PanelFontFamily,
@@ -122,7 +114,7 @@ internal fun MoonsSettingsClickGui(
             )
         ) {
             BoxWithConstraints(
-                Modifier.fillMaxSize().background(Color(0x66303436)),
+                Modifier.fillMaxSize().background(PanelStyle.scrim),
                 contentAlignment = Alignment.Center,
             ) {
                 val windowWidth = (maxWidth - 24.dp).coerceAtMost(880.dp).coerceAtLeast(0.dp)
@@ -146,8 +138,19 @@ internal fun MoonsSettingsClickGui(
                                 .padding(start = if (compact) 10.dp else 12.dp),
                             contentAlignment = Alignment.CenterStart,
                         ) {
-                            if (compact) SettingsIcon("settings")
-                            else Text("Settings", fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                            if (compact) SettingsIcon("moon", color = PanelStyle.text)
+                            else
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    SettingsIcon("moon", Modifier.size(22.dp), PanelStyle.text)
+                                    Spacer(Modifier.width(10.dp))
+                                    Text(
+                                        guiBrandName(),
+                                        fontSize = 22.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
                         }
                         Column(
                             Modifier.weight(1f).verticalScroll(rememberScrollState()),
@@ -655,7 +658,7 @@ private fun GeneralSettingsPage(
         }
         Text("Accent color", color = PanelStyle.muted, fontSize = 12.sp)
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            listOf("#22c55e", "#a4a6a9", "#5d9cec", "#ae8de6").forEach { hex ->
+            listOf(DEFAULT_GUI_THEME, "#a4a6a9", "#5d9cec", "#ae8de6").forEach { hex ->
                 Box(
                     Modifier.size(24.dp)
                         .clip(CircleShape)

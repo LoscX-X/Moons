@@ -191,9 +191,4 @@ public final class MinecraftClientAccess {
         return com.mojang.blaze3d.platform.InputConstants.isKeyDown(
                 client.getWindow(), key.getValue());
     }
-
-    public static net.minecraft.resources.Identifier trimPaletteTexture(String palette) {
-        return net.minecraft.resources.Identifier.withDefaultNamespace(
-                "textures/trims/color_palettes/" + palette + ".png");
-    }
 }

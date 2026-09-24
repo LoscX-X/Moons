@@ -4,6 +4,17 @@
 
 Moons is a Windows client for Minecraft Java Edition with configurable modules, local presets and YSM models.
 
+> [!WARNING]
+> **Published for learning, research, and technical exchange only.**
+>
+> **This project will not generate profit through any means.** Maintainers commit to no direct or indirect profit-making through the project. Official source code, builds, and features are provided free of charge.
+>
+> **Game modifications target Minecraft: Java Edition itself as released by Mojang and must comply with the [Minecraft EULA](https://www.minecraft.net/en-us/eula) and applicable official terms. Their scope does not extend to independent third-party software, services, or resources.** Dependencies and external content retain their own licenses; this is not official approval or a comprehensive compliance guarantee.
+>
+> **The authors cannot individually review, monitor, or control others' actual conduct.** Each actor remains legally responsible for their own conduct.
+>
+> **Provided as is; users bear the risks of use to the extent permitted by law.** Read the [full disclaimer](docs/DISCLAIMER.md) before use. Non-excludable liability and statutory rights remain unaffected.
+
 Supports **26.1.2**, **26.2**, **26.3**, and **26.4-snapshot-1**.
 
 ## Version Support
@@ -13,6 +24,15 @@ Moons maintains the stable releases listed above and the listed 26.4 preview bui
 Development builds such as snapshots, pre-releases and release candidates are only supported for the newest upcoming Minecraft version.
 
 Older preview builds and retired Minecraft versions may remain available through historical releases or CI artifacts, but receive no further fixes or compatibility updates.
+
+## Risk and Responsibility Notice
+
+- **Verify permissions.** Users must comply with applicable laws, licenses, and service rules. Educational purpose does not replace required authorization.
+- **Assess risks.** The project changes game behavior and may affect operation, data, and related services. Back up important data and use an authorized environment.
+- **Responsibility follows conduct.** Publishing source does not itself establish participation in or a guarantee of third-party conduct. Unless required by law or separately and validly agreed, the authors assume no guarantee, payment, or indemnity obligation for independent third-party conduct.
+- **Provided as is.** To the fullest extent permitted by law, no warranty or liability for related damages or compensation is assumed, and no particular usage or maintenance outcome is promised.
+- **Respect third-party rights.** External content and third-party components retain their own licenses; the project's open-source license does not automatically cover them.
+- **Legal boundaries remain.** This notice does not restrict GPL rights or exclude non-excludable liability. See the [full notice](docs/DISCLAIMER.md) and [LICENSE](LICENSE).
 
 ## How to Use
 

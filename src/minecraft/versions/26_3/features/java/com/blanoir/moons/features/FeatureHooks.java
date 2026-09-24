@@ -33,7 +33,6 @@ import com.blanoir.moons.client.module.impl.render.Nametags;
 import com.blanoir.moons.client.module.impl.render.Nickname;
 import com.blanoir.moons.client.module.impl.render.NicknameShuffle;
 import com.blanoir.moons.client.module.impl.render.Scoreboard;
-import com.blanoir.moons.client.module.impl.render.Trim;
 import com.blanoir.moons.client.module.impl.render.xray.XrayTerrain;
 import com.blanoir.moons.client.module.impl.world.scaffold.Scaffold;
 import com.blanoir.moons.client.ui.compose.ComposeRenderBridge;
@@ -58,7 +57,6 @@ import net.minecraft.client.renderer.entity.state.AvatarRenderState;
 import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
 import net.minecraft.client.renderer.item.ItemStackRenderState;
 import net.minecraft.client.renderer.rendertype.RenderType;
-import net.minecraft.client.resources.model.EquipmentClientInfo;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.LivingEntity;
@@ -107,7 +105,6 @@ public final class FeatureHooks {
             case "render.antibot-hide" -> AntiBot.isHideBotActive();
             case "render.silent-aura-animation", "render.silent-aura-animation.replace-vanilla" ->
                     Animations.renderingEnabled();
-            case "render.trim", "render.trim.direct" -> Trim.isEnabled();
             case "render.armor-hide",
                     "render.armor-hide.head",
                     "render.armor-hide.head-item",
@@ -292,16 +289,13 @@ public final class FeatureHooks {
                 if (hook.argument() instanceof AvatarRenderState state) {
                     Chams.beginPlayerChams(state);
                     ArmorHide.beginAvatar(state);
-                    Trim.beginAvatar(state);
                 } else {
                     ArmorHide.endAvatar();
-                    Trim.endAvatar();
                 }
             }
             case "render.chams-submit.end" -> {
                 Chams.endPlayerChams();
                 ArmorHide.endAvatar();
-                Trim.endAvatar();
                 if (EventBus.LIVING_RENDER_POST.listenerCount() != 0
                         && hook.argument() instanceof LivingEntityRenderState state) {
                     EventBus.LIVING_RENDER_POST.post(new LivingRenderEvent.Post(state));
@@ -353,19 +347,6 @@ public final class FeatureHooks {
             }
             case "render.player-nametag" -> {
                 if (Nametags.isEnabled()) hook.value(false);
-            }
-            case "render.trim" -> {
-                if (hook.value() instanceof ItemStack item
-                        && (hook.argument() == EquipmentClientInfo.LayerType.HUMANOID
-                                || hook.argument()
-                                        == EquipmentClientInfo.LayerType.HUMANOID_LEGGINGS)) {
-                    hook.value(Trim.apply(item));
-                }
-            }
-            case "render.trim.direct" -> {
-                if (hook.argument() instanceof Object[] values && Trim.render(values)) {
-                    hook.value(false);
-                }
             }
             case "render.camera-zoom" -> {
                 if (Clip.isEnabled()) hook.value(true);

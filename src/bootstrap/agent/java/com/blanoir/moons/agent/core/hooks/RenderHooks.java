@@ -1,6 +1,5 @@
 package com.blanoir.moons.agent.core.hooks;
 
-import static com.blanoir.moons.agent.core.hooks.HookInstructions.appendVoidCancellation;
 import static com.blanoir.moons.agent.core.hooks.HookInstructions.beforeReturns;
 import static com.blanoir.moons.agent.core.hooks.HookInstructions.call;
 import static com.blanoir.moons.agent.core.hooks.HookInstructions.guardHook;
@@ -8,12 +7,9 @@ import static com.blanoir.moons.agent.core.hooks.HookInstructions.thisCall;
 
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.AbstractInsnNode;
-import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.FrameNode;
-import org.objectweb.asm.tree.IincInsnNode;
 import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.InsnNode;
-import org.objectweb.asm.tree.IntInsnNode;
 import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LabelNode;
 import org.objectweb.asm.tree.LdcInsnNode;
@@ -215,91 +211,6 @@ final class RenderHooks {
 
     static boolean loadRendererClose(MethodNode method) {
         beforeReturns(method, Opcodes.RETURN, () -> thisCall("onRendererClose"));
-        return true;
-    }
-
-    /** Draws bundled trims after the armor layers, before the vanilla atlas lookup. */
-    static boolean loadTrimRender(MethodNode method, String id) {
-        AbstractInsnNode lookup = null;
-        int orderSlot = -1;
-        for (AbstractInsnNode instruction : method.instructions) {
-            if (instruction instanceof FieldInsnNode field
-                    && field.name.equals("trimSpriteLookup")
-                    && field.getOpcode() == Opcodes.GETFIELD
-                    && field.getPrevious() instanceof VarInsnNode owner
-                    && owner.getOpcode() == Opcodes.ALOAD
-                    && owner.var == 0) {
-                lookup = owner;
-            }
-            if (lookup != null
-                    && instruction instanceof MethodInsnNode invocation
-                    && invocation.owner.equals("net/minecraft/client/renderer/SubmitNodeCollector")
-                    && invocation.name.equals("order")
-                    && invocation.getPrevious() instanceof IincInsnNode increment) {
-                orderSlot = increment.var;
-                break;
-            }
-        }
-        if (lookup == null || orderSlot < 0) return false;
-
-        InsnList hook = new InsnList();
-        hook.add(new LdcInsnNode(id));
-        hook.add(new VarInsnNode(Opcodes.ALOAD, 0));
-        hook.add(new IntInsnNode(Opcodes.BIPUSH, 10));
-        hook.add(new TypeInsnNode(Opcodes.ANEWARRAY, "java/lang/Object"));
-        int[] slots = {1, 2, 3, 4, 5, 6, 7, 8, 10, orderSlot};
-        for (int index = 0; index < slots.length; index++) {
-            hook.add(new InsnNode(Opcodes.DUP));
-            hook.add(new IntInsnNode(Opcodes.BIPUSH, index));
-            hook.add(new VarInsnNode(index < 7 ? Opcodes.ALOAD : Opcodes.ILOAD, slots[index]));
-            if (index >= 7) {
-                hook.add(
-                        new MethodInsnNode(
-                                Opcodes.INVOKESTATIC,
-                                "java/lang/Integer",
-                                "valueOf",
-                                "(I)Ljava/lang/Integer;",
-                                false));
-            }
-            hook.add(new InsnNode(Opcodes.AASTORE));
-        }
-        hook.add(new InsnNode(Opcodes.ICONST_1));
-        hook.add(
-                call(
-                        "onBooleanValue",
-                        "(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;Z)Z"));
-        appendVoidCancellation(hook);
-        method.instructions.insertBefore(lookup, guardHook(id, hook));
-        return true;
-    }
-
-    /** Replaces the fifth declared argument of EquipmentLayerRenderer#renderLayers. */
-    static boolean loadItemStackArgument5(MethodNode method, String id) {
-        org.objectweb.asm.Type[] arguments = org.objectweb.asm.Type.getArgumentTypes(method.desc);
-        if (arguments.length < 5
-                || !arguments[4].getDescriptor().equals("Lnet/minecraft/world/item/ItemStack;")) {
-            return false;
-        }
-
-        int itemStackSlot = (method.access & Opcodes.ACC_STATIC) == 0 ? 1 : 0;
-        for (int index = 0; index < 4; index++) itemStackSlot += arguments[index].getSize();
-        int firstArgumentSlot = (method.access & Opcodes.ACC_STATIC) == 0 ? 1 : 0;
-
-        InsnList hook = new InsnList();
-        hook.add(new LdcInsnNode(id));
-        hook.add(
-                (method.access & Opcodes.ACC_STATIC) == 0
-                        ? new VarInsnNode(Opcodes.ALOAD, 0)
-                        : new InsnNode(Opcodes.ACONST_NULL));
-        hook.add(new VarInsnNode(Opcodes.ALOAD, firstArgumentSlot));
-        hook.add(new VarInsnNode(Opcodes.ALOAD, itemStackSlot));
-        hook.add(
-                call(
-                        "onObjectValue",
-                        "(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;"));
-        hook.add(new TypeInsnNode(Opcodes.CHECKCAST, "net/minecraft/world/item/ItemStack"));
-        hook.add(new VarInsnNode(Opcodes.ASTORE, itemStackSlot));
-        method.instructions.insert(hook);
         return true;
     }
 

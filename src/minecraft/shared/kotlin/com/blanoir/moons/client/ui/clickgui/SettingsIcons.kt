@@ -18,6 +18,7 @@ import kotlin.math.roundToInt
 /** Original SVG-style 24px paths; shared by both layouts with one stroke weight. */
 private val settingsIconPaths =
     mapOf(
+        "moon" to "M12 2 A10 10 0 1 0 22 12 A8 8 0 0 1 12 2 Z",
         "search" to "M10.5 3.5 A7 7 0 1 0 10.5 17.5 A7 7 0 1 0 10.5 3.5 M16 16 L21 21",
         "close" to "M6 6 L18 18 M18 6 L6 18",
         "chevron" to "M8 10 L12 14 L16 10",
@@ -63,12 +64,18 @@ internal fun SettingsIcon(
             translate((size.width - 24f * scale) / 2f, (size.height - 24f * scale) / 2f)
             scale(scale, scale, pivot = androidx.compose.ui.geometry.Offset.Zero)
         }) {
-            drawPath(
-                path,
-                color,
-                style =
-                    Stroke(strokePixels / scale, cap = StrokeCap.Round, join = StrokeJoin.Round),
-            )
+            if (id == "moon") drawPath(path, color)
+            else
+                drawPath(
+                    path,
+                    color,
+                    style =
+                        Stroke(
+                            strokePixels / scale,
+                            cap = StrokeCap.Round,
+                            join = StrokeJoin.Round,
+                        ),
+                )
         }
     }
 }

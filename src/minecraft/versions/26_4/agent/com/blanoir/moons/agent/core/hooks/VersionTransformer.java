@@ -19,7 +19,6 @@ public final class VersionTransformer {
             case "render.chams-item" -> item(method, id);
             case "render.chams-equipment", "render.chams-cape" ->
                     remap(method, id, "submitModel", 3);
-            case "render.trim.direct" -> trim(method, id);
             case "render.silent-aura-animation" -> hand(method, id);
             default -> false;
         };
@@ -220,41 +219,6 @@ public final class VersionTransformer {
         }
         finishGate(out);
         method.instructions.insert(guardHook(id, out));
-        return true;
-    }
-
-    private static boolean trim(MethodNode method, String id) {
-        AbstractInsnNode lookup = null;
-        int order = -1;
-        for (LocalVariableNode local : method.localVariables)
-            if (local.name.equals("nextOrder")) order = local.index;
-        for (AbstractInsnNode node : method.instructions) {
-            if (node instanceof FieldInsnNode field
-                    && field.name.equals("trimTextureLookup")
-                    && field.getOpcode() == Opcodes.GETFIELD) {
-                lookup = node.getPrevious();
-                break;
-            }
-        }
-        if (lookup == null || order < 0) return false;
-        InsnList out = gate(id, 10);
-        int[] slots = {1, 2, 3, 4, 5, 6, 7, 8, 10, order};
-        for (int i = 0; i < slots.length; i++)
-            arrayValue(out, i, slots[i], i < 7 ? Type.getType(Object.class) : Type.INT_TYPE);
-        out.add(new InsnNode(Opcodes.ICONST_1));
-        out.add(
-                call(
-                        "onBooleanValue",
-                        "(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;Z)Z"));
-        LabelNode proceed = new LabelNode();
-        out.add(new JumpInsnNode(Opcodes.IFNE, proceed));
-        out.add(new VarInsnNode(Opcodes.ILOAD, order));
-        out.add(new InsnNode(Opcodes.ICONST_1));
-        out.add(new InsnNode(Opcodes.IADD));
-        out.add(new InsnNode(Opcodes.IRETURN));
-        out.add(proceed);
-        out.add(new FrameNode(Opcodes.F_SAME, 0, null, 0, null));
-        method.instructions.insertBefore(lookup, guardHook(id, out));
         return true;
     }
 }

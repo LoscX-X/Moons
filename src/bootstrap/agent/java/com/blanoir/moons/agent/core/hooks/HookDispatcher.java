@@ -68,8 +68,6 @@ public final class HookDispatcher {
             case BOOLEAN_RETURN_ARG -> ValueHooks.loadBooleanReturn(method, target.id());
             case OBJECT_RETURN -> ValueHooks.loadObjectReturn(method, target.id());
             case OBJECT_ARGUMENT -> ValueHooks.loadObjectArgument(method, target.id());
-            case ITEM_STACK_ARGUMENT_5 -> RenderHooks.loadItemStackArgument5(method, target.id());
-            case TRIM_RENDER -> RenderHooks.loadTrimRender(method, target.id());
             case OBJECT_INVOKE_RETURN ->
                     RenderHooks.loadObjectInvocationReturn(method, target.id());
             case NAMED_FLOAT_LOCAL ->
@@ -105,11 +103,7 @@ public final class HookDispatcher {
             }
             return false;
         }
-        if (target.hook() == TargetMethod.HookKind.ITEM_STACK_ARGUMENT_5) {
-            return containsIdentifiedHook(method, target.id(), "onObjectValue");
-        }
-        if (target.hook() == TargetMethod.HookKind.TRIM_RENDER
-                || target.hook() == TargetMethod.HookKind.BOXED_ARGS_VOID_GATE) {
+        if (target.hook() == TargetMethod.HookKind.BOXED_ARGS_VOID_GATE) {
             return containsIdentifiedHook(method, target.id(), "onBooleanValue");
         }
         String hookName =
@@ -143,13 +137,12 @@ public final class HookDispatcher {
                     case OBJECT_RETURN,
                             FLOAT_RETURN_OBJECT_ARG,
                             OBJECT_ARGUMENT,
-                            ITEM_STACK_ARGUMENT_5,
                             OBJECT_INVOKE_RETURN ->
                             "onObjectValue";
                     case NAMED_FLOAT_LOCAL -> "onFloatValue";
                     case SPRINT_DECISIONS -> "onBooleanValue";
                     case YAW_RESULT -> "onFloatValue";
-                    case BOOLEAN_GATE, STATIC_BOOLEAN_RETURN_ARG1, XRAY_TESSELLATE, TRIM_RENDER ->
+                    case BOOLEAN_GATE, STATIC_BOOLEAN_RETURN_ARG1, XRAY_TESSELLATE ->
                             "onBooleanValue";
                     case XRAY_QUAD -> "onVoidHook";
                     case VOID_START_END_ARG0 -> "onVoidHook";
@@ -178,7 +171,6 @@ public final class HookDispatcher {
                                     case HAND_ANIMATION,
                                             BOXED_ARGS_VOID_GATE,
                                             SCOREBOARD,
-                                            TRIM_RENDER,
                                             XRAY_TESSELLATE,
                                             SODIUM_RENDER_MODEL,
                                             VERSION_SPECIFIC ->

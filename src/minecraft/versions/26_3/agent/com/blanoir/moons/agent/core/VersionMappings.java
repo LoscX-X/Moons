@@ -514,31 +514,6 @@ final class VersionMappings {
                                 TargetMethod.HookKind.VERSION_SPECIFIC,
                                 VersionTransformer::load),
                         new TargetMethod(
-                                "render.trim",
-                                List.of(
-                                        "net/minecraft/client/renderer/entity/layers/EquipmentLayerRenderer"),
-                                List.of("renderLayers"),
-                                "(Lnet/minecraft/client/resources/model/EquipmentClientInfo$LayerType;"
-                                        + "Lnet/minecraft/resources/ResourceKey;Lnet/minecraft/client/model/Model;"
-                                        + "Ljava/lang/Object;Lnet/minecraft/world/item/ItemStack;"
-                                        + "Lcom/mojang/blaze3d/vertex/PoseStack;"
-                                        + "Lnet/minecraft/client/renderer/SubmitNodeCollector;I"
-                                        + "Lnet/minecraft/resources/Identifier;II)V",
-                                TargetMethod.HookKind.ITEM_STACK_ARGUMENT_5),
-                        new TargetMethod(
-                                "render.trim.direct",
-                                List.of(
-                                        "net/minecraft/client/renderer/entity/layers/EquipmentLayerRenderer"),
-                                List.of("renderLayers"),
-                                "(Lnet/minecraft/client/resources/model/EquipmentClientInfo$LayerType;"
-                                        + "Lnet/minecraft/resources/ResourceKey;Lnet/minecraft/client/model/Model;"
-                                        + "Ljava/lang/Object;Lnet/minecraft/world/item/ItemStack;"
-                                        + "Lcom/mojang/blaze3d/vertex/PoseStack;"
-                                        + "Lnet/minecraft/client/renderer/SubmitNodeCollector;I"
-                                        + "Lnet/minecraft/resources/Identifier;II)V",
-                                TargetMethod.HookKind.VERSION_SPECIFIC,
-                                VersionTransformer::load),
-                        new TargetMethod(
                                 "render.chams-cape",
                                 List.of("net/minecraft/client/renderer/entity/layers/CapeLayer"),
                                 List.of("submit"),

@@ -55,7 +55,6 @@ import com.blanoir.moons.client.module.impl.render.Nickname;
 import com.blanoir.moons.client.module.impl.render.NicknameShuffle;
 import com.blanoir.moons.client.module.impl.render.Scoreboard;
 import com.blanoir.moons.client.module.impl.render.TargetInfoHud;
-import com.blanoir.moons.client.module.impl.render.Trim;
 import com.blanoir.moons.client.module.impl.render.UhcFinder;
 import com.blanoir.moons.client.module.impl.render.xray.OreHighlighter;
 import com.blanoir.moons.client.module.impl.render.xray.OreScanner;
@@ -223,7 +222,6 @@ final class FeatureBootstrap {
         com.blanoir.moons.client.render.StructureLabelRenderer.close();
         OreHighlighter.close();
         Chams.close();
-        Trim.close();
         com.blanoir.moons.client.module.impl.network.backtrack.BacktrackRenderer.close();
         WorldOverlayRenderer.close();
     }

@@ -1,7 +1,0 @@
-.openai
-.sites-runtime
-.vercel
-*.log
-*.tar.gz
-preview.mjs
-README.md

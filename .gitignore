@@ -23,6 +23,7 @@ atlassian-ide-plugin.xml
 
 # Generated analysis, training and verification artifacts
 /outputs/
+/website/
 /tools/aim_training/verification/
 /tools/aim_training/SHA256SUMS.json
 

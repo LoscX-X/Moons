@@ -54,6 +54,7 @@ public final class ModuleCatalog {
         ModuleRegistry.add(Xray.xray());
         ModuleRegistry.add(Xray.targets());
         ModuleRegistry.add(World.autoTool());
+        ModuleRegistry.add(World.structureLocate());
         ModuleRegistry.add(World.scaffold());
         ModuleRegistry.add(World.fastBreak());
         ModuleRegistry.add(World.chestStealer());
@@ -67,5 +68,6 @@ public final class ModuleCatalog {
         ModuleRegistry.add(Misc.armorHide());
         ModuleRegistry.add(Misc.antiNick());
         ModuleRegistry.add(Misc.antiBot());
+        ModuleRegistry.add(Misc.aimCollect());
     }
 }

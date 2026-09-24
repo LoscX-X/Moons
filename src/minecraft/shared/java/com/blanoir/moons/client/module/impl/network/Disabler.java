@@ -145,6 +145,11 @@ public final class Disabler {
                 + PacketAccess.teleportConfirmationId(saved.confirmation());
     }
 
+    public static String hudTag() {
+        Pending saved = pending;
+        return saved == null || !saved.matches(Minecraft.getInstance()) ? "Waiting" : "Held";
+    }
+
     private record Pending(
             Connection connection,
             ClientLevel level,

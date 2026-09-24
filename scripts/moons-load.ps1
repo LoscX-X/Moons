@@ -1,4 +1,4 @@
-[CmdletBinding()]
+Z[CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][Alias("Pid")][int]$ProcessId,
     [Parameter(Mandatory = $true)][string]$Dll,

@@ -11,11 +11,40 @@ import com.blanoir.moons.client.module.impl.misc.AntiNick;
 import com.blanoir.moons.client.module.impl.misc.ArmorHide;
 import com.blanoir.moons.client.module.impl.misc.ChatFilter;
 import com.blanoir.moons.client.module.impl.misc.StaticFov;
+import com.blanoir.moons.client.module.impl.misc.aimdata.AimCollect;
 import com.blanoir.moons.client.module.impl.misc.antibot.AntiBot;
 
 /** Defines misc module descriptors; ordering is owned by ModuleCatalog. */
 final class Misc {
     private Misc() {}
+
+    static ModuleRegistry.Module aimCollect() {
+        return module(
+                        "aimcollect",
+                        "AimCollect",
+                        ModuleCategories.EXPERIMENT,
+                        AimCollect::isEnabled,
+                        AimCollect::setEnabled,
+                        AimCollect::hudTag,
+                        AimCollect.RANGE.describe(
+                                "range", "Observer range", 8, AimCollect::setRange),
+                        AimCollect.TARGET_RANGE.describe(
+                                "target_range", "Target range", 1, AimCollect::setTargetRange),
+                        AimCollect.COMBAT_SECONDS.describe(
+                                "combat_seconds",
+                                "Combat timeout (s)",
+                                1,
+                                AimCollect::setCombatSeconds))
+                .withHudTag(
+                        AimCollect::hudState,
+                        "Waiting",
+                        "Starting",
+                        "Recording",
+                        "Saving",
+                        "Saved",
+                        "Limit",
+                        "Error");
+    }
 
     static ModuleRegistry.Module chatPrefix() {
         return module(

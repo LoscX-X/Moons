@@ -8,6 +8,7 @@ import com.blanoir.moons.client.config.settings.DoubleSetting;
 import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.event.frame.WorldRenderEvent;
 import com.blanoir.moons.client.render.WorldOverlayRenderer;
+import com.blanoir.moons.client.render.world.OverlayFrustum;
 import com.blanoir.moons.client.utils.registry.RegistryLists;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -22,6 +23,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.MobCategory;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
@@ -34,6 +36,7 @@ public final class UhcFinder {
     private static final float BOX_ALPHA = 0.35f;
     private static final float OFFLINE_PLAYER_ALPHA = 0.85f;
     private static final Map<EntityType<?>, Integer> TARGETS = loadTargets();
+    private static final OverlayFrustum VIEW = new OverlayFrustum();
 
     private static final BooleanSetting ENABLED =
             new BooleanSetting.Builder().name("uhcfinder.enabled").defaultValue(true).build();
@@ -174,6 +177,7 @@ public final class UhcFinder {
 
         PoseStack matrices = context.poseStack();
         Vec3 camera = MinecraftClientAccess.camera(client).position();
+        VIEW.update(MinecraftClientAccess.camera(client));
         float tickDelta = context.tickDelta();
 
         double maxDistanceSquared = RANGE.get() * RANGE.get();
@@ -195,12 +199,15 @@ public final class UhcFinder {
 
         List<WorldOverlayRenderer.ColoredBox> boxes = new ArrayList<>(targets.size());
         for (Entity target : targets) {
-            boxes.add(createEntityBox(target, tickDelta));
+            var box = createEntityBox(target, tickDelta);
+            if (VIEW.isVisible(
+                    box.minX(), box.minY(), box.minZ(), box.maxX(), box.maxY(), box.maxZ()))
+                boxes.add(box);
         }
 
         matrices.pushPose();
         matrices.translate(-camera.x, -camera.y, -camera.z);
-        WorldOverlayRenderer.render(client, matrices, boxes, "uhcfinder entity boxes");
+        WorldOverlayRenderer.renderStyled(client, matrices, boxes, "uhcfinder entity boxes");
         matrices.popPose();
     }
 
@@ -215,7 +222,11 @@ public final class UhcFinder {
     }
 
     private static boolean isUhcFinderTarget(Entity entity) {
-        return TARGETS.containsKey(entity.getType());
+        return isInvisiblePlayer(entity) || TARGETS.containsKey(entity.getType());
+    }
+
+    private static boolean isInvisiblePlayer(Entity entity) {
+        return entity instanceof Player && entity.isInvisible();
     }
 
     private static WorldOverlayRenderer.ColoredBox createEntityBox(Entity entity, float tickDelta) {
@@ -250,6 +261,7 @@ public final class UhcFinder {
     }
 
     private static float[] colorFor(Entity entity) {
+        if (isInvisiblePlayer(entity)) return rgb(255, 255, 255);
         int color =
                 entity instanceof LivingEntity living
                                 && OfflinePlayerDetect.isOfflinePlayerZombie(living)

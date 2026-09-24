@@ -986,7 +986,8 @@ public final class ScaffoldManager {
                             published.target().support(),
                             published.target().face());
             if (finalHit == null
-                    || godBridgePlacement() && !AimPointsH.insideFace(finalHit, published.target())) {
+                    || godBridgePlacement()
+                            && !AimPointsH.insideFace(finalHit, published.target())) {
                 tellyDebugReason = "committed rotation misses face; retry next tick";
                 return;
             }
@@ -1680,11 +1681,15 @@ public final class ScaffoldManager {
                     GodBridgeSneak.diagonalMovement(
                             client.player.getYRot(),
                             impulse(
-                                    CombatInputController.isPhysicallyDown(client, client.options.keyUp),
-                                    CombatInputController.isPhysicallyDown(client, client.options.keyDown)),
+                                    CombatInputController.isPhysicallyDown(
+                                            client, client.options.keyUp),
+                                    CombatInputController.isPhysicallyDown(
+                                            client, client.options.keyDown)),
                             impulse(
-                                    CombatInputController.isPhysicallyDown(client, client.options.keyLeft),
-                                    CombatInputController.isPhysicallyDown(client, client.options.keyRight))));
+                                    CombatInputController.isPhysicallyDown(
+                                            client, client.options.keyLeft),
+                                    CombatInputController.isPhysicallyDown(
+                                            client, client.options.keyRight))));
         }
         if (!client.player.getAbilities().instabuild) blockCount--;
         MinecraftClientAccess.animatePlacement(client.player, hand, SWING.get());
@@ -2142,6 +2147,10 @@ public final class ScaffoldManager {
 
     private static boolean godBridgeMode() {
         return scaffoldMode() == ScaffoldMode.GODBRIDGE;
+    }
+
+    public static String modeName() {
+        return scaffoldMode().configName();
     }
 
     private static boolean godBridgePlacement() {

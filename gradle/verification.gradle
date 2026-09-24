@@ -33,6 +33,10 @@ tasks.register('verifyNicknameShuffle', JavaExec) {
 }
 
 [
+        verifyHudTags: 'com.blanoir.moons.client.ui.hud.HudTagVerification',
+        verifyAimCollect: 'com.blanoir.moons.client.module.impl.misc.aimdata.AimCollectVerification',
+        verifyOverlayGeometry: 'com.blanoir.moons.client.render.world.OverlayGeometryVerification',
+        verifyStructureLocate: 'com.blanoir.moons.client.module.impl.world.structure.StructureLocateVerification',
         verifySilentAuraPoints: 'com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraPointVerification',
         verifyLearnedAim: 'com.blanoir.moons.client.module.impl.combat.silentaura.LearnedAimVerification',
         verifyAntiBot: 'com.blanoir.moons.client.module.impl.misc.antibot.AdvancedBotDetectorVerification',
@@ -65,6 +69,14 @@ tasks.register('simulateSilentAuraRotation', JavaExec) {
     workingDir layout.buildDirectory.get().asFile
 }
 
+tasks.register('verifyGameAccess', JavaExec) {
+    group = 'verification'
+    description = 'Resolves private Minecraft members used by the version-specific feature host.'
+    dependsOn 'renderTestClasses'
+    classpath = sourceSets.renderTest.runtimeClasspath
+    mainClass = 'com.blanoir.moons.client.access.GameAccessVerification'
+}
+
 tasks.register("verifyMinecraftTransformers", JavaExec) {
     group = "verification"
     description = "Transforms and bytecode-verifies every supported hook against the actual Minecraft JAR."
@@ -87,7 +99,7 @@ tasks.register("verifyMinecraftTransformers", JavaExec) {
 
 
 tasks.named("check").configure {
-    dependsOn "clientClasses", "featuresClasses", "verifyMinecraftTransformers", "verifyArmorHide", "verifyNicknameShuffle", "verifySilentAuraPoints", "verifyAntiBot", "verifyBacktrackFlow", "verifyAntiWebCycle", "verifyPlacementRays"
+    dependsOn "clientClasses", "featuresClasses", "verifyMinecraftTransformers", "verifyGameAccess", "verifyArmorHide", "verifyNicknameShuffle", "verifySilentAuraPoints", "verifyAntiBot", "verifyBacktrackFlow", "verifyAntiWebCycle", "verifyPlacementRays"
 }
 
 def versionChecks = []
@@ -145,6 +157,7 @@ tasks.register('verifyLoadSession', Exec) {
 
 tasks.named('check').configure { dependsOn 'verifyLoadSession' }
 tasks.named('check').configure { dependsOn 'verifyLearnedAim' }
+tasks.named('check').configure { dependsOn 'verifyAimCollect' }
 
 tasks.register('verifyLauncherPackages', Exec) {
     group = 'verification'

@@ -27,6 +27,24 @@ public final class WorldOverlayBuffer {
             RenderPipeline pipeline,
             String label,
             Consumer<VertexConsumer> writer) {
+        draw(client, pipeline, label, writer, true);
+    }
+
+    /** Overlay fills are intentionally faint; avoid sorting thousands of faces every frame. */
+    public static synchronized void drawUnsorted(
+            Minecraft client,
+            RenderPipeline pipeline,
+            String label,
+            Consumer<VertexConsumer> writer) {
+        draw(client, pipeline, label, writer, false);
+    }
+
+    private static void draw(
+            Minecraft client,
+            RenderPipeline pipeline,
+            String label,
+            Consumer<VertexConsumer> writer,
+            boolean sortQuads) {
         var mainTarget = MinecraftClientAccess.mainRenderTarget(client);
         var colorView = mainTarget.getColorTextureView();
         var format = pipeline.getVertexFormatBinding(0);
@@ -36,7 +54,7 @@ public final class WorldOverlayBuffer {
         }
         PrimitiveTopology topology = pipeline.getPrimitiveTopology();
         VertexSorting sorting =
-                topology == PrimitiveTopology.QUADS
+                sortQuads && topology == PrimitiveTopology.QUADS
                         ? RenderSystem.getProjectionType().vertexSorting()
                         : null;
         StagedVertexBuffer.Draw draw = buffer.appendDraw(format, topology, sorting);

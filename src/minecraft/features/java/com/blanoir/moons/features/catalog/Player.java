@@ -16,46 +16,50 @@ final class Player {
 
     static ModuleRegistry.Module autoArmor() {
         return module(
-                "autoarmor",
-                "AutoArmor",
-                ModuleCategories.PLAYER,
-                AutoArmor::enabled,
-                AutoArmor::setEnabled,
-                AutoArmor::statusText,
-                AutoArmor.settings());
+                        "autoarmor",
+                        "AutoArmor",
+                        ModuleCategories.PLAYER,
+                        AutoArmor::enabled,
+                        AutoArmor::setEnabled,
+                        AutoArmor::statusText,
+                        AutoArmor.settings())
+                .withHudTag("");
     }
 
     static ModuleRegistry.Module invManager() {
         return module(
-                "invmanager",
-                "InvManager",
-                ModuleCategories.PLAYER,
-                InvManagerConfig::enabled,
-                InvManager::setEnabled,
-                InvManager::statusText,
-                InvManagerConfig.settings());
+                        "invmanager",
+                        "InvManager",
+                        ModuleCategories.PLAYER,
+                        InvManagerConfig::enabled,
+                        InvManager::setEnabled,
+                        InvManager::statusText,
+                        InvManagerConfig.settings())
+                .withHudTag("");
     }
 
     static ModuleRegistry.Module invClear() {
         return module(
-                "invclear",
-                "InvClear",
-                ModuleCategories.PLAYER,
-                InvClear::enabled,
-                InvClear::setEnabled,
-                InvClear::statusText,
-                InvClear.settings());
+                        "invclear",
+                        "InvClear",
+                        ModuleCategories.PLAYER,
+                        InvClear::enabled,
+                        InvClear::setEnabled,
+                        InvClear::statusText,
+                        InvClear.settings())
+                .withHudTag("");
     }
 
     static ModuleRegistry.Module blockIn() {
         return PlacementOptions.module(
-                "blockin",
-                "BlockIn",
-                ModuleCategories.EXPERIMENT,
-                BlockInConfig::enabled,
-                BlockInRuntime::setEnabled,
-                BlockInRuntime::statusText,
-                BlockInConfig.settings());
+                        "blockin",
+                        "BlockIn",
+                        ModuleCategories.EXPERIMENT,
+                        BlockInConfig::enabled,
+                        BlockInRuntime::setEnabled,
+                        BlockInRuntime::statusText,
+                        BlockInConfig.settings())
+                .withHudTag("");
     }
 
     static ModuleRegistry.Module autoWeb() {
@@ -234,90 +238,99 @@ final class Player {
 
     static ModuleRegistry.Module autoBed() {
         return PlacementOptions.module(
-                "autobed",
-                "AutoBed",
-                ModuleCategories.EXPERIMENT,
-                AutoBed::isEnabled,
-                AutoBed::setEnabled,
-                AutoBed::hudTag,
-                choice(
-                        "mode",
-                        "Mode",
-                        "autobed.mode",
-                        "balance",
-                        AutoBed.modeOptions(),
-                        AutoBed::setMode),
-                number("range", "Scan range", "autobed.range", 4.5, 1, 10, .1, AutoBed::setRange),
-                number("fov", "FOV", "autobed.fov", 90, 1, 360, 1, AutoBed::setFov),
-                number(
-                        "min_damage",
-                        "Min target damage",
-                        "autobed.minDamage",
-                        6,
-                        0,
-                        36,
-                        .5,
-                        AutoBed::setMinDamage),
-                number(
-                        "max_self_damage",
-                        "Max self damage",
-                        "autobed.maxSelfDamage",
-                        8,
-                        0,
-                        36,
-                        .5,
-                        AutoBed::setMaxSelfDamage),
-                bool(
-                        "anti_suicide",
-                        "Anti suicide",
-                        "autobed.antiSuicide",
-                        true,
-                        AutoBed::setAntiSuicide),
-                bool(
-                                "target_range_recheck",
-                                "Target move check",
-                                "autobed.targetRangeRecheck",
+                        "autobed",
+                        "AutoBed",
+                        ModuleCategories.EXPERIMENT,
+                        AutoBed::isEnabled,
+                        AutoBed::setEnabled,
+                        AutoBed::hudTag,
+                        choice(
+                                "mode",
+                                "Mode",
+                                "autobed.mode",
+                                "balance",
+                                AutoBed.modeOptions(),
+                                AutoBed::setMode),
+                        number(
+                                "range",
+                                "Scan range",
+                                "autobed.range",
+                                4.5,
+                                1,
+                                10,
+                                .1,
+                                AutoBed::setRange),
+                        number("fov", "FOV", "autobed.fov", 90, 1, 360, 1, AutoBed::setFov),
+                        number(
+                                "min_damage",
+                                "Min target damage",
+                                "autobed.minDamage",
+                                6,
+                                0,
+                                36,
+                                .5,
+                                AutoBed::setMinDamage),
+                        number(
+                                "max_self_damage",
+                                "Max self damage",
+                                "autobed.maxSelfDamage",
+                                8,
+                                0,
+                                36,
+                                .5,
+                                AutoBed::setMaxSelfDamage),
+                        bool(
+                                "anti_suicide",
+                                "Anti suicide",
+                                "autobed.antiSuicide",
                                 true,
-                                AutoBed::setTargetRangeRecheck)
-                        .visibleWhen(AutoBed::blatantMode),
-                integer(
-                                "smooth",
-                                "Balance smooth turn",
-                                "autobed.smoothTicks",
-                                3,
-                                1,
-                                20,
-                                1,
-                                AutoBed::setSmoothTicks)
-                        .visibleWhen(() -> !AutoBed.blatantMode()),
-                integer(
-                                "blatant_smooth",
-                                "Blatant smooth turn",
-                                "autobed.blatantSmoothTicks",
-                                1,
-                                1,
-                                20,
-                                1,
-                                AutoBed::setBlatantSmoothTicks)
-                        .visibleWhen(AutoBed::blatantMode),
-                integer(
-                        "switch_delay",
-                        "Switch delay ms",
-                        "autobed.switchDelayMs",
-                        50,
-                        0,
-                        500,
-                        5,
-                        AutoBed::setSwitchDelayMs),
-                integer(
-                        "click_delay",
-                        "Bed click delay ms",
-                        "autobed.clickDelayMs",
-                        50,
-                        0,
-                        500,
-                        5,
-                        AutoBed::setClickDelayMs));
+                                AutoBed::setAntiSuicide),
+                        bool(
+                                        "target_range_recheck",
+                                        "Target move check",
+                                        "autobed.targetRangeRecheck",
+                                        true,
+                                        AutoBed::setTargetRangeRecheck)
+                                .visibleWhen(AutoBed::blatantMode),
+                        integer(
+                                        "smooth",
+                                        "Balance smooth turn",
+                                        "autobed.smoothTicks",
+                                        3,
+                                        1,
+                                        20,
+                                        1,
+                                        AutoBed::setSmoothTicks)
+                                .visibleWhen(() -> !AutoBed.blatantMode()),
+                        integer(
+                                        "blatant_smooth",
+                                        "Blatant smooth turn",
+                                        "autobed.blatantSmoothTicks",
+                                        1,
+                                        1,
+                                        20,
+                                        1,
+                                        AutoBed::setBlatantSmoothTicks)
+                                .visibleWhen(AutoBed::blatantMode),
+                        integer(
+                                "switch_delay",
+                                "Switch delay ms",
+                                "autobed.switchDelayMs",
+                                50,
+                                0,
+                                500,
+                                5,
+                                AutoBed::setSwitchDelayMs),
+                        integer(
+                                "click_delay",
+                                "Bed click delay ms",
+                                "autobed.clickDelayMs",
+                                50,
+                                0,
+                                500,
+                                5,
+                                AutoBed::setClickDelayMs))
+                .withHudTag(AutoBed::modeName);
     }
 
     static ModuleRegistry.Module antiLava() {

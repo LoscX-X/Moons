@@ -10,6 +10,28 @@ import org.joml.Matrix4fc;
 public final class OverlayGeometry {
     private OverlayGeometry() {}
 
+    /** Emit pairs for DEBUG_LINES, not LINES (which Minecraft expands into shader quads).
+     * Hardware clipping and a fixed one-pixel raster width avoid twisting at the camera plane. */
+    public static void renderOutlineBox(Matrix4fc pose, VertexConsumer b, ColoredBox box) {
+        float r = box.red(), g = box.green(), blue = box.blue();
+        for (int i = 0; i < 4; i++) {
+            float x = (i & 1) == 0 ? box.minX() : box.maxX();
+            float y = (i & 2) == 0 ? box.minY() : box.maxY();
+            vertex(b, pose, x, y, box.minZ(), r, g, blue, 1);
+            vertex(b, pose, x, y, box.maxZ(), r, g, blue, 1);
+            float z = (i & 1) == 0 ? box.minZ() : box.maxZ();
+            vertex(b, pose, box.minX(), y, z, r, g, blue, 1);
+            vertex(b, pose, box.maxX(), y, z, r, g, blue, 1);
+            x = (i & 2) == 0 ? box.minX() : box.maxX();
+            vertex(b, pose, x, box.minY(), z, r, g, blue, 1);
+            vertex(b, pose, x, box.maxY(), z, r, g, blue, 1);
+        }
+    }
+
+    public static void renderSoftFill(Matrix4fc pose, VertexConsumer b, ColoredBox box) {
+        renderFilledBox(pose, b, box, .18f);
+    }
+
     public static void renderPin(Matrix4fc pose, VertexConsumer builder, ColoredPin pin) {
         float halfWidth = pin.width() / 2.0f;
         float stemTop = pin.y() + pin.height();
@@ -46,9 +68,14 @@ public final class OverlayGeometry {
     }
 
     public static void renderFilledBox(Matrix4fc pose, VertexConsumer b, ColoredBox box) {
+        renderFilledBox(pose, b, box, 1);
+    }
+
+    private static void renderFilledBox(
+            Matrix4fc pose, VertexConsumer b, ColoredBox box, float opacity) {
         float x1 = box.minX(), y1 = box.minY(), z1 = box.minZ();
         float x2 = box.maxX(), y2 = box.maxY(), z2 = box.maxZ();
-        float r = box.red(), g = box.green(), blue = box.blue(), a = box.alpha();
+        float r = box.red(), g = box.green(), blue = box.blue(), a = box.alpha() * opacity;
 
         vertex(b, pose, x1, y1, z2, r, g, blue, a);
         vertex(b, pose, x2, y1, z2, r, g, blue, a);

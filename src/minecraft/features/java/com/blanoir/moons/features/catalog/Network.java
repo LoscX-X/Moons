@@ -17,12 +17,13 @@ final class Network {
 
     static ModuleRegistry.Module disabler() {
         return module(
-                "disabler",
-                "Disabler",
-                ModuleCategories.NETWORK,
-                Disabler::isEnabled,
-                Disabler::setEnabled,
-                Disabler::statusTag);
+                        "disabler",
+                        "Disabler",
+                        ModuleCategories.NETWORK,
+                        Disabler::isEnabled,
+                        Disabler::setEnabled,
+                        Disabler::statusTag)
+                .withHudTag(Disabler::hudTag, "Waiting", "Held");
     }
 
     static ModuleRegistry.Module backtrack() {

@@ -50,6 +50,19 @@ public final class WorldOverlayRenderer {
                             .withDepthStencilState(Optional.empty())
                             .build());
 
+    private static final RenderPipeline OUTLINES =
+            GameAccess.registerPipeline(
+                    RenderPipeline.builder(GameAccess.debugFilledSnippet())
+                            .withLocation(
+                                    Identifier.fromNamespaceAndPath(
+                                            MoonsConfig.MOD_ID, "pipeline/world_box_outline"))
+                            .withVertexFormat(
+                                    DefaultVertexFormat.POSITION_COLOR,
+                                    VertexFormat.Mode.DEBUG_LINES)
+                            .withCull(false)
+                            .withDepthStencilState(Optional.empty())
+                            .build());
+
     private static final ByteBufferBuilder ALLOCATOR =
             new ByteBufferBuilder(RenderType.SMALL_BUFFER_SIZE);
 
@@ -79,7 +92,7 @@ public final class WorldOverlayRenderer {
             renderFilledBox(positionMatrix, buffer, box);
         }
 
-        drawBuiltBuffer(client, buffer, label);
+        drawBuiltBuffer(client, buffer, THROUGH_WALLS, label, true);
     }
 
     public static void renderPins(
@@ -100,20 +113,43 @@ public final class WorldOverlayRenderer {
             renderPin(positionMatrix, buffer, pin);
         }
 
-        drawBuiltBuffer(client, buffer, label);
+        drawBuiltBuffer(client, buffer, THROUGH_WALLS, label, true);
     }
 
-    private static void drawBuiltBuffer(Minecraft client, BufferBuilder buffer, String label) {
+    private static void drawBuiltBuffer(
+            Minecraft client,
+            BufferBuilder buffer,
+            RenderPipeline pipeline,
+            String label,
+            boolean sortQuads) {
         try (MeshData builtBuffer = buffer.buildOrThrow()) {
             MeshData.DrawState drawParameters = builtBuffer.drawState();
             VertexFormat format = drawParameters.format();
             GpuBuffer vertices = upload(drawParameters, format, builtBuffer, label);
-            draw(client, builtBuffer, drawParameters, vertices, format, label);
+            draw(client, builtBuffer, drawParameters, vertices, format, pipeline, label, sortQuads);
         }
 
         if (vertexBuffer != null) {
             vertexBuffer.rotate();
         }
+    }
+
+    public static void renderStyled(
+            Minecraft client, PoseStack matrices, List<ColoredBox> values, String label) {
+        if (client == null || values.isEmpty()) return;
+        Matrix4fc pose = matrices.last().pose();
+        BufferBuilder fill =
+                new BufferBuilder(
+                        ALLOCATOR,
+                        THROUGH_WALLS.getVertexFormatMode(),
+                        THROUGH_WALLS.getVertexFormat());
+        for (ColoredBox value : values) OverlayGeometry.renderSoftFill(pose, fill, value);
+        drawBuiltBuffer(client, fill, THROUGH_WALLS, label, false);
+        BufferBuilder lines =
+                new BufferBuilder(
+                        ALLOCATOR, OUTLINES.getVertexFormatMode(), OUTLINES.getVertexFormat());
+        for (ColoredBox value : values) OverlayGeometry.renderOutlineBox(pose, lines, value);
+        drawBuiltBuffer(client, lines, OUTLINES, label, false);
     }
 
     public static void close() {
@@ -175,23 +211,24 @@ public final class WorldOverlayRenderer {
             MeshData.DrawState drawParameters,
             GpuBuffer vertices,
             VertexFormat format,
-            String label) {
+            RenderPipeline pipeline,
+            String label,
+            boolean sortQuads) {
         GpuBuffer indices;
         VertexFormat.IndexType indexType;
         var mainTarget = MinecraftClientAccess.mainRenderTarget(client);
         var colorView = mainTarget.getColorTextureView();
         if (colorView == null) return;
 
-        if (THROUGH_WALLS.getVertexFormatMode() == VertexFormat.Mode.QUADS) {
+        if (sortQuads && pipeline.getVertexFormatMode() == VertexFormat.Mode.QUADS) {
             builtBuffer.sortQuads(ALLOCATOR, RenderSystem.getProjectionType().vertexSorting());
             indices =
-                    THROUGH_WALLS
-                            .getVertexFormat()
+                    pipeline.getVertexFormat()
                             .uploadImmediateIndexBuffer(builtBuffer.indexBuffer());
             indexType = builtBuffer.drawState().indexType();
         } else {
             RenderSystem.AutoStorageIndexBuffer shapeIndexBuffer =
-                    RenderSystem.getSequentialBuffer(THROUGH_WALLS.getVertexFormatMode());
+                    RenderSystem.getSequentialBuffer(pipeline.getVertexFormatMode());
 
             indices = shapeIndexBuffer.getBuffer(drawParameters.indexCount());
             indexType = shapeIndexBuffer.type();
@@ -214,7 +251,7 @@ public final class WorldOverlayRenderer {
                                 OptionalInt.empty(),
                                 mainTarget.getDepthTextureView(),
                                 OptionalDouble.empty())) {
-            renderPass.setPipeline(THROUGH_WALLS);
+            renderPass.setPipeline(pipeline);
             RenderSystem.bindDefaultUniforms(renderPass);
             renderPass.setUniform("DynamicTransforms", dynamicTransforms);
             renderPass.setVertexBuffer(0, vertices);

@@ -4,11 +4,11 @@
 
 Moons is a Windows client for Minecraft Java Edition with configurable modules, local presets and YSM models.
 
-Supports **26.1.2**, **26.2**, **26.3**.
+Supports **26.1.2**, **26.2**, **26.3**, and **26.4-snapshot-1**.
 
 ## Version Support
 
-Moons actively supports the four most recent stable Minecraft release lines.
+Moons maintains the stable releases listed above and the listed 26.4 preview build.
 
 Development builds such as snapshots, pre-releases and release candidates are only supported for the newest upcoming Minecraft version.
 

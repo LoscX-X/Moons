@@ -71,40 +71,49 @@ final class Combat {
 
     static ModuleRegistry.Module reach() {
         return module(
-                "reach",
-                "Reach",
-                ModuleCategories.COMBAT,
-                Reach::isEnabled,
-                Reach::setEnabled,
-                Reach::statusTag,
-                choice(
-                        "mode",
-                        "Mode",
-                        "reach.mode",
-                        "advanced",
-                        Reach.modeOptions(),
-                        Reach::setMode),
-                number("range", "Target range", "reach.range", 3.1, 3, 6, .05, Reach::setRange),
-                number(
-                                "chance",
-                                "Chance %",
-                                "reach.normal.chance",
-                                100,
-                                0,
-                                100,
-                                1,
-                                Reach::setChance)
-                        .visibleWhen(() -> !Reach.advancedMode()),
-                integer(
-                                "timeout",
-                                "Target lag timeout",
-                                "reach.advanced.timeout",
-                                20,
-                                1,
-                                40,
-                                1,
-                                Reach::setTimeout)
-                        .visibleWhen(Reach::advancedMode));
+                        "reach",
+                        "Reach",
+                        ModuleCategories.COMBAT,
+                        Reach::isEnabled,
+                        Reach::setEnabled,
+                        Reach::statusTag,
+                        choice(
+                                "mode",
+                                "Mode",
+                                "reach.mode",
+                                "advanced",
+                                Reach.modeOptions(),
+                                Reach::setMode),
+                        number(
+                                "range",
+                                "Target range",
+                                "reach.range",
+                                3.1,
+                                3,
+                                6,
+                                .05,
+                                Reach::setRange),
+                        number(
+                                        "chance",
+                                        "Chance %",
+                                        "reach.normal.chance",
+                                        100,
+                                        0,
+                                        100,
+                                        1,
+                                        Reach::setChance)
+                                .visibleWhen(() -> !Reach.advancedMode()),
+                        integer(
+                                        "timeout",
+                                        "Target lag timeout",
+                                        "reach.advanced.timeout",
+                                        20,
+                                        1,
+                                        40,
+                                        1,
+                                        Reach::setTimeout)
+                                .visibleWhen(Reach::advancedMode))
+                .withHudTag(() -> Reach.advancedMode() ? "Advanced" : Reach.statusTag());
     }
 
     static ModuleRegistry.Module sprintReset() {
@@ -150,24 +159,26 @@ final class Combat {
 
     static ModuleRegistry.Module autoBlock() {
         return module(
-                "autoblock",
-                "AutoBlock",
-                ModuleCategories.COMBAT,
-                AutoBlock::isEnabled,
-                AutoBlock::setEnabled,
-                AutoBlock::hudTag,
-                AutoBlock.settings());
+                        "autoblock",
+                        "AutoBlock",
+                        ModuleCategories.COMBAT,
+                        AutoBlock::isEnabled,
+                        AutoBlock::setEnabled,
+                        AutoBlock::hudTag,
+                        AutoBlock.settings())
+                .withHudTag("Legacy");
     }
 
     static ModuleRegistry.Module silentAura() {
         return module(
-                "silentaura",
-                "SilentAura",
-                "Combat",
-                SilentAura::isEnabled,
-                SilentAura::setEnabled,
-                SilentAura::hudTag,
-                SilentAuraConfig.settings());
+                        "silentaura",
+                        "SilentAura",
+                        "Combat",
+                        SilentAura::isEnabled,
+                        SilentAura::setEnabled,
+                        SilentAura::hudTag,
+                        SilentAuraConfig.settings())
+                .withHudTag(() -> SilentAuraConfig.legacyCombat() ? "Legacy" : "Latest");
     }
 
     static ModuleRegistry.Module aimAssist() {

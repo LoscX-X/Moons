@@ -2055,7 +2055,7 @@ public final class AutoBed {
         return value == (long) value ? Long.toString((long) value) : Double.toString(value);
     }
 
-    private static String modeName() {
+    public static String modeName() {
         return MODE.serialized();
     }
 

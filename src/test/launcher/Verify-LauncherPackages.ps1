@@ -48,13 +48,17 @@ try {
         $loaderResources -contains 'Moons.Ysm.zip' -or
         $loaderResources -notcontains 'Moons.Bridge.dll' -or
         $installerResources -notcontains 'Moons.UiRuntime.jar' -or
-        $loaderResources -contains 'Moons.UiRuntime.jar') { throw 'Incorrect installer/loader resource split.' }
+        $loaderResources -contains 'Moons.UiRuntime.jar' -or
+        $loaderResources -notcontains 'Moons.Payload.26_4.patch') { throw 'Incorrect installer/loader resource split.' }
 
     # A clean loader must report missing dependencies without creating the installation.
     Run-Tool $loader '--verify-dependencies' 1
     if (Test-Path -LiteralPath $env:MOONS_HOME) { throw 'Loader modified a missing installation.' }
     Run-Tool $installer '--install-only' 0
     Run-Tool $loader '--verify-dependencies' 0
+    if (-not (Test-Path -LiteralPath (Join-Path $env:MOONS_HOME 'modules/moons-ysm-26.4-snapshot-1.jar'))) {
+        throw '26.4 snapshot YSM adapter was not installed.'
+    }
     $before = Installed-State
     Run-Tool $loader '--verify-dependencies' 0
     Run-Tool $installer '--install-only' 0
@@ -95,6 +99,12 @@ try {
     Run-Tool $loader '--verify-dependencies' 1
     Run-Tool $installer '--install-only' 0
     Run-Tool $loader '--verify-dependencies' 0
-    Write-Output 'LAUNCHER_PACKAGES_VERIFIED: isolated roles, read-only loader, offline install, idempotence, failed extraction preservation and UI/YSM repair.'
+    Run-Tool $loader '--extract-only' 0
+    $snapshotPayload = Get-ChildItem -LiteralPath (Join-Path $env:MOONS_HOME 'cache/launcher') `
+        -Recurse -File -Filter 'moons-26.4-snapshot-1.jar' | Select-Object -First 1
+    if ($null -eq $snapshotPayload -or $snapshotPayload.Length -eq 0) {
+        throw '26.4 snapshot payload was not extracted.'
+    }
+    Write-Output 'LAUNCHER_PACKAGES_VERIFIED: isolated roles, read-only loader, offline install, idempotence, 26.4 payload extraction, failed extraction preservation and UI/YSM repair.'
 }
 finally { $env:MOONS_HOME = $previousHome }

@@ -432,7 +432,8 @@ final class Render {
                                         () ->
                                                 HitEstimateSettings.criticalEstimate()
                                                         && !HitEstimateSettings.recordedSource()))
-                .withDefaultEnabled(true);
+                .withDefaultEnabled(true)
+                .withHudTag(() -> HitEstimateSettings.criticalEstimate() ? "Critical" : "Normal");
     }
 
     static ModuleRegistry.Module nametags() {

@@ -49,6 +49,10 @@ public final class Scaffold {
         return ScaffoldManager.statusTag();
     }
 
+    public static String modeName() {
+        return ScaffoldManager.modeName();
+    }
+
     public static int setMode(Minecraft c, String v) {
         return ScaffoldManager.setMode(c, v);
     }

@@ -35,6 +35,7 @@ namespace Moons.WindowsLauncher
         private const string Payload26_1Resource = "Moons.Payload.26_1.jar";
         private const string Payload26_2PatchResource = "Moons.Payload.26_2.patch";
         private const string Payload26_3PatchResource = "Moons.Payload.26_3.patch";
+        private const string Payload26_4PatchResource = "Moons.Payload.26_4.patch";
         private const string FeaturesJarEntry =
             "META-INF/moons/modules/moons-core-features.jar";
         private const string BootstrapApiResource = "Moons.Api.jar";
@@ -157,6 +158,7 @@ namespace Moons.WindowsLauncher
                     ExtractPayload(home, "26.1");
                     ExtractPayload(home, "26.2");
                     ExtractPayload(home, "26.3");
+                    ExtractPayload(home, "26.4-snapshot-1");
                     ExtractBootstrapApi(home);
                     ExtractBridge(home);
                     HardwareIdGenerator.Generate();
@@ -230,6 +232,14 @@ namespace Moons.WindowsLauncher
             passed &= String.Equals(MatchSupportedVersion("net.minecraft.client.main.Main --version 26.3"), "26.3", StringComparison.Ordinal);
             passed &= String.Equals(MatchSupportedVersion(@"C:\Users\coffe\AppData\Roaming\.minecraft\versions\26.3\26.3.jar"), "26.3", StringComparison.Ordinal);
             passed &= String.Equals(MatchSupportedVersion("26.3.jar"), "26.3", StringComparison.Ordinal);
+            passed &= String.Equals(NormalizeConfiguredVersion("26.4-snapshot-1"), "26.4-snapshot-1", StringComparison.Ordinal);
+            passed &= String.Equals(MatchSupportedVersion("net.minecraft.client.main.Main --version 26.4-snapshot-1"), "26.4-snapshot-1", StringComparison.Ordinal);
+            passed &= String.Equals(MatchSupportedVersion(@"C:\Users\coffe\AppData\Roaming\.minecraft\versions\26.4-snapshot-1\26.4-snapshot-1.jar"), "26.4-snapshot-1", StringComparison.Ordinal);
+            foreach (string unsupported in new[] { "26.4", "26.4-snapshot-2", "26.4-snapshot-10", "26.4-pre-1", "126.4-snapshot-1", "26.4-snapshot-1-custom" })
+            {
+                passed &= NormalizeConfiguredVersion(unsupported) == null;
+                passed &= MatchSupportedVersion(unsupported) == null;
+            }
             foreach (string unsupported in new[] { "26.3-pre-3", "26.3-rc-1", "26.3-rc-2", "26.3-rc-3",
                 "26.3-rc-30", "26.3-snapshot", "26.3-custom", "26.3.1", "126.3", "26.30", "26.3_custom" })
             {
@@ -238,6 +248,7 @@ namespace Moons.WindowsLauncher
                 passed &= MatchSupportedVersion(@"C:\Games\Minecraft\versions\" + unsupported + @"\" + unsupported + ".jar") == null;
             }
             passed &= MatchSupportedVersion("26.2 and 26.3") == null;
+            passed &= MatchSupportedVersion("26.3 and 26.4-snapshot-1") == null;
             passed &= MatchSupportedVersion("Minecraft 1.21.5") == null;
             passed &= MatchSupportedVersion("26.1.2 and 26.2") == null;
             passed &= IsMinecraftTargetEvidence(
@@ -994,7 +1005,7 @@ namespace Moons.WindowsLauncher
                 {
                     throw new InvalidOperationException(
                         "Unsupported --minecraft-version value: " + configured
-                        + ". Expected 26.1, 26.1.2, 26.2, 26.3.");
+                        + ". Expected 26.1, 26.1.2, 26.2, 26.3, 26.4-snapshot-1.");
                 }
                 return selected;
             }
@@ -1014,10 +1025,10 @@ namespace Moons.WindowsLauncher
 
             throw new InvalidOperationException(
                 "Unable to identify whether PID " + target.Pid
-                + " is Minecraft 26.1.2, 26.2, 26.3. Load was cancelled to avoid loading "
+                + " is Minecraft 26.1.2, 26.2, 26.3, 26.4-snapshot-1. Load was cancelled to avoid loading "
                 + "the wrong mappings.\r\n\r\n"
                 + "Start the game normally so its command line contains --version, or run "
-                + DisplayName + " with --minecraft-version 26.1/26.1.2/26.2/26.3.");
+                + DisplayName + " with --minecraft-version 26.1/26.1.2/26.2/26.3/26.4-snapshot-1.");
         }
 
         private static string NormalizeConfiguredVersion(string configured)
@@ -1031,6 +1042,10 @@ namespace Moons.WindowsLauncher
             if (String.Equals(value, "26.3", StringComparison.OrdinalIgnoreCase))
             {
                 return "26.3";
+            }
+            if (String.Equals(value, "26.4-snapshot-1", StringComparison.OrdinalIgnoreCase))
+            {
+                return "26.4-snapshot-1";
             }
             return String.Equals(value, "26.2", StringComparison.OrdinalIgnoreCase)
                 ? "26.2" : null;
@@ -1051,11 +1066,14 @@ namespace Moons.WindowsLauncher
             bool is26_3 = Regex.IsMatch(evidence,
                 @"(?<![0-9A-Za-z_.\-])26\.3(?=\.jar(?:$|[^0-9A-Za-z_.\-])|$|[^0-9A-Za-z_.\-])",
                 RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-            if ((is26_1 ? 1 : 0) + (is26_2 ? 1 : 0) + (is26_3 ? 1 : 0) != 1)
+            bool is26_4 = Regex.IsMatch(evidence,
+                @"(?<![0-9A-Za-z_.\-])26\.4-snapshot-1(?=\.jar(?:$|[^0-9A-Za-z_.\-])|$|[^0-9A-Za-z_.\-])",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if ((is26_1 ? 1 : 0) + (is26_2 ? 1 : 0) + (is26_3 ? 1 : 0) + (is26_4 ? 1 : 0) != 1)
             {
                 return null;
             }
-            return is26_3 ? "26.3" : is26_2 ? "26.2" : "26.1";
+            return is26_4 ? "26.4-snapshot-1" : is26_3 ? "26.3" : is26_2 ? "26.2" : "26.1";
         }
 
         private static string ReadProcessCommandLine(int pid)
@@ -1269,6 +1287,10 @@ namespace Moons.WindowsLauncher
             if (String.Equals(version, "26.3", StringComparison.Ordinal))
             {
                 return ExtractPatchedPayload(home, Payload26_3PatchResource, "moons-26.3.jar");
+            }
+            if (String.Equals(version, "26.4-snapshot-1", StringComparison.Ordinal))
+            {
+                return ExtractPatchedPayload(home, Payload26_4PatchResource, "moons-26.4-snapshot-1.jar");
             }
             throw new InvalidOperationException("No embedded payload for Minecraft " + version + ".");
         }

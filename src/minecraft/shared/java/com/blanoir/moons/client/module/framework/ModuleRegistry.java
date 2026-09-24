@@ -695,9 +695,48 @@ public final class ModuleRegistry {
             Toggle toggle,
             Supplier<String> tag,
             List<Setting> settings,
-            boolean defaultEnabled) {
+            boolean defaultEnabled,
+            HudTag hudTag) {
+        public Module(
+                String id,
+                String name,
+                String category,
+                BooleanSupplier enabled,
+                Toggle toggle,
+                Supplier<String> tag,
+                List<Setting> settings,
+                boolean defaultEnabled) {
+            this(
+                    id,
+                    name,
+                    category,
+                    enabled,
+                    toggle,
+                    tag,
+                    settings,
+                    defaultEnabled,
+                    new HudTag(tag, List.of()));
+        }
+
+        public Module withHudTag(Supplier<String> text, String... widthSamples) {
+            return new Module(
+                    id,
+                    name,
+                    category,
+                    enabled,
+                    toggle,
+                    tag,
+                    settings,
+                    defaultEnabled,
+                    new HudTag(text, List.of(widthSamples)));
+        }
+
+        public Module withHudTag(String text) {
+            return withHudTag(() -> text);
+        }
+
         public Module withDefaultEnabled(boolean value) {
-            return new Module(id, name, category, enabled, toggle, tag, settings, value);
+            return new Module(id, name, category, enabled, toggle, tag, settings, value, hudTag);
         }
 
         public String displayText() {
@@ -718,6 +757,13 @@ public final class ModuleRegistry {
             settings.forEach(setting -> values.add(setting.toJson()));
             json.add("settings", values);
             return json;
+        }
+    }
+
+    /** Compact HUD text is separate from diagnostic status used by commands and settings. */
+    public record HudTag(Supplier<String> text, List<String> widthSamples) {
+        public HudTag {
+            widthSamples = List.copyOf(widthSamples);
         }
     }
 

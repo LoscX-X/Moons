@@ -104,6 +104,37 @@ def universalPayload26_3 = tasks.register("universalPayload26_3", Exec) {
     }
 }
 
+def universalPayload26_4 = tasks.register("universalPayload26_4", Exec) {
+    group = "build"
+    description = "Builds the Minecraft 26.4-snapshot-1 payload for the universal loader."
+    dependsOn universalPayload26_3
+    def nestedBuild = "${nestedPayloadBuildRoot}/26.4-snapshot-1"
+    def nestedPayload = file("${nestedBuild}/universal/26.4-snapshot-1/moons.jar")
+    def publishedPayload = layout.buildDirectory.file("universal/26.4-snapshot-1/moons.jar")
+    outputs.file(publishedPayload)
+    outputs.upToDateWhen { false }
+    workingDir project.projectDir
+    executable nestedGradleExecutable.absolutePath
+    args moonsToolchains.nestedGradleArguments([
+            "moonsJar",
+            "-Pminecraft_version=26.4-snapshot-1",
+            "-Pmoons_build_directory=${nestedBuild}",
+            "-Pmoons_jar_output_directory=universal/26.4-snapshot-1"
+    ].collect { it.toString() })
+    doLast {
+        if (!nestedPayload.isFile()) {
+            throw new GradleException("Nested 26.4-snapshot-1 payload was not produced: ${nestedPayload}")
+        }
+        def destination = publishedPayload.get().asFile.toPath()
+        java.nio.file.Files.createDirectories(destination.parent)
+        java.nio.file.Files.copy(
+                nestedPayload.toPath(),
+                destination,
+                java.nio.file.StandardCopyOption.REPLACE_EXISTING
+        )
+    }
+}
+
 def universalPayloadPatch = tasks.register("universalPayloadPatch", Exec) {
     group = "build"
     description = "Builds a compact entry-level 26.2 overlay over the 26.1 payload."
@@ -153,6 +184,33 @@ def universalPayload26_3Patch = tasks.register("universalPayload26_3Patch", Exec
                 source.asFile.absolutePath,
                 payload26_1.get().asFile.absolutePath,
                 payload26_3.get().asFile.absolutePath,
+                output.get().asFile.absolutePath
+        )
+    }
+}
+
+def universalPayload26_4Patch = tasks.register("universalPayload26_4Patch", Exec) {
+    group = "build"
+    description = "Builds a compact 26.4-snapshot-1 overlay over the 26.1 payload."
+    dependsOn universalPayload26_4
+
+    def source = layout.projectDirectory.file("tools/PayloadPatchBuilder.java")
+    def payload26_1 = layout.buildDirectory.file("universal/26.1/moons.jar")
+    def payload26_4 = layout.buildDirectory.file("universal/26.4-snapshot-1/moons.jar")
+    def output = layout.buildDirectory.file("universal/moons-26.4-snapshot-1.patch.zip")
+    inputs.file(source)
+    inputs.file(payload26_1)
+    inputs.file(payload26_4)
+    outputs.file(output)
+
+    doFirst {
+        output.get().asFile.parentFile.mkdirs()
+        def javaExecutable = new File(locateJdkHome(), "bin/java.exe")
+        executable javaExecutable.absolutePath
+        args(
+                source.asFile.absolutePath,
+                payload26_1.get().asFile.absolutePath,
+                payload26_4.get().asFile.absolutePath,
                 output.get().asFile.absolutePath
         )
     }
@@ -286,7 +344,7 @@ def registerLauncher = { String taskName, String fileName, boolean installer ->
         group = 'build'
         description = installer ? 'Builds the dependency installer/updater.' : 'Builds the game loader using installed dependencies.'
         dependsOn launcherVersionMetadata
-        if (!installer) dependsOn universalPayloadPatch, universalPayload26_3Patch, apiJar, bridgeDll, moonsHwidExe
+        if (!installer) dependsOn universalPayloadPatch, universalPayload26_3Patch, universalPayload26_4Patch, apiJar, bridgeDll, moonsHwidExe
         def sources = files(
                 'src/tools/shared/Hashing.cs', 'src/tools/shared/StagedFile.cs',
                 'src/tools/launcher/csharp/RuntimeMetadata.cs',
@@ -312,6 +370,7 @@ def registerLauncher = { String taskName, String fileName, boolean installer ->
             resources['Moons.Payload.26_1.jar'] = layout.buildDirectory.file('universal/26.1/moons.jar')
             resources['Moons.Payload.26_2.patch'] = layout.buildDirectory.file('universal/moons-26.2.patch.zip')
             resources['Moons.Payload.26_3.patch'] = layout.buildDirectory.file('universal/moons-26.3.patch.zip')
+            resources['Moons.Payload.26_4.patch'] = layout.buildDirectory.file('universal/moons-26.4-snapshot-1.patch.zip')
             resources['Moons.Api.jar'] = apiJar.flatMap { it.archiveFile }
             resources['Moons.Bridge.dll'] = layout.buildDirectory.file("${moonsBuild.loaderStagingDirectory}/moons-bridge.dll")
         }

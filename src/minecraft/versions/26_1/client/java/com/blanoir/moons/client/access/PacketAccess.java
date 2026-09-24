@@ -9,6 +9,11 @@ import java.util.function.Consumer;
 public final class PacketAccess {
     private PacketAccess() {}
 
+    public static net.minecraft.world.level.ChunkPos chunkPosition(
+            net.minecraft.network.protocol.game.ClientboundLevelChunkWithLightPacket packet) {
+        return new net.minecraft.world.level.ChunkPos(packet.getX(), packet.getZ());
+    }
+
     public static int teleportConfirmationId(
             net.minecraft.network.protocol.game.ServerboundAcceptTeleportationPacket packet) {
         return packet.getId();
@@ -53,6 +58,16 @@ public final class PacketAccess {
     public static it.unimi.dsi.fastutil.ints.IntList removedEntityIds(
             net.minecraft.network.protocol.game.ClientboundRemoveEntitiesPacket packet) {
         return packet.getEntityIds();
+    }
+
+    public static float syncYaw(
+            net.minecraft.network.protocol.game.ClientboundEntityPositionSyncPacket packet) {
+        return packet.values().yRot();
+    }
+
+    public static float syncPitch(
+            net.minecraft.network.protocol.game.ClientboundEntityPositionSyncPacket packet) {
+        return packet.values().xRot();
     }
 
     public static net.minecraft.world.phys.Vec3 syncPosition(

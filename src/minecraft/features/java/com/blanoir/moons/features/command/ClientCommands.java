@@ -38,6 +38,7 @@ public final class ClientCommands {
             case "config" -> ConfigCommand.handle(tail);
             case "unload" -> unload();
             case "xray" -> XrayCommand.handle(tail);
+            case "collect" -> CollectCommand.handle(tail);
             case "web" -> WebCommand.handle(tail);
             case "taboutput" -> TabOutputCommand.handle(tail);
             case "nbtparser" -> NbtParserCommand.handle(tail);

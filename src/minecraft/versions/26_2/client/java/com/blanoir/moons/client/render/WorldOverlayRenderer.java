@@ -34,6 +34,18 @@ public final class WorldOverlayRenderer {
                             .withDepthStencilState(Optional.empty())
                             .build());
 
+    private static final RenderPipeline OUTLINES =
+            GameAccess.registerPipeline(
+                    RenderPipeline.builder(GameAccess.debugFilledSnippet())
+                            .withLocation(
+                                    Identifier.fromNamespaceAndPath(
+                                            MoonsConfig.MOD_ID, "pipeline/world_box_outline"))
+                            .withVertexBinding(0, DefaultVertexFormat.POSITION_COLOR)
+                            .withPrimitiveTopology(PrimitiveTopology.DEBUG_LINES)
+                            .withCull(false)
+                            .withDepthStencilState(Optional.empty())
+                            .build());
+
     private WorldOverlayRenderer() {}
 
     public static void render(
@@ -67,6 +79,29 @@ public final class WorldOverlayRenderer {
                     for (ColoredPin pin : pins) {
                         renderPin(pose, builder, pin);
                     }
+                });
+    }
+
+    public static void renderStyled(
+            Minecraft client, PoseStack matrices, List<ColoredBox> values, String label) {
+        if (client == null || values.isEmpty()) return;
+        Matrix4fc pose = matrices.last().pose();
+        // A quiet, unsorted fill batch followed by one opaque line batch. No per-edge quads.
+        WorldOverlayBuffer.drawUnsorted(
+                client,
+                THROUGH_WALLS,
+                label,
+                builder -> {
+                    for (ColoredBox value : values)
+                        OverlayGeometry.renderSoftFill(pose, builder, value);
+                });
+        WorldOverlayBuffer.drawUnsorted(
+                client,
+                OUTLINES,
+                label,
+                builder -> {
+                    for (ColoredBox value : values)
+                        OverlayGeometry.renderOutlineBox(pose, builder, value);
                 });
     }
 

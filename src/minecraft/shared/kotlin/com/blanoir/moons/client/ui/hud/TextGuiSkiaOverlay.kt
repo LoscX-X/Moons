@@ -47,12 +47,7 @@ object TextGuiSkiaOverlay {
     private val animationClock = FrameClock(0.0)
     private val moduleEntries = LinkedHashMap<String, ModuleEntry>()
     private val sortedRows = ArrayList<Row>()
-    // InvManager's live action text changes length frequently. Keep its row anchored
-    // below the header; other modules retain their usual width ordering.
-    private val rowComparator =
-        compareBy<Row> { it.entry.module.id() != "invmanager" }
-            .thenByDescending { it.width }
-            .thenBy { it.name }
+    private val rowComparator = compareByDescending<Row> { it.width }.thenBy { it.name }
     private var rowsDirty = true
     private var rowScale = Float.NaN
     private var rowPixelMode = false
@@ -173,7 +168,10 @@ object TextGuiSkiaOverlay {
             rowScale = physicalScale
             rowPixelMode = pixelMode
             rowsDirty = true
-            moduleEntries.values.forEach { it.row = null }
+            moduleEntries.values.forEach {
+                it.row = null
+                it.reservedTagWidth = Float.NaN
+            }
         }
         if (rowsDirty) {
             sortedRows.clear()
@@ -192,7 +190,21 @@ object TextGuiSkiaOverlay {
                                 else measure(resources, tag, physicalScale, pixelMode)
                             val stableTagWidth =
                                 if (tag.isBlank()) 0.0f
-                                else
+                                else if (entry.module.hudTag().widthSamples().isNotEmpty()) {
+                                    if (entry.reservedTagWidth.isNaN()) {
+                                        entry.reservedTagWidth =
+                                            HudTagWidth.reserve(
+                                                    entry.module.hudTag().widthSamples().map {
+                                                        normalizeTag(it)
+                                                    }
+                                                ) {
+                                                    measure(resources, it, physicalScale, pixelMode)
+                                                        .toDouble()
+                                                }
+                                                .toFloat()
+                                    }
+                                    max(actualTagWidth, entry.reservedTagWidth)
+                                } else
                                     max(
                                         actualTagWidth,
                                         measure(
@@ -336,8 +348,9 @@ object TextGuiSkiaOverlay {
                     physicalScale,
                     pixelMode,
                 )
-                val tagX = textX + row.nameWidth + row.separatorWidth
-                +row.stableTagWidth - row.actualTagWidth
+                val tagX =
+                    textX + row.nameWidth + row.separatorWidth + row.stableTagWidth -
+                        row.actualTagWidth
                 drawText(
                     canvas,
                     resources,
@@ -378,6 +391,11 @@ object TextGuiSkiaOverlay {
                     ModuleEntry(module)
                 }
             val tag = safeTag(module)
+            if (entry.module.hudTag().widthSamples() != module.hudTag().widthSamples()) {
+                entry.reservedTagWidth = Float.NaN
+                entry.row = null
+                rowsDirty = true
+            }
             if (entry.tag != tag || entry.module.name() != module.name()) {
                 entry.tag = tag
                 entry.row = null
@@ -787,20 +805,23 @@ object TextGuiSkiaOverlay {
 
     private fun safeTag(module: ModuleRegistry.Module): String {
         return try {
-            val raw = module.tag().get() ?: return ""
-            normalizedTags[raw]?.let {
-                return it
-            }
-            val trimmed = raw.trim()
-            val normalized =
-                if (raw.matches(hiddenTagPattern)) ""
-                else if (trimmed.matches(choiceTagPattern)) ModuleRegistry.displayChoice(trimmed)
-                else trimmed
-            if (normalizedTags.size >= 256) normalizedTags.remove(normalizedTags.keys.first())
-            normalized.also { normalizedTags[raw] = it }
+            normalizeTag(module.hudTag().text().get() ?: return "")
         } catch (_: RuntimeException) {
             ""
         }
+    }
+
+    private fun normalizeTag(raw: String): String {
+        normalizedTags[raw]?.let {
+            return it
+        }
+        val trimmed = raw.trim()
+        val normalized =
+            if (trimmed.matches(hiddenTagPattern)) ""
+            else if (trimmed.matches(choiceTagPattern)) ModuleRegistry.displayChoice(trimmed)
+            else trimmed
+        if (normalizedTags.size >= 256) normalizedTags.remove(normalizedTags.keys.first())
+        return normalized.also { normalizedTags[raw] = it }
     }
 
     private fun stableTagTemplate(tag: String): String =
@@ -837,6 +858,7 @@ object TextGuiSkiaOverlay {
         var positionRows: Double = Double.NaN,
         var present: Boolean = true,
         var row: Row? = null,
+        var reservedTagWidth: Float = Float.NaN,
     )
 
     /** Accumulates physical pixels, independently of the editor's logical drag bounds. */

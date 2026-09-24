@@ -5,7 +5,7 @@ YSM 通过 Moons 的 JNI/JVMTI 宿主热加载，核心不依赖 Fabric、Mixin�
 ## 使用与升级
 
 1. 首次使用此版本须退出旧游戏进程，以新构建的 `moons.exe` 注入新启动的游戏。旧宿主缺少本次 bootstrap API 和注入点，不能仅靠替换 YSM jar 升级。
-2. 新版启动器会自动安装与自身配套的三个共享库和 `26.1.2`、`26.2`、`26.3` 适配模块；文件摘要一致时不重复写入。只需构建和运行 `moons.exe`，无需手动逐个复制 libs。升级失败会恢复已替换的文件；旧文件备份保留在 `MOONS_HOME/cache/ysm-install/`。独立分发时可将 `moons-ysm-all.zip` 一次解压到 `MOONS_HOME`。
+2. 匹配的安装器会安装三个共享库和 `26.1.2`、`26.2`、`26.3`、`26.4-snapshot-1` 适配模块；文件摘要一致时不重复写入。升级失败会恢复已替换的文件；旧文件备份保留在 `MOONS_HOME/cache/ysm-install/`。独立分发时可将 `moons-ysm-all.zip` 一次解压到 `MOONS_HOME`。
 3. 模型放入 `MOONS_HOME/data/ysm/models/`，支持 crypto3 `.ysm`、模型 zip 和解压目录。默认 Windows 路径为 `%APPDATA%/.moons/data/ysm/models/`。
 4. 打开 Moons 设置的 YSM 页面，Refresh 后选择模型并 Apply。Use vanilla 恢复原版。模型失败时保留此前可用实例，错误显示在页面中。
 
@@ -18,8 +18,8 @@ YSM 通过 Moons 的 JNI/JVMTI 宿主热加载，核心不依赖 Fabric、Mixin�
 | `src/libraries/ysm` | 解密/读取、模型装配、几何/定位器、控制器、Molang、物理、参数与姿态、音频生命周期 |
 | `src/libraries/ysm-codecs` | Java Ogg/Opus 解码，声道混合、pre-skip、输出增益、结尾填充裁剪 |
 | `src/libraries/ysm-images` | WebP 解码与 AVIF 工具封装；Windows x64 AVIF 工具随库携带 |
-| `src/minecraft/versions/{26_1,26_2,26_3}/ysm/adapter` | 对应版本的状态采样、玩家/手臂/附属实体、纹理与材质、装备图层、原版音频通道和粒子 |
-| `src/minecraft/shared/ysm/adapter` | 三版本共用的完整顶点提交与法线变换 |
+| `src/minecraft/versions/{26_1,26_2,26_3,26_4}/ysm/adapter` | 对应版本的状态采样、玩家/手臂/附属实体、纹理与材质、装备图层、原版音频通道和粒子 |
+| `src/minecraft/shared/ysm/adapter` | 各版本共用的完整顶点提交与法线变换 |
 | `src/bootstrap/api` 的 `YsmSelector` / `YsmStudio` | 不含游戏类型的选择、编辑与调试接口 |
 | `src/minecraft/shared/.../ui/clickgui` 的 YSM 页面 | 通用 Moons UI，通过快照读取状态和提交编辑 |
 
@@ -27,13 +27,13 @@ YSM 通过 Moons 的 JNI/JVMTI 宿主热加载，核心不依赖 Fabric、Mixin�
 
 `./gradlew.bat moonsExe` 是启动器构建命令，`moonsInstallExe` 构建携带完整 YSM 包的安装器（`moon-install.exe` 负责安装三个共享库与各版本适配模块）。`ysmAllVersions` 只构建和打包外部 YSM 库与模块，不生成 EXE，不能用它给旧宿主增加渲染注入点。旧 EXE 缺少注入点时，模型可能显示 Active，但人物外观不变；必须用新 EXE 注入新游戏进程。
 
-26.2 使用绑定组渲染管线和新的相机、名字标签接口。26.3 使用 RenderPearl 的原生实体材质及 OIT 透明管线，并适配挥手状态、骨骼旋转、装备提交和 SDL 输入。模型中的 `ysm.keyboard`/`ysm.mouse` 继续接受原来的 GLFW 编号；不受 SDL 支持的键返回 false。
+26.2 使用绑定组渲染管线和新的相机、名字标签接口。26.3 使用 RenderPearl 的原生实体材质及 OIT 透明管线，并适配挥手状态、骨骼旋转、装备提交和 SDL 输入。26.4-snapshot-1 沿用这套适配，并更新渲染管线类型及装备图层返回值。模型中的 `ysm.keyboard`/`ysm.mouse` 继续接受原来的 GLFW 编号；不受 SDL 支持的键返回 false。
 
 ## 加载与帧开销
 
 配置及模型目录指纹扫描、模型/双视角动画会话创建、偏好读取、纹理解码和透明度准备在后台执行。身体与手臂共享一次解码结果；准备完成后在游戏线程提交纹理并替换实例。切换选择、禁用或卸载会取消过期任务，迟到的会话被关闭，加载失败时保留当前实例。
 
-加载或切换纹理时，将可见面按骨骼、材质整理成连续数组。三个版本的动态纹理均使用最近邻采样，因此直接根据面内纹理透明度分类，无需把相邻透明像素的面一并送入混合流程。完全不透明的普通面和发光面分别使用不混合材质；发光面保留原有发光着色器。含透明像素的面继续遵循原有混合或裁剪规则，减少透明排序和 26.3 OIT 的几何量。原有模型细节、透明度和剔除规则保留。
+加载或切换纹理时，将可见面按骨骼、材质整理成连续数组。各版本的动态纹理均使用最近邻采样，因此直接根据面内纹理透明度分类，无需把相邻透明像素的面一并送入混合流程。完全不透明的普通面和发光面分别使用不混合材质；发光面保留原有发光着色器。含透明像素的面继续遵循原有混合或裁剪规则，减少透明排序和 OIT 的几何量。原有模型细节、透明度和剔除规则保留。
 
 每帧先计算骨骼姿态与各材质顶点数，再直接填充交给渲染队列的数组，省去临时构建缓冲区的整份复制。骨骼矩阵不变时复用上一帧变换结果；隐藏、手臂过滤及换纹理会正确更新缓存。快照保持独立，后续帧不会改写排队中的顶点或定位器。只有工具调用兼容接口 `Mesh.vertices()` 时才额外合并并缓存。游戏提交使用完整顶点接口，每个四边形只变换一次法线。
 
@@ -65,7 +65,7 @@ YSM 通过 Moons 的 JNI/JVMTI 宿主热加载，核心不依赖 Fabric、Mixin�
 
 ## 验证与实机验收
 
-`verifyYsmCore` 使用所选 Minecraft 版本的实际 Java 依赖检查 crypto3/目录读取、层级几何、动画事件与控制器、变量作用域、参数保存、头部追踪、物理、音频生命周期、WebP/AVIF 透明度，以及队列快照稳定性、双臂过滤、后台会话移交、保存的透明纹理和只更新姿态时的播放/跳转。可选实际 `.ysm` 只读验证不打包模型资源。`verifyYsmRenderSetup` 在对应 Minecraft 类路径中执行渲染与反射成员初始化，检查八种材质组合、旋转/镜像/非均匀缩放下的顶点等价性、世界渲染目标（26.1/26.2）或 OIT 配套管线及键码转换（26.3）。`verifyModuleLibraries` 检查外部库更新、失败回滚及服务所有权；`verifyMinecraftTransformers` 检查实际游戏 jar 的注入位置。
+`verifyYsmCore` 使用所选 Minecraft 版本的实际 Java 依赖检查 crypto3/目录读取、层级几何、动画事件与控制器、变量作用域、参数保存、头部追踪、物理、音频生命周期、WebP/AVIF 透明度，以及队列快照稳定性、双臂过滤、后台会话移交、保存的透明纹理和只更新姿态时的播放/跳转。可选实际 `.ysm` 只读验证不打包模型资源。`verifyYsmRenderSetup` 在对应 Minecraft 类路径中执行渲染与反射成员初始化，检查八种材质组合、旋转/镜像/非均匀缩放下的顶点等价性、世界渲染目标（26.1/26.2）或 OIT 配套管线及键码转换（26.3/26.4-snapshot-1）。`verifyModuleLibraries` 检查外部库更新、失败回滚及服务所有权；`verifyMinecraftTransformers` 检查实际游戏 jar 的注入位置。
 
 自动化通过不能替代游戏画面验收。新宿主需要在游戏内核对：透明/发光材质、装备遮挡、第一人称持物、动作与参数切换、声音暂停/音量、换世界和反复热重载。测试模型覆盖不到所有作者自定义查询和动作组合，调试页会保留诊断。DetectOfflinePlayer 与其他模组兼容功能不属于本次修改。
 

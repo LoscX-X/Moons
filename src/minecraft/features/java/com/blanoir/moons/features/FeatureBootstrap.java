@@ -23,6 +23,7 @@ import com.blanoir.moons.client.module.impl.combat.critical.Critical;
 import com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraBlock;
 import com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraRuntime;
 import com.blanoir.moons.client.module.impl.misc.AntiNick;
+import com.blanoir.moons.client.module.impl.misc.aimdata.AimCollect;
 import com.blanoir.moons.client.module.impl.misc.antibot.AntiBot;
 import com.blanoir.moons.client.module.impl.movement.JumpReset;
 import com.blanoir.moons.client.module.impl.movement.KeepSprint;
@@ -66,6 +67,7 @@ import com.blanoir.moons.client.module.impl.world.FastPlace;
 import com.blanoir.moons.client.module.impl.world.LightningTracker;
 import com.blanoir.moons.client.module.impl.world.scaffold.Scaffold;
 import com.blanoir.moons.client.module.impl.world.scaffold.ScaffoldManager;
+import com.blanoir.moons.client.module.impl.world.structure.StructureLocate;
 import com.blanoir.moons.client.render.WorldOverlayRenderer;
 import com.blanoir.moons.client.ui.clickgui.ClickGuiWarmup;
 import com.blanoir.moons.client.ui.clickgui.MoonsComposeScreen;
@@ -88,6 +90,7 @@ final class FeatureBootstrap {
 
         AutoMLG.init();
         OreScanner.init();
+        StructureLocate.init();
         OreHighlighter.init();
         XrayDestroyPacketMode.init();
         Nickname.init();
@@ -169,6 +172,7 @@ final class FeatureBootstrap {
         // RECEIVE: bundle intent -> Velocity -> lag modes -> Reach -> Backtrack.
         // APPLY: scoreboard -> damage confirmation -> JumpReset -> lightning.
         PacketEventAdapter.initPacketListeners();
+        AimCollect.init();
         Disabler.initPacketListeners();
         Scoreboard.initPacketListeners();
         CriticalHitTracker.initPacketListeners();
@@ -182,6 +186,7 @@ final class FeatureBootstrap {
     }
 
     static void shutdown() {
+        AimCollect.shutdown();
         Disabler.discardPending();
         FakeLag.discardPending();
         RotationManager.reset();
@@ -214,6 +219,8 @@ final class FeatureBootstrap {
         AntiNick.shutdown();
         NicknameShuffle.reset();
         OreScanner.shutdown();
+        StructureLocate.reset();
+        com.blanoir.moons.client.render.StructureLabelRenderer.close();
         OreHighlighter.close();
         Chams.close();
         Trim.close();

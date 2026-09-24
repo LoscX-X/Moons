@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 DEFAULT_MODEL = (Path(__file__).resolve().parents[2]
-                 / "outputs/legit-aim-analysis/ridge-baseline.json")
+                 / "tools/aim_training/ridge-baseline.json")
 
 
 class AimBaseline:

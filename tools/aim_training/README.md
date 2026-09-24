@@ -148,7 +148,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -Device cuda -Py
 
 示例是 16 行合成静止输入，只展示文件形状。真实输入按时间从旧到新排列，每行严格对应这 7 列：
 
-包中还提供 `verification/one-epoch-best.pt`：在真实训练数据上跑完 1 轮的检查点，可以先将上方命令的模型路径换成它验证推理。它用于试跑，正式训练默认从头开始；它不是正式调优或完成测试集评估的最终模型。
+通过打包脚本生成的训练包还提供 `verification/one-epoch-best.pt`，用于试跑推理；仓库不保存这些生成产物。从源码使用时，请先运行上方的 quick 训练，再使用生成的 `runs/quick/best.pt` 验证推理。
 
 ```text
 [yaw步长, pitch步长, yaw本步与上步之差, pitch本步与上步之差,
@@ -165,7 +165,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1 -Device cuda -Py
 
 原始来源：[FinalBoolean / Aim Dataset for Minecraft](https://www.kaggle.com/datasets/finalboolean/aim-dataset-for-minecraft)。作者说明目标位置有插值偏差，cheater 数据由 legit 合成；本包只处理 legit。要评估实际场景泛化，需要另外采集语义明确、不同来源的连续轨迹。
 
-随包 `verification/` 记录交付前实际完成的检查；本机 CPU 检查不等于已在目标 RTX 5080 上验证 CUDA 性能。到台式机后首先运行环境检查和 quick 实验。
+打包脚本会从本地构建结果生成随包 `verification/` 和 `SHA256SUMS.json`，两者均不纳入版本控制。本机 CPU 检查不等于已在目标 RTX 5080 上验证 CUDA 性能。到台式机后首先运行环境检查和 quick 实验。
 
 ## 9. 预计花多久？
 

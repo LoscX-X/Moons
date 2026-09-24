@@ -18,6 +18,13 @@ atlassian-ide-plugin.xml
 
 # Log file
 *.log
+*.log.gz
+/logs/
+
+# Generated analysis, training and verification artifacts
+/outputs/
+/tools/aim_training/verification/
+/tools/aim_training/SHA256SUMS.json
 
 # BlueJ files
 *.ctxt
@@ -120,6 +127,12 @@ runs/
 
 # Local development notes and compiled binaries are not repository sources
 /dev-docs/
+/.workbuddy-ai/
+/.codex/
+/.agents/
+/.kotlin/
+/AGENTS.md
+/CONTRIBUTING.md
 /THIRD_PARTY_NOTICES.md
 *.exe
 *.dll

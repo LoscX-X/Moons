@@ -32,6 +32,7 @@ manifest = KIT/"SHA256SUMS.json"
 manifest.write_text(json.dumps(hashes, indent=2), encoding="utf-8")
 paths.append(manifest)
 archive = args.output.resolve()
+archive.parent.mkdir(parents=True, exist_ok=True)
 with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as package:
     for path in paths:
         package.write(path, "Aim-GRU-Training-Kit/"+path.relative_to(KIT).as_posix())

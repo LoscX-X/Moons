@@ -108,8 +108,7 @@ final class YsmSubEntities implements AutoCloseable {
         var entity = instance.entity;
         float partial = capture.partial;
         Map<String, Object> q =
-                YsmEntityObservations.sample(entity, state, partial, instance.lastAge);
-        instance.lastAge = state.ageInTicks;
+                YsmEntityObservations.sample(entity, state, partial, instance.motion);
         instance.snapshot = q;
         q.put("is_in_water", entity.isInWater());
         q.put("is_on_fire", entity.isOnFire());
@@ -170,10 +169,14 @@ final class YsmSubEntities implements AutoCloseable {
         q.put("body_y_rotation", entity.getYRot(partial));
         q.put("body_x_rotation", entity.getXRot(partial));
         q.put("head_x_rotation", entity.getXRot(partial));
-        q.put("head_y_rotation", 0);
         q.put(
-                "modified_distance_moved",
-                entity instanceof LivingEntity living ? living.walkAnimation.position(partial) : 0);
+                "head_y_rotation",
+                entity instanceof LivingEntity living
+                        ? net.minecraft.util.Mth.rotLerp(partial, living.yHeadRotO, living.yHeadRot)
+                                - net.minecraft.util.Mth.rotLerp(
+                                        partial, living.yBodyRotO, living.yBodyRot)
+                        : 0);
+        q.put("modified_distance_moved", entity.moveDist);
         q.put(
                 "modified_move_speed",
                 entity instanceof LivingEntity living ? living.walkAnimation.speed(partial) : 0);
@@ -251,7 +254,8 @@ final class YsmSubEntities implements AutoCloseable {
     private final class Instance implements AutoCloseable {
         final Entity entity;
         Map<String, Object> snapshot = Map.of();
-        float lastAge = Float.NaN;
+        final com.blanoir.moons.ysm.YsmMotionTracker motion =
+                new com.blanoir.moons.ysm.YsmMotionTracker();
         final boolean projectile;
         final LocalYsmModel model;
         final YsmEffects effects;

@@ -2,13 +2,16 @@ package com.blanoir.moons.ysm.adapter;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.tags.TagKey;
+import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.projectile.arrow.Arrow;
 import net.minecraft.world.item.*;
 import net.minecraft.world.phys.*;
 
@@ -35,39 +38,58 @@ final class YsmEntityQueries {
                                 + (axis == 0 ? "x" : axis == 1 ? "y" : "z"),
                         0f);
             }
-            case "is_item_name_any", "get_equipped_item_name" -> {
+            case "get_equipped_item_name" -> {
+                if (!(player instanceof LivingEntity) || args.size() != 1) yield null;
                 ItemStack item =
                         equipment(
                                 player,
-                                args.isEmpty() ? "mainhand" : String.valueOf(args.getFirst()));
-                String id = BuiltInRegistries.ITEM.getKey(item.getItem()).toString();
-                yield name.equals("get_equipped_item_name")
-                        ? id
-                        : args.stream().skip(1).anyMatch(id::equals);
+                                "off_hand".equals(args.getFirst()) ? "offhand" : "mainhand");
+                yield item.isEmpty()
+                        ? "empty"
+                        : BuiltInRegistries.ITEM.getKey(item.getItem()).getPath();
             }
-            case "remaining_durability" -> {
+            case "is_item_name_any" -> {
+                if (!(player instanceof LivingEntity)
+                        || args.size() < 2
+                        || slot(String.valueOf(args.getFirst())) == null) yield null;
                 ItemStack item = equipment(player, String.valueOf(args.getFirst()));
-                yield item.getMaxDamage() - item.getDamageValue();
+                if (item.isEmpty()) yield false;
+                yield matchesId(BuiltInRegistries.ITEM.getKey(item.getItem()), args, 1, true);
             }
-            case "max_durability" ->
-                    equipment(player, String.valueOf(args.getFirst())).getMaxDamage();
+            case "remaining_durability", "max_durability" -> {
+                if (!(player instanceof LivingEntity)
+                        || args.size() != 1
+                        || slot(String.valueOf(args.getFirst())) == null) yield null;
+                ItemStack item = equipment(player, String.valueOf(args.getFirst()));
+                yield name.equals("max_durability")
+                        ? item.getMaxDamage()
+                        : item.getMaxDamage() - item.getDamageValue();
+            }
             case "equipped_item_any_tag", "equipped_item_all_tags" -> {
+                if (!(player instanceof LivingEntity)
+                        || args.size() < 2
+                        || slot(String.valueOf(args.getFirst())) == null) yield null;
                 ItemStack item = equipment(player, String.valueOf(args.getFirst()));
-                var matches =
-                        args.stream()
-                                .skip(1)
-                                .map(
-                                        v ->
-                                                item.is(
-                                                        TagKey.create(
-                                                                Registries.ITEM,
-                                                                Identifier.parse(
-                                                                        String.valueOf(v)))));
-                yield name.equals("equipped_item_all_tags")
-                        ? matches.allMatch(Boolean::booleanValue)
-                        : matches.anyMatch(Boolean::booleanValue);
+                if (item.isEmpty()) yield false;
+                boolean all = name.equals("equipped_item_all_tags");
+                Boolean result = all;
+                for (int i = 1; i < args.size(); i++) {
+                    Identifier id = Identifier.tryParse(String.valueOf(args.get(i)));
+                    if (id == null) {
+                        result = null;
+                        break;
+                    }
+                    boolean matches = item.is(TagKey.create(Registries.ITEM, id));
+                    if (matches != all) {
+                        result = matches;
+                        break;
+                    }
+                }
+                yield result;
             }
             case "relative_block_name", "relative_block_name_any" -> {
+                if (name.equals("relative_block_name") ? args.size() != 3 : args.size() < 4)
+                    yield null;
                 BlockPos pos = relativeBlock(player, args);
                 if (pos == null) yield name.equals("relative_block_name") ? null : false;
                 String id =
@@ -78,7 +100,7 @@ final class YsmEntityQueries {
                                         .toString();
                 yield name.equals("relative_block_name")
                         ? id
-                        : args.stream().skip(3).anyMatch(id::equals);
+                        : matchesId(Identifier.tryParse(id), args, 3, false);
             }
             case "biome_has_all_tags", "biome_has_any_tag" -> {
                 if (level == null) yield false;
@@ -116,15 +138,20 @@ final class YsmEntityQueries {
                         : matches.anyMatch(Boolean::booleanValue);
             }
             case "effect_level" -> {
+                if (args.isEmpty()) yield null;
                 int total = 0;
                 for (Object value : args) {
                     Identifier id = Identifier.tryParse(String.valueOf(value));
                     if (id == null) continue;
                     var holder = BuiltInRegistries.MOB_EFFECT.get(id).orElse(null);
                     if (holder == null) continue;
-                    var effect =
-                            player instanceof LivingEntity living ? living.getEffect(holder) : null;
-                    if (effect != null) total += effect.getAmplifier() + 1;
+                    if (!(player instanceof LivingEntity) && !(player instanceof Arrow)) yield null;
+                    for (MobEffectInstance effect : effects(player)) {
+                        if (effect.getEffect().value() == holder.value()) {
+                            total += effect.getAmplifier() + 1;
+                            break;
+                        }
+                    }
                 }
                 yield total;
             }
@@ -186,9 +213,7 @@ final class YsmEntityQueries {
                 yield null;
             }
             case "dump_effects" -> {
-                (player instanceof LivingEntity living
-                                ? living.getActiveEffects()
-                                : List.<net.minecraft.world.effect.MobEffectInstance>of())
+                effects(player)
                         .forEach(
                                 effect ->
                                         diagnostic.accept(
@@ -223,15 +248,41 @@ final class YsmEntityQueries {
 
     private static ItemStack equipment(Entity player, String slot) {
         if (!(player instanceof LivingEntity living)) return ItemStack.EMPTY;
-        return living.getItemBySlot(
-                switch (slot.replace("slot.", "")) {
-                    case "offhand", "weapon.offhand" -> EquipmentSlot.OFFHAND;
-                    case "head", "armor.head" -> EquipmentSlot.HEAD;
-                    case "chest", "armor.chest" -> EquipmentSlot.CHEST;
-                    case "legs", "armor.legs" -> EquipmentSlot.LEGS;
-                    case "feet", "armor.feet" -> EquipmentSlot.FEET;
-                    default -> EquipmentSlot.MAINHAND;
-                });
+        EquipmentSlot selected = slot(slot);
+        return selected == null ? ItemStack.EMPTY : living.getItemBySlot(selected);
+    }
+
+    private static EquipmentSlot slot(String name) {
+        return switch (name.toLowerCase(Locale.ROOT)) {
+            case "mainhand" -> EquipmentSlot.MAINHAND;
+            case "offhand" -> EquipmentSlot.OFFHAND;
+            case "head" -> EquipmentSlot.HEAD;
+            case "chest" -> EquipmentSlot.CHEST;
+            case "legs" -> EquipmentSlot.LEGS;
+            case "feet" -> EquipmentSlot.FEET;
+            default -> null;
+        };
+    }
+
+    private static Boolean matchesId(
+            Identifier actual, List<Object> args, int start, boolean strict) {
+        if (actual == null) return false;
+        for (int i = start; i < args.size(); i++) {
+            Identifier expected = Identifier.tryParse(String.valueOf(args.get(i)));
+            if (expected == null && strict) return null;
+            if (expected != null && expected.equals(actual)) return true;
+        }
+        return false;
+    }
+
+    private static Iterable<MobEffectInstance> effects(Entity entity) {
+        if (entity instanceof LivingEntity living) return living.getActiveEffects();
+        if (entity instanceof Arrow arrow) {
+            // This public accessor reads the same stack as upstream's getPickupItem mixin.
+            var contents = arrow.getPickupItemStackOrigin().get(DataComponents.POTION_CONTENTS);
+            if (contents != null) return contents.getAllEffects();
+        }
+        return List.of();
     }
 
     private static BlockPos relativeBlock(Entity entity, List<Object> args) {

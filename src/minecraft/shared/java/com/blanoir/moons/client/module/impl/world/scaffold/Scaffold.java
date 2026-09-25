@@ -93,6 +93,10 @@ public final class Scaffold {
         return ScaffoldManager.setGodBridgeSneakTime(client, min, max);
     }
 
+    public static int setGodBridgeEdgeOffset(Minecraft client, double value) {
+        return ScaffoldManager.setGodBridgeEdgeOffset(client, value);
+    }
+
     public static List<String> tellyRotationOptions() {
         return ScaffoldManager.tellyRotationOptions();
     }

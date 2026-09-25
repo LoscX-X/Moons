@@ -18,7 +18,9 @@ final class LocalControlQueries {
             if (!slot.equals("vehicle") && !slot.equals("passenger")) return false;
             String id = text(values, slot + "_id");
             if (id.isEmpty()) return false;
-            return spec.equals("$" + id) || tag(values.apply(slot + "_tags"), spec);
+            return (spec.startsWith("$")
+                            && id.equals(ResourceIdentifiers.normalize(spec.substring(1))))
+                    || tag(values.apply(slot + "_tags"), spec);
         }
         boolean armor = List.of("head", "chest", "legs", "feet").contains(slot);
         if (name.equals("armor") ? !armor : !List.of("mainhand", "offhand").contains(slot))
@@ -57,8 +59,8 @@ final class LocalControlQueries {
     }
 
     private static boolean tag(Object tags, String spec) {
-        return spec.startsWith("#")
-                && tags instanceof Collection<?> names
-                && names.contains(spec.substring(1));
+        if (!spec.startsWith("#") || !(tags instanceof Collection<?> names)) return false;
+        String id = ResourceIdentifiers.normalize(spec.substring(1));
+        return id != null && names.contains(id);
     }
 }

@@ -77,6 +77,7 @@ public final class LocalRuntime extends AnimatableEntity<Object> implements Auto
     private double lastTime = Double.NaN;
     private AnimationContext<?> current;
     private final Set<String> diagnostics = new LinkedHashSet<>();
+    private long expressionErrorCount;
 
     public record ObservationView(Map<String, ?> values, Queries queries) {
         public ObservationView {
@@ -137,8 +138,9 @@ public final class LocalRuntime extends AnimatableEntity<Object> implements Auto
                         AnimationMapper.buildAnimations(file, raw.properties.mergeMultilineExpr);
                 mapped.forEach(
                         (name, animation) -> {
-                            animations.putIfAbsent(name, animation);
-                            types.putIfAbsent(name, file.animType);
+                            // Upstream assembly lets later files replace earlier definitions.
+                            animations.put(name, animation);
+                            types.put(name, file.animType);
                         });
             }
         }
@@ -149,7 +151,7 @@ public final class LocalRuntime extends AnimatableEntity<Object> implements Auto
                 for (var file : raw.mainEntity.animationFiles.values()) {
                     if (file.animType >= 0 && file.animType <= 3)
                         AnimationMapper.buildAnimations(file, raw.properties.mergeMultilineExpr)
-                                .forEach(body::putIfAbsent);
+                                .forEach(body::put);
                 }
                 LocalAnimationAssembly.deriveArms(body, animations, types);
             }
@@ -533,7 +535,13 @@ public final class LocalRuntime extends AnimatableEntity<Object> implements Auto
     }
 
     public synchronized void diagnostic(String message) {
+        if (message.startsWith("Expression ")) expressionErrorCount++;
         if (diagnostics.size() < 100) diagnostics.add(message);
+    }
+
+    /** Total errors, including repetitions and errors beyond the UI diagnostic limit. */
+    public synchronized long expressionErrorCount() {
+        return expressionErrorCount;
     }
 
     public synchronized List<String> diagnostics() {

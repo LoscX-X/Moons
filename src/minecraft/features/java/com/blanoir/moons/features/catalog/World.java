@@ -240,6 +240,16 @@ final class World {
                                         5,
                                         Scaffold::setGodBridgeSneakTime)
                                 .visibleWhen(Scaffold::godBridgeSneakSelected),
+                        number(
+                                        "godbridge_edge_offset",
+                                        "Allowed edge overhang",
+                                        "scaffold.godBridgeEdgeOffset",
+                                        0.0,
+                                        0.0,
+                                        .2,
+                                        .01,
+                                        Scaffold::setGodBridgeEdgeOffset)
+                                .visibleWhen(Scaffold::godBridgeSneakSelected),
                         rangeInts(
                                         "legit_delay_ms",
                                         "Sneak delay (ms)",
@@ -369,7 +379,7 @@ final class World {
                                         "scaffold.tellyBlocksPerSecondEnabled",
                                         true,
                                         Scaffold::setTellyBlocksPerSecondEnabled)
-                                .visibleWhen(Scaffold::standardBridgeSelected),
+                                .visibleWhen(Scaffold::tellySelected),
                         rangeInts(
                                         "telly_blocks_per_second",
                                         "Blocks per second",

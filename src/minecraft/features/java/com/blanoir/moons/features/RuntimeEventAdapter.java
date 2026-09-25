@@ -527,9 +527,9 @@ final class RuntimeEventAdapter {
     }
 
     private void playerMove(RuntimeEvents.PlayerMove event) {
-        if (!(event.player() instanceof Entity entity) || Minecraft.getInstance().player != entity)
-            return;
         Minecraft client = Minecraft.getInstance();
+        if (!client.isSameThread() || !(event.player() instanceof LocalPlayer entity)
+                || client.player != entity) return;
         MoveFix.State movementFix = MoveFix.current(client);
         if (!movementFix.active()) return;
         float yaw = movementFix.yaw();
@@ -541,11 +541,13 @@ final class RuntimeEventAdapter {
     }
 
     private void playerMoveEnd(RuntimeEvents.PlayerMoveEnd event) {
+        Minecraft client = Minecraft.getInstance();
+        // Entity.moveRelative is also hooked for integrated-server players and mobs.
+        // Their returns must never restore a client player's temporary movement yaw.
+        if (!client.isSameThread() || !(event.player() instanceof LocalPlayer player)
+                || client.player != player) return;
         restoreMovementYaw();
-        if (event.player() instanceof LocalPlayer player
-                && Minecraft.getInstance().player == player) {
-            EventBus.PLAYER_MOVE_END.post(new PlayerMoveEndEvent(player));
-        }
+        EventBus.PLAYER_MOVE_END.post(new PlayerMoveEndEvent(player));
     }
 
     private void playerPosition(RuntimeEvents.PlayerPosition event) {

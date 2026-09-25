@@ -13,6 +13,14 @@ import net.minecraft.world.phys.Vec3;
 public final class GodBridgeSafetyVerification {
     public static void main(String[] args) {
         verifyPlacementRotations();
+        require(GodBridgeSneak.exposed(.12, 0, 0),
+                "Diagonal corner overlap must brake before the next unsupported step");
+        require(GodBridgeSneak.exposed(0, .12, 0),
+                "Momentum toward an edge must brake even with safe requested input");
+        require(GodBridgeSneak.exposed(Double.NaN, 0, .2),
+                "No support always brakes, regardless of configured overhang");
+        require(!GodBridgeSneak.exposed(0, 0, 0), "Supported movement is not stopped");
+        require(!GodBridgeSneak.exposed(.04, .03, .05), "Respect explicit overhang allowance");
         var sneak = new GodBridgeSneak();
         int[] samples = {0};
         java.util.function.IntSupplier duration = () -> {

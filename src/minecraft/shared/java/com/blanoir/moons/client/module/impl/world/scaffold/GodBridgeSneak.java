@@ -43,6 +43,12 @@ public final class GodBridgeSneak {
         return sneaking;
     }
 
+    public static boolean exposed(double inputEdge, double inertiaEdge, double allowedOverhang) {
+        return !Double.isFinite(inputEdge) || !Double.isFinite(inertiaEdge)
+                || inputEdge > allowedOverhang + 1.0E-4
+                || inertiaEdge > allowedOverhang + 1.0E-4;
+    }
+
     public boolean sneaking() {
         return sneaking;
     }

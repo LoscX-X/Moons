@@ -109,6 +109,15 @@ tasks.register('verifyYsmCore', JavaExec) {
     if (providers.gradleProperty('ysm_test_model').isPresent()) args providers.gradleProperty('ysm_test_model').get()
 }
 
+tasks.register('verifyYsmQueries', JavaExec) {
+    group = 'verification'
+    description = 'Verifies YSM query semantics using real item, entity and potion components.'
+    dependsOn tasks.named('ysmAdapterTestClasses')
+    classpath = sourceSets.ysmAdapterTest.runtimeClasspath
+    mainClass = 'com.blanoir.moons.ysm.adapter.YsmQueryVerification'
+    workingDir layout.buildDirectory.get().asFile
+}
+
 tasks.register('ysmJar', Jar) {
     group = 'build'
     description = "Builds the independent Fabric-free YSM module for Minecraft ${ysmVersion}."
@@ -128,7 +137,7 @@ tasks.register('ysmBundle', Zip) {
 }
 
 tasks.named('check') {
-    dependsOn 'verifyYsmCore', 'verifyYsmRenderSetup', 'verifyModuleLibraries', 'verifyYsmPackage'
+    dependsOn 'verifyYsmCore', 'verifyYsmRenderSetup', 'verifyYsmQueries', 'verifyModuleLibraries', 'verifyYsmPackage'
 }
 
 def ysmBundles = []

@@ -206,33 +206,7 @@ final class YsmObservations {
                         .orElse("empty"));
         com.blanoir.moons.ysm.YsmWeaponQueries.write(
                 q, YsmWeaponState.get(p, s.ageInTicks - (float) Math.floor(s.ageInTicks)));
-        var boat =
-                p.getVehicle() instanceof net.minecraft.world.entity.vehicle.boat.AbstractBoat b
-                        ? b
-                        : null;
-        boolean raft =
-                boat instanceof net.minecraft.world.entity.vehicle.boat.Raft
-                        || boat instanceof net.minecraft.world.entity.vehicle.boat.ChestRaft;
-        boolean chest = boat instanceof net.minecraft.world.entity.vehicle.boat.AbstractChestBoat;
-        q.put("boat_left_paddle", boat != null && boat.getPaddleState(0));
-        q.put("boat_right_paddle", boat != null && boat.getPaddleState(1));
-        q.put(
-                "boat_left_rowing_time",
-                boat == null
-                        ? 0
-                        : -boat.getRowingTime(0, s.ageInTicks - (float) Math.floor(s.ageInTicks)));
-        q.put(
-                "boat_right_rowing_time",
-                boat == null
-                        ? 0
-                        : -boat.getRowingTime(1, s.ageInTicks - (float) Math.floor(s.ageInTicks)));
-        q.put("boat_is_raft", raft);
-        q.put("boat_is_chest", chest);
-        q.put("boat_body_offset_y", raft ? -((.8888889f - 1f / 3) * .5625f * 16 + 1) : 0);
-        q.put("boat_body_offset_z", chest ? -2.4f : 0);
-        q.put("boat_chest_passenger_offset", chest ? 2.4f : 0);
-        q.put("boat_paddle_scale", 1);
-        q.put("map_angle", Math.clamp(1 - s.xRot / 45.1, 0, 1));
+        YsmAdditionalObservations.boat(q, p, s.ageInTicks - (float) Math.floor(s.ageInTicks));
         if (p.getVehicle() != null) {
             q.put(
                     "vehicle_is_boat",
@@ -306,11 +280,6 @@ final class YsmObservations {
         q.put("item_is_charged", q.get("offhand_charged_crossbow"));
         q.put("sleep_rotation", 0);
         q.put(
-                "tcos0",
-                Math.cos(s.ageInTicks / 20d * 103.2 * Math.PI / 180)
-                        * Math.min(1, p.moveDist * 4)
-                        * 20);
-        q.put(
                 "attack_damage",
                 p.getAttributeValue(
                         net.minecraft.world.entity.ai.attributes.Attributes.ATTACK_DAMAGE));
@@ -367,7 +336,7 @@ final class YsmObservations {
             q.put("dimension_name", level.dimension().identifier().toString());
             q.put("block_light", level.getBrightness(LightLayer.BLOCK, p.blockPosition()));
             q.put("sky_light", level.getBrightness(LightLayer.SKY, p.blockPosition()));
-            q.put("is_open_air", level.canSeeSky(p.blockPosition()));
+            q.put("is_open_air", YsmAdditionalObservations.openAir(p));
         }
         HitResult hit = Minecraft.getInstance().hitResult;
         q.put(

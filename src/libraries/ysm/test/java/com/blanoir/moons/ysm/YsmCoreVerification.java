@@ -14,6 +14,44 @@ import javax.imageio.ImageIO;
 
 /** Runs without Minecraft or Fabric on its classpath. Uses independently known geometry/animation values. */
 public final class YsmCoreVerification {
+    private static long verifyRealAnimations(LocalYsmModel model, String domain) {
+        if (model.animations().isEmpty()) {
+            var pose = model.frame(0, Map.of("is_on_ground", true), "");
+            for (float value : pose.vertices())
+                check(Float.isFinite(value), "Real static geometry: " + domain);
+        }
+        for (String action : model.animations()) {
+            model.resetAnimation();
+            double duration = model.runtime().getAnimation(action).animationLength / 20d;
+            var times = new TreeSet<Double>(List.of(0d, .05, .1, .15, .2));
+            if (Double.isFinite(duration) && duration > 0) {
+                times.add(duration / 2);
+                times.add(duration);
+            }
+            for (double time : times) {
+                var pose =
+                        model.frame(
+                                time, Map.of("is_on_ground", true, "head_x_rotation", 15f), action);
+                for (float value : pose.vertices())
+                    check(
+                            Float.isFinite(value),
+                            "Real animation finite geometry: " + domain + "/" + action);
+            }
+        }
+        long errors = model.runtime().expressionErrorCount();
+        System.out.println(
+                "YSM_REFERENCE_ACTIONS domain="
+                        + domain
+                        + " sampled="
+                        + model.animations().size()
+                        + " expressionErrors="
+                        + errors);
+        for (String diagnostic : model.runtime().diagnostics())
+            if (diagnostic.startsWith("Expression "))
+                System.out.println(diagnostic.substring(0, Math.min(240, diagnostic.length())));
+        return errors;
+    }
+
     private static void verifyEncodedTextures() throws Exception {
         for (String extension : java.util.List.of("webp", "avif", "lossy.webp")) {
             try (var stream =
@@ -69,6 +107,7 @@ public final class YsmCoreVerification {
     public static void main(String[] args) throws Exception {
         verifyEncodedTextures();
         YsmMotionVerification.verify();
+        YsmPortParityVerification.verify();
         verifyTextures();
         YsmCodecVerification.verify();
         Path fixture = Files.createTempDirectory("moons-ysm-verification-");
@@ -151,77 +190,68 @@ public final class YsmCoreVerification {
             cyclic.mainEntity.mainModel.bones.addAll(List.of(a, b));
             rejected(() -> new LocalYsmModel(cyclic), "Cyclic bone hierarchy");
             if (args.length > 0) {
-                LocalYsmModel real = LocalYsmModel.load(Path.of(args[0]));
-                var texture = real.texture("");
-                byte[] png = YsmTextureDecoder.toPng(texture);
-                BufferedImage image = ImageIO.read(new ByteArrayInputStream(png));
-                check(image != null, "Real model texture decoded");
-                if (texture.format() == -1) {
-                    check(
-                            image.getWidth() == texture.width()
-                                    && image.getHeight() == texture.height(),
-                            "Real RGBA dimensions");
-                    int offset = 0;
-                    for (int y = 0; y < image.getHeight(); y++) {
-                        for (int x = 0; x < image.getWidth(); x++, offset += 4) {
-                            byte[] data = texture.data();
-                            int expected =
-                                    ((data[offset + 3] & 255) << 24)
-                                            | ((data[offset] & 255) << 16)
-                                            | ((data[offset + 1] & 255) << 8)
-                                            | (data[offset + 2] & 255);
-                            check(
-                                    image.getRGB(x, y) == expected,
-                                    "Real RGBA pixel and alpha at " + x + "," + y);
+                try (LocalYsmModel real = LocalYsmModel.load(Path.of(args[0]))) {
+                    var texture = real.texture("");
+                    byte[] png = YsmTextureDecoder.toPng(texture);
+                    BufferedImage image = ImageIO.read(new ByteArrayInputStream(png));
+                    check(image != null, "Real model texture decoded");
+                    if (texture.format() == -1) {
+                        check(
+                                image.getWidth() == texture.width()
+                                        && image.getHeight() == texture.height(),
+                                "Real RGBA dimensions");
+                        int offset = 0;
+                        for (int y = 0; y < image.getHeight(); y++) {
+                            for (int x = 0; x < image.getWidth(); x++, offset += 4) {
+                                byte[] data = texture.data();
+                                int expected =
+                                        ((data[offset + 3] & 255) << 24)
+                                                | ((data[offset] & 255) << 16)
+                                                | ((data[offset + 1] & 255) << 8)
+                                                | (data[offset + 2] & 255);
+                                check(
+                                        image.getRGB(x, y) == expected,
+                                        "Real RGBA pixel and alpha at " + x + "," + y);
+                            }
                         }
                     }
-                }
-                System.out.println(
-                        "YSM_REFERENCE_TEXTURE format="
-                                + texture.format()
-                                + " dimensions="
-                                + image.getWidth()
-                                + "x"
-                                + image.getHeight()
-                                + " pngBytes="
-                                + png.length);
-                var mesh = real.frame(0, Map.of(), "idle");
-                for (float value : mesh.vertices())
-                    check(Float.isFinite(value), "Real model finite geometry");
-                for (String action : real.animations()) {
-                    real.resetAnimation();
-                    for (int frame = 0; frame < 5; frame++) {
-                        var pose =
-                                real.frame(
-                                        frame * .05,
-                                        Map.of("is_on_ground", true, "head_x_rotation", 15f),
-                                        action);
-                        for (float value : pose.vertices())
-                            check(
-                                    Float.isFinite(value),
-                                    "Real animation finite geometry: " + action);
+                    System.out.println(
+                            "YSM_REFERENCE_TEXTURE format="
+                                    + texture.format()
+                                    + " dimensions="
+                                    + image.getWidth()
+                                    + "x"
+                                    + image.getHeight()
+                                    + " pngBytes="
+                                    + png.length);
+                    var mesh = real.frame(0, Map.of(), "idle");
+                    for (float value : mesh.vertices())
+                        check(Float.isFinite(value), "Real model finite geometry");
+                    long expressionErrors = verifyRealAnimations(real, "body");
+                    try (var arms = real.firstPersonModel()) {
+                        expressionErrors += verifyRealAnimations(arms, "first_person");
                     }
+                    for (boolean projectile : List.of(true, false)) {
+                        for (String id : real.subEntityIds(projectile)) {
+                            try (var sub = real.subEntity(projectile, id)) {
+                                expressionErrors +=
+                                        verifyRealAnimations(
+                                                sub,
+                                                (projectile ? "projectile:" : "vehicle:") + id);
+                            }
+                        }
+                    }
+                    System.out.println(
+                            "YSM_REFERENCE_MODEL bones="
+                                    + real.boneCount()
+                                    + " vertices="
+                                    + mesh.vertexCount()
+                                    + " animations="
+                                    + real.animations().size());
+                    check(
+                            expressionErrors == 0,
+                            "Real model contains expression errors: " + expressionErrors);
                 }
-                long expressionErrors =
-                        real.runtime().diagnostics().stream()
-                                .filter(d -> d.startsWith("Expression "))
-                                .count();
-                System.out.println(
-                        "YSM_REFERENCE_ACTIONS sampled="
-                                + real.animations().size()
-                                + " expressionErrors="
-                                + expressionErrors);
-                for (String diagnostic : real.runtime().diagnostics())
-                    if (diagnostic.startsWith("Expression "))
-                        System.out.println(
-                                diagnostic.substring(0, Math.min(240, diagnostic.length())));
-                System.out.println(
-                        "YSM_REFERENCE_MODEL bones="
-                                + real.boneCount()
-                                + " vertices="
-                                + mesh.vertexCount()
-                                + " animations="
-                                + real.animations().size());
             }
             System.out.println(
                     "YSM_CORE_VERIFIED parsing=folder+crypto3 textures=png+rgba geometry=hierarchy animation=molang+loop lifecycle=reset");

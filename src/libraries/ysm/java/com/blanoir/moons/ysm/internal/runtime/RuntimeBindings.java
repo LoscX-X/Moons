@@ -160,6 +160,20 @@ public final class RuntimeBindings {
                                 ? view.values()::get
                                 : rt::observation);
             }
+            if (namespace.equals("ysm")) {
+                if (name.equals("map_angle"))
+                    return Math.clamp(1 - ctx.data().headPitch / 45.1f, 0, 1);
+                if (name.equals("tcos0")) {
+                    Object distance =
+                            ctx.entity() instanceof LocalRuntime.ObservationView view
+                                    ? view.values().get("walk_distance")
+                                    : rt.observation("walk_distance");
+                    double speed = distance instanceof Number n ? n.doubleValue() : 0;
+                    return Math.cos(rt.time() * 103.2 * Math.PI / 180)
+                            * Math.min(1, speed * 4)
+                            * 20;
+                }
+            }
             if (ctx.entity() instanceof LocalRuntime.ObservationView view) {
                 if (args.size() == 0) {
                     if (view.values().containsKey(namespace + "." + name))

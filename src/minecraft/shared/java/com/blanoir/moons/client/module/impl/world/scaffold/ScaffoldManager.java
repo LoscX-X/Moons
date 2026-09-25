@@ -159,6 +159,8 @@ public final class ScaffoldManager {
     private static final BooleanSetting TELLY_FLAT = bool("scaffold.tellyFlat", false);
     private static final BooleanSetting TELLY_FALL_RESCUE = bool("scaffold.tellyFallRescue", false);
     private static final BooleanSetting GOD_BRIDGE_SNEAK = bool("scaffold.godBridgeSneak", true);
+    private static final DoubleSetting GOD_BRIDGE_EDGE_OFFSET =
+            decimal("scaffold.godBridgeEdgeOffset", 0.0D, 0.0D, 0.2D);
     private static final IntSetting GOD_BRIDGE_SNEAK_MIN_MS =
             integer("scaffold.godBridgeSneakMinMs", 50, 0, 1000);
     private static final IntSetting GOD_BRIDGE_SNEAK_MAX_MS =
@@ -546,6 +548,11 @@ public final class ScaffoldManager {
         return 1;
     }
 
+    public static int setGodBridgeEdgeOffset(Minecraft client, double value) {
+        GOD_BRIDGE_EDGE_OFFSET.set(value);
+        return 1;
+    }
+
     public static int setGodBridgeSneakTime(Minecraft client, int min, int max) {
         GOD_BRIDGE_SNEAK_MIN_MS.set(Math.min(min, max));
         GOD_BRIDGE_SNEAK_MAX_MS.set(Math.max(min, max));
@@ -563,7 +570,7 @@ public final class ScaffoldManager {
     }
 
     public static boolean tellyBpsLimitSelected() {
-        return !godBridgeMode() && TELLY_BPS_LIMIT.get();
+        return TELLY_BPS_LIMIT.get();
     }
 
     public static boolean returningTellySelected() {
@@ -1323,10 +1330,10 @@ public final class ScaffoldManager {
             return requested;
         }
         if (godBridgeMode()) {
-            FORWARD_SPEED.reset();
-            return filterGodBridgeSneak(client, requested);
+            requested = filterGodBridgeSneak(client, requested);
+        } else {
+            GOD_BRIDGE_EDGE_SNEAK.reset();
         }
-        GOD_BRIDGE_EDGE_SNEAK.reset();
         int tick = client.player.tickCount;
         if (forwardSampleTick != tick) {
             Vec3 travel =
@@ -1384,16 +1391,11 @@ public final class ScaffoldManager {
                         impulse(requested.forward(), requested.backward()),
                         impulse(requested.left(), requested.right()));
         if (!diagonal) GOD_BRIDGE_EDGE_SNEAK.clearPair();
-        // Diagonal bridging needs both cells of each step. Allow a supported footprint to
-        // finish that pair; brake early if even its inset footprint would leave support.
-        double inputEdge =
-                legitEdgeDistance(client, diagonal ? intended.deflate(.05, 0, .05) : intended);
-        double inertiaEdge =
-                legitEdgeDistance(client, diagonal ? inertia.deflate(.05, 0, .05) : inertia);
-        boolean edge =
-                Double.isNaN(inputEdge)
-                        || Double.isNaN(inertiaEdge)
-                        || !diagonal && (inputEdge > 1.0E-4 || inertiaEdge > 1.0E-4);
+        // A tiny corner overlap is not sufficient reserve for another diagonal step.
+        // Use the same center-support threshold for straight and diagonal movement.
+        double inputEdge = legitEdgeDistance(client, intended);
+        double inertiaEdge = legitEdgeDistance(client, inertia);
+        boolean edge = GodBridgeSneak.exposed(inputEdge, inertiaEdge, GOD_BRIDGE_EDGE_OFFSET.get());
         if (!GOD_BRIDGE_EDGE_SNEAK.update(
                 client.player.tickCount,
                 System.nanoTime(),

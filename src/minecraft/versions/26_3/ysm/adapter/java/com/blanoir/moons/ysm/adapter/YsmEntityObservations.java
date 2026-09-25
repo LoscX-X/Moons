@@ -12,13 +12,24 @@ import java.util.*;
 /** Non-player entities expose their own world and living state, never the owner's player state. */
 final class YsmEntityObservations {
     static Map<String, Object> sample(
-            Entity entity, EntityRenderState state, float partial, float lastAge) {
+            Entity entity,
+            EntityRenderState state,
+            float partial,
+            com.blanoir.moons.ysm.YsmMotionTracker motion) {
         Map<String, Object> q = new HashMap<>();
         var level = entity.level();
         var mc = Minecraft.getInstance();
         var camera = mc.gameRenderer.mainCamera();
         var movement = entity.getDeltaMovement();
-        double dt = Float.isFinite(lastAge) ? Math.max(0, (state.ageInTicks - lastAge) / 20d) : 0;
+        var frame =
+                motion.sample(
+                        entity,
+                        state.ageInTicks,
+                        state.x,
+                        state.y,
+                        state.z,
+                        entity.getYRot(partial));
+        double dt = frame.seconds();
         q.put("is_local_player", false);
         q.put("is_player", false);
         q.put("is_alive", entity.isAlive());
@@ -62,6 +73,7 @@ final class YsmEntityObservations {
         q.put("is_thundering", level.isThundering());
         q.put("sky_light", level.getBrightness(LightLayer.SKY, entity.blockPosition()));
         q.put("block_light", level.getBrightness(LightLayer.BLOCK, entity.blockPosition()));
+        YsmAdditionalObservations.entity(q, entity, partial, frame);
         if (entity.getVehicle() != null) related(q, "vehicle", entity.getVehicle());
         if (entity.getFirstPassenger() != null) related(q, "passenger", entity.getFirstPassenger());
         if (entity instanceof LivingEntity living) {
@@ -115,6 +127,7 @@ final class YsmEntityObservations {
                 if (slot.isArmor() && !item.isEmpty()) equipped++;
             }
             q.put("equipment_count", equipped);
+            YsmAdditionalObservations.living(q, living, state.ageInTicks, partial);
         }
         return q;
     }

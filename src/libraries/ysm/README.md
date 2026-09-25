@@ -48,6 +48,8 @@ YSM 通过 Moons 的 JNI/JVMTI 宿主热加载，核心不依赖 Fabric、Mixin�
 ## 本地功能
 
 - 动画装配与控制器：主动作、并行动作、装备、持物/挥动/使用、载具/乘客、额外动作、第一人称手臂；保留初始化、更新、时间线与 defer 事件。
+- 同名动画按上游装配顺序采用后定义，身体、派生/作者提供的第一人称动画和类型元数据保持一致。物品短名称、资源 ID/标签和药水箭效果查询沿用各自的上游约定。
+- 附属实体采样自身的世界、运动、装备、武器、生物和船桨状态；头部方向使用插值后的头身相对角，地图角度与步行余弦使用模型上下文和播放时间。
 - 原版 Molang 执行器、插值和混合、控制器过渡、变量作用域、物理弹簧与控制函数；未知查询/表达式错误进入调试信息。
 - 第三人称与第一人称骨骼、透明/发光/剔除材质，纹理切换、定位器、持物、头部物品、鞘翅和肩上鹦鹉；附属投射物与本地坐骑有独立运行时。
 - 本地模型声音、原版声音和原版粒子；Opus/Vorbis 通过 Minecraft 音频系统播放，跟随设备、音量与暂停状态。切换模型/卸载时停止自有声音并释放纹理和运行时。
@@ -65,7 +67,7 @@ YSM 通过 Moons 的 JNI/JVMTI 宿主热加载，核心不依赖 Fabric、Mixin�
 
 ## 验证与实机验收
 
-`verifyYsmCore` 使用所选 Minecraft 版本的实际 Java 依赖检查 crypto3/目录读取、层级几何、动画事件与控制器、变量作用域、参数保存、头部追踪、物理、音频生命周期、WebP/AVIF 透明度，以及队列快照稳定性、双臂过滤、后台会话移交、保存的透明纹理和只更新姿态时的播放/跳转。可选实际 `.ysm` 只读验证不打包模型资源。`verifyYsmRenderSetup` 在对应 Minecraft 类路径中执行渲染与反射成员初始化，检查八种材质组合、旋转/镜像/非均匀缩放下的顶点等价性、世界渲染目标（26.1/26.2）或 OIT 配套管线及键码转换（26.3/26.4-snapshot-1）。`verifyModuleLibraries` 检查外部库更新、失败回滚及服务所有权；`verifyMinecraftTransformers` 检查实际游戏 jar 的注入位置。
+`verifyYsmCore` 使用所选 Minecraft 版本的实际 Java 依赖检查 crypto3/目录读取、层级几何、动画事件与控制器、变量作用域、参数保存、头部追踪、物理、音频生命周期、WebP/AVIF 透明度，以及队列快照稳定性、双臂过滤、后台会话移交、保存的透明纹理和只更新姿态时的播放/跳转。可选 `-Pysm_test_model=<目录或文件>` 对实际模型只读验证，不打包模型资源；采样身体、第一人称、投射物及载具的全部动画，并在起始、中间和结束时刻检查有限坐标。任何已执行表达式的解析或求值错误都会使验证失败，包括超出调试列表 100 条上限的错误；模型资源自身的无效表达式也不能作为通过结果。`verifyYsmRenderSetup` 在对应 Minecraft 类路径中执行渲染与反射成员初始化，检查八种材质组合、旋转/镜像/非均匀缩放下的顶点等价性、世界渲染目标（26.1/26.2）或 OIT 配套管线及键码转换（26.3/26.4-snapshot-1）。`verifyYsmQueries` 使用真实物品注册表、装备及药水组件，验证主副手短名称、默认命名空间、无效参数、普通箭/药水箭效果，以及船体自身的左右划桨与偏移；各版本的 `check` 均包含此项。`verifyModuleLibraries` 检查外部库更新、失败回滚及服务所有权；`verifyMinecraftTransformers` 检查实际游戏 jar 的注入位置。
 
 自动化通过不能替代游戏画面验收。新宿主需要在游戏内核对：透明/发光材质、装备遮挡、第一人称持物、动作与参数切换、声音暂停/音量、换世界和反复热重载。测试模型覆盖不到所有作者自定义查询和动作组合，调试页会保留诊断。DetectOfflinePlayer 与其他模组兼容功能不属于本次修改。
 
@@ -75,7 +77,7 @@ ${env:ORG_GRADLE_PROJECT_kotlin.incremental}='false'
 ./gradlew.bat checkAllVersions ysmAllVersions benchmarkYsm '-Pmoons_build_directory=build/ysm-performance' --project-cache-dir build/ysm-performance/.gradle-project-cache --offline --no-parallel --no-daemon
 ```
 
-独立输出目录用于避开旧产物的 Windows 文件锁。`ysmAllVersions` 逐版构建适配器并打包，不运行自定义验证，三个 zip 集中输出到该构建目录的 `dist`。`ysmBundle` 构建当前 `-Pminecraft_version` 对应的包；公共库可单独构建 `ysmCoreJar ysmCodecsJar ysmImagesJar`。`compileAllVersions` 包含所有 YSM 适配器，`checkAllVersions` 包含 YSM 核心、材质及模块生命周期检查。原来重复执行的 `verifyYsmGameLibraries` 已合并到 `verifyYsmCore`。普通打包不强制执行自定义验证；CI 构建并上传版本包。详细命令见 [构建文档](../../../docs/BUILDING.md)。验证夹具不进入产物。
+独立输出目录用于避开旧产物的 Windows 文件锁。`ysmAllVersions` 逐版构建适配器并打包，不运行自定义验证，四个版本 zip 与一个通用 zip 集中输出到该构建目录的 `dist`。`ysmBundle` 构建当前 `-Pminecraft_version` 对应的包；公共库可单独构建 `ysmCoreJar ysmCodecsJar ysmImagesJar`。`compileAllVersions` 包含所有 YSM 适配器，`checkAllVersions` 包含 YSM 核心、材质及模块生命周期检查。原来重复执行的 `verifyYsmGameLibraries` 已合并到 `verifyYsmCore`。普通打包不强制执行自定义验证；CI 构建并上传版本包。详细命令见 [构建文档](../../../docs/BUILDING.md)。验证夹具不进入产物。
 
 ## 来源
 

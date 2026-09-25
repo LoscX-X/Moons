@@ -23,7 +23,7 @@ public final class AimPointsJ {
             double range,
             double[] offsets,
             double bestScore) {
-        return FaceScanA.scan(
+        return FaceScanA.scanPrimitive(
                 offsets,
                 (u, v) ->
                         BlockPlacementUtils.facePoint(

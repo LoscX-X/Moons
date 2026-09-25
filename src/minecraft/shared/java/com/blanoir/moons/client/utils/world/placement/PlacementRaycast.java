@@ -17,19 +17,23 @@ import net.minecraft.world.phys.Vec3;
 /** Per-feature ray policy. Destination collision and item placement rules remain with vanilla. */
 public final class PlacementRaycast {
     private static final ThreadLocal<BlockHitResult> ITEM_RAY = new ThreadLocal<>();
-    private final String module;
+    private final String throughEntityKey;
+    private final String legacyThroughEntityKey;
+    private final String throughBlocksKey;
 
     public PlacementRaycast(String module) {
-        this.module = module;
+        throughEntityKey = module + ".throughentity";
+        legacyThroughEntityKey = module + ".troughentity";
+        throughBlocksKey = module + ".throughblocks";
     }
 
     public boolean throughEntity() {
         return Settings.getBoolean(
-                module + ".throughentity", Settings.getBoolean(module + ".troughentity", false));
+                throughEntityKey, Settings.getBoolean(legacyThroughEntityKey, false));
     }
 
     public boolean throughBlocks() {
-        return Settings.getBoolean(module + ".throughblocks", false);
+        return Settings.getBoolean(throughBlocksKey, false);
     }
 
     public boolean entityBlocked(Minecraft client, Vec3 eye, Vec3 end) {

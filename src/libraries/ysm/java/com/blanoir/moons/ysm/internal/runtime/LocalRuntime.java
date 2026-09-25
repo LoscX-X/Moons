@@ -61,6 +61,8 @@ public final class LocalRuntime extends AnimatableEntity<Object> implements Auto
     private final Object2ReferenceOpenHashMap<String, List<IValue>> events =
             new Object2ReferenceOpenHashMap<>();
     private final String prefix;
+    private final String initEvent;
+    private final String updateEvent;
     private final LocalAnimationRules rules;
     private final AnimationData data = new AnimationData();
     private final PhysicsManager physics = new PhysicsManager();
@@ -121,6 +123,8 @@ public final class LocalRuntime extends AnimatableEntity<Object> implements Auto
     public LocalRuntime(RawYsmModel raw, List<RuntimeBone> bones, String domain) {
         this.geometry = new AnimatedGeoModel(bones);
         prefix = domain;
+        initEvent = eventPrefix() + "_init";
+        updateEvent = eventPrefix() + "_update";
         rules = new LocalAnimationRules(this, raw.formatVersion);
         boolean firstPerson = domain.equals("fp.arm");
         boolean subEntity = domain.equals("vehicle") || domain.equals("projectile");
@@ -331,7 +335,7 @@ public final class LocalRuntime extends AnimatableEntity<Object> implements Auto
         event.currentTick = (float) (seconds * 20);
         current = new AnimationContext<>(observations, this, event, modelData);
         if (!initialized) {
-            for (IValue value : events.getOrDefault(eventPrefix() + "_init", List.of()))
+            for (IValue value : events.getOrDefault(initEvent, List.of()))
                 processor.execute(value, true, true, null);
             initialized = true;
         }
@@ -351,7 +355,7 @@ public final class LocalRuntime extends AnimatableEntity<Object> implements Auto
         pendingVariables.clear();
         pendingExpressions.values().forEach(value -> processor.execute(value, true, true, null));
         pendingExpressions.clear();
-        for (IValue value : events.getOrDefault(eventPrefix() + "_update", List.of()))
+        for (IValue value : events.getOrDefault(updateEvent, List.of()))
             processor.execute(value, true, true, null);
         physics.update((float) (seconds * 20));
         processor.tickAnimation(event, current, true, true);

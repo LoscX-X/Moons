@@ -12,6 +12,7 @@ import net.minecraft.world.phys.Vec3;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Predicate;
 
 /** C: Existing visible-ray and hitbox-surface searches. Used by entity targeting and prediction.
  * Stateless, no random sampling. Returns null when no point passes the original visibility checks. */
@@ -123,52 +124,83 @@ public final class AimPointsC {
                 referenceLook != null && referenceLook.lengthSqr() > 1.0E-9D
                         ? referenceLook.normalize()
                         : currentPlayer.getViewVector(1.0F);
-        List<Vec3> points = new ArrayList<>(156);
-        box.clip(eye, eye.add(look.scale(range))).ifPresent(points::add);
+        return findBestSurfacePoint(
+                box,
+                eye,
+                look,
+                range,
+                preferredHeight,
+                precise,
+                point -> RaytraceUtils.canRayTraceTo(client, eye, point, throughBlocks));
+    }
 
+    /** Evaluate in the original order, without retaining up to 867 temporary points in a list. */
+    static Vec3 findBestSurfacePoint(
+            AABB box,
+            Vec3 eye,
+            Vec3 look,
+            double range,
+            double preferredHeight,
+            boolean precise,
+            Predicate<Vec3> visible) {
+        SurfaceSearch search = new SurfaceSearch(box, eye, look, range, preferredHeight, visible);
+        box.clip(eye, eye.add(look.scale(range))).ifPresent(search::consider);
         Vec3 closest = EntityDistance.closestPoint(eye, box);
-        surfacePoint(eye, closest, box).ifPresent(points::add);
-        points.add(closest);
-        addFacePoints(points, box, precise ? PRECISE_FACE_SAMPLES : FACE_SAMPLES);
-
-        Vec3 best = null;
-        double bestScore = Double.POSITIVE_INFINITY;
-        double rangeSquared = range * range;
-        double preferredY = Mth.lerp(Mth.clamp(preferredHeight, 0.0D, 1.0D), box.minY, box.maxY);
-        for (Vec3 point : points) {
-            if (eye.distanceToSqr(point) > rangeSquared
-                    || !RaytraceUtils.canRayTraceTo(client, eye, point, throughBlocks)) {
-                continue;
+        surfacePoint(eye, closest, box).ifPresent(search::consider);
+        search.consider(closest);
+        double[] samples = precise ? PRECISE_FACE_SAMPLES : FACE_SAMPLES;
+        for (double a : samples) {
+            double x = Mth.lerp(a, box.minX, box.maxX);
+            double y = Mth.lerp(a, box.minY, box.maxY);
+            for (double b : samples) {
+                double z = Mth.lerp(b, box.minZ, box.maxZ);
+                double xb = Mth.lerp(b, box.minX, box.maxX);
+                double yb = Mth.lerp(b, box.minY, box.maxY);
+                search.consider(new Vec3(box.minX, y, z));
+                search.consider(new Vec3(box.maxX, y, z));
+                search.consider(new Vec3(x, box.minY, z));
+                search.consider(new Vec3(x, box.maxY, z));
+                search.consider(new Vec3(xb, yb, box.minZ));
+                search.consider(new Vec3(xb, yb, box.maxZ));
             }
+        }
+        return search.best;
+    }
+
+    private static final class SurfaceSearch {
+        private final Vec3 eye, look;
+        private final double rangeSquared, preferredY, height;
+        private final Predicate<Vec3> visible;
+        private Vec3 best;
+        private double bestScore = Double.POSITIVE_INFINITY;
+
+        private SurfaceSearch(
+                AABB box,
+                Vec3 eye,
+                Vec3 look,
+                double range,
+                double preferredHeight,
+                Predicate<Vec3> visible) {
+            this.eye = eye;
+            this.look = look;
+            this.rangeSquared = range * range;
+            this.preferredY = Mth.lerp(Mth.clamp(preferredHeight, 0.0D, 1.0D), box.minY, box.maxY);
+            this.height = Math.max(box.getYsize(), 0.1D);
+            this.visible = visible;
+        }
+
+        private void consider(Vec3 point) {
+            double distanceSquared = eye.distanceToSqr(point);
+            if (distanceSquared > rangeSquared || !visible.test(point)) return;
             Vec3 direction = point.subtract(eye).normalize();
             double angularCost = 1.0D - Mth.clamp(look.dot(direction), -1.0D, 1.0D);
-            double lowAimPenalty =
-                    Math.max(0.0D, preferredY - point.y) / Math.max(box.getYsize(), 0.1D);
-            double score =
-                    angularCost * 32.0D + eye.distanceToSqr(point) * 0.002D + lowAimPenalty * 1.35D;
+            double lowAimPenalty = Math.max(0.0D, preferredY - point.y) / height;
+            double score = angularCost * 32.0D + distanceSquared * 0.002D + lowAimPenalty * 1.35D;
             if (score < bestScore) {
                 bestScore = score;
                 best = point;
             }
         }
-        return best;
-    }
-
-    private static void addFacePoints(List<Vec3> points, AABB box, double[] samples) {
-        for (double a : samples)
-            for (double b : samples) {
-                double x = Mth.lerp(a, box.minX, box.maxX);
-                double y = Mth.lerp(a, box.minY, box.maxY);
-                double z = Mth.lerp(b, box.minZ, box.maxZ);
-                double xb = Mth.lerp(b, box.minX, box.maxX);
-                double yb = Mth.lerp(b, box.minY, box.maxY);
-                points.add(new Vec3(box.minX, y, z));
-                points.add(new Vec3(box.maxX, y, z));
-                points.add(new Vec3(x, box.minY, z));
-                points.add(new Vec3(x, box.maxY, z));
-                points.add(new Vec3(xb, yb, box.minZ));
-                points.add(new Vec3(xb, yb, box.maxZ));
-            }
     }
 
     private static Optional<Vec3> surfacePoint(Vec3 eye, Vec3 desired, AABB box) {
@@ -209,7 +241,7 @@ public final class AimPointsC {
     }
 
     public static List<Vec3> aimPoints(AABB box) {
-        List<Vec3> points = new ArrayList<>();
+        List<Vec3> points = new ArrayList<>(30);
 
         Vec3 center = box.getCenter();
 
@@ -234,12 +266,12 @@ public final class AimPointsC {
         double minZ = box.minZ + insetZ;
         double maxZ = box.maxZ - insetZ;
 
-        for (double x : new double[] {minX, center.x, maxX}) {
-
-            for (double y : new double[] {minY, center.y, maxY}) {
-
-                for (double z : new double[] {minZ, center.z, maxZ}) {
-
+        for (int ix = 0; ix < 3; ix++) {
+            double x = ix == 0 ? minX : ix == 1 ? center.x : maxX;
+            for (int iy = 0; iy < 3; iy++) {
+                double y = iy == 0 ? minY : iy == 1 ? center.y : maxY;
+                for (int iz = 0; iz < 3; iz++) {
+                    double z = iz == 0 ? minZ : iz == 1 ? center.z : maxZ;
                     points.add(new Vec3(x, y, z));
                 }
             }

@@ -1,6 +1,7 @@
 package com.blanoir.moons.client.module.impl.combat.silentaura.latest;
 
 import com.blanoir.moons.client.management.input.CombatInputController;
+import com.blanoir.moons.client.module.impl.combat.HitSelect;
 import com.blanoir.moons.client.module.impl.combat.critical.Critical;
 import com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraAttackRay;
 import com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraConfig;
@@ -52,6 +53,10 @@ public final class LatestCombat {
             return ray.gate();
         }
         boolean critical = SilentAuraConfig.criticalIntegration();
+        if (HitSelect.shouldDelay(client, ray.target())) {
+            if (critical) Critical.cancelAutomaticPrediction(client);
+            return "hitselect " + HitSelect.statusTag();
+        }
         // TriggerBot leaves an already queued Critical attack in charge of dispatch.
         if (critical && Critical.isAimingWindowActive()) return "critical aiming";
         boolean criticalAttack = false;
@@ -69,11 +74,11 @@ public final class LatestCombat {
             return String.format(Locale.ROOT, "charge %.2f/%.2f", charge, nextCharge);
         boolean attacked =
                 critical
-                        ? CombatInputController.attackTargetNow(client, ray.target(), true)
+                        ? CombatInputController.attackTargetNow(client, ray.hit(), true)
                         : Critical.withoutSilentAuraCritical(
                                 () ->
                                         CombatInputController.attackTargetNow(
-                                                client, ray.target(), true));
+                                                client, ray.hit(), true));
         if (!attacked) return "attack dispatch";
         reset(client);
         Animations.onAttack();

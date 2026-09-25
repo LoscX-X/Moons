@@ -12,6 +12,7 @@ import java.util.function.Consumer;
 /** Client-thread interlocks for placement state machines; each participant owns its cleanup. */
 public final class PlacementCoordinator {
     public enum Owner {
+        AUTO_MACE,
         AUTO_WEB,
         AUTO_LAVA,
         ANTI_WEB,

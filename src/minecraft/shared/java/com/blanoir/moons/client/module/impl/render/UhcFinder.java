@@ -231,7 +231,7 @@ public final class UhcFinder {
 
     private static WorldOverlayRenderer.ColoredBox createEntityBox(Entity entity, float tickDelta) {
         Vec3 pos = interpolatedPosition(entity, tickDelta);
-        float[] color = colorFor(entity);
+        int color = colorFor(entity);
         boolean offlinePlayer =
                 entity instanceof LivingEntity living
                         && OfflinePlayerDetect.isOfflinePlayerZombie(living);
@@ -247,9 +247,9 @@ public final class UhcFinder {
                 (float) box.maxX,
                 (float) box.maxY,
                 (float) box.maxZ,
-                color[0],
-                color[1],
-                color[2],
+                (color >> 16 & 255) / 255.0f,
+                (color >> 8 & 255) / 255.0f,
+                (color & 255) / 255.0f,
                 offlinePlayer ? OFFLINE_PLAYER_ALPHA : BOX_ALPHA);
     }
 
@@ -260,18 +260,12 @@ public final class UhcFinder {
                 Mth.lerp((double) tickDelta, entity.zo, entity.getZ()));
     }
 
-    private static float[] colorFor(Entity entity) {
-        if (isInvisiblePlayer(entity)) return rgb(255, 255, 255);
-        int color =
-                entity instanceof LivingEntity living
-                                && OfflinePlayerDetect.isOfflinePlayerZombie(living)
-                        ? Settings.getInt("uhcfinder.offlineColor", 0xff00ff)
-                        : TARGETS.get(entity.getType());
-        return rgb(color >> 16 & 255, color >> 8 & 255, color & 255);
-    }
-
-    private static float[] rgb(int red, int green, int blue) {
-        return new float[] {red / 255.0f, green / 255.0f, blue / 255.0f};
+    private static int colorFor(Entity entity) {
+        if (isInvisiblePlayer(entity)) return 0xffffff;
+        return entity instanceof LivingEntity living
+                        && OfflinePlayerDetect.isOfflinePlayerZombie(living)
+                ? Settings.getInt("uhcfinder.offlineColor", 0xff00ff)
+                : TARGETS.get(entity.getType());
     }
 
     private static String statusText() {

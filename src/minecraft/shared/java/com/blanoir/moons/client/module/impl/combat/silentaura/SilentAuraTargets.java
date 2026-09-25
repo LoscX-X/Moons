@@ -1,8 +1,7 @@
 package com.blanoir.moons.client.module.impl.combat.silentaura;
 
+import com.blanoir.moons.client.utils.combat.CombatGeometry;
 import com.blanoir.moons.client.utils.combat.CombatReach;
-import com.blanoir.moons.client.utils.entity.EntityDistance;
-import com.blanoir.moons.client.utils.raytrace.RaytraceUtils;
 import com.blanoir.moons.client.utils.rotation.aim.AimPointsA;
 import com.blanoir.moons.client.utils.rotation.aim.AimPointsB;
 import com.blanoir.moons.client.utils.rotation.aim.AimPointsD;
@@ -97,7 +96,7 @@ final class SilentAuraTargets {
     public boolean inAttackRange(Minecraft client, LivingEntity target) {
         if (!validClient(client) || target == null) return false;
         double range = attackRange(client);
-        return range > 0.0D && EntityDistance.squaredToEntity(client, target) <= range * range;
+        return range > 0.0D && CombatGeometry.distanceSquared(client, target) <= range * range;
     }
 
     public Vec3 aimPoint(Minecraft client, LivingEntity target, Vec3 look) {
@@ -111,7 +110,7 @@ final class SilentAuraTargets {
         }
         double attackRange = attackRange(client);
         double range =
-                EntityDistance.squaredToEntity(client, target) <= attackRange * attackRange
+                CombatGeometry.distanceSquared(client, target) <= attackRange * attackRange
                         ? attackRange
                         : scanRange(client);
         // Never reuse a world-space aim point. Resolve it from the target's
@@ -125,17 +124,22 @@ final class SilentAuraTargets {
             preferred = AimPointsD.visibleAimPoint(pointContext(), client, target, look, range);
         }
         Vec3 eye = client.player.getEyePosition();
+        var shape = CombatGeometry.shape(client, target);
         return pointProcessor.process(
                 client.level,
                 target,
                 client.player.tickCount,
-                target.getBoundingBox(),
+                shape.box(),
                 preferred,
                 SilentAuraConfig.pointParameters(),
                 point ->
                         eye.distanceToSqr(point) <= range * range
-                                && RaytraceUtils.canRayTraceTo(
-                                        client, eye, point, SilentAuraConfig.throughBlocks()));
+                                && CombatGeometry.visible(
+                                        client,
+                                        shape,
+                                        eye,
+                                        point,
+                                        SilentAuraConfig.throughBlocks()));
     }
 
     public void clear() {

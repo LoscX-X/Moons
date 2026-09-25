@@ -296,9 +296,17 @@ public final class GameAccess {
         return (String) RENDER_NAME.get(renderType);
     }
 
-    @SuppressWarnings("unchecked")
     public static RenderType copyRenderType(
             RenderType base, String name, OutputTarget outputTarget) {
+        return copyRenderType(base, name, outputTarget, renderTypeLayeringTransform(base));
+    }
+
+    public static LayeringTransform renderTypeLayeringTransform(RenderType renderType) {
+        return field((RenderSetup) RENDER_SETUP.get(renderType), "layeringTransform");
+    }
+
+    public static RenderType copyRenderType(
+            RenderType base, String name, OutputTarget outputTarget, LayeringTransform layering) {
         try {
             RenderSetup setup = (RenderSetup) RENDER_SETUP.get(base);
             RenderSetup replacement =
@@ -308,7 +316,7 @@ public final class GameAccess {
                                     field(setup, "textures"),
                                     field(setup, "useLightmap"),
                                     field(setup, "useOverlay"),
-                                    field(setup, "layeringTransform"),
+                                    layering,
                                     outputTarget,
                                     field(setup, "textureTransform"),
                                     field(setup, "outlineProperty"),

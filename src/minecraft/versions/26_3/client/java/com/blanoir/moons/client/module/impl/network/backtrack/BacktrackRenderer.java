@@ -6,6 +6,8 @@ import com.blanoir.moons.client.render.world.WorldOverlayBuffer;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.mojang.renderpearl.api.pipeline.BlendFunction;
+import com.mojang.renderpearl.api.pipeline.ColorTargetState;
 import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
 import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 
@@ -156,6 +158,7 @@ public final class BacktrackRenderer {
                         .withLocation(Identifier.fromNamespaceAndPath(MoonsConfig.MOD_ID, name))
                         .withVertexBinding(0, DefaultVertexFormat.POSITION_COLOR)
                         .withPrimitiveTopology(topology)
+                        .withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
                         .withDepthStencilState(Optional.empty())
                         .build());
     }

@@ -1,18 +1,24 @@
 package com.blanoir.moons.client.module.impl.combat.silentaura;
 
 import com.blanoir.moons.client.management.targeting.Targeting;
+import com.blanoir.moons.client.utils.combat.CombatGeometry;
 import com.blanoir.moons.client.utils.combat.CombatReach;
 import com.blanoir.moons.client.utils.raytrace.RaytraceUtils;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.phys.EntityHitResult;
 
 import java.util.Locale;
 
 /** Stateless geometry shared by the two independently scheduled combat modes. */
 public final class SilentAuraAttackRay {
-    public record Result(LivingEntity target, String gate) {}
+    public record Result(LivingEntity target, String gate, EntityHitResult hit) {
+        public Result(LivingEntity target, String gate) {
+            this(target, gate, null);
+        }
+    }
 
     private SilentAuraAttackRay() {}
 
@@ -25,7 +31,7 @@ public final class SilentAuraAttackRay {
         double range = CombatReach.entityInteractionRange(client, SilentAuraConfig.aimRange());
         if (range <= 0) return new Result(null, "range");
         Entity intercepted =
-                Targeting.findTargetOnRay(
+                CombatGeometry.findTargetOnRay(
                         client,
                         rotation.eye(),
                         rotation.look(),
@@ -42,16 +48,17 @@ public final class SilentAuraAttackRay {
         if (client.level.getEntity(target.getId()) != target)
             return new Result(null, "target moved");
         var ray =
-                RaytraceUtils.traceEntity(
+                CombatGeometry.traceEntity(
                         client,
                         rotation.eye(),
                         rotation.look(),
                         range,
                         target,
                         SilentAuraConfig.throughBlocks());
-        return ray == RaytraceUtils.EntityRayState.HIT
-                ? new Result(target, "hit")
-                : new Result(null, ray.name().toLowerCase(Locale.ROOT));
+        if (ray != RaytraceUtils.EntityRayState.HIT)
+            return new Result(null, ray.name().toLowerCase(Locale.ROOT));
+        var hit = CombatGeometry.attackHit(client, target, rotation.eye(), rotation.look(), range);
+        return hit == null ? new Result(null, "target moved") : new Result(target, "hit", hit);
     }
 
     private static boolean configured(Minecraft client, Entity target) {

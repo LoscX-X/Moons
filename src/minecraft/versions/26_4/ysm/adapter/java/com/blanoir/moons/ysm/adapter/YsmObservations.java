@@ -4,9 +4,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.entity.state.AvatarRenderState;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.core.registries.Registries;
-import net.minecraft.resources.Identifier;
-import net.minecraft.tags.TagKey;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.Pose;
@@ -252,26 +249,7 @@ final class YsmObservations {
                             .getKey(p.getPassengers().getFirst().getType())
                             .toString());
         }
-        for (EquipmentSlot slot : EquipmentSlot.values()) {
-            String name = slot.getName();
-            ItemStack stack = p.getItemBySlot(slot);
-            q.put("has_" + name, !stack.isEmpty());
-            q.put(name + "_item", BuiltInRegistries.ITEM.getKey(stack.getItem()).toString());
-            q.put(name + "_category", category(stack));
-            q.put(name + "_use", stack.getUseAnimation().name().toLowerCase(Locale.ROOT));
-            q.put(
-                    name + "_tags",
-                    BuiltInRegistries.ITEM
-                            .wrapAsHolder(stack.getItem())
-                            .tags()
-                            .map(tag -> tag.location().toString())
-                            .toList());
-        }
-        q.put(
-                "equipment_count",
-                Arrays.stream(EquipmentSlot.values())
-                        .filter(slot -> slot.isArmor() && !p.getItemBySlot(slot).isEmpty())
-                        .count());
+        q.put("equipment_count", (long) YsmEquipmentObservations.sample(q, p));
         q.put("has_helmet", q.get("has_head"));
         q.put("has_chest_plate", q.get("has_chest"));
         q.put("has_leggings", q.get("has_legs"));
@@ -382,21 +360,7 @@ final class YsmObservations {
     }
 
     static String category(ItemStack stack) {
-        if (stack.isEmpty()) return "empty";
-        if (stack.is(Items.CROSSBOW))
-            return CrossbowItem.isCharged(stack) ? "charged_crossbow" : "crossbow";
-        if (stack.is(Items.TRIDENT)) return "trident";
-        if (stack.getUseAnimation() == ItemUseAnimation.SPEAR) return "lance";
-        if (stack.is(Items.SPLASH_POTION) || stack.is(Items.LINGERING_POTION))
-            return "throwable_potion";
-        for (String type : List.of("sword", "axe", "pickaxe", "shovel", "hoe"))
-            if (stack.is(
-                    TagKey.create(
-                            Registries.ITEM,
-                            Identifier.withDefaultNamespace(
-                                    type.equals("sword") ? "swords" : type + "s")))) return type;
-        String item = BuiltInRegistries.ITEM.getKey(stack.getItem()).getPath();
-        return item;
+        return YsmEquipmentObservations.category(stack);
     }
 
     Object query(String namespace, String name, List<Object> args) {

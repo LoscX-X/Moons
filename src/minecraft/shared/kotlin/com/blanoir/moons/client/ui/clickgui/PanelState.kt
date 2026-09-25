@@ -82,8 +82,10 @@ internal fun formatValue(value: Double): String =
     if (value == value.roundToInt().toDouble()) value.roundToInt().toString()
     else NumberText.trimmedDecimal(value, 6)
 
-internal fun isPotentialNumber(value: String): Boolean =
-    value.matches(Regex("^[+-]?(?:\\d*(?:\\.\\d*)?)(?:[eE][+-]?\\d*)?$"))
+private val potentialNumberPattern = Regex("^[+-]?(?:\\d*(?:\\.\\d*)?)(?:[eE][+-]?\\d*)?$")
+private val completeColorPattern = Regex("^#[0-9a-fA-F]{6}$")
+
+internal fun isPotentialNumber(value: String): Boolean = value.matches(potentialNumberPattern)
 
 internal fun parseColor(value: String): Color =
     runCatching {
@@ -96,4 +98,4 @@ internal fun parseColor(value: String): Color =
         }
         .getOrDefault(PanelStyle.dim)
 
-internal fun isCompleteColor(value: String): Boolean = value.matches(Regex("^#[0-9a-fA-F]{6}$"))
+internal fun isCompleteColor(value: String): Boolean = value.matches(completeColorPattern)

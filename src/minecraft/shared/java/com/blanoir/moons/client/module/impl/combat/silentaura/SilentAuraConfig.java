@@ -22,6 +22,7 @@ import java.util.Set;
 /** Settings only. Runtime state deliberately lives outside this class. */
 public final class SilentAuraConfig {
     private static final BooleanSetting ENABLED = bool("silentaura.enabled", false);
+    private static final BooleanSetting DISABLE_ON_DEATH = bool("silentaura.disableOnDeath", true);
     private static final BooleanSetting REQUIRE_LEFT_CLICK =
             bool("silentaura.requireLeftClick", true);
     private static final BooleanSetting BLOCK = bool("silentaura.block", true);
@@ -141,6 +142,13 @@ public final class SilentAuraConfig {
     private static final class Descriptors {
         private static final ModuleRegistry.Setting[] ALL = {
             COMBAT_MODE.describe("combat_mode", "Combat mode", SilentAura::setCombatMode),
+            DISABLE_ON_DEATH.describe(
+                    "disable_on_death",
+                    "Disable on death",
+                    (client, value) -> {
+                        DISABLE_ON_DEATH.set(value);
+                        return 1;
+                    }),
             REQUIRE_LEFT_CLICK.describe(
                     "require_left_click",
                     "Require left click",
@@ -409,6 +417,10 @@ public final class SilentAuraConfig {
 
     public static boolean enabled() {
         return ENABLED.get();
+    }
+
+    public static boolean disableOnDeath() {
+        return DISABLE_ON_DEATH.get();
     }
 
     public static boolean requireLeftClick() {

@@ -15,6 +15,28 @@ import java.util.*;
 
 /** Molang bindings whose instance state always belongs to one parsed model expression. */
 public final class RuntimeBindings {
+    private static final Set<String> CONTROL_ACTIONS =
+            Set.of(
+                    "death",
+                    "riptide",
+                    "sleep",
+                    "swim",
+                    "climb",
+                    "climbing",
+                    "ladder_up",
+                    "ladder_down",
+                    "ladder_stillness",
+                    "fly",
+                    "elytra_fly",
+                    "swim_stand",
+                    "attacked",
+                    "jump",
+                    "sneak",
+                    "sneaking",
+                    "run",
+                    "walk",
+                    "idle");
+
     public static IValue parse(String source, boolean script) {
         var scoped = new ScopedVariableBinding();
         var controller = new ControllerVariableBinding();
@@ -140,7 +162,12 @@ public final class RuntimeBindings {
         };
     }
 
-    private record Observation(String namespace, String name) implements Variable, Function {
+    private record Observation(String namespace, String name, String qualifiedName)
+            implements Variable, Function {
+        private Observation(String namespace, String name) {
+            this(namespace, name, namespace + "." + name);
+        }
+
         @Override
         public Object evaluate(ExecutionContext<?> e) {
             return evaluate(e, Function.EMPTY_ARGUMENT);
@@ -176,8 +203,8 @@ public final class RuntimeBindings {
             }
             if (ctx.entity() instanceof LocalRuntime.ObservationView view) {
                 if (args.size() == 0) {
-                    if (view.values().containsKey(namespace + "." + name))
-                        return view.values().get(namespace + "." + name);
+                    if (view.values().containsKey(qualifiedName))
+                        return view.values().get(qualifiedName);
                     if (view.values().containsKey(name)) return view.values().get(name);
                 }
                 List<Object> values = new ArrayList<>(args.size());
@@ -219,29 +246,9 @@ public final class RuntimeBindings {
             }
             if (namespace.equals("ctrl")) {
                 if (name.equals("playing_extra_animation")) return !rt.extra().isEmpty();
-                if (List.of(
-                                "death",
-                                "riptide",
-                                "sleep",
-                                "swim",
-                                "climb",
-                                "climbing",
-                                "ladder_up",
-                                "ladder_down",
-                                "ladder_stillness",
-                                "fly",
-                                "elytra_fly",
-                                "swim_stand",
-                                "attacked",
-                                "jump",
-                                "sneak",
-                                "sneaking",
-                                "run",
-                                "walk",
-                                "idle")
-                        .contains(name)) return rt.action().equals(name);
+                if (CONTROL_ACTIONS.contains(name)) return rt.action().equals(name);
             }
-            Object value = rt.observation(namespace + "." + name);
+            Object value = rt.observation(qualifiedName);
             if (value == null) value = rt.observation(name);
             if (value != null && args.size() == 0) return value;
             List<Object> values = new ArrayList<>(args.size());

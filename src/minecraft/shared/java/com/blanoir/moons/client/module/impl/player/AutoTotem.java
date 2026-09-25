@@ -4,9 +4,8 @@
  * Switches a
  * totem of undying into the offhand once when a new danger episode begins.
  * The selected totem remains in the offhand after the player becomes safe.
- * Danger includes low health (+absorption), missing armor,
- * being burrowed/in a hole with a lower safety threshold, predicted explosion
- * damage from entities or beds/respawn anchors, and predicted fall damage.
+ * Defaults to lethal damage predicted within ten ticks. Legacy health/armor
+ * thresholds are available only through the optional health fallback.
  */
 package com.blanoir.moons.client.module.impl.player;
 
@@ -17,6 +16,7 @@ import com.blanoir.moons.client.config.settings.IntSetting;
 import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.utils.inventory.InventoryClickFailure;
 import com.blanoir.moons.client.utils.prediction.DamagePrediction;
+import com.blanoir.moons.client.utils.prediction.LandingPrediction;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
@@ -24,6 +24,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.util.Mth;
+import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.Pose;
@@ -68,8 +69,14 @@ public final class AutoTotem {
     private static final IntSetting HEALTH_THRESHOLD =
             new IntSetting.Builder()
                     .name("autototem.threshold")
-                    .defaultValue(14)
+                    .defaultValue(8)
                     .range(0, 20)
+                    .build();
+
+    private static final BooleanSetting HEALTH_FALLBACK =
+            new BooleanSetting.Builder()
+                    .name("autototem.healthfallback")
+                    .defaultValue(false)
                     .build();
 
     private static final IntSetting SWITCH_DELAY_MS =
@@ -80,7 +87,7 @@ public final class AutoTotem {
                     .build();
 
     private static final BooleanSetting MISSING_ARMOR =
-            new BooleanSetting.Builder().name("autototem.missingarmor").defaultValue(true).build();
+            new BooleanSetting.Builder().name("autototem.missingarmor").defaultValue(false).build();
 
     private static final BooleanSetting SAFETY_ENABLED =
             new BooleanSetting.Builder().name("autototem.safety").defaultValue(true).build();
@@ -120,6 +127,8 @@ public final class AutoTotem {
                     .build();
 
     private static BlockPos[] explosionSphere;
+    private static final AutoTotemDanger DAMAGE_HISTORY = new AutoTotemDanger();
+    private static String predictionReason = "none";
 
     private static boolean dangerEpisodeHandled;
     private static boolean offhandTotemObserved;
@@ -168,6 +177,14 @@ public final class AutoTotem {
             return;
         }
 
+        if (ENABLED.get()) {
+            DAMAGE_HISTORY.sample(
+                    client.player.tickCount,
+                    client.player.getHealth(),
+                    client.player.getAbsorptionAmount(),
+                    client.player.hurtTime);
+        }
+
         // Once a pickup sequence starts, finish it even if the module is
         // toggled off mid-swap. Leaving an item on the carried cursor is worse
         // than completing the already-authorized inventory action.
@@ -185,7 +202,7 @@ public final class AutoTotem {
             return;
         }
 
-        boolean danger = healthBelowThreshold(client);
+        boolean danger = predictedDanger(client);
         boolean offhandHasTotem =
                 client.player.getOffhandItem().getItem() == Items.TOTEM_OF_UNDYING;
         boolean equippedTotemWasRemoved = offhandTotemObserved && !offhandHasTotem;
@@ -393,41 +410,41 @@ public final class AutoTotem {
         return client.player.getHealth() + client.player.getAbsorptionAmount();
     }
 
-    /**
-     * Returns true when the player is
-     * in enough danger to warrant a totem.
-     */
-    private static boolean healthBelowThreshold(Minecraft client) {
-        if (MISSING_ARMOR.get() && hasMissingArmor(client)) {
-            return true;
-        }
-
+    private static boolean predictedDanger(Minecraft client) {
+        predictionReason = "none";
         float health = playerHealth(client);
-        boolean safetyOperating = SAFETY_ENABLED.get() && (isBurrowed(client) || isInHole(client));
+        boolean fallback = HEALTH_FALLBACK.get();
+        int threshold = HEALTH_THRESHOLD.get();
+        if (fallback) {
+            if (SAFETY_ENABLED.get() && (isBurrowed(client) || isInHole(client))) {
+                threshold = Math.min(threshold, SAFE_THRESHOLD.get());
+            }
+            if (health <= threshold || (MISSING_ARMOR.get() && hasMissingArmor(client))) {
+                predictionReason = "health/armor fallback";
+                return true;
+            }
+        }
         float allowedDamage =
-                health - (safetyOperating ? SAFE_THRESHOLD.get() : HEALTH_THRESHOLD.get());
-
-        if (allowedDamage <= 0.0F) {
-            return true;
-        }
-
-        if (!SUBTRACT_CALCULATED_DAMAGE.get()) {
-            allowedDamage = health;
-        }
-
+                AutoTotemDanger.damageBudget(
+                        health, fallback, SUBTRACT_CALCULATED_DAMAGE.get(), threshold);
         float calculatedDamage = explosionDamageFromEntities(client, allowedDamage);
-        if (calculatedDamage >= allowedDamage) {
+        if (AutoTotemDanger.lethal(allowedDamage, calculatedDamage)) {
+            predictionReason = "explosion <=10 ticks";
             return true;
         }
-
         calculatedDamage =
                 Math.max(calculatedDamage, explosionDamageFromBlocks(client, allowedDamage));
-        if (calculatedDamage >= allowedDamage) {
+        if (AutoTotemDanger.lethal(allowedDamage, calculatedDamage)) {
+            predictionReason = "instant explosive block";
             return true;
         }
-
+        // History may describe the same explosion: never count it twice.
+        calculatedDamage =
+                Math.max(calculatedDamage, DAMAGE_HISTORY.incomingDamage(client.player.tickCount));
         calculatedDamage += fallDamage(client);
-        return calculatedDamage >= allowedDamage;
+        if (!AutoTotemDanger.lethal(allowedDamage, calculatedDamage)) return false;
+        predictionReason = "fall/repeated damage <=10 ticks";
+        return true;
     }
 
     private static boolean hasMissingArmor(Minecraft client) {
@@ -472,6 +489,7 @@ public final class AutoTotem {
 
         float maxDamage = 0.0F;
         for (Entity entity : client.level.entitiesForRendering()) {
+            if (!AutoTotemDanger.withinWindow(DamagePrediction.explosionTicks(entity))) continue;
             maxDamage =
                     Math.max(maxDamage, DamagePrediction.explosionDamageFromEntity(client, entity));
             if (maxDamage >= allowedDamage) {
@@ -523,7 +541,16 @@ public final class AutoTotem {
 
     private static float fallDamage(Minecraft client) {
         Player player = client.player;
-        if (player == null || !PREDICT_FALL_DAMAGE.get() || player.fallDistance <= 3.0F) {
+        if (player == null
+                || !PREDICT_FALL_DAMAGE.get()
+                || player.onGround()
+                || player.getDeltaMovement().y >= 0
+                || player.isInWater()
+                || player.isInLava()
+                || player.onClimbable()
+                || player.getAbilities().flying
+                || player.hasEffect(MobEffects.LEVITATION)
+                || player.hasEffect(MobEffects.SLOW_FALLING)) {
             return 0.0F;
         }
 
@@ -531,7 +558,19 @@ public final class AutoTotem {
             return 0.0F;
         }
 
-        return DamagePrediction.fallDamage(client, player);
+        // Glide lift depends on future steering: only trust an imminent contact in that state.
+        var impact =
+                LandingPrediction.fallImpact(
+                        player, player.isFallFlying() ? 1 : AutoTotemDanger.HORIZON_TICKS);
+        if (impact == null) return 0;
+        BlockPos landing = LandingPrediction.supportBlock(player, impact.box());
+        float multiplier = DamagePrediction.fallDamageMultiplier(client, landing);
+        if (landing != null
+                && client.level
+                        .getBlockState(landing)
+                        .is(net.minecraft.world.level.block.Blocks.SLIME_BLOCK)
+                && !player.isSuppressingBounce()) multiplier = 0;
+        return DamagePrediction.fallDamage(player, impact.fallDistance(), multiplier);
     }
 
     private static BlockPos[] explosionSphere() {
@@ -577,6 +616,8 @@ public final class AutoTotem {
     }
 
     private static void resetState() {
+        DAMAGE_HISTORY.reset();
+        predictionReason = "none";
         FAILURE.reset();
         com.blanoir.moons.client.utils.inventory.InventoryClicks.release(INVENTORY_OWNER);
         dangerEpisodeHandled = false;
@@ -596,7 +637,11 @@ public final class AutoTotem {
                 client,
                 "AutoTotem: "
                         + statusText()
-                        + ", threshold: "
+                        + ", prediction: 10 ticks (~0.5s at 20 TPS), reason: "
+                        + predictionReason
+                        + ", healthFallback: "
+                        + toggleText(HEALTH_FALLBACK.get())
+                        + ", fallback threshold (HP): "
                         + HEALTH_THRESHOLD.get()
                         + ", safeThreshold: "
                         + SAFE_THRESHOLD.get()
@@ -613,11 +658,7 @@ public final class AutoTotem {
                         + ", fallDamage: "
                         + toggleText(PREDICT_FALL_DAMAGE.get())
                         + ", oneShot: enabled, keepOffhand: enabled"
-                        + ". Usage: .moons autototem <enable|disable|threshold 0-20|safethreshold 0-20"
-                        + "|missingarmor enable|disable|safety enable|disable|subtractdamage enable|disable"
-                        + "|explosionentities enable|disable|explosionblocks enable|disable"
-                        + "|falldamage enable|disable|fallignoreelytra enable|disable"
-                        + "|switchdelay ms>");
+                        + ". Use module settings or .moons autototem <setting_id> <value>.");
         return 1;
     }
 
@@ -635,6 +676,12 @@ public final class AutoTotem {
     public static int setThreshold(Minecraft client, int value) {
         HEALTH_THRESHOLD.set(value);
         ClientChat.send(client, "AutoTotem threshold set to " + HEALTH_THRESHOLD.get() + ".");
+        return 1;
+    }
+
+    public static int setHealthFallback(Minecraft client, boolean value) {
+        HEALTH_FALLBACK.set(value);
+        ClientChat.send(client, "AutoTotem healthFallback " + toggleText(value) + ".");
         return 1;
     }
 

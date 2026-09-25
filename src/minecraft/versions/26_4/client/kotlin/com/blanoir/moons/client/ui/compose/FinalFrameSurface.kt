@@ -1,23 +1,13 @@
 package com.blanoir.moons.client.ui.compose
 
-import com.blanoir.moons.client.access.GameAccess
-import com.blanoir.moons.client.access.MinecraftClientAccess
+import com.blanoir.moons.client.render.VisualPresentation
 import com.mojang.blaze3d.systems.RenderSystem
 import com.mojang.renderpearl.api.GpuFormat
-import com.mojang.renderpearl.api.pipeline.BlendFunction
-import com.mojang.renderpearl.api.pipeline.ColorTargetState
-import com.mojang.blaze3d.pipeline.RenderPipeline
-import com.mojang.renderpearl.api.pipeline.ShaderType
-import com.mojang.renderpearl.api.textures.FilterMode
 import com.mojang.renderpearl.api.textures.GpuTexture
 import com.mojang.renderpearl.api.textures.GpuTextureView
 import java.nio.ByteBuffer
-import java.util.Optional
 import kotlin.math.ceil
 import kotlin.math.floor
-import net.minecraft.client.Minecraft
-import net.minecraft.client.renderer.RenderPipelines
-import net.minecraft.resources.Identifier
 import org.jetbrains.skia.Canvas
 import org.jetbrains.skia.ColorAlphaType
 import org.jetbrains.skia.ColorSpace
@@ -47,8 +37,8 @@ internal class FinalFrameSurface : AutoCloseable {
         draw: (Canvas) -> Unit,
     ) {
         if (frameWidth <= 0 || frameHeight <= 0) return
-        val target = MinecraftClientAccess.mainRenderTarget(Minecraft.getInstance())
-        val colorView = target.colorTextureView ?: return
+        val target = VisualPresentation.outputTarget() ?: return
+        if (target.width != frameWidth || target.height != frameHeight) return
         if (surface == null || width != frameWidth || height != frameHeight) {
             close()
             width = frameWidth
@@ -102,25 +92,16 @@ internal class FinalFrameSurface : AutoCloseable {
             hasFrame = true
         }
         if (content.isEmpty) return
-        encoder.createRenderPass({ "Moons Skia overlay" }, colorView, Optional.empty()).use { pass
-            ->
-            pass.setPipeline(RenderSystem.getCompiledPipeline(pipeline))
-            RenderSystem.bindDefaultUniforms(pass)
-            pass.setUniform(
-                "InSampler",
-                view!!,
-                RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST),
-            )
-            // The screen-quad UVs and texture upload use the same target coordinates.
-            // Never sample stale or uninitialized texels outside this frame's content.
-            pass.enableScissor(
-                content.left,
-                height - content.bottom,
-                content.width,
-                content.height,
-            )
-            pass.draw(3, 1, 0, 0)
-        }
+        // The upload and screen quad share target coordinates. Scissor prevents sampling
+        // stale pixels outside this frame's raster content.
+        VisualPresentation.blend(
+            view!!,
+            target,
+            content.left,
+            height - content.bottom,
+            content.width,
+            content.height,
+        )
     }
 
     private fun rasterizeFrame(draw: (Canvas) -> Unit) {
@@ -214,27 +195,6 @@ internal class FinalFrameSurface : AutoCloseable {
 
         companion object {
             val EMPTY = PixelBounds(0, 0, 0, 0)
-        }
-    }
-
-    companion object {
-        private val pipeline by lazy {
-            val vanilla = RenderPipelines.ENTITY_OUTLINE_BLIT
-            val builder =
-                RenderPipeline.builder()
-                    .withLocation(Identifier.fromNamespaceAndPath("moons", "pipeline/skia_overlay"))
-                    .withVertexShader(vanilla.shaders[ShaderType.VERTEX]!!)
-                    .withFragmentShader(vanilla.shaders[ShaderType.FRAGMENT]!!)
-                    .withPrimitiveTopology(vanilla.primitiveTopology)
-                    .withColorTargetState(
-                        ColorTargetState(
-                            Optional.of(BlendFunction.TRANSLUCENT_PREMULTIPLIED_ALPHA),
-                            GpuFormat.RGBA8_UNORM,
-                            7,
-                        )
-                    )
-            vanilla.bindGroupLayouts.forEach { builder.withBindGroupLayout(it) }
-            GameAccess.registerPipeline(builder.build())
         }
     }
 }

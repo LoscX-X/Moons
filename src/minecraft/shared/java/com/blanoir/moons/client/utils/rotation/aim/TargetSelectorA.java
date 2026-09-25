@@ -1,8 +1,8 @@
 package com.blanoir.moons.client.utils.rotation.aim;
 
 import com.blanoir.moons.client.management.targeting.Targeting;
+import com.blanoir.moons.client.utils.combat.CombatGeometry;
 import com.blanoir.moons.client.utils.combat.CombatReach;
-import com.blanoir.moons.client.utils.entity.EntityDistance;
 import com.blanoir.moons.client.utils.math.MathUtils;
 
 import net.minecraft.client.Minecraft;
@@ -59,7 +59,8 @@ public final class TargetSelectorA {
                 candidate(parameters, client, locked, referenceLook, attackRange, scanRange, true);
         if (lockedCandidate != null) candidates.add(lockedCandidate);
 
-        AABB searchBox = client.player.getBoundingBox().inflate(scanRange + 1.0D);
+        AABB searchBox =
+                client.player.getBoundingBox().inflate(scanRange + CombatGeometry.searchPadding());
         for (LivingEntity entity :
                 client.level.getEntitiesOfClass(
                         LivingEntity.class,
@@ -103,7 +104,7 @@ public final class TargetSelectorA {
             double scanRange,
             boolean locked) {
         if (!trackingEligible(parameters, client, entity, scanRange)) return null;
-        double distanceSquared = EntityDistance.squaredToEntity(client, entity);
+        double distanceSquared = CombatGeometry.distanceSquared(client, entity);
         Vec3 point =
                 distanceSquared <= attackRange * attackRange
                         ? visibleAimPoint(parameters, client, entity, referenceLook, attackRange)
@@ -122,12 +123,12 @@ public final class TargetSelectorA {
         if (!Targeting.isConfiguredTarget(
                 client, entity, parameters.targetPlayers(), false, parameters.targetEntityTypes()))
             return false;
-        if (EntityDistance.squaredToEntity(client, entity) > range * range) return false;
+        if (CombatGeometry.distanceSquared(client, entity) > range * range) return false;
         // FOV is a camera-space ownership boundary, not merely an acquisition
         // hint.  Recheck it for the cached and already locked target as well;
         // otherwise one successful acquisition turns every configured FOV into
         // a persistent 360-degree lock.
-        Vec3 center = entity.getBoundingBox().getCenter();
+        Vec3 center = CombatGeometry.box(client, entity).getCenter();
         return MathUtils.withinFov(viewAngle(parameters, client, center), parameters.fov());
     }
 
@@ -153,7 +154,7 @@ public final class TargetSelectorA {
     }
 
     public static double angle(Parameters parameters, Minecraft client, LivingEntity entity) {
-        return viewAngle(parameters, client, entity.getBoundingBox().getCenter());
+        return viewAngle(parameters, client, CombatGeometry.box(client, entity).getCenter());
     }
 
     public static int typeRank(Parameters parameters, Minecraft client, LivingEntity entity) {
@@ -186,7 +187,7 @@ public final class TargetSelectorA {
     public static Vec3 visibleAimPoint(
             Parameters parameters, Minecraft client, LivingEntity target, Vec3 look, double range) {
         if (!validClient(parameters, client) || target == null || range <= 0.0D) return null;
-        AABB aimBox = target.getBoundingBox();
+        AABB aimBox = CombatGeometry.box(client, target);
         return AimPointsC.findBestVisibleSurfacePoint(
                 client,
                 aimBox,

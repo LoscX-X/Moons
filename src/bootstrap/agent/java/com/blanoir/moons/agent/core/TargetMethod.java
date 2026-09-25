@@ -62,6 +62,7 @@ public record TargetMethod(
         FLOAT_RETURN,
         FLOAT_RETURN_ARG,
         FLOAT_RETURN_OBJECT_ARG,
+        FLOAT_ARGUMENTS,
         FLOAT_HEAD_BOOLEAN_GATE,
         BOOLEAN_RETURN_ARG,
         OBJECT_RETURN,

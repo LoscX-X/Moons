@@ -56,10 +56,89 @@ final class YsmRuntimeVerification {
         verifyHeadTracking();
         verifyAuthoredHeadTracking();
         verifyEquipmentRules();
+        verifyTaggedAnimationOrder();
         verifyWeaponAssemblyAndPredicates();
         verifyTimelineAndPhysics();
         System.out.println(
                 "YSM_RUNTIME_VERIFIED bindings=null+functions+struct controllers=order events=init+update parameters=persistence effects=ownership");
+    }
+
+    private static void verifyTaggedAnimationOrder() throws Exception {
+        var raw = fixture();
+        var animations = raw.mainEntity.animationFiles.get("main").animations;
+        animations.clear();
+        for (String name :
+                List.of(
+                        "idle",
+                        "head#example:first",
+                        "head#example:second",
+                        "hold_mainhand#example:first",
+                        "hold_mainhand#example:second",
+                        "head#example:first#nested"))
+            animations.put(name, animation(name, "root", 0, 10, 0));
+        try (var model = new LocalYsmModel(raw)) {
+            var rt = model.runtime();
+            var rulesField = LocalRuntime.class.getDeclaredField("rules");
+            rulesField.setAccessible(true);
+            Object rules = rulesField.get(rt);
+            var tagged = rules.getClass().getDeclaredMethod("tagged", String.class, String.class);
+            tagged.setAccessible(true);
+            double time = 0;
+            for (boolean reset : new boolean[] {false, true}) {
+                if (reset) model.resetAnimation();
+                for (List<String> tags :
+                        List.of(
+                                List.of("example:second", "example:first"),
+                                List.of("example:second"),
+                                List.of("example:first#nested"),
+                                List.of("example:missing"),
+                                List.of("example:first"),
+                                List.<String>of())) {
+                    model.frame(
+                            time += .5,
+                            Map.of("has_head", true, "head_tags", tags, "mainhand_tags", tags),
+                            "");
+                    for (var entry :
+                            Map.of(
+                                            "head",
+                                            "player.armor_head",
+                                            "hold_mainhand",
+                                            "player.hold_mainhand")
+                                    .entrySet()) {
+                        String prefix = entry.getKey() + "#";
+                        String expected =
+                                rt.animationNames().stream()
+                                        .filter(
+                                                name ->
+                                                        name.startsWith(prefix)
+                                                                && tags.contains(
+                                                                        name.substring(
+                                                                                prefix.length())))
+                                        .findFirst()
+                                        .orElse(null);
+                        Object actual =
+                                tagged.invoke(
+                                        rules,
+                                        entry.getKey(),
+                                        entry.getKey().equals("head")
+                                                ? "head_tags"
+                                                : "mainhand_tags");
+                        if (!Objects.equals(expected, actual))
+                            throw new AssertionError(
+                                    "Tag index changed encounter order or reset behavior: "
+                                            + entry.getKey()
+                                            + " tags="
+                                            + tags
+                                            + " expected="
+                                            + expected
+                                            + " actual="
+                                            + actual);
+                    }
+                }
+            }
+        }
+        System.out.println(
+                "YSM_TAG_INDEX_VERIFIED order=original tags=live empty+missing+nested reset=stable");
     }
 
     private static void verifyHeadTracking() throws Exception {

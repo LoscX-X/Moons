@@ -12,6 +12,7 @@ public final class YsmPerformanceVerification {
     private static volatile LocalYsmModel.Mesh sink;
 
     static void verify(Path directory) throws Exception {
+        YsmMeshBatchVerification.verify();
         verifyMaterialPartition();
         RawYsmModel raw = fixture();
         raw.mainEntity.mainModel.bones.get(1).name = "ysmGlowAccent";
@@ -262,6 +263,60 @@ public final class YsmPerformanceVerification {
                     sink.vertexCount(),
                     elapsed / 1_000_000d,
                     bytes / 1000);
+        }
+        benchmarkMotion();
+        YsmMeshBatchVerification.benchmark();
+    }
+
+    private static void benchmarkMotion() throws Exception {
+        var bean = (com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean();
+        bean.setThreadAllocatedMemoryEnabled(true);
+        for (boolean geometry : new boolean[] {true, false}) {
+            try (var model = new LocalYsmModel(fixture())) {
+                model.prepareTexture("default");
+                double[] elapsed = new double[5];
+                long[] allocated = new long[5];
+                int frame = 0;
+                for (int sample = -1; sample < 5; sample++) {
+                    long bytes = bean.getThreadAllocatedBytes(Thread.currentThread().threadId());
+                    long start = System.nanoTime();
+                    for (int i = 0; i < 1000; i++, frame++) {
+                        // Animated roots force vertex transforms on every frame; both modes
+                        // include identical pose override setup in their reported allocation.
+                        model.poseOverrides(
+                                Map.of(
+                                        "leftArm",
+                                        new YsmPose(
+                                                0,
+                                                0,
+                                                0,
+                                                frame % 180,
+                                                frame % 90,
+                                                0,
+                                                1,
+                                                1,
+                                                1,
+                                                false)));
+                        if (geometry) sink = model.frame(frame / 60d, Map.of(), "");
+                        else model.updatePose(frame / 60d, Map.of(), "");
+                    }
+                    if (sample >= 0) {
+                        elapsed[sample] = (System.nanoTime() - start) / 1_000_000d;
+                        allocated[sample] =
+                                (bean.getThreadAllocatedBytes(Thread.currentThread().threadId())
+                                                - bytes)
+                                        / 1000;
+                    }
+                }
+                Arrays.sort(elapsed);
+                Arrays.sort(allocated);
+                System.out.printf(
+                        Locale.ROOT,
+                        "YSM_MOTION_BENCHMARK geometry=%s vertices=4096 median-us/frame=%.3f bytes/frame=%d samples=5%n",
+                        geometry,
+                        elapsed[2],
+                        allocated[2]);
+            }
         }
     }
 

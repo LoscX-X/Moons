@@ -9,7 +9,10 @@ public final class ModuleCatalog {
     public static void register() {
         ModuleRegistry.add(Combat.autoClicker());
         ModuleRegistry.add(Combat.autoSpear());
+        ModuleRegistry.add(Combat.autoMace());
         ModuleRegistry.add(Combat.reach());
+        ModuleRegistry.add(Combat.misplace());
+        ModuleRegistry.add(Combat.hitSelect());
         ModuleRegistry.add(Combat.sprintReset());
         ModuleRegistry.add(Combat.silentAura());
         ModuleRegistry.add(Combat.autoBlock());
@@ -66,6 +69,7 @@ public final class ModuleCatalog {
         ModuleRegistry.add(Misc.premiumCheck());
         ModuleRegistry.add(Misc.staticFov());
         ModuleRegistry.add(Misc.armorHide());
+        ModuleRegistry.add(Misc.freeLook());
         ModuleRegistry.add(Misc.antiNick());
         ModuleRegistry.add(Misc.antiBot());
         ModuleRegistry.add(Misc.aimCollect());

@@ -1,7 +1,7 @@
 package com.blanoir.moons.client.render.world;
 
-import com.blanoir.moons.client.access.MinecraftClientAccess;
 import com.blanoir.moons.client.config.MoonsConfig;
+import com.blanoir.moons.client.render.VisualRenderTargets;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.blaze3d.vertex.VertexSorting;
@@ -45,7 +45,8 @@ public final class WorldOverlayBuffer {
             String label,
             Consumer<VertexConsumer> writer,
             boolean sortQuads) {
-        var mainTarget = MinecraftClientAccess.mainRenderTarget(client);
+        var mainTarget = VisualRenderTargets.worldTarget(client);
+        if (mainTarget == null) return;
         var colorView = mainTarget.getColorTextureView();
         var format = pipeline.getVertexFormatBinding(0);
         if (colorView == null || format == null) return;

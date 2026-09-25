@@ -1,8 +1,8 @@
 package com.blanoir.moons.client.utils.rotation.aim;
 
 import com.blanoir.moons.client.utils.client.ClientReady;
+import com.blanoir.moons.client.utils.combat.CombatGeometry;
 import com.blanoir.moons.client.utils.combat.CombatReach;
-import com.blanoir.moons.client.utils.entity.EntityDistance;
 import com.blanoir.moons.client.utils.raytrace.RaytraceUtils;
 
 import net.minecraft.client.Minecraft;
@@ -40,7 +40,7 @@ public final class AimPointsD {
     public static Vec3 trackingAimPoint(
             Context context, Minecraft client, LivingEntity target, Vec3 look) {
         Vec3 eye = client.player.getEyePosition();
-        AABB box = target.getBoundingBox();
+        AABB box = CombatGeometry.box(client, target);
         double trackingRange =
                 inAttackRange(context, client, target)
                         ? attackRange(context, client)
@@ -51,7 +51,7 @@ public final class AimPointsD {
             double attackRange = attackRange(context, client);
             boolean attackReach =
                     attackRange > 0.0D
-                            && EntityDistance.squaredToEntity(client, target)
+                            && CombatGeometry.distanceSquared(client, target)
                                     <= attackRange * attackRange;
             double activeRange = attackReach ? attackRange : trackingRange;
             if (eye.distanceToSqr(preferred) <= activeRange * activeRange
@@ -119,7 +119,7 @@ public final class AimPointsD {
     public static Vec3 visibleAimPoint(
             Context context, Minecraft client, LivingEntity target, Vec3 look, double range) {
         if (!ClientReady.world(client) || target == null || range <= 0.0D) return null;
-        AABB aimBox = target.getBoundingBox();
+        AABB aimBox = CombatGeometry.box(client, target);
         return AimPointsC.findBestVisibleSurfacePoint(
                 client,
                 aimBox,
@@ -141,13 +141,13 @@ public final class AimPointsD {
         if (look == null || look.lengthSqr() <= 1.0E-9D || box.contains(eye)) return null;
         double attackRange = attackRange(context, client);
         if (attackRange <= 0.0D
-                || EntityDistance.squaredToEntity(client, target) > attackRange * attackRange) {
+                || CombatGeometry.distanceSquared(client, target) > attackRange * attackRange) {
             return null;
         }
 
         Vec3 direction = look.normalize();
         RaytraceUtils.EntityRayState state =
-                RaytraceUtils.traceEntity(
+                CombatGeometry.traceEntity(
                         client,
                         eye,
                         direction,
@@ -205,7 +205,7 @@ public final class AimPointsD {
     private static boolean inAttackRange(Context context, Minecraft client, LivingEntity target) {
         if (!ClientReady.world(client) || target == null) return false;
         double range = attackRange(context, client);
-        return range > 0.0D && EntityDistance.squaredToEntity(client, target) <= range * range;
+        return range > 0.0D && CombatGeometry.distanceSquared(client, target) <= range * range;
     }
 
     private static double attackRange(Context context, Minecraft client) {

@@ -32,12 +32,8 @@ public final class TargetSelectorE {
         targets.sort(
                 Comparator.comparingDouble(
                                 (BlockTarget target) ->
-                                        Vec3.atCenterOf(target.support())
-                                                .distanceToSqr(desiredCenter))
-                        .thenComparingDouble(
-                                target ->
-                                        Vec3.atCenterOf(target.placePos())
-                                                .distanceToSqr(desiredCenter))
+                                        target.supportDistanceSquared(desiredCenter))
+                        .thenComparingDouble(target -> target.placeDistanceSquared(desiredCenter))
                         .thenComparingInt(target -> target.face() == Direction.UP ? 0 : 1));
         for (BlockTarget target : targets) {
             BlockAim aim =

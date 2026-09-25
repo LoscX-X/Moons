@@ -127,6 +127,7 @@ runs/
 /decompiled/
 
 # Local development notes and compiled binaries are not repository sources
+# Module implementation/design/algorithm/verification notes belong in dev-docs, not docs.
 /dev-docs/
 /.workbuddy-ai/
 /.codex/

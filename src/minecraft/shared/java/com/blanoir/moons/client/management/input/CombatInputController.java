@@ -45,7 +45,7 @@ public final class CombatInputController {
     private static boolean initialized;
     private static boolean syntheticAttackDown;
     private static int syntheticAttackTicks;
-    private static Entity pendingAttackTarget;
+    private static EntityHitResult pendingAttackTarget;
     private static boolean invokingTargetAttack;
     private static long completedTargetAttacks;
 
@@ -303,10 +303,18 @@ public final class CombatInputController {
      */
     public static boolean attackTargetNow(
             Minecraft client, Entity target, boolean forceTargetOverride) {
+        return target != null
+                && attackTargetNow(client, new EntityHitResult(target), forceTargetOverride);
+    }
+
+    /** Preserve the validated contact point for vanilla's weapon-specific AttackRange check. */
+    public static boolean attackTargetNow(
+            Minecraft client, EntityHitResult targetHit, boolean forceTargetOverride) {
+        Entity target = targetHit == null ? null : targetHit.getEntity();
         if (!valid(client) || target == null || !target.isAlive()) return false;
         boolean cameraAlreadyTargetsEntity =
                 client.hitResult instanceof EntityHitResult hit && hit.getEntity() == target;
-        pendingAttackTarget = forceTargetOverride || !cameraAlreadyTargetsEntity ? target : null;
+        pendingAttackTarget = forceTargetOverride || !cameraAlreadyTargetsEntity ? targetHit : null;
         if (!pressAttack(client, client.options.keyAttack)) {
             pendingAttackTarget = null;
             return false;
@@ -336,10 +344,24 @@ public final class CombatInputController {
         return invokingTargetAttack;
     }
 
+    /** The target that startAttack will consume, available to cancellable PRE listeners. */
+    public static Entity attackInputTarget(Minecraft client) {
+        Entity target = pendingAttackTarget == null ? null : pendingAttackTarget.getEntity();
+        if (target == null && client != null && client.hitResult instanceof EntityHitResult hit)
+            target = hit.getEntity();
+        return client != null
+                        && client.level != null
+                        && target != null
+                        && client.level.getEntity(target.getId()) == target
+                ? target
+                : null;
+    }
+
     /** Consumed by Minecraft.startAttack; stale or cross-world targets are rejected. */
     public static EntityHitResult consumePendingAttackHit(Minecraft client) {
         var currentLevel = client == null ? null : client.level;
-        Entity target = pendingAttackTarget;
+        EntityHitResult hit = pendingAttackTarget;
+        Entity target = hit == null ? null : hit.getEntity();
         pendingAttackTarget = null;
         if (client == null
                 || currentLevel == null
@@ -350,7 +372,7 @@ public final class CombatInputController {
                 || currentLevel.getEntity(target.getId()) != target) {
             return null;
         }
-        return new EntityHitResult(target);
+        return hit;
     }
 
     private static void tickSyntheticAttack(Minecraft client) {

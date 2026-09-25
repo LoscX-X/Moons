@@ -25,9 +25,26 @@ public final class FaceScanA {
 
     public record Result(Sample sample, double score) {}
 
+    @FunctionalInterface
+    public interface PointFactory {
+        Vec3 apply(double u, double v);
+    }
+
     public static Result scan(
             double[] offsets,
             BiFunction<Double, Double, Vec3> pointAt,
+            Function<Vec3, Rotation> rotationAt,
+            Function<Rotation, BlockHitResult> trace,
+            ToDoubleFunction<Sample> score,
+            double initialBestScore) {
+        return scanPrimitive(
+                offsets, (u, v) -> pointAt.apply(u, v), rotationAt, trace, score, initialBestScore);
+    }
+
+    /** The same traversal with primitive coordinates for high-frequency face scans. */
+    public static Result scanPrimitive(
+            double[] offsets,
+            PointFactory pointAt,
             Function<Vec3, Rotation> rotationAt,
             Function<Rotation, BlockHitResult> trace,
             ToDoubleFunction<Sample> score,

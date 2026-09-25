@@ -10,6 +10,7 @@ import com.blanoir.moons.client.management.input.CombatInputController;
 import com.blanoir.moons.client.management.targeting.Targeting;
 import com.blanoir.moons.client.module.impl.combat.critical.Critical;
 import com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraRuntime;
+import com.blanoir.moons.client.utils.combat.CombatGeometry;
 import com.blanoir.moons.client.utils.combat.CombatModuleCoordinator;
 import com.blanoir.moons.client.utils.combat.CombatReach;
 import com.blanoir.moons.client.utils.math.RandomMath;
@@ -23,7 +24,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntitySelector;
-import net.minecraft.world.phys.EntityHitResult;
 
 import java.util.Locale;
 import java.util.Set;
@@ -126,7 +126,7 @@ public final class TriggerBot {
         attackCharge(client);
 
         Entity target = getAttackableCrosshairTarget(client);
-        if (target == null || CombatReach.outsideVanillaRange(client, target)) {
+        if (target == null || CombatGeometry.outsideVanillaRange(client, target)) {
             rejectCameraRay(client);
             return;
         }
@@ -284,11 +284,17 @@ public final class TriggerBot {
                     String.format(Locale.ROOT, "charge %.2f/%.2f", charge, nextAttackCharge));
         }
 
-        boolean cameraOwnsTarget =
-                client.hitResult instanceof EntityHitResult hit && hit.getEntity() == target;
-        boolean forceTargetOverride = !cameraOwnsTarget;
+        var hit =
+                CombatGeometry.attackHit(
+                        client,
+                        target,
+                        client.player.getEyePosition(),
+                        client.player.getViewVector(1.0F),
+                        safeInteractionRange(client));
+        if (hit == null) return new AutomaticAttackResult(false, "target moved");
         boolean attacked =
-                CombatInputController.attackTargetNow(client, target, forceTargetOverride);
+                HitSelect.withoutFiltering(
+                        () -> CombatInputController.attackTargetNow(client, hit, true));
         if (!attacked) {
             return new AutomaticAttackResult(false, "attack dispatch");
         }
@@ -310,14 +316,14 @@ public final class TriggerBot {
         // The shared camera hit can be stale or extended by Reach. Pick afresh,
         // retaining non-target entities as occluders instead of looking through them.
         Entity target =
-                Targeting.findTargetOnRay(
+                CombatGeometry.findTargetOnRay(
                         client, eye, look, range, EntitySelector.CAN_BE_PICKED, throughBlocks);
         if (!Targeting.isConfiguredTarget(
                         client, target, TARGET_PLAYERS.get(), false, targetEntityTypes)
                 || client.level.getEntity(target.getId()) != target) return null;
         // A nearby corner is insufficient: the actual view ray must enter the
         // unexpanded hitbox before its vanilla-range endpoint.
-        return RaytraceUtils.traceEntity(client, eye, look, range, target, throughBlocks)
+        return CombatGeometry.traceEntity(client, eye, look, range, target, throughBlocks)
                         == RaytraceUtils.EntityRayState.HIT
                 ? target
                 : null;

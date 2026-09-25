@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.Arrays;
 import java.util.HexFormat;
 
 /** Immutable inference for the fixed PyTorch GRU(7,128), with no native runtime. */
@@ -82,13 +83,28 @@ public final class LearnedAimModel {
 
     /** A new zero hidden state for every window, exactly as used during training. */
     public float[] predict(float[][] raw) {
+        return predict(raw, new Workspace());
+    }
+
+    /** Caller-owned scratch; do not share one workspace between concurrent predictions. */
+    public static final class Workspace {
+        private final float[] hidden = new float[HIDDEN];
+        private final float[] next = new float[HIDDEN];
+        private final float[] input = new float[INPUTS];
+        private final float[] gi = new float[GATES];
+        private final float[] gh = new float[GATES];
+    }
+
+    public float[] predict(float[][] raw, Workspace workspace) {
         if (raw == null || raw.length != WINDOW)
             throw new IllegalArgumentException("Expected 16 rows");
-        float[] hidden = new float[HIDDEN];
-        float[] next = new float[HIDDEN];
-        float[] input = new float[INPUTS];
-        float[] gi = new float[GATES];
-        float[] gh = new float[GATES];
+        float[] hidden = workspace.hidden;
+        float[] next = workspace.next;
+        float[] input = workspace.input;
+        float[] gi = workspace.gi;
+        float[] gh = workspace.gh;
+        // Reset even after a failed prediction. Every window starts from zero.
+        Arrays.fill(hidden, 0.0F);
         for (float[] row : raw) {
             if (row == null || row.length != INPUTS)
                 throw new IllegalArgumentException("Expected 7 features");
@@ -100,9 +116,11 @@ public final class LearnedAimModel {
             for (int gate = 0; gate < GATES; gate++) {
                 float in = inputBias[gate];
                 float recurrent = hiddenBias[gate];
-                for (int i = 0; i < INPUTS; i++) in += inputWeights[gate * INPUTS + i] * input[i];
+                int inputOffset = gate * INPUTS;
+                int hiddenOffset = gate * HIDDEN;
+                for (int i = 0; i < INPUTS; i++) in += inputWeights[inputOffset + i] * input[i];
                 for (int i = 0; i < HIDDEN; i++)
-                    recurrent += hiddenWeights[gate * HIDDEN + i] * hidden[i];
+                    recurrent += hiddenWeights[hiddenOffset + i] * hidden[i];
                 gi[gate] = in;
                 gh[gate] = recurrent;
             }

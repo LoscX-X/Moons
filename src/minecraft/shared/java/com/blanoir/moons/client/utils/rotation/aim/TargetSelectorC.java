@@ -21,6 +21,8 @@ import java.util.function.Predicate;
  * history is updated and no mode configuration, input or rotation ownership is read.
  */
 public final class TargetSelectorC {
+    private static final Direction[] FACES = Direction.values();
+
     private TargetSelectorC() {}
 
     public static List<BlockTarget> collect(
@@ -45,26 +47,21 @@ public final class TargetSelectorC {
                             || interactable.test(state)
                             || playerPosition.distanceToSqr(Vec3.atCenterOf(support)) > reachSqr
                             || keepHeight && support.getY() >= startY) continue;
-                    for (Direction face : Direction.values()) {
+                    for (Direction face : FACES) {
                         if (face == Direction.DOWN) continue;
                         BlockPos placed = support.relative(face);
                         if (placed.getY() > desired.getY()
                                 || !client.level.getBlockState(placed).canBeReplaced()) continue;
-                        BlockTarget candidate = new BlockTarget(support, face);
-                        if (!targets.contains(candidate)) targets.add(candidate);
+                        // Each offset visits one distinct support, and each face occurs once.
+                        targets.add(new BlockTarget(support, face));
                     }
                 }
             }
         }
         targets.sort(
                 Comparator.comparingDouble(
-                                (BlockTarget target) ->
-                                        Vec3.atCenterOf(target.placePos())
-                                                .distanceToSqr(targetCenter))
-                        .thenComparingDouble(
-                                target ->
-                                        Vec3.atCenterOf(target.support())
-                                                .distanceToSqr(targetCenter))
+                                (BlockTarget target) -> target.placeDistanceSquared(targetCenter))
+                        .thenComparingDouble(target -> target.supportDistanceSquared(targetCenter))
                         .thenComparingInt(target -> target.face() == Direction.UP ? 0 : 1));
         return targets;
     }
@@ -84,7 +81,7 @@ public final class TargetSelectorC {
         double bestPlaceDistance = Double.MAX_VALUE;
         int evaluated = 0;
         for (BlockTarget target : targets) {
-            double placeDistance = Vec3.atCenterOf(target.placePos()).distanceToSqr(desiredCenter);
+            double placeDistance = target.placeDistanceSquared(desiredCenter);
             if (best != null && placeDistance > bestPlaceDistance) break;
             if (evaluated++ >= maxCandidates) break;
             BlockAim candidate = aimAt.apply(target);
@@ -93,8 +90,8 @@ public final class TargetSelectorC {
                     previousPlaced != null && target.support().equals(previousPlaced)
                             ? -2.0D
                             : 0.0D;
-            double score =
-                    AimSolverE.distance(candidate.rotation(), baseYaw, basePitch) + continuity;
+            double rotationDistance = AimSolverE.distance(candidate.rotation(), baseYaw, basePitch);
+            double score = rotationDistance + continuity;
             if (score < bestScore) {
                 best = candidate;
                 bestScore = score;
@@ -102,8 +99,7 @@ public final class TargetSelectorC {
             }
             // An exact cell with a near-continuous angle cannot be improved by
             // distant chain candidates; avoid unnecessary ray scans.
-            if (placeDistance == 0.0D
-                    && AimSolverE.distance(candidate.rotation(), baseYaw, basePitch) <= 2.0D) break;
+            if (placeDistance == 0.0D && rotationDistance <= 2.0D) break;
         }
         return best;
     }

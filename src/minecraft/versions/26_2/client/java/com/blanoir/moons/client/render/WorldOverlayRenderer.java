@@ -5,6 +5,8 @@ import com.blanoir.moons.client.config.MoonsConfig;
 import com.blanoir.moons.client.render.world.OverlayGeometry;
 import com.blanoir.moons.client.render.world.WorldOverlayBuffer;
 import com.mojang.blaze3d.PrimitiveTopology;
+import com.mojang.blaze3d.pipeline.BlendFunction;
+import com.mojang.blaze3d.pipeline.ColorTargetState;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -31,6 +33,7 @@ public final class WorldOverlayRenderer {
                             // it joins separate UhcFinder entities with giant polygons.
                             .withVertexBinding(0, DefaultVertexFormat.POSITION_COLOR)
                             .withPrimitiveTopology(PrimitiveTopology.QUADS)
+                            .withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
                             .withDepthStencilState(Optional.empty())
                             .build());
 
@@ -43,6 +46,7 @@ public final class WorldOverlayRenderer {
                             .withVertexBinding(0, DefaultVertexFormat.POSITION_COLOR)
                             .withPrimitiveTopology(PrimitiveTopology.DEBUG_LINES)
                             .withCull(false)
+                            .withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
                             .withDepthStencilState(Optional.empty())
                             .build());
 
@@ -106,6 +110,7 @@ public final class WorldOverlayRenderer {
     }
 
     public static void close() {
+        VisualRenderTargets.close();
         WorldOverlayBuffer.close();
     }
 

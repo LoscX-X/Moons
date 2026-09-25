@@ -3,6 +3,7 @@ package com.blanoir.moons.client.module.impl.combat;
 import com.blanoir.moons.client.access.MinecraftClientAccess;
 import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.event.EventBus;
+import com.blanoir.moons.client.event.EventPriority;
 import com.blanoir.moons.client.event.frame.HudRenderEvent;
 import com.blanoir.moons.client.module.impl.combat.critical.Critical;
 import com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraBlock;
@@ -27,9 +28,29 @@ public final class SilentAura {
     private SilentAura() {}
 
     public static void init() {
+        EventBus.TICK.register(
+                "SilentAura.death", EventPriority.HIGHEST, event -> disableIfDead(event.client()));
+        EventBus.FRAME.register(
+                "SilentAura.deathFrame",
+                EventPriority.HIGHEST,
+                event -> disableIfDead(event.client()));
         SilentAuraRuntime.init();
         SilentAuraCombat.init();
         EventBus.HUD_RENDER.register("SilentAura.debugger", SilentAura::drawDebugger);
+    }
+
+    private static void disableIfDead(Minecraft client) {
+        // Deliberately runs while the death screen is open, independently of activation keys.
+        if (SilentAuraConfig.enabled()
+                && SilentAuraConfig.disableOnDeath()
+                && client != null
+                && client.player != null
+                && client.player.isDeadOrDying()) {
+            setEnabled(client, false);
+            SilentAuraCombat.stop(client);
+            // Death must release the rotation immediately rather than start a camera return.
+            SilentAuraRuntime.reset(client);
+        }
     }
 
     public static boolean isActivationHeld(Minecraft client) {

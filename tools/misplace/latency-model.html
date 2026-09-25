@@ -1,0 +1,107 @@
+<div id="misplace-latency-model">
+  <h3>延迟怎样改变一次攻击</h3>
+  <div class="viz-controls">
+    <label class="form-label">场景
+      <select class="form-select" id="mp-scenario">
+        <option value="0">B 接近静止的 A</option>
+        <option value="1">双方接近，B 被击退</option>
+        <option value="2" selected>双方接近，A 被击退后反击</option>
+        <option value="3">A 接近静止的 B</option>
+      </select>
+    </label>
+    <label class="form-label">接近速度
+      <select class="form-select" id="mp-speed"><option value="3">3 格/秒</option><option value="6" selected>6 格/秒</option></select>
+    </label>
+    <label class="form-label">A 往返延迟 <output id="mp-a-label">250 ms</output>
+      <input class="form-range" id="mp-a" aria-label="A 往返延迟" type="range" min="0" max="3" step="1" value="3">
+    </label>
+    <label class="form-label">B 往返延迟 <output id="mp-b-label">20 ms</output>
+      <input class="form-range" id="mp-b" aria-label="B 往返延迟" type="range" min="0" max="3" step="1" value="0">
+    </label>
+  </div>
+  <label class="form-check"><input class="form-check-input" id="mp-asymmetric" type="checkbox"><span class="form-check-label">相同 RTT，上传占 80%（默认各占 50%）</span></label>
+  <svg class="mp-scene" id="mp-scene" role="img" aria-label="同一时刻，A 的画面、服务器和 B 的画面中的玩家位置"></svg>
+  <div class="viz-row"><button class="btn" type="button" id="mp-play">播放</button><label class="form-label" for="mp-time">时间 <output id="mp-time-label">800 ms</output></label></div>
+  <input class="form-range" id="mp-time" aria-label="模拟时间" type="range" min="0" max="1500" step="50" value="800">
+  <div id="mp-events" class="text-small"></div>
+  <output id="mp-result" aria-live="polite"></output>
+  <div class="text-small text-muted">20 TPS · 150 ms 显示插值 · 0 ms 随机抖动 · 几何距离模型，不等同于反作弊判定</div>
+</div>
+<style>
+#misplace-latency-model { color: var(--foreground); }
+#misplace-latency-model .mp-scene { width:100%; display:block; overflow:visible; }
+#misplace-latency-model .mp-scene text { fill:var(--foreground); font-size:12px; }
+#misplace-latency-model .mp-structure { stroke:var(--border); stroke-width:1; }
+#misplace-latency-model #mp-result { display:block; margin-block:12px; }
+</style>
+<script>
+(() => {
+  const root = document.getElementById('misplace-latency-model');
+  const experiments = /*__MODEL_DATA__*/[];
+  const el = id => root.querySelector('#mp-' + id);
+  const pings = [20,80,150,250];
+  const verdicts = ['预计范围内','预计范围外','区间跨越攻击距离','尚无已发送位置','位置已过期','采样中','到服时间超过预测上限','击退尚未确认兑现'];
+  let timer = null, current = null;
+  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const n = (type,attrs,text) => { const e=document.createElementNS(svgNS,type); Object.entries(attrs).forEach(([k,v])=>e.setAttribute(k,v)); if(text!==undefined)e.textContent=text; return e; };
+  const fmt = x => x === null ? '未知' : Number(x).toFixed(2);
+  function selected() {
+    return experiments.find(c => c[0]===pings[+el('a').value] && c[1]===pings[+el('b').value]
+      && c[2]===+el('speed').value && c[3]===+el('scenario').value && c[4]===(el('asymmetric').checked?.8:.5));
+  }
+  function draw() {
+    current = selected();
+    if (!current) return;
+    const frames=current[5], f=frames[Math.round(+el('time').value/50)];
+    const width=Math.max(280,root.getBoundingClientRect().width);
+    const svg=el('scene'); svg.replaceChildren(); svg.setAttribute('viewBox',`0 0 ${width} 354`);
+    const positions=frames.flatMap(v=>v.slice(1,7));
+    const min=Math.min(...positions)-.7, max=Math.max(...positions)+.7;
+    const x=value=>30+(value-min)/(max-min)*(width-60);
+    const text=(a,b,t,anchor='start')=>svg.append(n('text',{x:a,y:b,'text-anchor':anchor},t));
+    const lanes=[['A 本地画面',f[1],f[5]],['服务器当前',f[3],f[4]],['B 本地画面',f[6],f[2]]];
+    const sq=(a,b)=>Math.max(0,Math.abs(a-b)-.3);
+    lanes.forEach(([label,a,b],i)=>{
+      const top=i*105, y=top+50;
+      text(0,top+18,label); text(width,top+18,`${sq(a,b).toFixed(2)} 格`,'end');
+      svg.append(n('line',{x1:20,y1:y,x2:width-20,y2:y,class:'mp-structure'}));
+      const owner=i===2?b:a;
+      svg.append(n('rect',{x:x(Math.max(min,owner-3.3)),y:y-9,width:x(Math.min(max,owner+3.3))-x(Math.max(min,owner-3.3)),height:18,fill:'var(--viz-series-1)',opacity:'.09'}));
+      svg.append(n('circle',{cx:x(a),cy:y,r:6,fill:'var(--viz-series-1)'}));
+      svg.append(n('rect',{x:x(b)-6,y:y-6,width:12,height:12,fill:'var(--viz-series-2)'}));
+      text(Math.max(10,Math.min(width-10,x(a))),y-13,'A','middle');
+      text(Math.max(10,Math.min(width-10,x(b))),y+24,'B','middle');
+      if(i===0 && f[9]>.001){
+        const shifted=b-Math.sign(b-a)*f[9];
+        svg.append(n('line',{x1:x(b),y1:y+32,x2:x(shifted),y2:y+32,stroke:'var(--viz-series-2)','stroke-width':2}));
+        svg.append(n('rect',{x:x(shifted)-5,y:y-5,width:10,height:10,fill:'none',stroke:'var(--viz-series-2)','stroke-width':2}));
+        text(width,top+96,`本地拉近 ${f[9].toFixed(2)} 格`,'end');
+      }
+    });
+    const ticks=width<450?3:5;
+    for(let i=0;i<ticks;i++){
+      const value=min+(max-min)*i/(ticks-1);
+      text(x(value),335,value.toFixed(1),i===0?'start':i===ticks-1?'end':'middle');
+    }
+    text(width,352,'世界 X 坐标（格）','end');
+    el('a-label').textContent=current[0]+' ms'; el('b-label').textContent=current[1]+' ms';
+    el('a').setAttribute('aria-valuetext',current[0]+' ms'); el('b').setAttribute('aria-valuetext',current[1]+' ms');
+    el('time-label').textContent=f[0]+' ms';
+    const t=current[6], victim=current[3]===1?'B':'A';
+    el('events').textContent=t[0]<0?'没有击退事件':`${victim} 的击退：服务器确认 ${t[0]} → 客户端执行 ${t[1]} → 服务器收到新位置 ${t[2]} ms`;
+    const band=f[7]===null?'':`（${fmt(f[7])}–${fmt(f[8])} 格）`;
+    const unseen=f[14] && f[12]===0 && f[10]>3 ? '；新击退反馈尚未到达，旧轨迹预测失效' : f[13]?'；A 此时尚未执行击退':'';
+    el('result').textContent=`${f[0]} ms 发出 → ${f[11]} ms 到服。模型：${verdicts[f[12]]}${band}；实际：${fmt(f[10])} 格，${f[10]<=3?'范围内':'范围外'}${unseen}。`;
+    svg.setAttribute('aria-label',`${f[0]}毫秒：A画面距离${sq(f[1],f[5]).toFixed(2)}格，服务器当前距离${sq(f[3],f[4]).toFixed(2)}格。模型${verdicts[f[12]]}。`);
+  }
+  function snapshot(){ return {a:+el('a').value,b:+el('b').value,speed:+el('speed').value,scenario:+el('scenario').value,asymmetric:el('asymmetric').checked,time:+el('time').value}; }
+  function save(){ const state=snapshot(); window.openai?.setWidgetState({modelContent:{aRtt:pings[state.a],bRtt:pings[state.b],speed:state.speed,scenario:state.scenario,timeMs:state.time,uplinkFraction:state.asymmetric?.8:.5},privateContent:state}).catch(()=>{}); }
+  function restore(state){ const s=state?.privateContent; if(!s)return; for(const key of ['a','b'])if(Number.isInteger(s[key])&&s[key]>=0&&s[key]<=3)el(key).value=s[key]; if([3,6].includes(s.speed))el('speed').value=s.speed; if([0,1,2,3].includes(s.scenario))el('scenario').value=s.scenario; if(typeof s.asymmetric==='boolean')el('asymmetric').checked=s.asymmetric; if(Number.isFinite(s.time))el('time').value=Math.max(0,Math.min(1500,Math.round(s.time/50)*50)); }
+  function stop(){ if(timer)clearInterval(timer);timer=null;el('play').textContent=reducedMotion?'前进 50 ms':'播放'; }
+  for(const control of root.querySelectorAll('input,select'))control.addEventListener('input',()=>{stop();draw();save();});
+  el('play').addEventListener('click',()=>{if(timer){stop();save();return;}if(+el('time').value>=1500)el('time').value=0;if(reducedMotion){el('time').value=+el('time').value+50;draw();save();return;}el('play').textContent='暂停';timer=setInterval(()=>{el('time').value=+el('time').value+50;draw();if(+el('time').value>=1500){stop();save();}},150);});
+  window.addEventListener('openai:set_globals',event=>{restore(event.detail?.globals?.widgetState);draw();});
+  restore(window.openai?.widgetState); stop(); draw(); new ResizeObserver(draw).observe(root);
+})();
+</script>

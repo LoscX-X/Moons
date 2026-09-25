@@ -168,7 +168,7 @@ public final class CombatDecisionEngine {
         int horizon = Mth.clamp(lookaheadTicks, 0, MAX_FORECAST_TICKS);
         int earliest = Mth.clamp(earliestAttackTick, 0, horizon);
         double currentCharge = client.player.getAttackStrengthScale(0.5F);
-        boolean currentReach = Targeting.isWithinInteractionRange(client, target);
+        boolean currentReach = !CombatGeometry.outsideVanillaRange(client, target);
         boolean currentDamageable = livingTarget.hurtTime <= 0;
 
         // A real critical window is more valuable than a future cooldown or
@@ -261,6 +261,7 @@ public final class CombatDecisionEngine {
         int activeJumpCycle = Math.max(1, states[0].jumpCycle());
         Vec3 playerVelocity = client.player.getDeltaMovement();
         Vec3 targetVelocity = target.getDeltaMovement();
+        AABB currentTargetBox = CombatGeometry.box(client, target);
         double reach =
                 Math.max(
                         1.0D, client.player.getAttributeValue(Attributes.ENTITY_INTERACTION_RANGE));
@@ -299,8 +300,7 @@ public final class CombatDecisionEngine {
                                     playerVelocity.x * tick,
                                     vertical.yOffset(),
                                     playerVelocity.z * tick);
-            AABB targetBox =
-                    TrajectoryPrediction.linearBox(target.getBoundingBox(), targetVelocity, tick);
+            AABB targetBox = TrajectoryPrediction.linearBox(currentTargetBox, targetVelocity, tick);
             if (distanceToAabb(futureEye, targetBox) > reach + REACH_TOLERANCE) {
                 continue;
             }

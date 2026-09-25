@@ -77,6 +77,8 @@ class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} Cl
     private val hudLayoutController = HudLayoutController()
     private var hudLayoutEditing by mutableStateOf(false)
     private var hudPointerCaptured = false
+    private var hudPointerX = 0.0
+    private var hudPointerY = 0.0
     private var nextRegistrySyncNanos = 0L
 
     override fun extractBackground(
@@ -94,15 +96,9 @@ class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} Cl
         mouseY: Int,
         delta: Float,
     ) {
-        if (hudLayoutEditing) {
-            hudLayoutController.render(
-                graphics,
-                mouseX.toDouble(),
-                mouseY.toDouble(),
-                width,
-                height,
-            )
-        }
+        // Extract pointer state only; editing decorations belong to the display-only Skia layer.
+        hudPointerX = mouseX.toDouble()
+        hudPointerY = mouseY.toDouble()
     }
 
     fun renderComposeFrame() {
@@ -128,6 +124,15 @@ class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} Cl
         NativeItemIcons.prepareFrame()
         PluginBlockPreviews.prepareFrame()
         frameSurface.render(frameWidth, frameHeight) { canvas ->
+            if (hudLayoutEditing) {
+                canvas.save()
+                try {
+                    canvas.scale(currentScale, currentScale)
+                    hudLayoutController.render(canvas, hudPointerX, hudPointerY, width, height)
+                } finally {
+                    canvas.restore()
+                }
+            }
             scene.render(canvas.asComposeCanvas(), now)
         }
     }

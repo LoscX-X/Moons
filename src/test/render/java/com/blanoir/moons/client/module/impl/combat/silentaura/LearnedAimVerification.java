@@ -43,10 +43,16 @@ public final class LearnedAimVerification {
                 for (float[] row : window)
                     for (int i = 0; i < row.length; i++) row[i] = in.readFloat();
             double maxError = 0;
+            var workspace = new LearnedAimModel.Workspace();
             long start = System.nanoTime();
             for (float[][] input : inputs) {
                 float[] actual = model.predict(input);
+                float[] reused = model.predict(input, workspace);
                 for (int i = 0; i < 2; i++) {
+                    check(
+                            Float.floatToRawIntBits(actual[i])
+                                    == Float.floatToRawIntBits(reused[i]),
+                            "Reused inference scratch changed prediction bits");
                     float expected = in.readFloat();
                     double error = Math.abs(actual[i] - expected);
                     maxError = Math.max(maxError, error);
@@ -55,8 +61,22 @@ public final class LearnedAimVerification {
             }
             check(in.read() == -1, "Trailing fixture data");
             System.out.printf(
-                    "PyTorch cases=%d max absolute error=%.9f deg, mean inference=%.3f ms%n",
+                    "PyTorch cases=%d max absolute error=%.9f deg, two predictions/case=%.3f ms%n",
                     cases, maxError, (System.nanoTime() - start) / 1e6 / cases);
+            float[] retained = model.predict(inputs[0], workspace);
+            float[] saved = retained.clone();
+            float[][] invalid = inputs[1].clone();
+            invalid[8] = new float[7];
+            invalid[8][0] = Float.NaN;
+            try {
+                model.predict(invalid, workspace);
+                throw new AssertionError("Nonfinite input accepted");
+            } catch (IllegalArgumentException expected) {
+            }
+            check(java.util.Arrays.equals(retained, saved), "Output was reused as scratch");
+            check(
+                    java.util.Arrays.equals(retained, model.predict(inputs[0], workspace)),
+                    "Failed prediction contaminated next window");
         }
         byte[] bytes;
         try (var in =

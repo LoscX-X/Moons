@@ -61,7 +61,8 @@ public final class VisualRenderTargets {
         }
         if (!usedThisFrame) {
             var encoder = RenderSystem.getDevice().createCommandEncoder();
-            encoder.clearColorTexture(world.getColorTexture(), new Vector4f());
+            // JOML's no-arg Vector4f has w=1; the overlay must start fully transparent.
+            encoder.clearColorTexture(world.getColorTexture(), new Vector4f(0f, 0f, 0f, 0f));
             usedThisFrame = true;
         }
         return world;

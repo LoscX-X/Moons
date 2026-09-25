@@ -12,6 +12,9 @@ final class LocalAnimationRules {
     private final int format;
     private final Map<String, Double> previousTicks = new HashMap<>();
     private final Map<String, String> previousItems = new HashMap<>();
+    private final Map<String, List<TaggedAnimation>> taggedAnimations = new HashMap<>();
+
+    private record TaggedAnimation(String name, String tag) {}
 
     LocalAnimationRules(LocalRuntime runtime, int format) {
         this.runtime = runtime;
@@ -24,10 +27,25 @@ final class LocalAnimationRules {
     }
 
     String tagged(String prefix, String observation) {
-        if (runtime.observation(observation) instanceof Collection<?> tags)
-            for (String name : runtime.animationNames())
-                if (name.startsWith(prefix + "#")
-                        && tags.contains(name.substring(prefix.length() + 1))) return name;
+        if (runtime.observation(observation) instanceof Collection<?> tags) {
+            // Animation names are fixed after LocalRuntime construction. Preserve their
+            // encounter order, but index and split each prefix only on its first use.
+            List<TaggedAnimation> candidates =
+                    taggedAnimations.computeIfAbsent(
+                            prefix,
+                            key -> {
+                                var result = new ArrayList<TaggedAnimation>();
+                                String marker = key + "#";
+                                for (String name : runtime.animationNames())
+                                    if (name.startsWith(marker))
+                                        result.add(
+                                                new TaggedAnimation(
+                                                        name, name.substring(marker.length())));
+                                return List.copyOf(result);
+                            });
+            for (TaggedAnimation candidate : candidates)
+                if (tags.contains(candidate.tag)) return candidate.name;
+        }
         return null;
     }
 

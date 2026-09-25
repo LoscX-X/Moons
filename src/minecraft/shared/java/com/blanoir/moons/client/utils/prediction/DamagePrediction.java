@@ -2,10 +2,13 @@ package com.blanoir.moons.client.utils.prediction;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
+import net.minecraft.tags.DamageTypeTags;
 import net.minecraft.util.Mth;
+import net.minecraft.world.damagesource.CombatRules;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
@@ -13,6 +16,7 @@ import net.minecraft.world.entity.item.PrimedTnt;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.vehicle.minecart.MinecartTNT;
+import net.minecraft.world.item.enchantment.Enchantments;
 import net.minecraft.world.level.Explosion;
 import net.minecraft.world.level.ServerExplosion;
 import net.minecraft.world.level.block.BedBlock;
@@ -22,9 +26,33 @@ import net.minecraft.world.phys.Vec3;
 
 /** Existing melee, explosion and fall damage estimates, independent of module settings. */
 public final class DamagePrediction {
+    private static final EquipmentSlot[] ARMOR = {
+        EquipmentSlot.FEET, EquipmentSlot.LEGS, EquipmentSlot.CHEST, EquipmentSlot.HEAD
+    };
+
     private DamagePrediction() {}
 
+    /** Client-visible countdown. Crystals can be detonated immediately by another player. */
+    public static int explosionTicks(Entity entity) {
+        if (entity == null || entity.isRemoved()) return Integer.MAX_VALUE;
+        if (entity instanceof EndCrystal) return 0;
+        if (entity instanceof PrimedTnt tnt) return Math.max(0, tnt.getFuse());
+        if (entity instanceof MinecartTNT cart) {
+            if (cart.horizontalCollision
+                    && cart.getDeltaMovement().horizontalDistanceSqr() >= 0.01D) return 0;
+            return cart.isPrimed() ? Math.max(0, cart.getFuse()) : Integer.MAX_VALUE;
+        }
+        if (entity instanceof Creeper creeper) {
+            if (!creeper.isAlive() || (!creeper.isIgnited() && creeper.getSwellDir() <= 0))
+                return Integer.MAX_VALUE;
+            // Vanilla clients use the 30-tick fuse; getSwelling divides progress by 28.
+            return Math.max(0, Mth.ceil(30.0F - creeper.getSwelling(1.0F) * 28.0F));
+        }
+        return Integer.MAX_VALUE;
+    }
+
     public static float explosionDamageFromEntity(Minecraft client, Entity entity) {
+        if (explosionTicks(entity) == Integer.MAX_VALUE) return 0;
         if (entity instanceof EndCrystal) {
             return explosionDamage(
                     client,
@@ -46,12 +74,17 @@ public final class DamagePrediction {
         }
 
         if (entity instanceof MinecartTNT) {
+            // Vanilla adds a random speed-dependent term. Use its bounded upper limit.
+            float power =
+                    4.0F
+                            + (float) Math.min(5.0D, entity.getDeltaMovement().horizontalDistance())
+                                    * 1.5F;
             return explosionDamage(
                     client,
                     entity.position(),
-                    4.0F,
-                    8.0F,
-                    64.0F,
+                    power,
+                    power * 2,
+                    power * power * 4,
                     Explosion.getDefaultDamageSource(client.level, entity));
         }
 
@@ -116,20 +149,60 @@ public final class DamagePrediction {
         return 1.0F;
     }
 
-    /**
-     * Armor reduction mirroring vanilla's damage pipeline; magic (protection)
-     * enchantments are not included in the prediction.
-     */
+    /** Client-side vanilla reductions, including synchronized armor enchantments. */
     public static float effectiveDamage(Player player, DamageSource source, float damage) {
         if (player.isDeadOrDying() || player.getAbilities().invulnerable) {
             return 0.0F;
         }
 
-        float armor = player.getArmorValue();
-        float toughness = (float) player.getAttributeValue(Attributes.ARMOR_TOUGHNESS);
-        float armorPoints =
-                Math.min(20.0F, Math.max(armor / 5.0F, armor - damage / (2.0F + toughness / 4.0F)));
-        return Math.max(0.0F, damage * (1.0F - armorPoints / 25.0F));
+        if (source.scalesWithDifficulty())
+            damage = scaleForDifficulty(damage, player.level().getDifficulty());
+        if (!source.is(DamageTypeTags.BYPASSES_ARMOR))
+            damage =
+                    CombatRules.getDamageAfterAbsorb(
+                            player,
+                            damage,
+                            source,
+                            player.getArmorValue(),
+                            (float) player.getAttributeValue(Attributes.ARMOR_TOUGHNESS));
+        if (!source.is(DamageTypeTags.BYPASSES_EFFECTS)) {
+            var resistance = player.getEffect(MobEffects.RESISTANCE);
+            if (resistance != null && !source.is(DamageTypeTags.BYPASSES_RESISTANCE))
+                damage = Math.max(0, damage * (25 - (resistance.getAmplifier() + 1) * 5) / 25.0F);
+            if (!source.is(DamageTypeTags.BYPASSES_ENCHANTMENTS))
+                damage = CombatRules.getDamageAfterMagicAbsorb(damage, protection(player, source));
+        }
+        return Math.max(0, damage);
+    }
+
+    static float scaleForDifficulty(float damage, net.minecraft.world.Difficulty difficulty) {
+        return switch (difficulty) {
+            case PEACEFUL -> 0;
+            case EASY -> Math.min(damage / 2 + 1, damage);
+            case NORMAL -> damage;
+            case HARD -> damage * 3 / 2;
+        };
+    }
+
+    static int protection(Player player, DamageSource source) {
+        int result = 0;
+        for (EquipmentSlot slot : ARMOR) {
+            for (var entry : player.getItemBySlot(slot).getEnchantments().entrySet()) {
+                var enchantment = entry.getKey();
+                if (!enchantment.value().matchingSlot(slot)) continue;
+                int level = Math.max(0, entry.getIntValue());
+                if (enchantment.is(Enchantments.PROTECTION)) result += level;
+                else if (enchantment.is(Enchantments.BLAST_PROTECTION)
+                        && source.is(DamageTypeTags.IS_EXPLOSION)) result += level * 2;
+                else if (enchantment.is(Enchantments.FEATHER_FALLING)
+                        && source.is(DamageTypeTags.IS_FALL)) result += level * 3;
+                else if (enchantment.is(Enchantments.FIRE_PROTECTION)
+                        && source.is(DamageTypeTags.IS_FIRE)) result += level * 2;
+                else if (enchantment.is(Enchantments.PROJECTILE_PROTECTION)
+                        && source.is(DamageTypeTags.IS_PROJECTILE)) result += level * 2;
+            }
+        }
+        return Math.min(20, result);
     }
 
     public static float fallDamage(Minecraft client, Player player) {
@@ -139,12 +212,27 @@ public final class DamagePrediction {
             return 0.0F;
         }
 
-        int damage = Math.max(0, Mth.ceil((player.fallDistance - 3.0F) * multiplier));
+        return fallDamage(player, player.fallDistance, multiplier);
+    }
+
+    public static float fallDamage(Player player, double distance, float multiplier) {
+        int damage = rawFallDamage(player, distance, multiplier);
         if (damage <= 0) {
             return 0.0F;
         }
 
         return effectiveDamage(player, player.damageSources().fall(), damage);
+    }
+
+    static int rawFallDamage(Player player, double distance, float multiplier) {
+        return Math.max(
+                0,
+                Mth.floor(
+                        (distance
+                                        + 1.0E-6D
+                                        - player.getAttributeValue(Attributes.SAFE_FALL_DISTANCE))
+                                * multiplier
+                                * player.getAttributeValue(Attributes.FALL_DAMAGE_MULTIPLIER)));
     }
 
     public static double meleeDamage(

@@ -1,0 +1,11 @@
+import fs from 'node:fs';
+import path from 'node:path';
+const [dataFile, destination] = process.argv.slice(2);
+if (!dataFile || !destination) throw new Error('Usage: node tools/misplace/build-visual.mjs <traces.json> <inline.html>');
+const data = JSON.parse(fs.readFileSync(dataFile, 'utf8'));
+const template = fs.readFileSync(new URL('./latency-model.html', import.meta.url), 'utf8');
+const output = template.replace('/*__MODEL_DATA__*/[]', JSON.stringify(data));
+if (Buffer.byteLength(output) >= 1_000_000) throw new Error('Inline data exceeds 1 MB');
+fs.mkdirSync(path.dirname(destination), {recursive:true});
+fs.writeFileSync(destination,output);
+console.log(`Wrote ${data.length} simulated configurations, ${Buffer.byteLength(output)} bytes.`);

@@ -63,6 +63,7 @@ public final class HookDispatcher {
             case FLOAT_RETURN -> ValueHooks.loadFloatReturn(method, target.id(), false);
             case FLOAT_RETURN_ARG -> ValueHooks.loadFloatReturn(method, target.id());
             case FLOAT_RETURN_OBJECT_ARG -> ValueHooks.loadFloatObjectReturn(method, target.id());
+            case FLOAT_ARGUMENTS -> ValueHooks.loadFloatArguments(method, target.id());
             case FLOAT_HEAD_BOOLEAN_GATE ->
                     ValueHooks.loadFloatHeadBooleanGate(method, target.id());
             case BOOLEAN_RETURN_ARG -> ValueHooks.loadBooleanReturn(method, target.id());
@@ -103,6 +104,9 @@ public final class HookDispatcher {
             }
             return false;
         }
+        if (target.hook() == TargetMethod.HookKind.FLOAT_ARGUMENTS) {
+            return containsIdentifiedHook(method, target.id(), "onFloatValue");
+        }
         if (target.hook() == TargetMethod.HookKind.BOXED_ARGS_VOID_GATE) {
             return containsIdentifiedHook(method, target.id(), "onBooleanValue");
         }
@@ -131,7 +135,7 @@ public final class HookDispatcher {
                     case RENDER_STATE -> "onRenderState";
                     case RENDERER_CLOSE -> "onRendererClose";
                     case VOID_HEAD, VOID_RETURN, PRESENT_BEFORE_GPU_PRESENT -> "onVoidHook";
-                    case FLOAT_RETURN, FLOAT_RETURN_ARG -> "onFloatValue";
+                    case FLOAT_RETURN, FLOAT_RETURN_ARG, FLOAT_ARGUMENTS -> "onFloatValue";
                     case FLOAT_HEAD_BOOLEAN_GATE -> "onBooleanValue";
                     case BOOLEAN_RETURN_ARG -> "onBooleanValue";
                     case OBJECT_RETURN,
@@ -169,6 +173,7 @@ public final class HookDispatcher {
                         target ->
                                 switch (target.hook()) {
                                     case HAND_ANIMATION,
+                                            FLOAT_ARGUMENTS,
                                             BOXED_ARGS_VOID_GATE,
                                             SCOREBOARD,
                                             XRAY_TESSELLATE,

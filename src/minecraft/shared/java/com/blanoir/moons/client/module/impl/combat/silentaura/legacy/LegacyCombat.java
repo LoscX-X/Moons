@@ -1,6 +1,7 @@
 package com.blanoir.moons.client.module.impl.combat.silentaura.legacy;
 
 import com.blanoir.moons.client.management.input.CombatInputController;
+import com.blanoir.moons.client.module.impl.combat.HitSelect;
 import com.blanoir.moons.client.module.impl.combat.critical.Critical;
 import com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraAttackRay;
 import com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraConfig;
@@ -19,6 +20,8 @@ public final class LegacyCombat {
     public static String tick(Minecraft client) {
         var ray = SilentAuraAttackRay.find(client);
         if (ray.target() == null) return ray.gate();
+        if (HitSelect.shouldDelay(client, ray.target()))
+            return "hitselect " + HitSelect.statusTag();
         if (!CLICKS.ready(System.nanoTime())) return "cps";
         if (!LegacyBlock.beforeAttack(client)) return "unblocking";
         if (client.player.isUsingItem()) return "using item";
@@ -26,7 +29,7 @@ public final class LegacyCombat {
         // Selecting Legacy changes combat timing, never the wire protocol or packet order.
         boolean attacked =
                 Critical.withoutSilentAuraCritical(
-                        () -> CombatInputController.attackTargetNow(client, ray.target(), true));
+                        () -> CombatInputController.attackTargetNow(client, ray.hit(), true));
         if (!attacked) return "attack dispatch";
         CLICKS.clicked(System.nanoTime(), SilentAuraConfig.minCps(), SilentAuraConfig.maxCps());
         LegacyBlock.afterAttack(client);

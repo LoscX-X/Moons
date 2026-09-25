@@ -1,11 +1,12 @@
 package com.blanoir.moons.client.render;
 
 import com.blanoir.moons.client.access.GameAccess;
-import com.blanoir.moons.client.access.MinecraftClientAccess;
 import com.blanoir.moons.client.config.MoonsConfig;
 import com.blanoir.moons.client.render.world.OverlayGeometry;
 import com.mojang.blaze3d.buffers.GpuBuffer;
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.blaze3d.pipeline.BlendFunction;
+import com.mojang.blaze3d.pipeline.ColorTargetState;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.systems.CommandEncoder;
 import com.mojang.blaze3d.systems.RenderPass;
@@ -47,6 +48,7 @@ public final class WorldOverlayRenderer {
                             // into huge triangles when UhcFinder sees many Nether mobs.
                             .withVertexFormat(
                                     DefaultVertexFormat.POSITION_COLOR, VertexFormat.Mode.QUADS)
+                            .withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
                             .withDepthStencilState(Optional.empty())
                             .build());
 
@@ -60,6 +62,7 @@ public final class WorldOverlayRenderer {
                                     DefaultVertexFormat.POSITION_COLOR,
                                     VertexFormat.Mode.DEBUG_LINES)
                             .withCull(false)
+                            .withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
                             .withDepthStencilState(Optional.empty())
                             .build());
 
@@ -153,6 +156,7 @@ public final class WorldOverlayRenderer {
     }
 
     public static void close() {
+        VisualRenderTargets.close();
         ALLOCATOR.close();
 
         if (vertexBuffer != null) {
@@ -216,7 +220,8 @@ public final class WorldOverlayRenderer {
             boolean sortQuads) {
         GpuBuffer indices;
         VertexFormat.IndexType indexType;
-        var mainTarget = MinecraftClientAccess.mainRenderTarget(client);
+        var mainTarget = VisualRenderTargets.worldTarget(client);
+        if (mainTarget == null) return;
         var colorView = mainTarget.getColorTextureView();
         if (colorView == null) return;
 

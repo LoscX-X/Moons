@@ -40,10 +40,27 @@ public final class VersionTransformer {
         for (AbstractInsnNode node : method.instructions.toArray()) {
             if (node instanceof MethodInsnNode invoke
                     && invoke.owner.equals("com/mojang/renderpearl/api/device/GpuSurface")
-                    && invoke.name.equals("blitFromTexture")) {
-                // Overlay the main target before either OpenGL or Vulkan copies it to the
-                // swapchain.
-                method.instructions.insertBefore(node, hook(id, -1));
+                    && invoke.name.equals("blitFromTexture")
+                    && invoke.desc.equals(
+                            "(Lcom/mojang/renderpearl/api/commands/CommandEncoder;Lcom/mojang/renderpearl/api/textures/GpuTextureView;)V")) {
+                // Keep the receiver/encoder on the stack and replace this call's view only.
+                // Minecraft's main target remains the unmodified F2 screenshot source.
+                int source = method.maxLocals++;
+                InsnList out = new InsnList();
+                out.add(new VarInsnNode(Opcodes.ASTORE, source));
+                out.add(new LdcInsnNode(id));
+                out.add(new VarInsnNode(Opcodes.ALOAD, 0));
+                out.add(new InsnNode(Opcodes.ACONST_NULL));
+                out.add(new VarInsnNode(Opcodes.ALOAD, source));
+                out.add(
+                        call(
+                                "onObjectValue",
+                                "(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;"));
+                out.add(
+                        new TypeInsnNode(
+                                Opcodes.CHECKCAST,
+                                "com/mojang/renderpearl/api/textures/GpuTextureView"));
+                method.instructions.insertBefore(node, out);
                 return true;
             }
         }

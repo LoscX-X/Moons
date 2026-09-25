@@ -39,7 +39,10 @@ internal class ItemIconImages(private val capacity: Int = 128) {
     }
 
     fun retainRequests(stacks: List<ItemStack>) {
-        pending.retainAll(stacks.filterNot { it.isEmpty }.map { Key(it) }.toSet())
+        if (pending.isEmpty()) return
+        val retained = HashSet<Key>(stacks.size)
+        stacks.forEach { if (!it.isEmpty) retained.add(Key(it)) }
+        pending.retainAll(retained)
     }
 
     fun prepareFrame() {

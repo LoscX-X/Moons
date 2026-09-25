@@ -4,6 +4,8 @@ import com.blanoir.moons.client.access.MinecraftClientAccess;
 import com.blanoir.moons.client.config.Settings;
 import com.blanoir.moons.client.event.frame.WorldRenderEvent;
 import com.blanoir.moons.client.module.impl.misc.antibot.AntiBot;
+import com.blanoir.moons.client.render.VisualModelCapture;
+import com.blanoir.moons.client.render.model.ModelOverlayRenderer;
 import com.blanoir.moons.client.utils.render.ColorCodec;
 import com.mojang.blaze3d.vertex.PoseStack;
 
@@ -115,7 +117,12 @@ final class BacktrackOverlay {
         EntityRenderer<? super Entity, ?> renderer =
                 client.getEntityRenderDispatcher().getRenderer(entity);
         EntityRenderState state = renderer.createRenderState(entity, 0.0F);
-        if (modelOutline >>> 24 > 0) state.outlineColor = modelOutline;
+        // Extra models cannot submit into the game's nameplate/outline/shadow passes.
+        state.outlineColor = 0;
+        state.nameTag = null;
+        state.shadowPieces.clear();
+        state.displayFireAnimation = false;
+        state.leashStates = java.util.List.of();
         Vec3 at = renderPosition == null ? real : renderPosition;
         state.x = at.x;
         state.y = at.y;
@@ -137,15 +144,20 @@ final class BacktrackOverlay {
             living.yRot = 0.0F;
             living.xRot = target.getXRot();
         }
-        client.getEntityRenderDispatcher()
-                .submit(
-                        state,
-                        camera,
-                        state.x - camera.pos.x,
-                        state.y - camera.pos.y,
-                        state.z - camera.pos.z,
-                        poses,
-                        collector);
+        VisualModelCapture.submit(
+                collector,
+                modelOutline,
+                ModelOverlayRenderer::remapOverlayModel,
+                isolated ->
+                        client.getEntityRenderDispatcher()
+                                .submit(
+                                        state,
+                                        camera,
+                                        state.x - camera.pos.x,
+                                        state.y - camera.pos.y,
+                                        state.z - camera.pos.z,
+                                        poses,
+                                        isolated));
     }
 
     private static boolean visible(LivingEntity target, Vec3 real) {

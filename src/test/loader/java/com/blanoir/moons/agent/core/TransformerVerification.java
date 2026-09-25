@@ -29,6 +29,7 @@ public final class TransformerVerification {
             throw new IllegalArgumentException("Expected one or more Minecraft JAR paths");
         verifyBootstrapBridgeBoundary();
         BoxedGateVerification.verify();
+        FloatArgumentsVerification.verify();
         YsmAudioHookVerification.verify();
         MappingService mappings = VersionMappings.create();
         MoonsTransformer transformer = new MoonsTransformer(mappings);
@@ -113,6 +114,27 @@ public final class TransformerVerification {
             new Analyzer<>(new BasicInterpreter()).analyze(className, method);
         }
         verifyMovementHookOrdering(className, node);
+        verifyPresentationInput(node);
+    }
+
+    private static void verifyPresentationInput(ClassNode node) {
+        for (MethodNode method : node.methods) {
+            for (var instruction : method.instructions) {
+                if (!(instruction instanceof MethodInsnNode blit)
+                        || !blit.owner.equals("com/mojang/renderpearl/api/device/GpuSurface")
+                        || !blit.name.equals("blitFromTexture")) continue;
+                var cast = blit.getPrevious();
+                var bridge = cast == null ? null : cast.getPrevious();
+                if (!(cast instanceof org.objectweb.asm.tree.TypeInsnNode type)
+                        || type.getOpcode() != Opcodes.CHECKCAST
+                        || !type.desc.equals("com/mojang/renderpearl/api/textures/GpuTextureView")
+                        || !(bridge instanceof MethodInsnNode call)
+                        || !call.owner.equals("com/blanoir/moons/api/bridge/AgentBridge")
+                        || !call.name.equals("onObjectValue")) {
+                    throw new AssertionError("Presentation must replace the blit input view, not mutate the screenshot target");
+                }
+            }
+        }
     }
 
     private static void verifyMovementHookOrdering(String className, ClassNode node) {

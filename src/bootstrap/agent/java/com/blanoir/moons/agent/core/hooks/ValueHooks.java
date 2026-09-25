@@ -27,6 +27,29 @@ import java.util.function.Supplier;
 final class ValueHooks {
     private ValueHooks() {}
 
+    /** Rewrites float arguments at entry; the bridge receives their zero-based argument index. */
+    static boolean loadFloatArguments(MethodNode method, String id) {
+        if ((method.access & Opcodes.ACC_STATIC) != 0) return false;
+        var arguments = org.objectweb.asm.Type.getArgumentTypes(method.desc);
+        InsnList hook = new InsnList();
+        int slot = 1;
+        boolean found = false;
+        for (int index = 0; index < arguments.length; index++) {
+            if (arguments[index].getSort() == org.objectweb.asm.Type.FLOAT) {
+                hook.add(new LdcInsnNode(id));
+                hook.add(new VarInsnNode(Opcodes.ALOAD, 0));
+                hook.add(new LdcInsnNode((float) index));
+                hook.add(new VarInsnNode(Opcodes.FLOAD, slot));
+                hook.add(call("onFloatValue", "(Ljava/lang/String;Ljava/lang/Object;FF)F"));
+                hook.add(new VarInsnNode(Opcodes.FSTORE, slot));
+                found = true;
+            }
+            slot += arguments[index].getSize();
+        }
+        if (found) method.instructions.insert(guardHook(id, hook));
+        return found;
+    }
+
     /** A cancellable render entrypoint using method-body changes only; safe for already loaded classes. */
     static boolean loadBoxedArgumentsGate(MethodNode method, String id) {
         var arguments = org.objectweb.asm.Type.getArgumentTypes(method.desc);

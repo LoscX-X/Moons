@@ -33,6 +33,7 @@ public final class YsmQueryVerification {
         field.setAccessible(true);
         var unsafe = (sun.misc.Unsafe) field.get(null);
         var entity = (EquippedStand) unsafe.allocateInstance(EquippedStand.class);
+        verifyEquipmentSampling(entity);
         entity.items =
                 Map.of(
                         EquipmentSlot.MAINHAND,
@@ -103,6 +104,89 @@ public final class YsmQueryVerification {
         equal(2.4f, boat.get("boat_chest_passenger_offset"), "Chest passenger offset");
         System.out.println(
                 "YSM_QUERIES_VERIFIED equipment=names+hands+empty identifiers=qualified+default effects=living+normal-arrow+potion-arrow boat=raft+paddles+offsets");
+    }
+
+    private static void verifyEquipmentSampling(EquippedStand entity) throws Exception {
+        var holder = Items.STONE.builtInRegistryHolder();
+        var originalTags = holder.tags().toList();
+        var sword =
+                net.minecraft.tags.TagKey.create(
+                        net.minecraft.core.registries.Registries.ITEM,
+                        net.minecraft.resources.Identifier.withDefaultNamespace("swords"));
+        var axe =
+                net.minecraft.tags.TagKey.create(
+                        net.minecraft.core.registries.Registries.ITEM,
+                        net.minecraft.resources.Identifier.withDefaultNamespace("axes"));
+        var bindTags = holder.getClass().getDeclaredMethod("bindTags", Collection.class);
+        bindTags.setAccessible(true);
+        try {
+            Random random = new Random(20260925);
+            for (int sample = 0; sample < 128; sample++) {
+                // A reload can change tags without replacing the item or stack instance.
+                bindTags.invoke(
+                        holder,
+                        sample % 3 == 0
+                                ? List.of(axe, sword)
+                                : sample % 3 == 1 ? List.of(axe) : List.of());
+                var items = new EnumMap<EquipmentSlot, ItemStack>(EquipmentSlot.class);
+                for (EquipmentSlot slot : EquipmentSlot.values()) {
+                    int choice = random.nextInt(3);
+                    items.put(
+                            slot,
+                            choice == 0
+                                    ? ItemStack.EMPTY
+                                    : choice == 1
+                                            ? Items.STONE.getDefaultInstance()
+                                            : Items.SHIELD.getDefaultInstance());
+                }
+                entity.items = items;
+                Map<String, Object> expected = new LinkedHashMap<>(),
+                        actual = new LinkedHashMap<>();
+                int count = 0;
+                for (EquipmentSlot slot : EquipmentSlot.values()) {
+                    ItemStack stack = entity.getItemBySlot(slot);
+                    String name = slot.getName();
+                    expected.put("has_" + name, !stack.isEmpty());
+                    expected.put(
+                            name + "_item",
+                            net.minecraft.core.registries.BuiltInRegistries.ITEM
+                                    .getKey(stack.getItem())
+                                    .toString());
+                    expected.put(
+                            name + "_category",
+                            stack.isEmpty()
+                                    ? "empty"
+                                    : stack.is(sword)
+                                            ? "sword"
+                                            : stack.is(axe)
+                                                    ? "axe"
+                                                    : stack.is(Items.STONE) ? "stone" : "shield");
+                    expected.put(
+                            name + "_use", stack.getUseAnimation().name().toLowerCase(Locale.ROOT));
+                    expected.put(
+                            name + "_tags",
+                            stack.getItem()
+                                    .builtInRegistryHolder()
+                                    .tags()
+                                    .map(t -> t.location().toString())
+                                    .toList());
+                    if (slot.isArmor() && !stack.isEmpty()) count++;
+                }
+                equal(count, YsmEquipmentObservations.sample(actual, entity), "Equipment count");
+                equal(expected, actual, "Equipment fields and live tags");
+                equal(
+                        new ArrayList<>(expected.keySet()),
+                        new ArrayList<>(actual.keySet()),
+                        "Equipment encounter order");
+                var retained = new LinkedHashMap<>(actual);
+                YsmEquipmentObservations.sample(new HashMap<>(), entity);
+                equal(retained, actual, "Retained observation snapshot");
+            }
+        } finally {
+            bindTags.invoke(holder, originalTags);
+        }
+        System.out.println(
+                "YSM_EQUIPMENT_SAMPLING_VERIFIED cases=128 order+count+fields=identical tags=live category-priority=preserved");
     }
 
     private static Object query(Entity entity, String name, Object... args) {

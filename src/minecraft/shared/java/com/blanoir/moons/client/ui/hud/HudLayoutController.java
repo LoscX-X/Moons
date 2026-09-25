@@ -2,11 +2,13 @@ package com.blanoir.moons.client.ui.hud;
 
 import com.blanoir.moons.client.config.Settings;
 import com.blanoir.moons.client.ui.layout.Bounds;
-import com.blanoir.moons.client.ui.render.SmoothGui;
 import com.blanoir.moons.client.utils.render.ArgbColors;
 import com.mojang.blaze3d.platform.InputConstants;
 
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import org.jetbrains.skia.Canvas;
+import org.jetbrains.skia.Paint;
+import org.jetbrains.skia.PaintMode;
+import org.jetbrains.skia.RRect;
 
 import java.util.List;
 
@@ -30,34 +32,31 @@ public final class HudLayoutController {
     private boolean settingsBatchOpen;
 
     public void render(
-            GuiGraphicsExtractor graphics,
-            double mouseX,
-            double mouseY,
-            int screenWidth,
-            int screenHeight) {
+            Canvas canvas, double mouseX, double mouseY, int screenWidth, int screenHeight) {
         int accent = accentColor();
-        if (guideX) graphics.verticalLine(screenWidth / 2, 0, screenHeight, withAlpha(accent, 165));
-        if (guideY)
-            graphics.horizontalLine(0, screenWidth, screenHeight / 2, withAlpha(accent, 165));
-        List<HudEditorRegistry.Target> targets = HudEditorRegistry.targets();
-        for (HudEditorRegistry.Target target : targets) {
-            Bounds bounds = target.currentBounds();
-            if (bounds.width() <= 0.0D || bounds.height() <= 0.0D) continue;
-            boolean focused = target == active || bounds.contains(mouseX, mouseY);
-            int left = (int) Math.floor(bounds.x()) - 2;
-            int top = (int) Math.floor(bounds.y()) - 2;
-            int right = (int) Math.ceil(bounds.right()) + 2;
-            int bottom = (int) Math.ceil(bounds.bottom()) + 2;
-            SmoothGui.roundedOutline(
-                    graphics,
-                    left,
-                    top,
-                    right,
-                    bottom,
-                    4,
-                    1,
-                    withAlpha(focused ? accent : 0x999999, focused ? 225 : 90),
-                    0x00000000);
+        try (Paint paint = new Paint()) {
+            paint.setMode(PaintMode.STROKE);
+            paint.setStrokeWidth(1.0f);
+            paint.setColor(withAlpha(accent, 165));
+            if (guideX)
+                canvas.drawLine(screenWidth / 2.0f, 0, screenWidth / 2.0f, screenHeight, paint);
+            if (guideY)
+                canvas.drawLine(0, screenHeight / 2.0f, screenWidth, screenHeight / 2.0f, paint);
+            paint.setAntiAlias(true);
+            List<HudEditorRegistry.Target> targets = HudEditorRegistry.targets();
+            for (HudEditorRegistry.Target target : targets) {
+                Bounds bounds = target.currentBounds();
+                if (bounds.width() <= 0.0D || bounds.height() <= 0.0D) continue;
+                boolean focused = target == active || bounds.contains(mouseX, mouseY);
+                int left = (int) Math.floor(bounds.x()) - 2;
+                int top = (int) Math.floor(bounds.y()) - 2;
+                int right = (int) Math.ceil(bounds.right()) + 2;
+                int bottom = (int) Math.ceil(bounds.bottom()) + 2;
+                paint.setColor(withAlpha(focused ? accent : 0x999999, focused ? 225 : 90));
+                canvas.drawRRect(
+                        RRect.makeLTRB(left + 0.5f, top + 0.5f, right - 0.5f, bottom - 0.5f, 3.5f),
+                        paint);
+            }
         }
     }
 

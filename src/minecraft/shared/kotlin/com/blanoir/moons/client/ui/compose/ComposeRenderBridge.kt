@@ -1,5 +1,7 @@
 package com.blanoir.moons.client.ui.compose
 
+import com.blanoir.moons.client.render.VisualPresentation
+import com.blanoir.moons.client.render.VisualRenderTargets
 import com.blanoir.moons.client.ui.MinecraftScreenAccess
 import com.blanoir.moons.client.ui.clickgui.ModuleGui
 import com.blanoir.moons.client.ui.clickgui.MoonsComposeScreen
@@ -19,5 +21,7 @@ object ComposeRenderBridge {
     fun close() {
         ModuleGui.close()
         TextGuiSkiaOverlay.close()
+        VisualPresentation.close()
+        VisualRenderTargets.close()
     }
 }

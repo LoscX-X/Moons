@@ -109,24 +109,7 @@ final class YsmEntityObservations {
             q.put(
                     "query.head_x_rotation",
                     net.minecraft.util.Mth.wrapDegrees(living.yHeadRot - living.yBodyRot));
-            int equipped = 0;
-            for (EquipmentSlot slot : EquipmentSlot.values()) {
-                var item = living.getItemBySlot(slot);
-                String name = slot.getName();
-                q.put("has_" + name, !item.isEmpty());
-                q.put(name + "_item", BuiltInRegistries.ITEM.getKey(item.getItem()).toString());
-                q.put(name + "_category", YsmObservations.category(item));
-                q.put(name + "_use", item.getUseAnimation().name().toLowerCase(Locale.ROOT));
-                q.put(
-                        name + "_tags",
-                        BuiltInRegistries.ITEM
-                                .wrapAsHolder(item.getItem())
-                                .tags()
-                                .map(t -> t.location().toString())
-                                .toList());
-                if (slot.isArmor() && !item.isEmpty()) equipped++;
-            }
-            q.put("equipment_count", equipped);
+            q.put("equipment_count", YsmEquipmentObservations.sample(q, living));
             YsmAdditionalObservations.living(q, living, state.ageInTicks, partial);
         }
         return q;

@@ -483,37 +483,48 @@ final class Player {
                 AutoTotem::setEnabled,
                 AutoTotem::statusText,
                 AutoTotem.failureSetting(),
-                integer(
-                        "threshold",
-                        "Health threshold",
-                        "autototem.threshold",
-                        14,
-                        0,
-                        20,
-                        1,
-                        AutoTotem::setThreshold),
-                integer(
-                        "safe_threshold",
-                        "Safe threshold",
-                        "autototem.safethreshold",
-                        10,
-                        0,
-                        20,
-                        1,
-                        AutoTotem::setSafeThreshold),
                 bool(
-                        "missing_armor",
-                        "Missing armor",
-                        "autototem.missingarmor",
-                        true,
-                        AutoTotem::setMissingArmor),
-                bool("safety", "Safety", "autototem.safety", true, AutoTotem::setSafety),
-                bool(
-                        "subtract_damage",
-                        "Subtract damage",
-                        "autototem.subtractdamage",
+                        "health_fallback",
+                        "Health fallback",
+                        "autototem.healthfallback",
                         false,
-                        AutoTotem::setSubtractDamage),
+                        AutoTotem::setHealthFallback),
+                integer(
+                                "threshold",
+                                "Fallback health (HP)",
+                                "autototem.threshold",
+                                8,
+                                0,
+                                20,
+                                1,
+                                AutoTotem::setThreshold)
+                        .visibleWhen(cfgBool("autototem.healthfallback", false)),
+                integer(
+                                "safe_threshold",
+                                "Fallback safe health (HP)",
+                                "autototem.safethreshold",
+                                10,
+                                0,
+                                20,
+                                1,
+                                AutoTotem::setSafeThreshold)
+                        .visibleWhen(cfgBool("autototem.healthfallback", false)),
+                bool(
+                                "missing_armor",
+                                "Fallback missing armor",
+                                "autototem.missingarmor",
+                                false,
+                                AutoTotem::setMissingArmor)
+                        .visibleWhen(cfgBool("autototem.healthfallback", false)),
+                bool("safety", "Fallback safety", "autototem.safety", true, AutoTotem::setSafety)
+                        .visibleWhen(cfgBool("autototem.healthfallback", false)),
+                bool(
+                                "subtract_damage",
+                                "Fallback damage margin",
+                                "autototem.subtractdamage",
+                                false,
+                                AutoTotem::setSubtractDamage)
+                        .visibleWhen(cfgBool("autototem.healthfallback", false)),
                 bool(
                         "explosion_entities",
                         "Explosion entities",

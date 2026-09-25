@@ -2,16 +2,17 @@ package com.blanoir.moons.client.module.impl.world.structure;
 
 import com.blanoir.moons.client.utils.world.ChunkKey;
 
+import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
+import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
+
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
 
@@ -33,7 +34,7 @@ final class CavityEvidence {
             List<StructureEvidence.Found> materialMatches,
             BooleanSupplier cancelled) {
         if (cancelled.getAsBoolean() || materialMatches.size() >= 512) return List.of();
-        Map<Long, CavitySnapshot> chunks = new HashMap<>();
+        Long2ObjectMap<CavitySnapshot> chunks = new Long2ObjectOpenHashMap<>(snapshots.size());
         for (var snapshot : snapshots)
             chunks.put(ChunkKey.pack(snapshot.chunkX, snapshot.chunkZ), snapshot);
         var occupied = new ArrayList<AABB>();
@@ -99,7 +100,7 @@ final class CavityEvidence {
 
     private record Fit(Seed sphere, Seed oval) {}
 
-    private static Seed seed(Map<Long, CavitySnapshot> chunks, int x, int y, int z) {
+    private static Seed seed(Long2ObjectMap<CavitySnapshot> chunks, int x, int y, int z) {
         double[] sides = axes(chunks, x, y, z);
         if (sides == null) return null;
         int cx = x + shift(sides[0], sides[1]),
@@ -120,7 +121,7 @@ final class CavityEvidence {
         return new Seed(new Vec3(cx, cy, cz), rx, ry, rz);
     }
 
-    private static Candidate refine(Map<Long, CavitySnapshot> chunks, Seed seed) {
+    private static Candidate refine(Long2ObjectMap<CavitySnapshot> chunks, Seed seed) {
         var fit = fit(chunks, seed);
         if (fit == null) return null;
         var sphere = validate(chunks, fit.sphere);
@@ -129,7 +130,7 @@ final class CavityEvidence {
         return sphere == null ? oval : oval == null || sphere.score >= oval.score ? sphere : oval;
     }
 
-    private static Candidate validate(Map<Long, CavitySnapshot> chunks, Seed seed) {
+    private static Candidate validate(Long2ObjectMap<CavitySnapshot> chunks, Seed seed) {
         Vec3 center = seed.center;
         int interior = 0, air = 0;
         // Coarse seeds must not hide obstacles on odd block coordinates in the fitted core.
@@ -214,7 +215,7 @@ final class CavityEvidence {
                         - error / Math.max(1, curved));
     }
 
-    private static double[] axes(Map<Long, CavitySnapshot> chunks, int x, int y, int z) {
+    private static double[] axes(Long2ObjectMap<CavitySnapshot> chunks, int x, int y, int z) {
         double[] result = new double[6];
         int open = 0;
         for (int i = 0; i < 6; i++) {
@@ -237,7 +238,7 @@ final class CavityEvidence {
     }
 
     private static double trace(
-            Map<Long, CavitySnapshot> chunks, Vec3 center, Vec3 direction, double limit) {
+            Long2ObjectMap<CavitySnapshot> chunks, Vec3 center, Vec3 direction, double limit) {
         for (double distance = .5; distance <= limit; distance += .25) {
             byte cell = cellAt(chunks, center, direction, distance);
             if (cell == CavitySnapshot.WALL) return distance - .125;
@@ -246,7 +247,7 @@ final class CavityEvidence {
         return -1;
     }
 
-    private static Fit fit(Map<Long, CavitySnapshot> chunks, Seed seed) {
+    private static Fit fit(Long2ObjectMap<CavitySnapshot> chunks, Seed seed) {
         var points = new ArrayList<Vec3>();
         double limit = Math.min(7, Math.max(seed.rx, Math.max(seed.ry, seed.rz)) + 2);
         for (Vec3 direction : DIRECTIONS) {
@@ -335,7 +336,7 @@ final class CavityEvidence {
     }
 
     private static byte cellAt(
-            Map<Long, CavitySnapshot> chunks, Vec3 center, Vec3 direction, double distance) {
+            Long2ObjectMap<CavitySnapshot> chunks, Vec3 center, Vec3 direction, double distance) {
         int x = (int) Math.floor((center.x + direction.x * distance) * 2 + .5);
         int y = (int) Math.floor((center.y + direction.y * distance) * 2 + .5);
         int z = (int) Math.floor((center.z + direction.z * distance) * 2 + .5);
@@ -361,7 +362,7 @@ final class CavityEvidence {
         return positive < 0 ? negative : negative < 0 ? positive : (positive + negative) / 2;
     }
 
-    private static byte at(Map<Long, CavitySnapshot> chunks, int x, int y, int z) {
+    private static byte at(Long2ObjectMap<CavitySnapshot> chunks, int x, int y, int z) {
         var snapshot = chunks.get(ChunkKey.pack(x >> 3, z >> 3));
         return snapshot == null ? CavitySnapshot.UNKNOWN : snapshot.at(x, y, z);
     }

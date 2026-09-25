@@ -102,19 +102,7 @@ public final class LocalYsmModel implements AutoCloseable {
     private final int[] bufferSizes = new int[8];
     private final boolean[] renderBones;
     private final Matrix4f[] geometryMatrices;
-    private BakedBatch[][] batches;
-
-    private static final class BakedBatch {
-        final int material;
-        final float[] vertices;
-        float[] previousOutput;
-        int previousOffset;
-
-        BakedBatch(int material, float[] vertices) {
-            this.material = material;
-            this.vertices = vertices;
-        }
-    }
+    private YsmMeshBatch[][] batches;
 
     public record Pass(boolean glow, boolean translucent, boolean cull, float[] vertices) {}
 
@@ -402,7 +390,7 @@ public final class LocalYsmModel implements AutoCloseable {
 
     /** Visibility and material routing depend on the texture, not the current animation frame. */
     private void bakeGeometry() {
-        batches = new BakedBatch[bones.size()][];
+        batches = new YsmMeshBatch[bones.size()][];
         Arrays.fill(geometryMatrices, null);
         for (int b = 0; b < bones.size(); b++) {
             RawBone bone = bones.get(b);
@@ -417,7 +405,7 @@ public final class LocalYsmModel implements AutoCloseable {
                             .add(face);
                 }
             }
-            var baked = new ArrayList<BakedBatch>(groups.size());
+            var baked = new ArrayList<YsmMeshBatch>(groups.size());
             for (var entry : groups.entrySet()) {
                 float[] vertices = new float[entry.getValue().size() * 32];
                 int offset = 0;
@@ -432,9 +420,9 @@ public final class LocalYsmModel implements AutoCloseable {
                         vertices[offset++] = face.normal[1];
                         vertices[offset++] = face.normal[2];
                     }
-                baked.add(new BakedBatch(entry.getKey(), vertices));
+                baked.add(new YsmMeshBatch(entry.getKey(), vertices));
             }
-            batches[b] = baked.toArray(BakedBatch[]::new);
+            batches[b] = baked.toArray(YsmMeshBatch[]::new);
         }
     }
 
@@ -459,10 +447,11 @@ public final class LocalYsmModel implements AutoCloseable {
             int partMask,
             boolean geometry) {
         runtime.update(seconds, queries, requestedAnimation);
-        var locators = new LinkedHashMap<String, Matrix4f>();
-        var equipmentLocators = new LinkedHashMap<String, Matrix4f>();
-        var hiddenLocators = new HashSet<String>();
-        var swordLocators = new LinkedHashMap<String, Matrix4f>();
+        // Pose-only updates publish no mesh or locator maps.
+        var locators = geometry ? new LinkedHashMap<String, Matrix4f>() : null;
+        var equipmentLocators = geometry ? new LinkedHashMap<String, Matrix4f>() : null;
+        var hiddenLocators = geometry ? new HashSet<String>() : null;
+        var swordLocators = geometry ? new LinkedHashMap<String, Matrix4f>() : null;
         Arrays.fill(bufferSizes, 0);
         for (int i = 0; i < bones.size(); i++) {
             RawBone bone = bones.get(i);
@@ -529,7 +518,7 @@ public final class LocalYsmModel implements AutoCloseable {
                             && !zero
                             && !adjustment.hidden()
                             && (partMask == 0 || parts[i] == partMask);
-            for (BakedBatch batch : batches[i])
+            for (YsmMeshBatch batch : batches[i])
                 if (renderBones[i]) bufferSizes[batch.material] += batch.vertices.length;
                 else batch.previousOutput = null;
         }
@@ -542,14 +531,13 @@ public final class LocalYsmModel implements AutoCloseable {
                 passes.add(new Pass((i & 4) != 0, (i & 2) != 0, (i & 1) != 0, output[i]));
             }
         Arrays.fill(bufferSizes, 0);
-        Vector3f position = new Vector3f(), normal = new Vector3f();
         Matrix3f normalMatrix = new Matrix3f();
         for (int b = 0; b < bones.size(); b++) {
             if (!renderBones[b] || batches[b].length == 0) continue;
             Matrix4f matrix = matrices[b];
             boolean unchanged = matrix.equals(geometryMatrices[b]);
             if (!unchanged) matrix.normal(normalMatrix);
-            for (BakedBatch batch : batches[b]) {
+            for (YsmMeshBatch batch : batches[b]) {
                 float[] vertices = output[batch.material], source = batch.vertices;
                 int offset = bufferSizes[batch.material];
                 if (unchanged && batch.previousOutput != null) {
@@ -562,27 +550,7 @@ public final class LocalYsmModel implements AutoCloseable {
                 } else {
                     // A hidden batch may be restored without changing its bone matrix.
                     if (unchanged) matrix.normal(normalMatrix);
-                    for (int face = 0; face < source.length; face += 32) {
-                        normal.set(source[face + 5], source[face + 6], source[face + 7])
-                                .mul(normalMatrix);
-                        if (normal.isFinite() && normal.lengthSquared() > 1e-12f)
-                            normal.normalize();
-                        else normal.set(0, 1, 0);
-                        for (int v = face; v < face + 32; v += 8) {
-                            position.set(source[v], source[v + 1], source[v + 2])
-                                    .mulPosition(matrix);
-                            if (!position.isFinite())
-                                throw new IllegalArgumentException("Non-finite model vertex");
-                            vertices[offset++] = position.x;
-                            vertices[offset++] = position.y;
-                            vertices[offset++] = position.z;
-                            vertices[offset++] = source[v + 3];
-                            vertices[offset++] = source[v + 4];
-                            vertices[offset++] = normal.x;
-                            vertices[offset++] = normal.y;
-                            vertices[offset++] = normal.z;
-                        }
-                    }
+                    batch.transform(matrix, normalMatrix, vertices, offset);
                 }
                 batch.previousOutput = vertices;
                 batch.previousOffset = bufferSizes[batch.material];

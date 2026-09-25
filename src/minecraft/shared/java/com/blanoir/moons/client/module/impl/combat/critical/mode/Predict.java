@@ -10,12 +10,13 @@ import com.blanoir.moons.client.management.input.CombatInputController;
 import com.blanoir.moons.client.management.targeting.Targeting;
 import com.blanoir.moons.client.module.impl.combat.critical.Critical;
 import com.blanoir.moons.client.utils.combat.CombatDecisionEngine;
+import com.blanoir.moons.client.utils.combat.CombatGeometry;
 import com.blanoir.moons.client.utils.combat.CombatModuleCoordinator;
 import com.blanoir.moons.client.utils.combat.CombatReach;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.phys.EntityHitResult;
+import net.minecraft.world.entity.EntitySelector;
 
 /**
  * Delays an attack only when the vanilla critical predicate is expected to
@@ -110,7 +111,7 @@ public final class Predict {
                 clear(client);
                 return;
             }
-            if (!queuedManualIntent && CombatReach.outsideVanillaRange(client, target)) {
+            if (!queuedManualIntent && CombatGeometry.outsideVanillaRange(client, target)) {
                 clear(client);
                 return;
             }
@@ -222,7 +223,7 @@ public final class Predict {
             boolean manualIntent,
             int earliestAttackTick,
             boolean throughBlock) {
-        if (!manualIntent && CombatReach.outsideVanillaRange(client, target)) {
+        if (!manualIntent && CombatGeometry.outsideVanillaRange(client, target)) {
             return Critical.AttackDecision.ABORTED;
         }
         int horizon = configuredHorizonTicks();
@@ -508,16 +509,19 @@ public final class Predict {
 
     private static boolean isImmediatelyAttackable(
             Minecraft client, Entity target, boolean throughBlock) {
-        return Targeting.isAimingAtEnemy(client, target, throughBlock);
+        return crosshairEnemy(client, throughBlock) == target;
     }
 
     private static Entity crosshairEnemy(Minecraft client, boolean throughBlock) {
-        if (client.hitResult instanceof EntityHitResult hit
-                && Targeting.isEnemyPlayer(client, hit.getEntity())
-                && Targeting.isWithinInteractionRange(client, hit.getEntity())) {
-            return hit.getEntity();
-        }
-        return throughBlock ? Targeting.findEnemyPlayerOnViewRay(client) : null;
+        Entity target =
+                CombatGeometry.findTargetOnRay(
+                        client,
+                        client.player.getEyePosition(),
+                        client.player.getViewVector(1.0F),
+                        CombatReach.vanillaEntityInteractionRange(client.player),
+                        EntitySelector.CAN_BE_PICKED,
+                        throughBlock);
+        return Targeting.isEnemyPlayer(client, target) ? target : null;
     }
 
     private static void fallbackOrClear(Minecraft client, Entity target) {

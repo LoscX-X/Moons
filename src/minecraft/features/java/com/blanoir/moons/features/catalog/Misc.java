@@ -10,6 +10,7 @@ import com.blanoir.moons.client.module.framework.ModuleRegistry;
 import com.blanoir.moons.client.module.impl.misc.AntiNick;
 import com.blanoir.moons.client.module.impl.misc.ArmorHide;
 import com.blanoir.moons.client.module.impl.misc.ChatFilter;
+import com.blanoir.moons.client.module.impl.misc.FreeLook;
 import com.blanoir.moons.client.module.impl.misc.StaticFov;
 import com.blanoir.moons.client.module.impl.misc.aimdata.AimCollect;
 import com.blanoir.moons.client.module.impl.misc.antibot.AntiBot;
@@ -115,6 +116,17 @@ final class Misc {
                 ArmorHide::isEnabled,
                 ArmorHide::setEnabled,
                 () -> "Self");
+    }
+
+    static ModuleRegistry.Module freeLook() {
+        return module(
+                "freelook",
+                "FreeLook",
+                ModuleCategories.MISC,
+                FreeLook::isEnabled,
+                FreeLook::setEnabled,
+                FreeLook::statusTag,
+                bool("hold", "Hold key", "freelook.hold", true, FreeLook::setHold));
     }
 
     static ModuleRegistry.Module antiNick() {

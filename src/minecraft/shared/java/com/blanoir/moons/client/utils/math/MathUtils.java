@@ -26,7 +26,10 @@ public final class MathUtils {
         if (point == null || box == null) {
             return Double.MAX_VALUE;
         }
-        return point.distanceToSqr(closestPoint(point, box));
+        return point.distanceToSqr(
+                Mth.clamp(point.x, box.minX, box.maxX),
+                Mth.clamp(point.y, box.minY, box.maxY),
+                Mth.clamp(point.z, box.minZ, box.maxZ));
     }
 
     public static AABB inset(AABB box, double requestedInset, double maxSizeFraction) {

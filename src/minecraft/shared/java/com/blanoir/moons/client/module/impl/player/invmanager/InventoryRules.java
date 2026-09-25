@@ -62,7 +62,8 @@ public final class InventoryRules {
 
         public boolean available() {
             if (!BuiltInRegistries.ITEM.containsKey(Identifier.tryParse(item))) return false;
-            return components.keySet().stream().allMatch(key -> componentType(key) != null);
+            for (String key : components.keySet()) if (componentType(key) == null) return false;
+            return true;
         }
 
         public boolean authorizesSpecial(ItemStack stack) {
@@ -107,27 +108,22 @@ public final class InventoryRules {
         }
 
         public boolean matches(ItemStack stack) {
-            if (stack.isEmpty()
-                    || exclude.stream()
-                            .anyMatch(
-                                    entry ->
-                                            entry.matches(stack)
-                                                    || entry.item().equals(itemId(stack))
-                                                            && !entry.available())
-                    || include.stream()
-                            .anyMatch(
-                                    entry ->
-                                            entry.item().equals(itemId(stack))
-                                                    && !entry.available())) return false;
-            return include.stream().anyMatch(entry -> entry.matches(stack))
-                    || !onlyListed && InventoryItems.matches(base, stack);
+            if (stack.isEmpty()) return false;
+            String stackId = itemId(stack);
+            for (Entry entry : exclude)
+                if (entry.matches(stack) || entry.item().equals(stackId) && !entry.available())
+                    return false;
+            for (Entry entry : include)
+                if (entry.item().equals(stackId) && !entry.available()) return false;
+            for (Entry entry : include) if (entry.matches(stack)) return true;
+            return !onlyListed && InventoryItems.matches(base, stack);
         }
 
         public boolean mayMove(ItemStack stack, boolean protectSpecial) {
-            return stack.isEmpty()
-                    || !protectSpecial
-                    || InventoryItems.protection(stack).isEmpty()
-                    || include.stream().anyMatch(entry -> entry.authorizesSpecial(stack));
+            if (stack.isEmpty() || !protectSpecial || InventoryItems.protection(stack).isEmpty())
+                return true;
+            for (Entry entry : include) if (entry.authorizesSpecial(stack)) return true;
+            return false;
         }
 
         public int rank(ItemStack stack) {
@@ -137,7 +133,8 @@ public final class InventoryRules {
 
         public int specificity() {
             if (!onlyListed) return 0;
-            return include.stream().anyMatch(entry -> !entry.components().isEmpty()) ? 2 : 1;
+            for (Entry entry : include) if (!entry.components().isEmpty()) return 2;
+            return 1;
         }
 
         public String reason(ItemStack stack) {

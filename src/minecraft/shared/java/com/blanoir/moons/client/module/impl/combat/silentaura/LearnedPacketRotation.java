@@ -67,11 +67,16 @@ final class LearnedPacketRotation {
     private String status = "idle";
 
     LearnedPacketRotation() {
-        this(
-                rows -> {
-                    LearnedAimModel model = LearnedAimModel.bundled();
-                    return model == null ? null : model.predict(rows);
-                });
+        this(reusablePredictor());
+    }
+
+    private static Predictor reusablePredictor() {
+        // Each mode owns its inference scratch, just as it owns its packet history.
+        var workspace = new LearnedAimModel.Workspace();
+        return rows -> {
+            LearnedAimModel model = LearnedAimModel.bundled();
+            return model == null ? null : model.predict(rows, workspace);
+        };
     }
 
     LearnedPacketRotation(Predictor predictor) {

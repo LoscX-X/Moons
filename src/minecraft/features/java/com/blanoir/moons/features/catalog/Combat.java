@@ -16,6 +16,113 @@ import com.blanoir.moons.client.utils.registry.RegistryLists;
 final class Combat {
     private Combat() {}
 
+    static ModuleRegistry.Module hitSelect() {
+        return module(
+                "hitselect",
+                "HitSelect",
+                ModuleCategories.COMBAT,
+                HitSelect::isEnabled,
+                HitSelect::setEnabled,
+                HitSelect::statusTag,
+                integer(
+                        "pause", "Repeat pause (ms)", "hitselect.pauseMs",
+                        450, 0, 500, 10, HitSelect::setPause),
+                integer(
+                        "first", "Wait for first hit (ms)", "hitselect.firstMs",
+                        150, 0, 500, 10, HitSelect::setFirst),
+                integer(
+                        "trade", "Wait in trades (ms)", "hitselect.tradeMs",
+                        0, 0, 250, 10, HitSelect::setTrade),
+                bool(
+                        "servertime", "Use damage confirmation", "hitselect.serverTime",
+                        false, HitSelect::setServerTime));
+    }
+
+    static ModuleRegistry.Module misplace() {
+        return module(
+                "misplace",
+                "Misplace",
+                ModuleCategories.COMBAT,
+                Misplace::isEnabled,
+                Misplace::setEnabled,
+                Misplace::statusTag,
+                bool(
+                        "adaptive",
+                        "Dynamic offset",
+                        "misplace.adaptive",
+                        true,
+                        Misplace::setAdaptive),
+                number(
+                        "distance",
+                        "Maximum offset",
+                        "misplace.distance",
+                        .4,
+                        0,
+                        1.5,
+                        .05,
+                        Misplace::setDistance),
+                integer(
+                        "prediction",
+                        "Prediction limit (ms)",
+                        "misplace.predictionMs",
+                        400,
+                        0,
+                        1000,
+                        10,
+                        Misplace::setPrediction),
+                integer("jitter", "Timing uncertainty (ms)", "misplace.jitterMs", 15,
+                        0, 100, 5, Misplace::setJitter),
+                bool(
+                        "knockback",
+                        "Track knockback timing",
+                        "misplace.knockback",
+                        true,
+                        Misplace::setKnockback),
+                integer(
+                        "smoothing",
+                        "Smoothing (ms)",
+                        "misplace.smoothingMs",
+                        60,
+                        0,
+                        200,
+                        10,
+                        Misplace::setSmoothing));
+    }
+
+    static ModuleRegistry.Module autoMace() {
+        return module(
+                "automace",
+                "AutoMace",
+                ModuleCategories.COMBAT,
+                AutoMace::isEnabled,
+                AutoMace::setEnabled,
+                AutoMace::statusTag,
+                bool(
+                        "require_attack",
+                        "Hold attack to start",
+                        "automace.requireAttack",
+                        true,
+                        AutoMace::setRequireAttack),
+                number(
+                        "range",
+                        "Target range",
+                        "automace.range",
+                        3.0,
+                        1.0,
+                        3.0,
+                        .1,
+                        AutoMace::setRange),
+                integer(
+                        "cooldown",
+                        "Combo cooldown (ticks)",
+                        "automace.cooldown",
+                        40,
+                        20,
+                        200,
+                        5,
+                        AutoMace::setCooldown));
+    }
+
     static ModuleRegistry.Module autoSpear() {
         return module(
                 "autospear",

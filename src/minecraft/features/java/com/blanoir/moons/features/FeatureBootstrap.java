@@ -13,7 +13,10 @@ import com.blanoir.moons.client.management.time.TimerManager;
 import com.blanoir.moons.client.module.framework.ModuleRegistry;
 import com.blanoir.moons.client.module.impl.combat.AutoBlock;
 import com.blanoir.moons.client.module.impl.combat.AutoClicker;
+import com.blanoir.moons.client.module.impl.combat.AutoMace;
 import com.blanoir.moons.client.module.impl.combat.AutoSpear;
+import com.blanoir.moons.client.module.impl.combat.HitSelect;
+import com.blanoir.moons.client.module.impl.combat.Misplace;
 import com.blanoir.moons.client.module.impl.combat.Reach;
 import com.blanoir.moons.client.module.impl.combat.SilentAura;
 import com.blanoir.moons.client.module.impl.combat.SprintReset;
@@ -24,6 +27,7 @@ import com.blanoir.moons.client.module.impl.combat.critical.Critical;
 import com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraBlock;
 import com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraRuntime;
 import com.blanoir.moons.client.module.impl.misc.AntiNick;
+import com.blanoir.moons.client.module.impl.misc.FreeLook;
 import com.blanoir.moons.client.module.impl.misc.aimdata.AimCollect;
 import com.blanoir.moons.client.module.impl.misc.antibot.AntiBot;
 import com.blanoir.moons.client.module.impl.movement.JumpReset;
@@ -87,6 +91,7 @@ final class FeatureBootstrap {
         ModuleRegistry.installCatalog(ModuleCatalog::register);
         RotationManager.init();
         HotbarLease.init();
+        FreeLook.init();
 
         AutoMLG.init();
         OreScanner.init();
@@ -96,6 +101,7 @@ final class FeatureBootstrap {
         Nickname.init();
         PremiumCheckCommand.init();
         CombatInputController.init();
+        HitSelect.init();
         AntiBot.init();
         AntiNick.init();
         AimAssist.init();
@@ -106,6 +112,7 @@ final class FeatureBootstrap {
         TriggerBot.init();
         AutoClicker.init();
         AutoSpear.init();
+        AutoMace.init();
         SprintReset.init();
         SilentAura.init();
         Animations.bindCombatState(
@@ -133,6 +140,7 @@ final class FeatureBootstrap {
         TargetInfoHud.init();
         Nametags.init();
         Minecraft client = Minecraft.getInstance();
+        FreeLook.reset(client);
         if (Caver.isEnabled() && client.level != null) {
             MinecraftClientAccess.rebuildLevelRenderer(client);
         }
@@ -142,6 +150,7 @@ final class FeatureBootstrap {
         Scaffold.init();
         FastPlace.init();
         Backtrack.init();
+        Misplace.init();
         KeepSprint.init();
         AutoTotem.init();
         InvManager.init();
@@ -192,8 +201,10 @@ final class FeatureBootstrap {
         FakeLag.discardPending();
         RotationManager.reset();
         Minecraft client = Minecraft.getInstance();
+        FreeLook.reset(client);
         AutoBlock.reset(client);
         AutoSpear.reset(client);
+        AutoMace.reset(client);
         InvManager.reset();
         AutoArmor.reset();
         InvClear.reset();

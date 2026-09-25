@@ -51,6 +51,7 @@ public final class InventoryActionVerification {
         require(
                 !InventoryItems.protection(named).isEmpty(),
                 "Explicit special-item protection stays intact");
+        verifyRules(pickaxe, named);
 
         var session = new InventorySession();
         var action = new InventoryAction(10, 0, pickaxe, ItemStack.EMPTY, "test");
@@ -70,5 +71,89 @@ public final class InventoryActionVerification {
 
     private static void require(boolean value, String message) {
         if (!value) throw new AssertionError(message);
+    }
+
+    private static void verifyRules(ItemStack pickaxe, ItemStack named) {
+        var entries =
+                java.util.List.of(
+                        new InventoryRules.Entry(
+                                "minecraft:iron_pickaxe", java.util.Map.of(), false, null),
+                        new InventoryRules.Entry("minecraft:stick", java.util.Map.of(), true, null),
+                        new InventoryRules.Entry("missing:item", java.util.Map.of(), false, null),
+                        new InventoryRules.Entry(
+                                "minecraft:stick",
+                                java.util.Map.of(
+                                        "missing:component", com.google.gson.JsonNull.INSTANCE),
+                                true,
+                                null));
+        var stacks = java.util.List.of(pickaxe, named, new ItemStack(Items.STICK), ItemStack.EMPTY);
+        for (int include = 0; include < 16; include++)
+            for (int exclude = 0; exclude < 16; exclude++)
+                for (boolean only : new boolean[] {false, true}) {
+                    var allowed = new java.util.ArrayList<InventoryRules.Entry>();
+                    var denied = new java.util.ArrayList<InventoryRules.Entry>();
+                    for (int i = 0; i < entries.size(); i++) {
+                        if ((include & (1 << i)) != 0) allowed.add(entries.get(i));
+                        if ((exclude & (1 << i)) != 0) denied.add(entries.get(i));
+                    }
+                    var rule =
+                            new InventoryRules.Rule(
+                                    "parity",
+                                    "parity",
+                                    InventoryRole.PICKAXE,
+                                    only,
+                                    true,
+                                    allowed,
+                                    denied);
+                    for (var stack : stacks) {
+                        // Original short-circuit predicates, including unknown-ID fail-closed
+                        // rules.
+                        boolean expected =
+                                !stack.isEmpty()
+                                        && !denied.stream()
+                                                .anyMatch(
+                                                        e ->
+                                                                e.matches(stack)
+                                                                        || e.item()
+                                                                                        .equals(
+                                                                                                InventoryRules
+                                                                                                        .itemId(
+                                                                                                                stack))
+                                                                                && !e.available())
+                                        && !allowed.stream()
+                                                .anyMatch(
+                                                        e ->
+                                                                e.item()
+                                                                                .equals(
+                                                                                        InventoryRules
+                                                                                                .itemId(
+                                                                                                        stack))
+                                                                        && !e.available())
+                                        && (allowed.stream().anyMatch(e -> e.matches(stack))
+                                                || !only
+                                                        && InventoryItems.matches(
+                                                                InventoryRole.PICKAXE, stack));
+                        require(rule.matches(stack) == expected, "Inventory matching parity");
+                        for (boolean protect : new boolean[] {false, true}) {
+                            boolean mayMove =
+                                    stack.isEmpty()
+                                            || !protect
+                                            || InventoryItems.protection(stack).isEmpty()
+                                            || allowed.stream()
+                                                    .anyMatch(e -> e.authorizesSpecial(stack));
+                            require(
+                                    rule.mayMove(stack, protect) == mayMove,
+                                    "Special protection parity");
+                        }
+                    }
+                    int specificity =
+                            !only
+                                    ? 0
+                                    : allowed.stream().anyMatch(e -> !e.components().isEmpty())
+                                            ? 2
+                                            : 1;
+                    require(rule.specificity() == specificity, "Specificity parity");
+                }
+        System.out.println("INVENTORY_RULE_PARITY rules=512 stacks=2048 protection=4096");
     }
 }

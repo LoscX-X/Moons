@@ -11,6 +11,22 @@ sourceSets {
         compileClasspath += sourceSets.features.output + sourceSets.client.output + sourceSets.agent.output + sourceSets.runtime.output + sourceSets.api.output + sourceSets.features.compileClasspath + configurations.agentRuntimeClasspath
         runtimeClasspath += compileClasspath
     }
+    misplaceTest {
+        java.setSrcDirs(['src/test/render/java'])
+        java.include('**/combat/misplace/*.java')
+        kotlin.setSrcDirs([])
+        resources.setSrcDirs([])
+        compileClasspath += sourceSets.renderTest.compileClasspath
+        runtimeClasspath += compileClasspath
+    }
+    hitSelectTest {
+        java.setSrcDirs(['src/test/render/java'])
+        java.include('**/combat/hitselect/*.java')
+        kotlin.setSrcDirs([])
+        resources.setSrcDirs([])
+        compileClasspath += sourceSets.renderTest.compileClasspath
+        runtimeClasspath += compileClasspath
+    }
 }
 
 tasks.register('verifyArmorHide', JavaExec) {
@@ -35,11 +51,16 @@ tasks.register('verifyNicknameShuffle', JavaExec) {
 
 [
         verifyHudTags: 'com.blanoir.moons.client.ui.hud.HudTagVerification',
+        verifyFreeLook: 'com.blanoir.moons.client.module.impl.misc.FreeLookVerification',
         verifyAutoSpearMotion: 'com.blanoir.moons.client.module.impl.combat.AutoSpearMotionVerification',
+        verifyAutoMace: 'com.blanoir.moons.client.module.impl.combat.AutoMaceVerification',
+        verifyAutoTotem: 'com.blanoir.moons.client.module.impl.player.AutoTotemVerification',
+        verifyDamagePrediction: 'com.blanoir.moons.client.utils.prediction.DamagePredictionVerification',
         verifyAutoSpearImpact: 'com.blanoir.moons.client.module.impl.combat.AutoSpearImpactVerification',
         verifyAutoSpearFakeLag: 'com.blanoir.moons.client.module.impl.combat.AutoSpearFakeLagVerification',
         verifyAimCollect: 'com.blanoir.moons.client.module.impl.misc.aimdata.AimCollectVerification',
         verifyOverlayGeometry: 'com.blanoir.moons.client.render.world.OverlayGeometryVerification',
+        verifyAimSearchPerformance: 'com.blanoir.moons.client.utils.rotation.aim.AimSearchPerformanceVerification',
         verifyStructureLocate: 'com.blanoir.moons.client.module.impl.world.structure.StructureLocateVerification',
         verifySilentAuraPoints: 'com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraPointVerification',
         verifyLearnedAim: 'com.blanoir.moons.client.module.impl.combat.silentaura.LearnedAimVerification',
@@ -71,6 +92,45 @@ tasks.register('simulateSilentAuraRotation', JavaExec) {
     args layout.buildDirectory.dir('rotation-simulation').get().asFile.absolutePath
     systemProperty 'moons.home', layout.buildDirectory.dir('rotation-simulation/home').get().asFile.absolutePath
     workingDir layout.buildDirectory.get().asFile
+}
+
+tasks.register('verifyMisplace', JavaExec) {
+    group = 'verification'
+    description = 'Checks causal latency bounds, packet ordering and delayed knockback with independent timelines.'
+    dependsOn 'misplaceTestClasses'
+    classpath = sourceSets.misplaceTest.runtimeClasspath
+    mainClass = 'com.blanoir.moons.client.module.impl.combat.misplace.MisplaceVerification'
+    workingDir layout.buildDirectory.get().asFile
+}
+
+tasks.register('verifyHitSelect', JavaExec) {
+    group = 'verification'
+    description = 'Checks attack timing, TriggerBot exclusion and displaced combat geometry.'
+    dependsOn 'hitSelectTestClasses'
+    classpath = sourceSets.hitSelectTest.runtimeClasspath
+    mainClass = 'com.blanoir.moons.client.module.impl.combat.hitselect.HitSelectVerification'
+    systemProperty 'moons.home', layout.buildDirectory.dir('hitselect-fixture/home').get().asFile.absolutePath
+    workingDir layout.buildDirectory.get().asFile
+}
+tasks.named('check').configure { dependsOn 'verifyHitSelect' }
+
+tasks.register('simulateMisplace', JavaExec) {
+    group = 'verification'
+    description = 'Simulates two clients, FIFO links, server ticks and delayed knockback; exports traces and predictions.'
+    dependsOn 'misplaceTestClasses'
+    classpath = sourceSets.misplaceTest.runtimeClasspath
+    mainClass = 'com.blanoir.moons.client.module.impl.combat.misplace.MisplaceSimulation'
+    args layout.buildDirectory.dir('misplace-simulation').get().asFile.absolutePath
+    workingDir layout.buildDirectory.get().asFile
+}
+
+tasks.register('benchmarkHotPaths', JavaExec) {
+    group = 'verification'
+    description = 'Reports CPU/allocation comparisons for surface scanning, overlay vertices and inference; no GPU or FPS measurement.'
+    dependsOn 'renderTestClasses'
+    classpath = sourceSets.renderTest.runtimeClasspath
+    mainClass = 'com.blanoir.moons.client.utils.rotation.aim.HotPathBenchmark'
+    jvmArgs '-Xms512m', '-Xmx512m'
 }
 
 tasks.named('compileRenderTestKotlin', moonsPluginTypes.kotlinCompile) {
@@ -176,7 +236,10 @@ tasks.register('verifyLoadSession', Exec) {
 
 tasks.named('check').configure { dependsOn 'verifyLoadSession' }
 tasks.named('check').configure { dependsOn 'verifyLearnedAim' }
+tasks.named('check').configure { dependsOn 'verifyAutoTotem', 'verifyDamagePrediction' }
 tasks.named('check').configure { dependsOn 'verifyAimCollect' }
+tasks.named('check').configure { dependsOn 'verifyMisplace' }
+tasks.named('check').configure { dependsOn 'verifyAimSearchPerformance', 'verifyOverlayGeometry', 'verifyStructureLocate', 'verifyGodBridgeSafety', 'verifyInventoryActions' }
 
 tasks.register('verifyLauncherPackages', Exec) {
     group = 'verification'

@@ -1,10 +1,12 @@
 package com.blanoir.moons.client.module.impl.network.backtrack;
 
 import com.blanoir.moons.client.access.GameAccess;
-import com.blanoir.moons.client.access.MinecraftClientAccess;
 import com.blanoir.moons.client.config.MoonsConfig;
+import com.blanoir.moons.client.render.VisualRenderTargets;
 import com.mojang.blaze3d.buffers.GpuBuffer;
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.blaze3d.pipeline.BlendFunction;
+import com.mojang.blaze3d.pipeline.ColorTargetState;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.systems.CommandEncoder;
 import com.mojang.blaze3d.systems.RenderPass;
@@ -192,7 +194,8 @@ public final class BacktrackRenderer {
     private static void drawBuiltBuffer(
             Minecraft client, BufferBuilder buffer, RenderPipeline pipeline, String label) {
         try (MeshData builtBuffer = buffer.buildOrThrow()) {
-            var mainTarget = MinecraftClientAccess.mainRenderTarget(client);
+            var mainTarget = VisualRenderTargets.worldTarget(client);
+            if (mainTarget == null) return;
             var colorView = mainTarget.getColorTextureView();
             if (colorView == null) return;
             MeshData.DrawState drawParameters = builtBuffer.drawState();
@@ -288,6 +291,7 @@ public final class BacktrackRenderer {
                 RenderPipeline.builder(GameAccess.debugFilledSnippet())
                         .withLocation(Identifier.fromNamespaceAndPath(MoonsConfig.MOD_ID, name))
                         .withVertexFormat(DefaultVertexFormat.POSITION_COLOR, mode)
+                        .withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
                         .withDepthStencilState(Optional.empty())
                         .build());
     }

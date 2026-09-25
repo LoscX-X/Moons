@@ -154,7 +154,10 @@ public final class ModuleKeybinds {
         if (moduleId == null || moduleId.isBlank()) {
             return InputConstants.UNKNOWN;
         }
-        return parse(Settings.getString(PREFIX + moduleId, ""));
+        return parse(
+                Settings.getString(
+                        PREFIX + moduleId,
+                        "freelook".equals(moduleId) ? "key.keyboard.left.alt" : ""));
     }
 
     /** Modules bound to this key. ClickGUI is routed before module bindings. */

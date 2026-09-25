@@ -74,7 +74,7 @@ public final class AimPointsG {
             QuantizerA.Adapter quantizer) {
         double range = client.player.blockInteractionRange();
         FaceScanA.Result best =
-                FaceScanA.scan(
+                FaceScanA.scanPrimitive(
                         offsets,
                         (u, v) ->
                                 BlockPlacementUtils.facePoint(

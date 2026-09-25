@@ -1,6 +1,7 @@
 package com.blanoir.moons.client.render.world;
 
 import com.blanoir.moons.client.render.WorldOverlayRenderer.ColoredBox;
+import com.blanoir.moons.client.render.WorldOverlayRenderer.ColoredPin;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 
 import net.minecraft.world.phys.Vec3;
@@ -12,10 +13,14 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
+import java.util.Random;
+import java.util.function.Consumer;
 
 /** Regressions for bounded, independent edge geometry and conservative screen culling. */
 public final class OverlayGeometryVerification {
     public static void main(String[] args) {
+        verifyReference();
         var vertices = new ArrayList<Vector3f>();
         VertexConsumer recorder =
                 (VertexConsumer)
@@ -80,5 +85,89 @@ public final class OverlayGeometryVerification {
 
     private static void check(boolean condition, String message) {
         if (!condition) throw new AssertionError(message);
+    }
+
+    private static void verifyReference() {
+        Random random = new Random(20260925);
+        for (int i = 0; i < 150; i++) {
+            Matrix4f pose =
+                    new Matrix4f()
+                            .translate(
+                                    random.nextFloat() * 100,
+                                    random.nextFloat() * -100,
+                                    random.nextFloat() * 100)
+                            .rotateXYZ(random.nextFloat(), random.nextFloat(), random.nextFloat())
+                            .scale(
+                                    i % 7 == 0 ? 0 : random.nextFloat() * 3 - 1,
+                                    random.nextFloat() * 3,
+                                    random.nextFloat() * 3);
+            var box =
+                    new ColoredBox(
+                            -random.nextFloat() * 100,
+                            -random.nextFloat() * 100,
+                            -random.nextFloat() * 100,
+                            random.nextFloat() * 100,
+                            random.nextFloat() * 100,
+                            random.nextFloat() * 100,
+                            random.nextFloat(),
+                            random.nextFloat(),
+                            random.nextFloat(),
+                            random.nextFloat());
+            equalVertices(
+                    b -> ReferenceOverlayGeometry.renderFilledBox(pose, b, box),
+                    b -> OverlayGeometry.renderFilledBox(pose, b, box));
+            equalVertices(
+                    b -> ReferenceOverlayGeometry.renderSoftFill(pose, b, box),
+                    b -> OverlayGeometry.renderSoftFill(pose, b, box));
+            equalVertices(
+                    b -> ReferenceOverlayGeometry.renderOutlineBox(pose, b, box),
+                    b -> OverlayGeometry.renderOutlineBox(pose, b, box));
+            var pin =
+                    new ColoredPin(
+                            box.minX(),
+                            box.minY(),
+                            box.minZ(),
+                            random.nextFloat() * 5,
+                            random.nextFloat(),
+                            box.red(),
+                            box.green(),
+                            box.blue(),
+                            box.alpha());
+            equalVertices(
+                    b -> ReferenceOverlayGeometry.renderPin(pose, b, pin),
+                    b -> OverlayGeometry.renderPin(pose, b, pin));
+        }
+        System.out.println("OVERLAY_PARITY cases=600 position+color+order=exact");
+    }
+
+    private static void equalVertices(
+            Consumer<VertexConsumer> before, Consumer<VertexConsumer> after) {
+        var expected = new ArrayList<Object>();
+        var actual = new ArrayList<Object>();
+        before.accept(record(expected));
+        after.accept(record(actual));
+        check(
+                expected.equals(actual),
+                "Vertex positions, colors or ordering differ from reference");
+    }
+
+    private static VertexConsumer record(List<Object> output) {
+        return (VertexConsumer)
+                Proxy.newProxyInstance(
+                        VertexConsumer.class.getClassLoader(),
+                        new Class<?>[] {VertexConsumer.class},
+                        (proxy, method, values) -> {
+                            if (method.isDefault())
+                                return InvocationHandler.invokeDefault(proxy, method, values);
+                            output.add(method.getName());
+                            if (values != null)
+                                for (Object value : values) {
+                                    output.add(
+                                            value instanceof Float f
+                                                    ? Float.floatToRawIntBits(f)
+                                                    : value);
+                                }
+                            return proxy;
+                        });
     }
 }

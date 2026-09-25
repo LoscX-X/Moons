@@ -1,6 +1,7 @@
 package com.blanoir.moons.client.event.frame;
 
 import com.blanoir.moons.client.event.EventBus;
+import com.blanoir.moons.client.render.VisualRenderTargets;
 import com.mojang.blaze3d.vertex.PoseStack;
 
 /**
@@ -18,7 +19,9 @@ public final class WorldRenderDispatch {
     private WorldRenderDispatch() {}
 
     public static void beginFrame() {
+        com.blanoir.moons.client.render.VisualModelCapture.beginFrame();
         frame++;
+        VisualRenderTargets.beginFrame();
     }
 
     public static void post(PoseStack poseStack, float tickDelta) {

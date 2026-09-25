@@ -248,6 +248,18 @@ final class VersionMappings {
                                 "()V",
                                 TargetMethod.HookKind.VOID_RETURN),
                         new TargetMethod(
+                                "render.freelook.turn",
+                                List.of("net/minecraft/world/entity/Entity"),
+                                List.of("turn"),
+                                "(DD)V",
+                                TargetMethod.HookKind.BOXED_ARGS_VOID_GATE),
+                        new TargetMethod(
+                                "render.freelook.rotation",
+                                List.of("net/minecraft/client/Camera"),
+                                List.of("setRotation"),
+                                "(FF)V",
+                                TargetMethod.HookKind.FLOAT_ARGUMENTS),
+                        new TargetMethod(
                                 "render.camera-zoom",
                                 List.of("net/minecraft/client/Camera"),
                                 List.of("getMaxZoom"),
@@ -449,6 +461,12 @@ final class VersionMappings {
                                 List.of("net/minecraft/client/multiplayer/ClientPacketListener"),
                                 List.of("sendChat"),
                                 "(Ljava/lang/String;)V",
+                                TargetMethod.HookKind.BOOLEAN_GATE),
+                        new TargetMethod(
+                                "render.chams-draw",
+                                List.of("net/minecraft/client/renderer/rendertype/RenderType"),
+                                List.of("draw"),
+                                "(Lcom/mojang/blaze3d/vertex/MeshData;)V",
                                 TargetMethod.HookKind.BOOLEAN_GATE),
                         new TargetMethod(
                                 "render.chams-frame",

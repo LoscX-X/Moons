@@ -19,6 +19,7 @@ import com.blanoir.moons.client.module.impl.combat.SilentAura;
 import com.blanoir.moons.client.module.impl.misc.AntiNick;
 import com.blanoir.moons.client.module.impl.misc.ArmorHide;
 import com.blanoir.moons.client.module.impl.misc.ChatFilter;
+import com.blanoir.moons.client.module.impl.misc.FreeLook;
 import com.blanoir.moons.client.module.impl.misc.StaticFov;
 import com.blanoir.moons.client.module.impl.misc.antibot.AntiBot;
 import com.blanoir.moons.client.module.impl.movement.KeepSprint;
@@ -35,7 +36,8 @@ import com.blanoir.moons.client.module.impl.render.NicknameShuffle;
 import com.blanoir.moons.client.module.impl.render.Scoreboard;
 import com.blanoir.moons.client.module.impl.render.xray.XrayTerrain;
 import com.blanoir.moons.client.module.impl.world.scaffold.Scaffold;
-import com.blanoir.moons.client.ui.compose.ComposeRenderBridge;
+import com.blanoir.moons.client.render.VisualPresentation;
+import com.blanoir.moons.client.render.model.ModelOverlayRenderer;
 import com.blanoir.moons.client.utils.render.SodiumQuadAlpha;
 import com.blanoir.moons.client.utils.world.placement.PlacementRaycast;
 import com.blanoir.moons.features.command.ClientCommands;
@@ -49,6 +51,7 @@ import net.minecraft.client.multiplayer.MultiPlayerGameMode;
 import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.client.player.ClientInput;
 import net.minecraft.client.player.KeyboardInput;
+import net.minecraft.client.renderer.StagedVertexBuffer;
 import net.minecraft.client.renderer.block.BlockAndTintGetter;
 import net.minecraft.client.renderer.block.ModelBlockRenderer;
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
@@ -56,6 +59,7 @@ import net.minecraft.client.renderer.chunk.ChunkSectionLayerGroup;
 import net.minecraft.client.renderer.entity.state.AvatarRenderState;
 import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
 import net.minecraft.client.renderer.item.ItemStackRenderState;
+import net.minecraft.client.renderer.rendertype.PreparedRenderType;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
@@ -120,15 +124,28 @@ public final class FeatureHooks {
                     "render.chams-mark-item",
                     "render.chams-item.type",
                     "render.chams-foil.type" ->
-                    Chams.isChamsEnabled();
+                    Chams.isChamsEnabled()
+                            || com.blanoir.moons.client.render.VisualModelCapture.requested();
             case "combat.reach.pick" ->
                     Reach.isEnabled() || EventBus.PICK_RESULT.listenerCount() != 0;
+            case "render.freelook.turn", "render.freelook.rotation" -> FreeLook.isEnabled();
             default -> true;
         };
     }
 
     public static void apply(RuntimeEvents.MethodHook hook) {
         switch (hook.id()) {
+            case "render.freelook.turn" -> {
+                if (hook.argument() instanceof Object[] arguments
+                        && arguments.length == 2
+                        && arguments[0] instanceof Double horizontal
+                        && arguments[1] instanceof Double vertical
+                        && FreeLook.turn(hook.owner(), horizontal, vertical)) hook.value(false);
+            }
+            case "render.freelook.rotation" -> {
+                if (hook.argument() instanceof Float index && hook.value() instanceof Float value)
+                    hook.value(FreeLook.cameraAngle(hook.owner(), index, value));
+            }
             case "placement.item-ray" -> hook.value(PlacementRaycast.itemRay(hook.value()));
             case "client.timer-speed" -> {
                 if (hook.owner() instanceof Minecraft client && hook.value() instanceof Float value)
@@ -242,7 +259,7 @@ public final class FeatureHooks {
                     hook.value(false);
                 }
             }
-            case "render.present" -> ComposeRenderBridge.renderCurrentScreen();
+            case "render.present" -> VisualPresentation.render();
             case "render.scoreboard" -> {
                 if (hook.argument() instanceof Object[] values
                         && values.length == 2
@@ -281,8 +298,13 @@ public final class FeatureHooks {
                     hook.value(StaticFov.apply(fov.floatValue()));
                 }
             }
-            case "render.chams-frame.begin" -> Chams.beginFrameIfNeeded();
-            case "render.chams-frame.end" -> Chams.compositeIfNeeded();
+            case "render.chams-draw" -> {
+                if (hook.owner() instanceof PreparedRenderType type
+                        && hook.argument() instanceof StagedVertexBuffer.ExecuteInfo info
+                        && ModelOverlayRenderer.captureDraw(type, info)) hook.value(false);
+            }
+            case "render.chams-frame.begin" -> ModelOverlayRenderer.beginFrame();
+            case "render.chams-frame.end" -> ModelOverlayRenderer.composite();
             case "render.chams-submit" -> {
                 if (EventBus.LIVING_RENDER_PRE.listenerCount() != 0
                         && hook.argument() instanceof LivingEntityRenderState state) {
@@ -296,7 +318,7 @@ public final class FeatureHooks {
                 }
             }
             case "render.chams-submit.end" -> {
-                Chams.endPlayerChams();
+                ModelOverlayRenderer.endPlayer();
                 ArmorHide.endAvatar();
                 if (EventBus.LIVING_RENDER_POST.listenerCount() != 0
                         && hook.argument() instanceof LivingEntityRenderState state) {
@@ -325,26 +347,27 @@ public final class FeatureHooks {
                 if (hook.argument() instanceof AvatarRenderState state
                         && hook.value() instanceof RenderType type
                         && Chams.shouldRenderEntityChamsFor(state)) {
-                    hook.value(Chams.remapIfNeeded(type));
+                    hook.value(ModelOverlayRenderer.remapIfNeeded(type));
                 }
             }
             case "render.chams-equipment", "render.chams-cape" -> {
                 if (hook.value() instanceof RenderType type) {
-                    hook.value(Chams.remapIfNeeded(type));
+                    hook.value(ModelOverlayRenderer.remapIfNeeded(type));
                 }
             }
             case "render.chams-mark-item" -> {
                 Object submit =
                         hook.argument() != null ? hook.argument() : lastItemSubmit(hook.owner());
-                if (submit != null) Chams.markHeldItemSubmit(submit);
+                if (submit != null) ModelOverlayRenderer.markHeldItemSubmit(submit);
             }
             case "render.chams-item" -> {
-                if (hook.argument() != null) Chams.beginRenderingItemSubmit(hook.argument());
+                if (hook.argument() != null)
+                    ModelOverlayRenderer.beginRenderingItemSubmit(hook.argument());
             }
-            case "render.chams-item.end" -> Chams.endRenderingItemSubmit();
+            case "render.chams-item.end" -> ModelOverlayRenderer.endRenderingItemSubmit();
             case "render.chams-item.type", "render.chams-foil.type" -> {
                 if (hook.value() instanceof RenderType type) {
-                    hook.value(Chams.remapHeldItemRenderType(type));
+                    hook.value(ModelOverlayRenderer.remapHeldItemRenderType(type));
                 }
             }
             case "render.player-nametag" -> {

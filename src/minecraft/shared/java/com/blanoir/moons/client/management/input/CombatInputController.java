@@ -31,6 +31,7 @@ public final class CombatInputController {
         BLOCK_IN,
         BLOCKING_USE,
         AUTO_BLOCK,
+        AUTO_SPEAR,
         ANTI_LAVA,
         ANTI_WEB,
         SPRINT_RESET

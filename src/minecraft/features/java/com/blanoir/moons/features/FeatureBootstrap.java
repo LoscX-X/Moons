@@ -13,6 +13,7 @@ import com.blanoir.moons.client.management.time.TimerManager;
 import com.blanoir.moons.client.module.framework.ModuleRegistry;
 import com.blanoir.moons.client.module.impl.combat.AutoBlock;
 import com.blanoir.moons.client.module.impl.combat.AutoClicker;
+import com.blanoir.moons.client.module.impl.combat.AutoSpear;
 import com.blanoir.moons.client.module.impl.combat.Reach;
 import com.blanoir.moons.client.module.impl.combat.SilentAura;
 import com.blanoir.moons.client.module.impl.combat.SprintReset;
@@ -104,6 +105,7 @@ final class FeatureBootstrap {
         Reach.init();
         TriggerBot.init();
         AutoClicker.init();
+        AutoSpear.init();
         SprintReset.init();
         SilentAura.init();
         Animations.bindCombatState(
@@ -167,18 +169,18 @@ final class FeatureBootstrap {
 
     private static void initializePacketListeners() {
         // This block stays between Backtrack and SilentPacketRotation registration.
-        // SEND: Disabler (highest priority) -> attack snapshot -> lag modes -> FastBreak.
-        // RECEIVE: bundle intent -> Velocity -> lag modes -> Reach -> Backtrack.
+        // SEND: AutoSpear release filter -> Disabler -> attack snapshot -> lag modes -> FastBreak.
+        // RECEIVE: bundle intent -> Velocity -> lag modes -> Backtrack.
         // APPLY: scoreboard -> damage confirmation -> JumpReset -> lightning.
         PacketEventAdapter.initPacketListeners();
         AimCollect.init();
+        AutoSpear.initPacketListeners();
         Disabler.initPacketListeners();
         Scoreboard.initPacketListeners();
         CriticalHitTracker.initPacketListeners();
         Velocity.initPacketListeners();
         FakeLag.initPacketListeners();
         FastBreak.initPacketListeners();
-        Reach.initPacketListeners();
         Backtrack.initPacketListeners();
         JumpReset.initPacketListeners();
         LightningTracker.initPacketListeners();
@@ -191,6 +193,7 @@ final class FeatureBootstrap {
         RotationManager.reset();
         Minecraft client = Minecraft.getInstance();
         AutoBlock.reset(client);
+        AutoSpear.reset(client);
         InvManager.reset();
         AutoArmor.reset();
         InvClear.reset();

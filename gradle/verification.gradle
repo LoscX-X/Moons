@@ -35,6 +35,9 @@ tasks.register('verifyNicknameShuffle', JavaExec) {
 
 [
         verifyHudTags: 'com.blanoir.moons.client.ui.hud.HudTagVerification',
+        verifyAutoSpearMotion: 'com.blanoir.moons.client.module.impl.combat.AutoSpearMotionVerification',
+        verifyAutoSpearImpact: 'com.blanoir.moons.client.module.impl.combat.AutoSpearImpactVerification',
+        verifyAutoSpearFakeLag: 'com.blanoir.moons.client.module.impl.combat.AutoSpearFakeLagVerification',
         verifyAimCollect: 'com.blanoir.moons.client.module.impl.misc.aimdata.AimCollectVerification',
         verifyOverlayGeometry: 'com.blanoir.moons.client.render.world.OverlayGeometryVerification',
         verifyStructureLocate: 'com.blanoir.moons.client.module.impl.world.structure.StructureLocateVerification',

@@ -8,6 +8,7 @@ public final class ModuleCatalog {
 
     public static void register() {
         ModuleRegistry.add(Combat.autoClicker());
+        ModuleRegistry.add(Combat.autoSpear());
         ModuleRegistry.add(Combat.reach());
         ModuleRegistry.add(Combat.sprintReset());
         ModuleRegistry.add(Combat.silentAura());

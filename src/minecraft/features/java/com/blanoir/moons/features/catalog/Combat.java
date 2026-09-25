@@ -16,6 +16,74 @@ import com.blanoir.moons.client.utils.registry.RegistryLists;
 final class Combat {
     private Combat() {}
 
+    static ModuleRegistry.Module autoSpear() {
+        return module(
+                "autospear",
+                "SpearAssist",
+                ModuleCategories.COMBAT,
+                AutoSpear::isEnabled,
+                AutoSpear::setEnabled,
+                () -> "",
+                bool(
+                        "ignore_cooldown",
+                        "Ignore client cooldown",
+                        "autospear.ignoreCooldown",
+                        false,
+                        AutoSpear::setIgnoreCooldown),
+                bool(
+                        "full_hold",
+                        "Full hold",
+                        "autospear.fullHold",
+                        false,
+                        AutoSpear::setFullHold),
+                number(
+                        "motion_multiply",
+                        "Motion multiply",
+                        "autospear.motionMultiply",
+                        1.0,
+                        1.0,
+                        5.0,
+                        .1,
+                        AutoSpear::setMotionMultiply),
+                bool(
+                        "impact_burst",
+                        "Impact burst (experimental)",
+                        "autospear.impactBurst",
+                        false,
+                        AutoSpear::setImpactBurst),
+                number(
+                                "impact_multiply",
+                                "Impact multiply",
+                                "autospear.impactMultiply",
+                                8.0,
+                                1.0,
+                                20.0,
+                                .5,
+                                AutoSpear::setImpactMultiply)
+                        .visibleWhen(AutoSpear::impactBurstEnabled),
+                bool("blink", "FakeLag", "autospear.blink", false, AutoSpear::setFakeLag),
+                integer(
+                                "blink_duration",
+                                "FakeLag delay (ms)",
+                                "autospear.blinkDurationMs",
+                                150,
+                                50,
+                                500,
+                                25,
+                                AutoSpear::setFakeLagDelay)
+                        .visibleWhen(AutoSpear::fakeLagEnabled),
+                integer(
+                                "fakelag_duration",
+                                "FakeLag duration (ms)",
+                                "autospear.fakeLagDurationMs",
+                                500,
+                                100,
+                                2000,
+                                50,
+                                AutoSpear::setFakeLagDuration)
+                        .visibleWhen(AutoSpear::fakeLagEnabled));
+    }
+
     static ModuleRegistry.Module autoClicker() {
         return module(
                 "autoclicker",
@@ -71,49 +139,30 @@ final class Combat {
 
     static ModuleRegistry.Module reach() {
         return module(
-                        "reach",
-                        "Reach",
-                        ModuleCategories.COMBAT,
-                        Reach::isEnabled,
-                        Reach::setEnabled,
-                        Reach::statusTag,
-                        choice(
-                                "mode",
-                                "Mode",
-                                "reach.mode",
-                                "advanced",
-                                Reach.modeOptions(),
-                                Reach::setMode),
-                        number(
-                                "range",
-                                "Target range",
-                                "reach.range",
-                                3.1,
-                                3,
-                                6,
-                                .05,
-                                Reach::setRange),
-                        number(
-                                        "chance",
-                                        "Chance %",
-                                        "reach.normal.chance",
-                                        100,
-                                        0,
-                                        100,
-                                        1,
-                                        Reach::setChance)
-                                .visibleWhen(() -> !Reach.advancedMode()),
-                        integer(
-                                        "timeout",
-                                        "Target lag timeout",
-                                        "reach.advanced.timeout",
-                                        20,
-                                        1,
-                                        40,
-                                        1,
-                                        Reach::setTimeout)
-                                .visibleWhen(Reach::advancedMode))
-                .withHudTag(() -> Reach.advancedMode() ? "Advanced" : Reach.statusTag());
+                "reach",
+                "Reach",
+                ModuleCategories.COMBAT,
+                Reach::isEnabled,
+                Reach::setEnabled,
+                Reach::statusTag,
+                number(
+                        "range",
+                        "Target range",
+                        "reach.range",
+                        3.1,
+                        3,
+                        6,
+                        .05,
+                        Reach::setRange),
+                number(
+                        "chance",
+                        "Chance %",
+                        "reach.normal.chance",
+                        100,
+                        0,
+                        100,
+                        1,
+                        Reach::setChance));
     }
 
     static ModuleRegistry.Module sprintReset() {

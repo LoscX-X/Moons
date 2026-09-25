@@ -33,7 +33,6 @@ import com.blanoir.moons.client.management.rotation.RotationManager;
 import com.blanoir.moons.client.management.rotation.RotationQuantizer;
 import com.blanoir.moons.client.management.rotation.SilentPacketRotation;
 import com.blanoir.moons.client.module.framework.ModuleKeybinds;
-import com.blanoir.moons.client.module.impl.combat.Reach;
 import com.blanoir.moons.client.module.impl.combat.SilentAura;
 import com.blanoir.moons.client.module.impl.combat.SprintReset;
 import com.blanoir.moons.client.module.impl.combat.critical.Critical;
@@ -362,10 +361,6 @@ final class RuntimeEventAdapter {
                 event.control().cancel();
                 return;
             }
-            if (event.kind() == RuntimeEvents.Kind.ATTACK && Reach.handleManualAttack(client)) {
-                event.control().cancel();
-                return;
-            }
             beginAction(client, event.kind());
         } else {
             endAction(client, event.kind());
@@ -640,10 +635,6 @@ final class RuntimeEventAdapter {
     }
 
     private void renderState(RuntimeEvents.RenderState event) {
-        if (event.entity() instanceof Entity entity
-                && event.state() instanceof EntityRenderState state) {
-            Reach.applyAdvancedRender(entity, state);
-        }
         if (event.entity() instanceof Avatar avatar
                 && event.state() instanceof AvatarRenderState state) {
             renderRotations.apply(avatar, state, event.partialTick());

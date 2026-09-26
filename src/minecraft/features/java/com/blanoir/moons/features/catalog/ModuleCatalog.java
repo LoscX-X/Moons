@@ -33,6 +33,7 @@ public final class ModuleCatalog {
         ModuleRegistry.add(Movement.sprint());
         ModuleRegistry.add(Movement.noJumpDelay());
         ModuleRegistry.add(World.fastPlace());
+        ModuleRegistry.add(Player.rightClick());
         ModuleRegistry.add(Player.autoTotem());
         ModuleRegistry.add(Player.autoArmor());
         ModuleRegistry.add(Player.invManager());

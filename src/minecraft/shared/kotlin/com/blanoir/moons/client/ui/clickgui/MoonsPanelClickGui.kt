@@ -39,10 +39,13 @@ internal fun MoonsPanelClickGui(
     onClose: () -> Unit,
     modulesOverride: List<ModuleRegistry.Module>? = null,
 ) {
+    val revision = ClickGuiRevision.intValue
+    val registeredModules =
+        remember(modulesOverride) { modulesOverride ?: ModuleRegistry.modules() }
     val allModules =
-        remember(modulesOverride) {
-            (modulesOverride ?: ModuleRegistry.modules()).filterNot {
-                it.id() in CLIENT_SETTINGS_MODULE_IDS
+        remember(registeredModules, revision) {
+            registeredModules.filterNot {
+                it.id() in CLIENT_SETTINGS_MODULE_IDS || isModuleHidden(it)
             }
         }
     val categories =
@@ -62,6 +65,7 @@ internal fun MoonsPanelClickGui(
         }
     var openSections by remember { mutableStateOf(loadOpenSections()) }
     var settingsOpen by remember { mutableStateOf(false) }
+    var moduleHideOpen by remember { mutableStateOf(false) }
     var styleRevision by remember { mutableIntStateOf(0) }
     styleRevision
     val sections = remember {
@@ -96,6 +100,10 @@ internal fun MoonsPanelClickGui(
         ) {
             val root = Modifier.fillMaxSize().background(PanelStyle.scrim)
             BoxWithConstraints(root) {
+                if (moduleHideOpen) {
+                    ModuleHideWindow(registeredModules, onMutated) { moduleHideOpen = false }
+                    return@BoxWithConstraints
+                }
                 val logicalWidth = maxWidth.value
                 val logicalHeight = maxHeight.value
                 val contentWidth =
@@ -175,6 +183,10 @@ internal fun MoonsPanelClickGui(
                     onSelectSection = {
                         search = ""
                         when (it) {
+                            "module_hide" -> {
+                                onBindingModuleChange(null)
+                                moduleHideOpen = true
+                            }
                             "home" -> settingsOpen = false
                             "settings" -> settingsOpen = true
                             "all" -> {

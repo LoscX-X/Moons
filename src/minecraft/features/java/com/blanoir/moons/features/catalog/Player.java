@@ -14,6 +14,17 @@ import com.blanoir.moons.client.module.impl.player.invmanager.InvManagerConfig;
 final class Player {
     private Player() {}
 
+    static ModuleRegistry.Module rightClick() {
+        return module(
+                "rightclick",
+                "RightClick",
+                ModuleCategories.PLAYER,
+                RightClick::isEnabled,
+                RightClick::setEnabled,
+                RightClick::hudTag,
+                RightClick.settings());
+    }
+
     static ModuleRegistry.Module autoArmor() {
         return module(
                         "autoarmor",

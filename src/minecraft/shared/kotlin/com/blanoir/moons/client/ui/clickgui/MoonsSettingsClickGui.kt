@@ -62,7 +62,7 @@ internal fun MoonsSettingsClickGui(
         onMutated()
     },
 ) {
-    ClickGuiRevision.intValue
+    val revision = ClickGuiRevision.intValue
     val allModules = remember(modulesOverride) { modulesOverride ?: ModuleRegistry.modules() }
     val categories =
         remember(allModules) {
@@ -73,7 +73,7 @@ internal fun MoonsSettingsClickGui(
     var category by remember {
         mutableStateOf(
             Settings.getString("clickgui.settings.page", "All modules")
-                .takeIf { it == "Configs" || it.startsWith("YSM") }
+                .takeIf { it == "Configs" || it == "Module Hide" || it.startsWith("YSM") }
                 .orEmpty()
                 .ifEmpty { "All modules" }
         )
@@ -83,11 +83,12 @@ internal fun MoonsSettingsClickGui(
     var selectedId by remember { mutableStateOf<String?>(null) }
     var fileError by remember { mutableStateOf("") }
     val focus = LocalFocusManager.current
-    val selected = allModules.firstOrNull { it.id() == selectedId }
+    val selected = allModules.firstOrNull { it.id() == selectedId && !isModuleHidden(it) }
     val modules =
-        remember(allModules, category, search) {
+        remember(allModules, category, search, revision) {
             allModules.filter {
                 it.id() !in CLIENT_SETTINGS_MODULE_IDS &&
+                    !isModuleHidden(it) &&
                     (category == "All modules" || it.category() == category) &&
                     matchesSearch(it, search)
             }
@@ -158,6 +159,7 @@ internal fun MoonsSettingsClickGui(
                         ) {
                             (listOf(
                                     "General",
+                                    "Module Hide",
                                     "Configs",
                                     "YSM",
                                     "YSM Parameters",
@@ -170,6 +172,7 @@ internal fun MoonsSettingsClickGui(
                                     val icon =
                                         when (item) {
                                             "General" -> "settings"
+                                            "Module Hide" -> "hidden"
                                             "Configs" -> "configs"
                                             "YSM",
                                             "YSM Parameters",
@@ -227,6 +230,8 @@ internal fun MoonsSettingsClickGui(
                         Text(
                             if (category == "Configs")
                                 "Create, save and load your local configurations."
+                            else if (category == "Module Hide")
+                                "Choose modules to hide in ClickGUI. Enabled states and keybinds stay the same."
                             else if (category == "YSM")
                                 "Choose a local player model. Changes are visible only to you."
                             else if (category.startsWith("YSM"))
@@ -251,6 +256,8 @@ internal fun MoonsSettingsClickGui(
                                 onBindingModuleChange(null)
                                 onMutated()
                             }
+                        } else if (category == "Module Hide") {
+                            ModuleHidePage(allModules, onMutated)
                         } else if (category == "YSM") {
                             YsmSelectorPage()
                         } else if (category.startsWith("YSM")) {
@@ -644,6 +651,7 @@ private fun GeneralSettingsPage(
     onEditHudLayout: () -> Unit,
     onSelect: (Module) -> Unit,
 ) {
+    ClickGuiRevision.intValue
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -687,7 +695,7 @@ private fun GeneralSettingsPage(
         SettingsAction("Edit HUD layout", onClick = onEditHudLayout)
         Text("Client preferences", fontWeight = FontWeight.SemiBold)
         modules
-            .filter { it.id() in CLIENT_SETTINGS_MODULE_IDS }
+            .filter { it.id() in CLIENT_SETTINGS_MODULE_IDS && !isModuleHidden(it) }
             .forEach { module ->
                 SettingsModuleCard(
                     module,

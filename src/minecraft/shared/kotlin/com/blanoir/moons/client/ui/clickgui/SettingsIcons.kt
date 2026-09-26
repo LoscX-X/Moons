@@ -33,6 +33,8 @@ private val settingsIconPaths =
         "player" to "M12 3 A4 4 0 1 0 12 11 A4 4 0 1 0 12 3 M4 21 V19 C4 12 20 12 20 19 V21",
         "render" to
             "M2 12 C6 3 18 3 22 12 C18 21 6 21 2 12 Z M12 8 A4 4 0 1 0 12 16 A4 4 0 1 0 12 8",
+        "hidden" to
+            "M3 3 L21 21 M9 5 C14 3 19 7 22 12 L18 17 M15 19 C10 21 5 17 2 12 L6 7 M9 9 A4 4 0 0 0 15 15",
         "world" to
             "M12 2 A10 10 0 1 0 12 22 A10 10 0 1 0 12 2 M2 12 H22 M12 2 C5 7 5 17 12 22 C19 17 19 7 12 2",
         "network" to

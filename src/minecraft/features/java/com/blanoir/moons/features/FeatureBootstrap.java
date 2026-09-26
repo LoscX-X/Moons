@@ -48,6 +48,7 @@ import com.blanoir.moons.client.module.impl.player.AutoSword;
 import com.blanoir.moons.client.module.impl.player.AutoTotem;
 import com.blanoir.moons.client.module.impl.player.AutoWeb;
 import com.blanoir.moons.client.module.impl.player.InvClear;
+import com.blanoir.moons.client.module.impl.player.RightClick;
 import com.blanoir.moons.client.module.impl.player.blockin.BlockInRuntime;
 import com.blanoir.moons.client.module.impl.player.invmanager.InvManager;
 import com.blanoir.moons.client.module.impl.render.Animations;
@@ -111,6 +112,7 @@ final class FeatureBootstrap {
         Reach.init();
         TriggerBot.init();
         AutoClicker.init();
+        RightClick.init();
         AutoSpear.init();
         AutoMace.init();
         SprintReset.init();
@@ -205,6 +207,7 @@ final class FeatureBootstrap {
         AutoBlock.reset(client);
         AutoSpear.reset(client);
         AutoMace.reset(client);
+        RightClick.reset();
         InvManager.reset();
         AutoArmor.reset();
         InvClear.reset();

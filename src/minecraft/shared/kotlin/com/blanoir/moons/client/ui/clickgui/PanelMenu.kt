@@ -205,6 +205,12 @@ internal fun ControlMenu(
                 onClick = { onSelectSection("all") },
             )
             ControlMenuRow(
+                label = "Module Hide",
+                selected = false,
+                icon = "hidden",
+                onClick = { onSelectSection("module_hide") },
+            )
+            ControlMenuRow(
                 label = "Configs",
                 selected = false,
                 icon = "configs",
@@ -251,6 +257,7 @@ private fun GuiSettings(
     onMutated: () -> Unit,
     onEditHudLayout: () -> Unit,
 ) {
+    ClickGuiRevision.intValue
     val presets =
         listOf(
             DEFAULT_GUI_THEME,
@@ -322,7 +329,7 @@ private fun GuiSettings(
                     .padding(horizontal = 11.dp, vertical = 7.dp),
         )
         SettingsSectionHeader("CLIENT")
-        clientModules.forEach { module ->
+        clientModules.filterNot(::isModuleHidden).forEach { module ->
             ModuleRow(
                 module = module,
                 expanded = expandedClientModules[module.id()] == true,

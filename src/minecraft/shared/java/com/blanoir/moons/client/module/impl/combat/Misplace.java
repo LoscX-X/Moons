@@ -88,7 +88,6 @@ public final class Misplace {
     public static void init() {
         EventBus.CLIENT_CONTEXT_CHANGED.register("Misplace.context", event -> reset());
         EventBus.TICK_END.register("Misplace.motion", event -> tick(event.client()));
-        EventBus.FRAME.register("Misplace.frame", event -> update(event.client()));
         EventBus.PACKET_RECEIVE_APPLY.register("Misplace.packet", Misplace::receive);
         EventBus.PACKET_SEND_POST.register("Misplace.source", Misplace::sent);
         EventBus.ENTITY_RENDER_STATE.register("Misplace.model", Misplace::render);
@@ -122,10 +121,10 @@ public final class Misplace {
 
     private static boolean eligible(Minecraft client, Entity entity) {
         return entity instanceof Player target
-                && Targeting.isEnemyPlayer(client, target)
+                && target.distanceToSqr(client.player) <= 144
                 && !target.isPassenger()
                 && !target.isSleeping()
-                && target.distanceToSqr(client.player) <= 144;
+                && Targeting.isEnemyPlayer(client, target);
     }
 
     private static void tick(Minecraft client) {
@@ -287,8 +286,14 @@ public final class Misplace {
                 track.motion.advance(
                         query, DISTANCE.get(), ADAPTIVE.get(), KNOCKBACK.get(), SMOOTHING.get());
         Vec3 offset = MisplaceMotion.offset(observer, visible, amount);
+        // Warmup, stale/uncertain motion and disabled pull all produce zero displacement.
+        // Collision enumeration cannot change that result and becomes costly in crowds.
         track.offset =
-                level.noCollision(track.entity, visibleBox.move(offset)) ? offset : Vec3.ZERO;
+                offset.lengthSqr() == 0
+                        ? Vec3.ZERO
+                        : level.noCollision(track.entity, visibleBox.move(offset))
+                                ? offset
+                                : Vec3.ZERO;
         return new CombatGeometry.Shape(visibleBox.move(track.offset), track.offset);
     }
 
@@ -310,6 +315,8 @@ public final class Misplace {
     private static void pick(PickResultEvent event) {
         Minecraft client = event.client();
         if (!context(client) || TRACKS.isEmpty()) return;
+        // Pick is the display/interaction update boundary. Repeating the same full-player
+        // update from FRAME adds collision queries after extraction on newer versions.
         update(client);
         boolean shifted =
                 TRACKS.values().stream().anyMatch(track -> track.offset.lengthSqr() > 1.0E-9);

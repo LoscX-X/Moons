@@ -51,7 +51,13 @@ internal class FinalFrameSurface : AutoCloseable {
                 height = frameHeight
             }
             context?.resetAll()
-            draw(surface!!.canvas)
+            val canvas = surface!!.canvas
+            val saved = canvas.save()
+            try {
+                draw(canvas)
+            } finally {
+                canvas.restoreToCount(saved)
+            }
             surface?.flushAndSubmit()
         } finally {
             state.restore()

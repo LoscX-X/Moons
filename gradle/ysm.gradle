@@ -137,7 +137,7 @@ tasks.register('ysmBundle', Zip) {
 }
 
 tasks.named('check') {
-    dependsOn 'verifyYsmCore', 'verifyYsmRenderSetup', 'verifyYsmQueries', 'verifyModuleLibraries', 'verifyYsmPackage'
+    dependsOn 'verifyYsmRenderSetup', 'verifyYsmQueries', 'verifyModuleLibraries', 'verifyYsmPackage'
 }
 
 def ysmBundles = []

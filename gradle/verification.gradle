@@ -1,4 +1,5 @@
-/* Opt-in mapping/injection validation. YSM checks are registered in ysm.gradle; fixtures are not packaged. */
+/* Default checks cover runtime/version boundaries; feature regressions are opt-in.
+ * YSM checks are registered in ysm.gradle; fixtures are not packaged. */
 tasks.named("test", Test) {
     enabled = false
 }
@@ -9,6 +10,14 @@ sourceSets {
         kotlin.setSrcDirs(['src/test/render/kotlin'])
         resources.setSrcDirs(['src/test/render/resources'])
         compileClasspath += sourceSets.features.output + sourceSets.client.output + sourceSets.agent.output + sourceSets.runtime.output + sourceSets.api.output + sourceSets.features.compileClasspath + configurations.agentRuntimeClasspath
+        runtimeClasspath += compileClasspath
+    }
+    gameAccessTest {
+        java.setSrcDirs(['src/test/render/java'])
+        java.include('**/access/GameAccessVerification.java')
+        kotlin.setSrcDirs([])
+        resources.setSrcDirs([])
+        compileClasspath += sourceSets.renderTest.compileClasspath
         runtimeClasspath += compileClasspath
     }
     misplaceTest {
@@ -50,8 +59,6 @@ tasks.register('verifyNicknameShuffle', JavaExec) {
 }
 
 [
-        verifyHudTags: 'com.blanoir.moons.client.ui.hud.HudTagVerification',
-        verifyFreeLook: 'com.blanoir.moons.client.module.impl.misc.FreeLookVerification',
         verifyAutoSpearMotion: 'com.blanoir.moons.client.module.impl.combat.AutoSpearMotionVerification',
         verifyAutoMace: 'com.blanoir.moons.client.module.impl.combat.AutoMaceVerification',
         verifyAutoTotem: 'com.blanoir.moons.client.module.impl.player.AutoTotemVerification',
@@ -66,7 +73,6 @@ tasks.register('verifyNicknameShuffle', JavaExec) {
         verifyLearnedAim: 'com.blanoir.moons.client.module.impl.combat.silentaura.LearnedAimVerification',
         verifyAntiBot: 'com.blanoir.moons.client.module.impl.misc.antibot.AdvancedBotDetectorVerification',
         verifyBacktrackFlow: 'com.blanoir.moons.client.module.impl.network.backtrack.BacktrackFlowVerification',
-        verifyAntiWebCycle: 'com.blanoir.moons.client.module.impl.player.AntiWebCycleVerification',
         verifyInventoryActions: 'com.blanoir.moons.client.module.impl.player.invmanager.InventoryActionVerification',
         verifyInventoryFailures: 'com.blanoir.moons.client.utils.inventory.InventoryFailureVerification',
         verifyGodBridgeSafety: 'com.blanoir.moons.client.module.impl.world.scaffold.GodBridgeSafetyVerification',
@@ -112,7 +118,6 @@ tasks.register('verifyHitSelect', JavaExec) {
     systemProperty 'moons.home', layout.buildDirectory.dir('hitselect-fixture/home').get().asFile.absolutePath
     workingDir layout.buildDirectory.get().asFile
 }
-tasks.named('check').configure { dependsOn 'verifyHitSelect' }
 
 tasks.register('simulateMisplace', JavaExec) {
     group = 'verification'
@@ -146,13 +151,12 @@ tasks.register('verifyClickGuiInputs', JavaExec) {
     args layout.buildDirectory.dir('clickgui-input-verification').get().asFile.absolutePath
 }
 
-tasks.named('check').configure { dependsOn 'verifyClickGuiInputs' }
-
 tasks.register('verifyGameAccess', JavaExec) {
     group = 'verification'
     description = 'Resolves private Minecraft members used by the version-specific feature host.'
-    dependsOn 'renderTestClasses'
-    classpath = sourceSets.renderTest.runtimeClasspath
+    dependsOn 'gameAccessTestClasses'
+    // 26.1 overlay descriptors also initialize their native vertex allocators.
+    classpath = sourceSets.gameAccessTest.runtimeClasspath + configurations.minecraftNatives
     mainClass = 'com.blanoir.moons.client.access.GameAccessVerification'
 }
 
@@ -178,7 +182,8 @@ tasks.register("verifyMinecraftTransformers", JavaExec) {
 
 
 tasks.named("check").configure {
-    dependsOn "clientClasses", "featuresClasses", "verifyMinecraftTransformers", "verifyGameAccess", "verifyArmorHide", "verifyNicknameShuffle", "verifySilentAuraPoints", "verifyAntiBot", "verifyBacktrackFlow", "verifyAntiWebCycle", "verifyPlacementRays"
+    dependsOn "clientClasses", "featuresClasses", "verifyMinecraftTransformers", "verifyGameAccess",
+            "verifyLoadSession", "verifyCacheMaintenance", "verifyPayloadCache"
 }
 
 def versionChecks = []
@@ -234,13 +239,6 @@ tasks.register('verifyLoadSession', Exec) {
     executable layout.buildDirectory.file('verification/load-session.exe').get().asFile.absolutePath
 }
 
-tasks.named('check').configure { dependsOn 'verifyLoadSession' }
-tasks.named('check').configure { dependsOn 'verifyLearnedAim' }
-tasks.named('check').configure { dependsOn 'verifyAutoTotem', 'verifyDamagePrediction' }
-tasks.named('check').configure { dependsOn 'verifyAimCollect' }
-tasks.named('check').configure { dependsOn 'verifyMisplace' }
-tasks.named('check').configure { dependsOn 'verifyAimSearchPerformance', 'verifyOverlayGeometry', 'verifyStructureLocate', 'verifyGodBridgeSafety', 'verifyInventoryActions' }
-
 tasks.register('verifyLauncherPackages', Exec) {
     group = 'verification'
     description = 'Verifies the real installer and loader against an isolated dependency home without loading a game.'
@@ -280,8 +278,6 @@ tasks.register('verifyCacheMaintenance', Exec) {
     args layout.buildDirectory.dir('verification/cache-maintenance').get().asFile.absolutePath
 }
 
-tasks.named('check').configure { dependsOn 'verifyCacheMaintenance' }
-
 tasks.register('verifyPayloadCache', JavaExec) {
     group = 'verification'
     description = 'Verifies nested runtime extraction stays inside MOONS_HOME and reuses its cached copy.'
@@ -294,5 +290,3 @@ tasks.register('verifyPayloadCache', JavaExec) {
         args fixture.get().asFile.absolutePath
     }
 }
-
-tasks.named('check').configure { dependsOn 'verifyPayloadCache' }

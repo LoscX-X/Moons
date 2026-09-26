@@ -270,10 +270,8 @@ public final class BacktrackRenderer {
                 renderPass.setIndexBuffer(indices, indexType);
                 renderPass.drawIndexed(0, 0, drawParameters.indexCount(), 1);
             }
-        }
-
-        if (vertexBuffer != null) {
-            vertexBuffer.rotate();
+        } finally {
+            if (vertexBuffer != null) vertexBuffer.rotate();
         }
     }
 

@@ -24,6 +24,7 @@ internal class FinalFrameSurface : AutoCloseable {
     private var uploadPixels: ByteBuffer? = null
     private var texture: GpuTexture? = null
     private var view: GpuTextureView? = null
+    private var device: Any? = null
     private var width = 0
     private var height = 0
     private var content = PixelBounds.EMPTY
@@ -39,7 +40,15 @@ internal class FinalFrameSurface : AutoCloseable {
         if (frameWidth <= 0 || frameHeight <= 0) return
         val target = VisualPresentation.outputTarget() ?: return
         if (target.width != frameWidth || target.height != frameHeight) return
-        if (surface == null || width != frameWidth || height != frameHeight) {
+        val currentDevice = RenderSystem.getDevice()
+        if (
+            surface == null ||
+                texture == null ||
+                view == null ||
+                device !== currentDevice ||
+                width != frameWidth ||
+                height != frameHeight
+        ) {
             close()
             width = frameWidth
             height = frameHeight
@@ -70,6 +79,7 @@ internal class FinalFrameSurface : AutoCloseable {
                         1,
                     )
             view = RenderSystem.getDevice().createTextureView(texture!!)
+            device = currentDevice
         }
         val encoder = RenderSystem.getDevice().createCommandEncoder()
         if (redraw || !hasFrame) {
@@ -122,7 +132,20 @@ internal class FinalFrameSurface : AutoCloseable {
                 canvas.restore()
             }
         }
-        draw(canvas)
+        val saved = canvas.save()
+        var complete = false
+        try {
+            draw(canvas)
+            complete = true
+        } finally {
+            canvas.restoreToCount(saved)
+            if (!complete) {
+                // A failed callback may draw outside the previous content bounds.
+                canvas.clear(0)
+                content = PixelBounds.EMPTY
+                hasFrame = false
+            }
+        }
     }
 
     private fun pixelBounds(bounds: Rect?): PixelBounds {
@@ -173,6 +196,7 @@ internal class FinalFrameSurface : AutoCloseable {
         pixels?.let { MemoryUtil.memFree(it) }
         uploadPixels?.let { MemoryUtil.memFree(it) }
         view = null
+        device = null
         texture = null
         surface = null
         pixels = null

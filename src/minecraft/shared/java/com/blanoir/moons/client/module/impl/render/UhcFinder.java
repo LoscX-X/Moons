@@ -206,9 +206,12 @@ public final class UhcFinder {
         }
 
         matrices.pushPose();
-        matrices.translate(-camera.x, -camera.y, -camera.z);
-        WorldOverlayRenderer.renderStyled(client, matrices, boxes, "uhcfinder entity boxes");
-        matrices.popPose();
+        try {
+            matrices.translate(-camera.x, -camera.y, -camera.z);
+            WorldOverlayRenderer.renderStyled(client, matrices, boxes, "uhcfinder entity boxes");
+        } finally {
+            matrices.popPose();
+        }
     }
 
     private static boolean shouldRenderTarget(

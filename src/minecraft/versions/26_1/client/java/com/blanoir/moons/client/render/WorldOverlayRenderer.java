@@ -130,10 +130,8 @@ public final class WorldOverlayRenderer {
             VertexFormat format = drawParameters.format();
             GpuBuffer vertices = upload(drawParameters, format, builtBuffer, label);
             draw(client, builtBuffer, drawParameters, vertices, format, pipeline, label, sortQuads);
-        }
-
-        if (vertexBuffer != null) {
-            vertexBuffer.rotate();
+        } finally {
+            if (vertexBuffer != null) vertexBuffer.rotate();
         }
     }
 

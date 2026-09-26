@@ -6,7 +6,6 @@ import com.mojang.blaze3d.PrimitiveTopology;
 import com.mojang.blaze3d.pipeline.BindGroupLayout;
 import com.mojang.blaze3d.pipeline.BlendFunction;
 import com.mojang.blaze3d.pipeline.ColorTargetState;
-import com.mojang.blaze3d.pipeline.DepthStencilState;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.blaze3d.shaders.UniformType;
@@ -19,6 +18,7 @@ import com.mojang.blaze3d.vertex.VertexConsumer;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.StagedVertexBuffer;
+import net.minecraft.resources.Identifier;
 
 import org.lwjgl.system.MemoryUtil;
 
@@ -27,21 +27,20 @@ import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.function.Consumer;
 
-/** Version boundary for the shared Skia atlas and its two billboard batches. */
+/** Version boundary for the shared Skia atlas and its through-wall billboard batch. */
 final class WorldLabelBackend {
-    private static final RenderPipeline THROUGH = pipeline(false);
-    private static final RenderPipeline NORMAL = pipeline(true);
+    private static final RenderPipeline PIPELINE = pipeline();
     private static GpuTexture texture;
     private static GpuTextureView view;
     private static StagedVertexBuffer buffer;
 
     private WorldLabelBackend() {}
 
-    private static RenderPipeline pipeline(boolean depth) {
+    private static RenderPipeline pipeline() {
         var builder =
                 RenderPipeline.builder()
                         .withLocation(
-                                "moons:pipeline/world_labels_" + (depth ? "visible" : "through"))
+                                Identifier.fromNamespaceAndPath("moons", "pipeline/world_labels"))
                         .withVertexShader("core/position_tex_color")
                         .withFragmentShader("core/position_tex_color")
                         .withBindGroupLayout(
@@ -57,22 +56,16 @@ final class WorldLabelBackend {
                         .withColorTargetState(
                                 new ColorTargetState(
                                         BlendFunction.TRANSLUCENT_PREMULTIPLIED_ALPHA));
-        if (depth)
-            builder.withDepthStencilState(
-                    new DepthStencilState(DepthStencilState.DEFAULT.depthTest(), false));
-        else builder.withDepthStencilState(Optional.empty());
+        builder.withDepthStencilState(Optional.empty());
         return GameAccess.registerPipeline(builder.build());
     }
 
     static void draw(
             Minecraft client,
             List<WorldLabelAtlas.Upload> uploads,
-            boolean depth,
+            WorldLabelFont font,
             Consumer<VertexConsumer> writer) {
-        var target =
-                depth
-                        ? VisualRenderTargets.worldTargetWithDepth(client)
-                        : VisualRenderTargets.worldTarget(client);
+        var target = VisualRenderTargets.worldTarget(client);
         if (target == null || target.getColorTextureView() == null) return;
         if (texture == null) {
             texture =
@@ -98,14 +91,13 @@ final class WorldLabelBackend {
             }
         }
         if (buffer == null) buffer = new StagedVertexBuffer(() -> "Moons world labels", 131_072);
-        var pipeline = depth ? NORMAL : THROUGH;
-        var draw =
-                buffer.appendDraw(
-                        DefaultVertexFormat.POSITION_TEX_COLOR, PrimitiveTopology.QUADS, null);
-        writer.accept(buffer.getVertexBuilder(draw));
-        buffer.upload();
-        var info = buffer.getExecuteInfo(draw);
         try {
+            var draw =
+                    buffer.appendDraw(
+                            DefaultVertexFormat.POSITION_TEX_COLOR, PrimitiveTopology.QUADS, null);
+            writer.accept(buffer.getVertexBuilder(draw));
+            buffer.upload();
+            var info = buffer.getExecuteInfo(draw);
             if (info == null) return;
             var transforms =
                     RenderSystem.getDynamicUniforms()
@@ -117,21 +109,28 @@ final class WorldLabelBackend {
                                     () -> "Moons world labels",
                                     target.getColorTextureView(),
                                     Optional.empty(),
-                                    depth ? target.getDepthTextureView() : null,
+                                    null,
                                     OptionalDouble.empty())) {
-                pass.setPipeline(pipeline);
+                pass.setPipeline(PIPELINE);
                 RenderSystem.bindDefaultUniforms(pass);
                 pass.setUniform("DynamicTransforms", transforms);
                 pass.bindTexture(
                         "Sampler0",
                         view,
-                        RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR));
+                        RenderSystem.getSamplerCache()
+                                .getClampToEdge(
+                                        font == WorldLabelFont.MINECRAFT
+                                                ? FilterMode.NEAREST
+                                                : FilterMode.LINEAR));
                 pass.setVertexBuffer(0, info.vertexBuffer().slice());
                 pass.setIndexBuffer(info.indexBuffer(), info.indexType());
                 pass.drawIndexed(info.indexCount(), 1, info.firstIndex(), info.baseVertex(), 0);
             }
+        } catch (RuntimeException | Error failure) {
+            close();
+            throw failure;
         } finally {
-            buffer.endFrame();
+            if (buffer != null) buffer.endFrame();
         }
     }
 

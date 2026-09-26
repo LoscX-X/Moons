@@ -1,18 +1,18 @@
 package com.blanoir.moons.client.module.impl.render.nametags;
 
+import com.blanoir.moons.client.render.WorldLabelRenderer.Span;
 import com.blanoir.moons.client.utils.combat.damage.PlayerHitEstimator;
 import com.blanoir.moons.client.utils.player.PlayerHealthResolver;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.network.chat.Component;
-import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.world.entity.player.Player;
 
-import java.util.Locale;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
 
-/** Reuses nametag text without delaying updates to any of its displayed inputs. */
+/** Tick-sampled display statistics and frame-interpolated distance, independent of combat queries. */
 public final class NametagTextCache {
     private static final int NAME_COLOR = 0xFFF5F7FF;
     private static final int DISTANCE_COLOR = 0xFFD0BE90;
@@ -26,75 +26,93 @@ public final class NametagTextCache {
 
     private NametagTextCache() {}
 
-    public static Component format(
+    public static List<Span> format(
             Minecraft client,
             Player player,
             double distance,
             boolean showDistance,
             boolean safeMode) {
         Entry entry = ENTRIES.computeIfAbsent(player, ignored -> new Entry());
-        String name = player.getName().getString();
         boolean changed =
-                entry.component == null
-                        || !name.equals(entry.name)
+                entry.text == null
                         || entry.showDistance != showDistance
                         || entry.safeMode != safeMode;
-
-        if (showDistance
-                && (entry.distanceText == null
-                        || Double.doubleToLongBits(entry.distance)
-                                != Double.doubleToLongBits(distance))) {
-            String distanceText = String.format(Locale.ROOT, "%.1fm", distance);
-            changed |= !distanceText.equals(entry.distanceText);
-            entry.distance = distance;
-            entry.distanceText = distanceText;
+        long distanceTenths = Math.round(Math.max(0, distance) * 10);
+        if (showDistance && (entry.text == null || distanceTenths != entry.distanceTenths)) {
+            entry.distanceTenths = distanceTenths;
+            changed = true;
         }
 
-        if (!safeMode) {
-            float health = PlayerHealthResolver.resolve(player);
-            float maxHealth = PlayerHealthResolver.max(player);
-            int healthColor =
-                    health > maxHealth * 0.6F
-                            ? HEALTH_GOOD
-                            : health > maxHealth * 0.3F ? HEALTH_WARNING : HEALTH_LOW;
-            if (entry.healthText == null
-                    || Float.floatToIntBits(entry.health) != Float.floatToIntBits(health)) {
-                String healthText = String.format(Locale.ROOT, "%.1f HP", health);
-                changed |= !healthText.equals(entry.healthText);
-                entry.health = health;
-                entry.healthText = healthText;
+        int tick = client.player.tickCount;
+        var weapon = client.player.getWeaponItem();
+        // UI estimates need one sample per game tick, not one enchantment/scoreboard scan
+        // per rendered frame. A hotbar switch still refreshes the displayed estimate immediately.
+        if (entry.text == null
+                || entry.sampleTick != tick
+                || entry.safeMode != safeMode
+                || entry.weapon != weapon) {
+            String name = player.getName().getString();
+            changed |= !name.equals(entry.name);
+            entry.name = name;
+            if (!safeMode) {
+                float health = PlayerHealthResolver.resolve(player);
+                float maxHealth = PlayerHealthResolver.max(player);
+                long healthTenths = Math.round(Math.max(0, health) * 10.0);
+                int healthColor =
+                        health > maxHealth * .6F
+                                ? HEALTH_GOOD
+                                : health > maxHealth * .3F ? HEALTH_WARNING : HEALTH_LOW;
+                int hits = PlayerHitEstimator.hitsToKill(client, player, health);
+                changed |=
+                        healthTenths != entry.healthTenths
+                                || healthColor != entry.healthColor
+                                || hits != entry.hits;
+                entry.healthTenths = healthTenths;
+                entry.healthColor = healthColor;
+                entry.hits = hits;
             }
-
-            // Equipment, enchantments, absorption, effects and attack attributes can
-            // change between ticks. Keep evaluating them before comparing the result.
-            int hits = PlayerHitEstimator.hitsToKill(client, player, health);
-            changed |= healthColor != entry.healthColor || hits != entry.hits;
-            entry.healthColor = healthColor;
-            entry.hits = hits;
+            entry.sampleTick = tick;
+            entry.weapon = weapon;
         }
 
         if (changed) {
-            MutableComponent text = Component.literal(name).withColor(NAME_COLOR);
+            List<Span> text = new ArrayList<>();
+            text.add(new Span(entry.name, NAME_COLOR));
             if (showDistance) {
-                text.append(Component.literal("  " + entry.distanceText).withColor(DISTANCE_COLOR));
+                text.add(new Span("  ", DISTANCE_COLOR));
+                appendNumber(text, decimal(entry.distanceTenths), DISTANCE_COLOR);
+                text.add(new Span("m", DISTANCE_COLOR));
             }
             if (!safeMode) {
-                text.append(
-                        Component.literal("  " + entry.healthText).withColor(entry.healthColor));
+                text.add(new Span("  ", entry.healthColor));
+                appendNumber(text, decimal(entry.healthTenths), entry.healthColor);
+                text.add(new Span(" HP", entry.healthColor));
+                text.add(new Span("  Hit: ", HIT_COLOR));
                 String hits =
                         entry.hits == PlayerHitEstimator.UNKNOWN
                                 ? "?"
                                 : entry.hits == PlayerHitEstimator.UNREACHABLE
                                         ? "∞"
                                         : Integer.toString(entry.hits);
-                text.append(Component.literal("  Hit: " + hits).withColor(HIT_COLOR));
+                appendNumber(text, hits, HIT_COLOR);
             }
-            entry.name = name;
             entry.showDistance = showDistance;
             entry.safeMode = safeMode;
-            entry.component = text;
+            entry.text = List.copyOf(text);
         }
-        return entry.component;
+        return entry.text;
+    }
+
+    private static String decimal(long tenths) {
+        return tenths / 10 + "." + tenths % 10;
+    }
+
+    private static void appendNumber(List<Span> text, String number, int color) {
+        // A fixed alphabet reuses atlas tiles for every distance/HP value. Player names
+        // remain whole font runs, preserving their fallback-font layout.
+        for (int i = 0; i < number.length(); i++) {
+            text.add(new Span(number.substring(i, i + 1), color));
+        }
     }
 
     public static void clear() {
@@ -103,14 +121,14 @@ public final class NametagTextCache {
 
     private static final class Entry {
         private String name;
-        private double distance;
-        private String distanceText;
-        private float health;
-        private String healthText;
+        private long distanceTenths;
+        private long healthTenths;
         private int healthColor;
         private int hits;
+        private int sampleTick;
+        private Object weapon;
         private boolean showDistance;
         private boolean safeMode;
-        private Component component;
+        private List<Span> text;
     }
 }

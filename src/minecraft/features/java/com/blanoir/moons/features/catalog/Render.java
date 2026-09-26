@@ -462,6 +462,13 @@ final class Render {
                                 4,
                                 .05,
                                 Nametags::setScale),
+                        customChoice(
+                                        "font",
+                                        "Font",
+                                        Nametags::fontMode,
+                                        Nametags.fontOptions(),
+                                        Nametags::setFont)
+                                .withDefault("smooth"),
                         bool(
                                 "show_distance",
                                 "Show distance",

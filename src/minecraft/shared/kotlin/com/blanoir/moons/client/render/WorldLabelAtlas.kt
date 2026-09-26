@@ -1,5 +1,6 @@
 package com.blanoir.moons.client.render
 
+import java.util.EnumMap
 import kotlin.math.ceil
 import org.jetbrains.skia.*
 
@@ -14,22 +15,25 @@ object WorldLabelAtlas {
 
     data class Upload(val x: Int, val y: Int, val width: Int, val height: Int, val rgba: ByteArray)
 
-    private val tiles = LinkedHashMap<String, Tile>()
+    private val tiles =
+        EnumMap<WorldLabelFont, MutableMap<String, Tile>>(WorldLabelFont::class.java)
     private val uploads = ArrayList<Upload>()
     private var nextX = 4
     private var nextY = 0
-    private var resources: Fonts? = null
+    private val resources = EnumMap<WorldLabelFont, Fonts>(WorldLabelFont::class.java)
 
     @JvmStatic
-    fun prepare(values: Collection<String>) {
-        val fonts = resources ?: Fonts().also { resources = it }
+    @JvmOverloads
+    fun prepare(values: Collection<String>, mode: WorldLabelFont = WorldLabelFont.SMOOTH) {
+        val fonts = resources.getOrPut(mode) { Fonts(mode) }
         val distinct = values.asSequence().filter { it.isNotEmpty() }.distinct().toList()
         // Repack before exposing any UVs to this batch, so resetting cannot invalidate its
         // vertices.
-        if (!fits(distinct, fonts)) resetTiles()
+        if (!fits(distinct, fonts, tiles[mode] ?: emptyMap())) resetTiles()
         if (tiles.isEmpty() && uploads.isEmpty()) whitePixel()
+        val fontTiles = tiles.getOrPut(mode) { LinkedHashMap() }
         for (text in distinct) {
-            if (text in tiles) continue
+            if (text in fontTiles) continue
             val parts = fonts.parts(text)
             val advance = parts.sumOf { it.first.measureTextWidth(it.second).toDouble() }.toFloat()
             val width = (ceil(advance).toInt() + PADDING * 2).coerceIn(4, SIZE)
@@ -43,7 +47,7 @@ object WorldLabelAtlas {
                 surface.canvas.clear(0)
                 var x = PADDING.toFloat()
                 for ((font, value) in parts) {
-                    surface.canvas.drawString(value, x, 22f, font, fonts.paint)
+                    surface.canvas.drawString(value, x, fonts.baseline, font, fonts.paint)
                     x += font.measureTextWidth(value)
                 }
                 Bitmap().use { bitmap ->
@@ -53,20 +57,23 @@ object WorldLabelAtlas {
                     uploads.add(Upload(nextX, nextY, width, HEIGHT, pixels))
                 }
             }
-            tiles[text] = Tile(nextX, nextY, width, advance / RASTER_SCALE)
+            fontTiles[text] = Tile(nextX, nextY, width, advance / RASTER_SCALE)
             nextX += width
         }
     }
 
-    @JvmStatic fun tile(text: String): Tile? = tiles[text]
+    @JvmStatic
+    @JvmOverloads
+    fun tile(text: String, mode: WorldLabelFont = WorldLabelFont.SMOOTH): Tile? =
+        tiles[mode]?.get(text)
 
     @JvmStatic fun takeUploads(): List<Upload> = uploads.toList().also { uploads.clear() }
 
-    private fun fits(values: List<String>, fonts: Fonts): Boolean {
+    private fun fits(values: List<String>, fonts: Fonts, fontTiles: Map<String, Tile>): Boolean {
         var x = nextX
         var y = nextY
         for (text in values) {
-            if (text in tiles) continue
+            if (text in fontTiles) continue
             val width =
                 (ceil(fonts.parts(text).sumOf { it.first.measureTextWidth(it.second).toDouble() })
                         .toInt() + 4)
@@ -95,36 +102,42 @@ object WorldLabelAtlas {
 
     @JvmStatic
     fun close() {
-        resources?.close()
-        resources = null
+        resources.values.forEach { it.close() }
+        resources.clear()
         tiles.clear()
         uploads.clear()
         nextX = 4
         nextY = 0
     }
 
-    private class Fonts : AutoCloseable {
+    private class Fonts(mode: WorldLabelFont) : AutoCloseable {
+        private val pixel = mode == WorldLabelFont.MINECRAFT
+        val baseline = if (pixel) 20f else 22f
         private val data =
             Data.makeFromBytes(
                 requireNotNull(
                         WorldLabelAtlas::class
                             .java
                             .classLoader
-                            .getResourceAsStream("assets/moons/font/inter-frozen-medium.otf")
+                            .getResourceAsStream(
+                                if (pixel) "assets/moons/font/minecraft-ascii.ttf"
+                                else "assets/moons/font/inter-frozen-medium.otf"
+                            )
                     )
                     .use { it.readBytes() }
             )
         private val face = requireNotNull(FontMgr.default.makeFromData(data))
         private val primary =
-            Font(face, 18f).apply {
-                edging = FontEdging.ANTI_ALIAS
-                isSubpixel = true
+            Font(face, if (pixel) 16f else 18f).apply {
+                edging = if (pixel) FontEdging.ALIAS else FontEdging.ANTI_ALIAS
+                if (pixel) hinting = FontHinting.NONE
+                isSubpixel = !pixel
             }
         private val fallbacks = LinkedHashMap<Int, Pair<Typeface, Font>>()
         val paint =
             Paint().apply {
                 color = -1
-                isAntiAlias = true
+                isAntiAlias = !pixel
             }
 
         fun parts(text: String): List<Pair<Font, String>> {
@@ -158,8 +171,8 @@ object WorldLabelAtlas {
                     arrayOf("zh-CN"),
                     point,
                 ) ?: return primary
-            return Font(typeface, 18f)
-                .apply { edging = FontEdging.ANTI_ALIAS }
+            return Font(typeface, if (pixel) 16f else 18f)
+                .apply { edging = if (pixel) FontEdging.ALIAS else FontEdging.ANTI_ALIAS }
                 .also { fallbacks[point] = typeface to it }
         }
 

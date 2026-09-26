@@ -54,13 +54,18 @@ public final class WorldLabelRenderer {
     }
 
     public static void render(Minecraft client, PoseStack matrices, List<Label> labels) {
+        render(client, matrices, labels, WorldLabelFont.SMOOTH);
+    }
+
+    public static void render(
+            Minecraft client, PoseStack matrices, List<Label> labels, WorldLabelFont font) {
         if (labels.isEmpty() || VisualRenderTargets.worldTarget(client) == null) return;
         Object currentDevice = RenderSystem.getDevice();
         if (device != null && device != currentDevice) close();
         device = currentDevice;
         List<String> strings = new ArrayList<>();
         for (Label label : labels) for (Span span : label.text()) strings.add(span.text());
-        WorldLabelAtlas.prepare(strings);
+        WorldLabelAtlas.prepare(strings, font);
         List<Prepared> prepared = new ArrayList<>();
         var camera = MinecraftClientAccess.camera(client);
         for (Label label : labels) {
@@ -78,20 +83,28 @@ public final class WorldLabelRenderer {
                             .scale(-scale, -scale, scale);
             float width = 0;
             for (Span span : label.text()) {
-                var tile = WorldLabelAtlas.tile(span.text());
+                var tile = WorldLabelAtlas.tile(span.text(), font);
                 if (tile != null) width += tile.getAdvance();
             }
             prepared.add(new Prepared(pose, label.text(), width, label.background()));
         }
-        WorldLabelBackend.draw(
-                client, WorldLabelAtlas.takeUploads(), false, out -> draw(out, prepared, false));
-        WorldLabelBackend.draw(client, List.of(), true, out -> draw(out, prepared, true));
+        // Labels are already visible through walls. Redrawing identical foreground text with
+        // depth testing only duplicated the batch and forced a full-resolution scene depth copy.
+        try {
+            WorldLabelBackend.draw(
+                    client, WorldLabelAtlas.takeUploads(), font, out -> draw(out, prepared, font));
+        } catch (RuntimeException | Error failure) {
+            // Uploads have already left the atlas queue. Reset both sides together so a
+            // recreated GPU texture cannot reuse CPU tiles whose pixels were never uploaded.
+            close();
+            throw failure;
+        }
     }
 
-    private static void draw(VertexConsumer out, List<Prepared> values, boolean normal) {
+    private static void draw(VertexConsumer out, List<Prepared> values, WorldLabelFont font) {
         for (Prepared label : values) {
             float x = -label.width() / 2;
-            if (!normal && label.background() >>> 24 != 0) {
+            if (label.background() >>> 24 != 0) {
                 quad(
                         out,
                         label.pose(),
@@ -106,7 +119,7 @@ public final class WorldLabelRenderer {
                         premultiply(label.background()));
             }
             for (Span span : label.text()) {
-                var tile = WorldLabelAtlas.tile(span.text());
+                var tile = WorldLabelAtlas.tile(span.text(), font);
                 if (tile == null) continue;
                 float left = x - 1, top = -2;
                 float right = left + tile.getWidth() / 2f, bottom = top + 16;
@@ -114,21 +127,19 @@ public final class WorldLabelRenderer {
                 float v = tile.getY() / (float) WorldLabelAtlas.SIZE;
                 float u2 = (tile.getX() + tile.getWidth()) / (float) WorldLabelAtlas.SIZE;
                 float v2 = (tile.getY() + 32) / (float) WorldLabelAtlas.SIZE;
-                if (!normal)
-                    quad(
-                            out,
-                            label.pose(),
-                            left + 1,
-                            top + 1,
-                            right + 1,
-                            bottom + 1,
-                            u,
-                            v,
-                            u2,
-                            v2,
-                            premultiply(
-                                    (span.color() & 0xFF000000)
-                                            | ((span.color() & 0xFCFCFC) >> 2)));
+                quad(
+                        out,
+                        label.pose(),
+                        left + 1,
+                        top + 1,
+                        right + 1,
+                        bottom + 1,
+                        u,
+                        v,
+                        u2,
+                        v2,
+                        premultiply(
+                                (span.color() & 0xFF000000) | ((span.color() & 0xFCFCFC) >> 2)));
                 quad(
                         out,
                         label.pose(),

@@ -94,13 +94,13 @@ Runtime 缓存位于 `MOONS_HOME/cache/runtime`。配置、模型、预设和 `M
 
 ## 按需验证
 
-按修改范围选择验证任务：
+`check` 默认只覆盖生产编译、Minecraft 注入点与私有成员、YSM 版本适配，以及加载、安装更新和缓存边界。功能回归和共享 YSM 核心验证按修改范围显式运行，不再随 `check` / `checkAllVersions` 自动执行，也不会在默认检查中编译整套功能验证源码。
 
 ```powershell
 # 仅编译全部版本的正式源码
 .\gradlew.bat compileAllVersions
 
-# 全部版本：编译、实际游戏注入点、YSM 行为、材质和更新回滚验证
+# 全部版本：编译、注入点、版本适配及加载/更新/缓存边界
 .\gradlew.bat checkAllVersions
 
 # 局部修改只跑相关检查
@@ -109,12 +109,15 @@ Runtime 缓存位于 `MOONS_HOME/cache/runtime`。配置、模型、预设和 `M
 .\gradlew.bat verifyYsmCore '-Pysm_test_model=C:\Models\example.ysm'
 .\gradlew.bat verifyYsmPackage
 .\gradlew.bat verifyLauncherPackages # 隔离目录验证两个真实 EXE，不注入游戏
+.\gradlew.bat verifyAutoTotem verifyDamagePrediction # 修改图腾或伤害预测时
+.\gradlew.bat verifyHitSelect verifyMisplace # 修改攻击时序或位置预测时
+.\gradlew.bat verifyClickGuiInputs # 修改界面输入时
 .\gradlew.bat benchmarkYsm
 ```
 
 `verifyYsmCore` 使用所选 Minecraft 的 Java 依赖运行一次核心验证，包括头部追踪、第一人称过滤、动画和队列快照。`verifyYsmRenderSetup` 检查该版本的材质与顶点变换；`benchmarkYsm` 测 CPU 时间和分配量，不代表游戏 FPS。最终视觉效果仍需进游戏确认第三人称抬头/低头、第一人称双臂、持物、透明材质和动作切换。
 
-CI 在 push、PR 和默认的手动运行中先执行 `verifyMinecraftTransformers checkAllVersions`，通过后再打包。手动运行时可取消勾选 `verify` 来跳过验证。使用 `formatCode` 格式化代码。
+CI 在 push、PR 和默认的手动运行中先执行 `checkAllVersions`，通过后再打包。该任务已经包含各版本的注入点检查。手动运行时可取消勾选 `verify` 来跳过验证。使用 `formatCode` 格式化代码。
 
 ## Windows bootstrap 中文路径验证
 

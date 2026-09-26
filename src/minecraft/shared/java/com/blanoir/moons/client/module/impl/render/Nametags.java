@@ -4,10 +4,12 @@ import com.blanoir.moons.client.access.MinecraftClientAccess;
 import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.DoubleSetting;
+import com.blanoir.moons.client.config.settings.ModeSetting;
 import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.event.frame.WorldRenderEvent;
 import com.blanoir.moons.client.module.impl.misc.antibot.AntiBot;
 import com.blanoir.moons.client.module.impl.render.nametags.NametagTextCache;
+import com.blanoir.moons.client.render.WorldLabelFont;
 import com.blanoir.moons.client.render.WorldLabelRenderer;
 import com.blanoir.moons.client.render.WorldOverlayRenderer;
 import com.blanoir.moons.client.utils.text.NumberText;
@@ -15,7 +17,6 @@ import com.mojang.blaze3d.vertex.PoseStack;
 
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
-import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
@@ -43,6 +44,14 @@ public final class Nametags {
     private static final DoubleSetting SCALE =
             new DoubleSetting.Builder().name("nametags.scale").defaultValue(1.0D).build();
 
+    private static final ModeSetting<WorldLabelFont> FONT =
+            new ModeSetting.Builder<WorldLabelFont>()
+                    .name("nametags.font")
+                    .defaultValue(WorldLabelFont.SMOOTH)
+                    .option(WorldLabelFont.SMOOTH, "smooth")
+                    .option(WorldLabelFont.MINECRAFT, "minecraft")
+                    .build();
+
     private static final BooleanSetting SAFE_MODE =
             new BooleanSetting.Builder().name("nametags.safeMode").defaultValue(false).build();
 
@@ -53,6 +62,8 @@ public final class Nametags {
 
     public static void init() {
         Chams.bindPlayerFilter(Nametags::shouldRenderPlayer);
+        EventBus.CLIENT_CONTEXT_CHANGED.register(
+                "Nametags.context", event -> NametagTextCache.clear());
         EventBus.WORLD_RENDER.register("Nametags.worldRender", Nametags::render);
     }
 
@@ -100,12 +111,11 @@ public final class Nametags {
 
             double distance = selfPos.distanceTo(playerPos);
 
-            Component text =
-                    NametagTextCache.format(client, player, distance, showDistance, safeMode);
+            var text = NametagTextCache.format(client, player, distance, showDistance, safeMode);
             labels.add(
                     new WorldLabelRenderer.Label(
                             playerPos.add(0, player.getBbHeight() + NAMETAG_Y_OFFSET, 0),
-                            WorldLabelRenderer.spans(text),
+                            text,
                             distance,
                             SCALE.get(),
                             DISTANCE_SCALE_CAP,
@@ -116,7 +126,7 @@ public final class Nametags {
             }
         }
 
-        WorldLabelRenderer.render(client, matrices, labels);
+        WorldLabelRenderer.render(client, matrices, labels, FONT.get());
 
         if (pins.isEmpty()) {
             return;
@@ -228,6 +238,18 @@ public final class Nametags {
         SCALE.set(newScale);
         ClientChat.send(client, "Nametag scale set to " + format(SCALE.get()) + ".");
         return 1;
+    }
+
+    public static String fontMode() {
+        return FONT.serialized();
+    }
+
+    public static List<String> fontOptions() {
+        return FONT.optionIds();
+    }
+
+    public static int setFont(Minecraft ignoredClient, String mode) {
+        return FONT.tryDeserialize(mode) ? 1 : 0;
     }
 
     private static String statusText() {

@@ -69,7 +69,7 @@ jobs:
       - name: Verify Minecraft hooks and YSM behavior
         if: github.event_name != 'workflow_dispatch' || inputs.verify
         shell: pwsh
-        run: .\gradlew.bat verifyMinecraftTransformers checkAllVersions --console=plain
+        run: .\gradlew.bat checkAllVersions --console=plain
       - name: Package YSM for all supported versions
         if: github.event_name == 'pull_request' || (github.event_name != 'workflow_dispatch' && github.ref != 'refs/heads/main')
         shell: pwsh

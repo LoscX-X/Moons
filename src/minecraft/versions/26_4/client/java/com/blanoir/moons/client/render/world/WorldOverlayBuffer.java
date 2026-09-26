@@ -53,39 +53,45 @@ public final class WorldOverlayBuffer {
         if (buffer == null) {
             buffer = new StagedVertexBuffer(() -> MoonsConfig.MOD_ID + " world overlay", 262_144);
         }
-        PrimitiveTopology topology = pipeline.getPrimitiveTopology();
-        VertexSorting sorting =
-                sortQuads && topology == PrimitiveTopology.QUADS
-                        ? RenderSystem.getProjectionType().vertexSorting()
-                        : null;
-        StagedVertexBuffer.Draw draw = buffer.appendDraw(format, topology, sorting);
-        writer.accept(buffer.getVertexBuilder(draw));
-        buffer.upload();
+        try {
+            PrimitiveTopology topology = pipeline.getPrimitiveTopology();
+            VertexSorting sorting =
+                    sortQuads && topology == PrimitiveTopology.QUADS
+                            ? RenderSystem.getProjectionType().vertexSorting()
+                            : null;
+            StagedVertexBuffer.Draw draw = buffer.appendDraw(format, topology, sorting);
+            writer.accept(buffer.getVertexBuilder(draw));
+            buffer.upload();
 
-        StagedVertexBuffer.ExecuteInfo info = buffer.getExecuteInfo(draw);
-        if (info != null) {
-            GpuBufferSlice transforms =
-                    RenderSystem.getDynamicUniforms()
-                            .writeTransform(RenderSystem.getModelViewMatrixCopy());
-            try (RenderPass pass =
-                    RenderSystem.getDevice()
-                            .createCommandEncoder()
-                            .createRenderPass(
-                                    () -> MoonsConfig.MOD_ID + " " + label,
-                                    colorView,
-                                    Optional.empty(),
-                                    mainTarget.getDepthTextureView(),
-                                    OptionalDouble.empty())) {
-                pass.setPipeline(RenderSystem.getCompiledPipeline(pipeline));
-                RenderSystem.bindDefaultUniforms(pass);
-                pass.setUniform("DynamicTransforms", transforms);
-                pass.setVertexBuffer(0, info.vertexBuffer().slice());
-                pass.setIndexBuffer(info.indexBuffer(), info.indexType());
-                pass.drawIndexed(info.indexCount(), 1, info.firstIndex(), info.baseVertex(), 0);
+            StagedVertexBuffer.ExecuteInfo info = buffer.getExecuteInfo(draw);
+            if (info != null) {
+                GpuBufferSlice transforms =
+                        RenderSystem.getDynamicUniforms()
+                                .writeTransform(RenderSystem.getModelViewMatrixCopy());
+                try (RenderPass pass =
+                        RenderSystem.getDevice()
+                                .createCommandEncoder()
+                                .createRenderPass(
+                                        () -> MoonsConfig.MOD_ID + " " + label,
+                                        colorView,
+                                        Optional.empty(),
+                                        mainTarget.getDepthTextureView(),
+                                        OptionalDouble.empty())) {
+                    pass.setPipeline(RenderSystem.getCompiledPipeline(pipeline));
+                    RenderSystem.bindDefaultUniforms(pass);
+                    pass.setUniform("DynamicTransforms", transforms);
+                    pass.setVertexBuffer(0, info.vertexBuffer().slice());
+                    pass.setIndexBuffer(info.indexBuffer(), info.indexType());
+                    pass.drawIndexed(info.indexCount(), 1, info.firstIndex(), info.baseVertex(), 0);
+                }
             }
+        } catch (RuntimeException | Error failure) {
+            // A partial vertex writer must not poison the shared batch for later modules.
+            close();
+            throw failure;
+        } finally {
+            if (buffer != null) buffer.endFrame();
         }
-
-        buffer.endFrame();
     }
 
     public static synchronized void close() {

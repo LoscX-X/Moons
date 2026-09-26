@@ -90,7 +90,7 @@ public class Event<T> {
             try {
                 registration.listener.accept(event);
             } catch (Throwable failure) {
-                reportFailure(registration.name, failure);
+                reportFailure(registration, failure);
             }
             if (cancellable != null && cancellable.isCancelled()) {
                 break;
@@ -98,14 +98,30 @@ public class Event<T> {
         }
     }
 
-    private void reportFailure(String listenerName, Throwable failure) {
+    private void reportFailure(RegisteredListener<?> registration, Throwable failure) {
+        int suppressed = 0;
+        if (thread == EventThread.RENDER) {
+            // Keep dispatching other listeners; repeated frame failures must not flood disk I/O.
+            synchronized (registration) {
+                long now = System.nanoTime();
+                if (registration.lastFailureReport != 0
+                        && now - registration.lastFailureReport < 5_000_000_000L) {
+                    registration.suppressedFailures++;
+                    return;
+                }
+                registration.lastFailureReport = now;
+                suppressed = registration.suppressedFailures;
+                registration.suppressedFailures = 0;
+            }
+        }
         System.err.println(
                 "[EventBus] Event '"
                         + name
                         + "' listener '"
-                        + listenerName
+                        + registration.name
                         + "' failed: "
-                        + failure);
+                        + failure
+                        + (suppressed == 0 ? "" : " (" + suppressed + " failures suppressed)"));
         failure.printStackTrace(System.err);
     }
 
@@ -125,6 +141,8 @@ public class Event<T> {
         private final String name;
         private final EventPriority priority;
         private final Consumer<T> listener;
+        private long lastFailureReport;
+        private int suppressedFailures;
 
         private RegisteredListener(String name, EventPriority priority, Consumer<T> listener) {
             this.name = name;

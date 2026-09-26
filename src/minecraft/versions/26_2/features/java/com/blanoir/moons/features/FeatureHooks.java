@@ -116,12 +116,20 @@ public final class FeatureHooks {
                     ArmorHide.isEnabled();
             case "render.player-nametag" -> Nametags.isEnabled();
             case "render.player-skin" -> NicknameShuffle.isEnabled();
+            case "render.chams-submit", "render.chams-submit.end" ->
+                    Chams.isChamsEnabled()
+                            || com.blanoir.moons.client.render.VisualModelCapture.active()
+                            || ArmorHide.isEnabled()
+                            || EventBus.LIVING_RENDER_PRE.listenerCount() != 0
+                            || EventBus.LIVING_RENDER_POST.listenerCount() != 0;
             case "render.chams-draw",
                     "render.chams-draw-oit",
                     "render.chams-type",
                     "render.chams-equipment",
                     "render.chams-cape",
                     "render.chams-mark-item",
+                    "render.chams-item",
+                    "render.chams-item.end",
                     "render.chams-item.type",
                     "render.chams-foil.type" ->
                     Chams.isChamsEnabled()

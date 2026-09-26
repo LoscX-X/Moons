@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "batches": [
+    {
+      "id": "2026-09-26-01",
+      "summary": "Moons Actions 更新通知",
+      "changes": [
+        { "type": "build", "text": "Actions 发布成功后，将本次更新说明交给 QQ bot 推送，支持重复回调去重和失败重试。" },
+        { "type": "build", "text": "Actions 运行摘要和 Release 正文直接展示本次新增、修复、优化等具体更新内容。" },
+        { "type": "docs", "text": "建立更新批次清单和后续 AI 交接规则：未发布改动持续归入当前批次，确认发送成功后再创建下一批。" },
+        { "type": "feat", "text": "QQ 群聊和单聊的新旧回复统一使用原生 Markdown，优化帮助、玩家查询、统计、排行榜和更新通知的信息层次。" },
+        { "type": "refactor", "text": "更新推送服务兼容原机器人命令，增加独立状态存储、故障重启、日志轮转和定时备份。" }
+      ]
+    }
+  ]
+}

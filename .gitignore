@@ -23,6 +23,8 @@ atlassian-ide-plugin.xml
 
 # Generated analysis, training and verification artifacts
 /outputs/
+# Local checks for the update bot; Actions only needs the runtime script and manifest.
+/.github/scripts/*.test.mjs
 /website/
 /tools/aim_training/verification/
 /tools/aim_training/SHA256SUMS.json

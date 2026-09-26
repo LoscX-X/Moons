@@ -35,6 +35,11 @@ jobs:
       short_sha: ${{ steps.version.outputs.short_sha }}
     steps:
       - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate Moons update batches
+        run: node .github/scripts/moons-updates.mjs check
       - name: Show client version and commit
         id: version
         shell: pwsh
@@ -144,13 +149,21 @@ jobs:
           }
           $rows >> build/ci/build-info.md
           @('', '## Dependency versions', '', '| Item | Value |', '| --- | --- |') + $rows >> $env:GITHUB_STEP_SUMMARY
+      - name: Prepare Moons update payload and release notes
+        if: steps.package.outcome == 'success'
+        env:
+          CLIENT_VERSION: ${{ steps.version.outputs.client_version }}
+        run: node .github/scripts/moons-updates.mjs prepare
       - name: Upload build information
         if: steps.package.outcome == 'success'
         uses: actions/upload-artifact@v6
         with:
           name: moons-build-info
           retention-days: 7
-          path: build/ci/build-info.md
+          path: |
+            build/ci/build-info.md
+            build/ci/moons-update.json
+            build/ci/moons-update-notes.md
           if-no-files-found: error
       - name: Upload combined YSM bundle
         uses: actions/upload-artifact@v6
@@ -194,6 +207,10 @@ jobs:
       contents: write
       actions: write
     steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - uses: actions/download-artifact@v7
         with:
           pattern: moons-*
@@ -210,6 +227,8 @@ jobs:
           set -euo pipefail
           cat artifacts/build-info.md > release-notes.md
           printf '\n\n' >> release-notes.md
+          cat artifacts/moons-update-notes.md >> release-notes.md
+          printf '\n\n' >> release-notes.md
           cat >> release-notes.md <<'NOTES'
           - `moon-install-<version>-<commit>.exe`: includes and installs matching UI dependencies, shared YSM libraries and game adapters entirely offline. Run this for first-time setup or when dependencies change.
           - `moon-<version>-<commit>.exe`: validates installed dependencies and loads Moons into Minecraft.
@@ -219,14 +238,23 @@ jobs:
 
           Only assets selected for this run are included. The loader supports Minecraft 26.1.2, 26.2, 26.3, 26.4-snapshot-1.
           NOTES
+          shopt -s nullglob
+          assets=(artifacts/*.exe artifacts/*.zip artifacts/build-info.md artifacts/moons-update-notes.md)
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" artifacts/* --repo "$GITHUB_REPOSITORY" --clobber
+            gh release upload "$RELEASE_TAG" "${assets[@]}" --repo "$GITHUB_REPOSITORY" --clobber
+            gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --notes-file release-notes.md
           else
-            gh release create "$RELEASE_TAG" artifacts/* \
+            gh release create "$RELEASE_TAG" "${assets[@]}" \
               --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
               --title "Moons $CLIENT_VERSION · $SHORT_SHA (Build $GITHUB_RUN_NUMBER)" \
               --prerelease --latest=false --notes-file release-notes.md
           fi
+      - name: Queue Moons QQ update notification
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        env:
+          MOONS_BOT_URL: ${{ secrets.MOONS_BOT_URL }}
+          MOONS_BOT_SECRET: ${{ secrets.MOONS_BOT_SECRET }}
+        run: node .github/scripts/moons-updates.mjs notify artifacts/moons-update.json
       - name: Clean up old automatic releases and artifacts
         env:
           GH_TOKEN: ${{ github.token }}

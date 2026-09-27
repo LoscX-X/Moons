@@ -23,12 +23,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asComposeCanvas
 import androidx.compose.ui.input.pointer.PointerButton
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerId
 import androidx.compose.ui.input.pointer.PointerType
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.scene.CanvasLayersComposeScene
 import androidx.compose.ui.scene.ComposeScene
 import androidx.compose.ui.scene.ComposeScenePointer
@@ -40,6 +43,7 @@ import androidx.compose.ui.unit.sp
 import com.blanoir.moons.client.config.ClientBranding
 import com.blanoir.moons.client.config.Settings
 import com.blanoir.moons.client.module.framework.ModuleKeybinds
+import com.blanoir.moons.client.module.impl.player.invmanager.InvManager
 import com.blanoir.moons.client.module.impl.render.xray.PluginBlockPreviews
 import com.blanoir.moons.client.ui.MinecraftScreenAccess
 import com.blanoir.moons.client.ui.compose.FinalFrameSurface
@@ -77,6 +81,7 @@ class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} Cl
     private val hudLayoutController = HudLayoutController()
     private var hudLayoutEditing by mutableStateOf(false)
     private var hudPointerCaptured = false
+    private var hudToolbarBounds = Rect.Zero
     private var hudPointerX = 0.0
     private var hudPointerY = 0.0
     private var nextRegistrySyncNanos = 0L
@@ -168,7 +173,9 @@ class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} Cl
         composeScene?.cancelPointerInput()
         composeScene?.focusManager?.releaseFocus()
         bindingModuleId = null
+        InvManager.cancelKeyBinding()
         hudLayoutEditing = false
+        hudToolbarBounds = Rect.Zero
         nextRegistrySyncNanos = 0L
         NativeItemIcons.clear()
         PluginBlockPreviews.clear()
@@ -223,6 +230,7 @@ class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} Cl
         if (ModuleKeybinds.isGuiKey(ModuleKeybinds.fromMouseButton(event.button()))) return true
         if (
             hudLayoutEditing &&
+                !hudToolbarBounds.contains(composeOffset(event.x(), event.y())) &&
                 hudLayoutController.mouseClicked(event.button(), event.x(), event.y())
         ) {
             hudPointerCaptured = true
@@ -312,6 +320,7 @@ class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} Cl
     ): Boolean {
         if (
             hudLayoutEditing &&
+                !hudToolbarBounds.contains(composeOffset(mouseX, mouseY)) &&
                 hudLayoutController.mouseScrolled(mouseX, mouseY, vertical, width, height)
         ) {
             return true
@@ -343,6 +352,7 @@ class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} Cl
                 GLFW.GLFW_KEY_ESCAPE -> {
                     hudLayoutController.mouseReleased()
                     hudPointerCaptured = false
+                    setDragging(false)
                     hudLayoutEditing = false
                     return true
                 }
@@ -370,17 +380,15 @@ class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} Cl
         val key = ModuleKeybinds.fromEvent(event)
         // The independent binding listener owns this key, including when a host hook is absent.
         if (ModuleKeybinds.isGuiKey(key)) return true
-        if (event.key() == GLFW.GLFW_KEY_ESCAPE) {
-            onClose()
-            return true
-        }
-        composeScene?.sendKeyEvent(
-            GlfwComposeEvents.key(
-                Minecraft.getInstance().window.handle(),
-                AwtKeyEvent.KEY_PRESSED,
-                event.key(),
+        val handled =
+            composeScene?.sendKeyEvent(
+                GlfwComposeEvents.key(
+                    Minecraft.getInstance().window.handle(),
+                    AwtKeyEvent.KEY_PRESSED,
+                    event.key(),
+                )
             )
-        )
+        if (handled != true && event.key() == GLFW.GLFW_KEY_ESCAPE) onClose()
         return true
     }
 
@@ -414,6 +422,7 @@ class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} Cl
             HudLayoutOverlay {
                 hudLayoutController.mouseReleased()
                 hudPointerCaptured = false
+                setDragging(false)
                 hudLayoutEditing = false
             }
             return
@@ -440,6 +449,7 @@ class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} Cl
                     .clip(RoundedCornerShape(7.dp))
                     .background(PanelStyle.panel)
                     .height(32.dp)
+                    .onGloballyPositioned { hudToolbarBounds = it.boundsInRoot() }
                     .padding(start = 11.dp, end = 5.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {

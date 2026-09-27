@@ -43,9 +43,6 @@ import com.blanoir.moons.client.config.Settings
 import com.blanoir.moons.client.module.framework.ModuleCategories
 import com.blanoir.moons.client.module.framework.ModuleRegistry
 import com.blanoir.moons.client.module.framework.ModuleRegistry.Module
-import com.blanoir.moons.client.module.impl.player.invmanager.AutoArmorPreview
-import com.blanoir.moons.client.module.impl.player.invmanager.InvClearPreview
-import com.blanoir.moons.client.module.impl.player.invmanager.InventoryLayoutSetting
 import com.blanoir.moons.client.utils.ui.ColorEditor
 
 /** Settings-window layout sharing the existing module and setting mutation paths. */
@@ -73,7 +70,8 @@ internal fun MoonsSettingsClickGui(
     var category by remember {
         mutableStateOf(
             Settings.getString("clickgui.settings.page", "All modules")
-                .takeIf { it == "Configs" || it == "Module Hide" || it.startsWith("YSM") }
+                .let { if (it.startsWith("YSM")) "YSM" else it }
+                .takeIf { it == "Configs" || it == "Module Hide" || it == "YSM" }
                 .orEmpty()
                 .ifEmpty { "All modules" }
         )
@@ -162,10 +160,6 @@ internal fun MoonsSettingsClickGui(
                                     "Module Hide",
                                     "Configs",
                                     "YSM",
-                                    "YSM Parameters",
-                                    "YSM Actions",
-                                    "YSM Pose",
-                                    "YSM Debug",
                                     "All modules",
                                 ) + categories)
                                 .forEach { item ->
@@ -174,11 +168,7 @@ internal fun MoonsSettingsClickGui(
                                             "General" -> "settings"
                                             "Module Hide" -> "hidden"
                                             "Configs" -> "configs"
-                                            "YSM",
-                                            "YSM Parameters",
-                                            "YSM Actions",
-                                            "YSM Pose",
-                                            "YSM Debug" -> "player"
+                                            "YSM" -> "player"
                                             "All modules" -> "modules"
                                             else -> categoryIconId(item) ?: "modules"
                                         }
@@ -233,9 +223,7 @@ internal fun MoonsSettingsClickGui(
                             else if (category == "Module Hide")
                                 "Choose modules to hide in ClickGUI. Enabled states and keybinds stay the same."
                             else if (category == "YSM")
-                                "Choose a local player model. Changes are visible only to you."
-                            else if (category.startsWith("YSM"))
-                                "Preview and adjust your local model."
+                                "Choose and customize your local player model."
                             else if (category == "General")
                                 "Manage your interface and client preferences."
                             else "Configure and inspect the modules in your client.",
@@ -259,9 +247,7 @@ internal fun MoonsSettingsClickGui(
                         } else if (category == "Module Hide") {
                             ModuleHidePage(allModules, onMutated)
                         } else if (category == "YSM") {
-                            YsmSelectorPage()
-                        } else if (category.startsWith("YSM")) {
-                            YsmStudioPage(category)
+                            YsmPage()
                         } else if (category == "General") {
                             GeneralSettingsPage(
                                 allModules,
@@ -618,9 +604,7 @@ private fun ModuleConfiguration(
                                 CompactSetting(module, setting, onMutated)
                             }
                         }
-                    if (module.id() == "invmanager") InventoryLayoutSetting()
-                    if (module.id() == "autoarmor") AutoArmorPreview()
-                    if (module.id() == "invclear") InvClearPreview()
+                    ModuleExtraSettings(module, onMutated)
                 }
             }
             if (module.settings().none { it.isVisible })

@@ -2,7 +2,9 @@
 
 <p align="center">简体中文 · <a href="../readme.md">English</a></p>
 
-Moons 是面向 Minecraft Java Edition 的客户端，提供功能模块、本地配置和 YSM 模型支持。
+Moons 是面向 Windows 的免费开源 Minecraft Java Edition 注入式客户端，基于 Java 和 JVMTI，提供功能模块、本地配置和 YSM 模型支持。
+
+**官方网站：** [moons.cendreal.com](https://moons.cendreal.com/) · [English website](https://moons.cendreal.com/en/)
 
 > [!WARNING]
 > **本项目发布目的仅为学习、研究和技术交流。**

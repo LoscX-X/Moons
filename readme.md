@@ -2,7 +2,9 @@
 
 <p align="center"><a href="docs/README.zh-CN.md">简体中文</a> · English</p>
 
-Moons is a Windows client for Minecraft Java Edition with configurable modules, local presets and YSM models.
+Moons is a free, open-source Minecraft Java Edition injection client for Windows, built with Java and JVMTI, with configurable modules, local presets and YSM models.
+
+**Website:** [moons.cendreal.com](https://moons.cendreal.com/) · [English website](https://moons.cendreal.com/en/)
 
 > [!WARNING]
 > **Published for learning, research, and technical exchange only.**

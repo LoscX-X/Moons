@@ -4,7 +4,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 
 /** Keeps the originating layout mounted, preserving selection and scroll position on return. */
 @Composable
@@ -31,13 +37,25 @@ internal fun InventoryEditorHost(
                     InvManager.cancelKeyBinding()
                 }
                 DisposableEffect(Unit) {
-                    val registration = InventoryEditorInput.attach(close)
-                    onDispose {
-                        registration.close()
-                        InvManager.cancelKeyBinding()
-                    }
+                    onDispose { InvManager.cancelKeyBinding() }
                 }
-                InventoryConfigurationPage(onMutated, close)
+                Popup(
+                    onDismissRequest = close,
+                    onPreviewKeyEvent = {
+                        if (it.key == Key.Escape && it.type == KeyEventType.KeyDown) {
+                            close()
+                            true
+                        } else false
+                    },
+                    properties =
+                        PopupProperties(
+                            focusable = true,
+                            dismissOnBackPress = true,
+                            dismissOnClickOutside = false,
+                        ),
+                ) {
+                    InventoryConfigurationPage(onMutated, close)
+                }
             }
         }
     }

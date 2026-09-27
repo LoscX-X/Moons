@@ -60,7 +60,7 @@ internal fun YsmSelectorPage() {
         if (current == null) {
             Text("YSM is unavailable", fontWeight = FontWeight.SemiBold)
             Text(
-                "Load the YSM module for your Minecraft version, then return to this page. The current adapter supports 26.1.2.",
+                "Load the YSM module for your Minecraft version, then return to this page.",
                 color = PanelStyle.muted,
                 fontSize = 12.sp,
                 lineHeight = 18.sp,

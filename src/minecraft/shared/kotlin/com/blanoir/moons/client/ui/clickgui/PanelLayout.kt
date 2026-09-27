@@ -25,6 +25,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -61,6 +63,9 @@ internal fun CategoryPanel(
     onMutated: () -> Unit,
 ) {
     val density = LocalDensity.current
+    val activate by rememberUpdatedState(onActivate)
+    val moveBy by rememberUpdatedState(onMoveBy)
+    val moveFinished by rememberUpdatedState(onMoveFinished)
     val shape = PanelStyle.cardShape
     Column(
         Modifier.offset {
@@ -84,16 +89,16 @@ internal fun CategoryPanel(
             Modifier.fillMaxWidth()
                 .height(27.dp)
                 .background(PanelStyle.header)
-                .pointerInput(category) {
+                .pointerInput(category, density.density) {
                     detectDragGestures(
-                        onDragStart = { onActivate() },
-                        onDragEnd = onMoveFinished,
-                        onDragCancel = onMoveFinished,
+                        onDragStart = { activate() },
+                        onDragEnd = { moveFinished() },
+                        onDragCancel = { moveFinished() },
                         onDrag = { change, amount ->
                             change.consume()
                             val dx = amount.x / density.density
                             val dy = amount.y / density.density
-                            onMoveBy(Offset(dx, dy))
+                            moveBy(Offset(dx, dy))
                         },
                     )
                 }

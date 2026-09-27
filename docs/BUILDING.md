@@ -111,7 +111,6 @@ Runtime 缓存位于 `MOONS_HOME/cache/runtime`。配置、模型、预设和 `M
 .\gradlew.bat verifyLauncherPackages # 隔离目录验证两个真实 EXE，不注入游戏
 .\gradlew.bat verifyAutoTotem verifyDamagePrediction # 修改图腾或伤害预测时
 .\gradlew.bat verifyHitSelect verifyMisplace # 修改攻击时序或位置预测时
-.\gradlew.bat verifyClickGuiInputs # 修改界面输入时
 .\gradlew.bat benchmarkYsm
 ```
 

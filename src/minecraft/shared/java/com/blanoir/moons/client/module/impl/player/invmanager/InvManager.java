@@ -52,7 +52,6 @@ public final class InvManager {
 
     public static void init() {
         InventoryClicks.init();
-        InventoryEditorInput.init();
         ModuleKeybinds.registerAction(
                 "invmanager_once", () -> organizeOnce(Minecraft.getInstance()));
         EventBus.CLIENT_CONTEXT_CHANGED.register("InvManager.context", event -> reset());

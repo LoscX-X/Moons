@@ -17,17 +17,22 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,11 +41,13 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -72,6 +79,8 @@ internal fun categoryIconId(category: String): String? =
 
 @Composable
 internal fun ControlMenu(
+    viewportWidth: Dp,
+    viewportHeight: Dp,
     sections: List<ControlSection>,
     openSections: Set<String>,
     settingsOpen: Boolean,
@@ -89,16 +98,43 @@ internal fun ControlMenu(
 ) {
     val shape = PanelStyle.cardShape
     val density = LocalDensity.current
-    var menuOffset by remember { mutableStateOf(Offset.Zero) }
+    var menuPosition by remember { mutableStateOf<Offset?>(null) }
+    var menuHeight by remember { mutableStateOf(0f) }
+    val position =
+        clampMenuPosition(
+            menuPosition ?: Offset(12f, (viewportHeight.value - menuHeight) / 2f),
+            viewportWidth.value,
+            viewportHeight.value,
+            menuHeight,
+        )
+    val moveMenu by
+        rememberUpdatedState<(Offset) -> Unit> { delta ->
+            val current =
+                clampMenuPosition(
+                    menuPosition ?: position,
+                    viewportWidth.value,
+                    viewportHeight.value,
+                    menuHeight,
+                )
+            menuPosition =
+                clampMenuPosition(
+                    current + delta,
+                    viewportWidth.value,
+                    viewportHeight.value,
+                    menuHeight,
+                )
+        }
     Column(
         modifier
             .offset {
                 IntOffset(
-                    (menuOffset.x * density.density).roundToInt(),
-                    (menuOffset.y * density.density).roundToInt(),
+                    (position.x * density.density).roundToInt(),
+                    (position.y * density.density).roundToInt(),
                 )
             }
             .width(PANEL_WIDTH.dp)
+            .heightIn(max = (viewportHeight - 24.dp).coerceAtLeast(0.dp))
+            .onSizeChanged { menuHeight = it.height / density.density }
             .shadow(18.dp, shape)
             .clip(shape)
             .background(PanelStyle.panel)
@@ -108,14 +144,15 @@ internal fun ControlMenu(
             Modifier.fillMaxWidth()
                 .height(42.dp)
                 .background(PanelStyle.toolbar)
-                .pointerInput(Unit) {
+                .pointerInput(density.density) {
                     detectDragGestures { change, amount ->
                         change.consume()
-                        menuOffset +=
+                        moveMenu(
                             Offset(
                                 amount.x / density.density,
                                 amount.y / density.density,
                             )
+                        )
                     }
                 }
                 .padding(horizontal = 11.dp),
@@ -160,91 +197,95 @@ internal fun ControlMenu(
             }
         }
 
-        if (settingsOpen) {
-            GuiSettings(
-                onThemeChange = onThemeChange,
-                bindingModuleId = bindingModuleId,
-                onBindingModuleChange = onBindingModuleChange,
-                onMutated = onMutated,
-                onEditHudLayout = onEditHudLayout,
-            )
-        } else {
-            PanelSearch(
-                value = search,
-                onChange = onSearchChange,
-                compact = true,
-                modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
-            )
-
-            Column(Modifier.fillMaxWidth().padding(bottom = 5.dp)) {
-                sections.forEach { section ->
-                    ControlMenuRow(
-                        label = section.label,
-                        selected = section.id in openSections && search.isEmpty(),
-                        icon = section.iconId,
-                        onClick = { onSelectSection(section.id) },
+        key(settingsOpen) {
+            Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
+                if (settingsOpen) {
+                    GuiSettings(
+                        onThemeChange = onThemeChange,
+                        bindingModuleId = bindingModuleId,
+                        onBindingModuleChange = onBindingModuleChange,
+                        onMutated = onMutated,
+                        onEditHudLayout = onEditHudLayout,
                     )
+                } else {
+                    PanelSearch(
+                        value = search,
+                        onChange = onSearchChange,
+                        compact = true,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+                    )
+
+                    Column(Modifier.fillMaxWidth().padding(bottom = 5.dp)) {
+                        sections.forEach { section ->
+                            ControlMenuRow(
+                                label = section.label,
+                                selected = section.id in openSections && search.isEmpty(),
+                                icon = section.iconId,
+                                onClick = { onSelectSection(section.id) },
+                            )
+                        }
+                    }
+
+                    Text(
+                        "GENERAL",
+                        color = PanelStyle.dim,
+                        fontSize = 6.sp,
+                        letterSpacing = 1.sp,
+                        modifier =
+                            Modifier.fillMaxWidth()
+                                .background(PanelStyle.setting)
+                                .padding(horizontal = 11.dp, vertical = 6.dp),
+                    )
+                    ControlMenuRow(
+                        label = "All modules",
+                        selected = sections.all { it.id in openSections } && search.isEmpty(),
+                        trailing = moduleCount.toString(),
+                        icon = "modules",
+                        onClick = { onSelectSection("all") },
+                    )
+                    ControlMenuRow(
+                        label = "Module Hide",
+                        selected = false,
+                        icon = "hidden",
+                        onClick = { onSelectSection("module_hide") },
+                    )
+                    ControlMenuRow(
+                        label = "Configs",
+                        selected = false,
+                        icon = "configs",
+                        onClick = {
+                            onBindingModuleChange(null)
+                            com.blanoir.moons.client.config.Settings.setString(
+                                "clickgui.settings.page",
+                                "Configs",
+                            )
+                            ModuleGui.setLayout(null, "settings")
+                            onMutated()
+                        },
+                    )
+                    ControlMenuRow(
+                        label = "YSM",
+                        selected = false,
+                        icon = "player",
+                        onClick = {
+                            onBindingModuleChange(null)
+                            com.blanoir.moons.client.config.Settings.setString(
+                                "clickgui.settings.page",
+                                "YSM",
+                            )
+                            ModuleGui.setLayout(null, "settings")
+                            onMutated()
+                        },
+                    )
+                    ControlMenuRow(
+                        label = "Close",
+                        selected = false,
+                        icon = "close",
+                        onClick = onClose,
+                    )
+                    Spacer(Modifier.height(5.dp))
                 }
             }
-
-            Text(
-                "GENERAL",
-                color = PanelStyle.dim,
-                fontSize = 6.sp,
-                letterSpacing = 1.sp,
-                modifier =
-                    Modifier.fillMaxWidth()
-                        .background(PanelStyle.setting)
-                        .padding(horizontal = 11.dp, vertical = 6.dp),
-            )
-            ControlMenuRow(
-                label = "All modules",
-                selected = sections.all { it.id in openSections } && search.isEmpty(),
-                trailing = moduleCount.toString(),
-                icon = "modules",
-                onClick = { onSelectSection("all") },
-            )
-            ControlMenuRow(
-                label = "Module Hide",
-                selected = false,
-                icon = "hidden",
-                onClick = { onSelectSection("module_hide") },
-            )
-            ControlMenuRow(
-                label = "Configs",
-                selected = false,
-                icon = "configs",
-                onClick = {
-                    onBindingModuleChange(null)
-                    com.blanoir.moons.client.config.Settings.setString(
-                        "clickgui.settings.page",
-                        "Configs",
-                    )
-                    ModuleGui.setLayout(null, "settings")
-                    onMutated()
-                },
-            )
-            ControlMenuRow(
-                label = "YSM models",
-                selected = false,
-                icon = "player",
-                onClick = {
-                    onBindingModuleChange(null)
-                    com.blanoir.moons.client.config.Settings.setString(
-                        "clickgui.settings.page",
-                        "YSM",
-                    )
-                    ModuleGui.setLayout(null, "settings")
-                    onMutated()
-                },
-            )
-            ControlMenuRow(
-                label = "Close",
-                selected = false,
-                icon = "close",
-                onClick = onClose,
-            )
-            Spacer(Modifier.height(5.dp))
         }
     }
 }

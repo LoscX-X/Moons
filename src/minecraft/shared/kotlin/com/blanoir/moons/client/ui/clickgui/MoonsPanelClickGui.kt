@@ -3,11 +3,11 @@ package com.blanoir.moons.client.ui.clickgui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -126,54 +126,70 @@ internal fun MoonsPanelClickGui(
                         ((contentWidth - occupiedWidth) / 2f).coerceAtLeast(PANEL_MARGIN)
 
                 visibleCategories.forEachIndexed { index, category ->
-                    val initial =
-                        Offset(
-                            gridStartX + (index % columns) * (PANEL_WIDTH + PANEL_GAP),
-                            18f + (index / columns) * 250f,
-                        )
-                    val savedPosition = remember(category) { loadPanelPosition(category) }
-                    val position =
-                        positions[category]
-                            ?: clampPanelPosition(
-                                savedPosition ?: initial,
+                    key(category) {
+                        val initial =
+                            Offset(
+                                gridStartX + (index % columns) * (PANEL_WIDTH + PANEL_GAP),
+                                18f + (index / columns) * 250f,
+                            )
+                        val savedPosition = remember(category) { loadPanelPosition(category) }
+                        val position =
+                            clampPanelPosition(
+                                positions[category] ?: savedPosition ?: initial,
                                 logicalWidth,
                                 logicalHeight,
                             )
-                    val modules = filteredModules[category].orEmpty()
-                    CategoryPanel(
-                        category = category,
-                        modules = modules,
-                        position = position,
-                        maxBodyHeight = (logicalHeight - position.y - 16f).coerceIn(120f, 430f).dp,
-                        active = activePanel == category,
-                        collapsed = collapsed[category] == true,
-                        expanded = expanded,
-                        bindingModuleId = bindingModuleId,
-                        onActivate = { activePanel = category },
-                        onMoveBy = { delta ->
-                            val current = positions[category] ?: position
-                            positions[category] =
-                                clampPanelPosition(
-                                    current + delta,
-                                    logicalWidth,
-                                    logicalHeight,
+                        val modules = filteredModules[category].orEmpty()
+                        CategoryPanel(
+                            category = category,
+                            modules = modules,
+                            position = position,
+                            maxBodyHeight =
+                                (logicalHeight - position.y - 39f).coerceIn(0f, 430f).dp,
+                            active = activePanel == category,
+                            collapsed = collapsed[category] == true,
+                            expanded = expanded,
+                            bindingModuleId = bindingModuleId,
+                            onActivate = { activePanel = category },
+                            onMoveBy = { delta ->
+                                val current =
+                                    clampPanelPosition(
+                                        positions[category] ?: position,
+                                        logicalWidth,
+                                        logicalHeight,
+                                    )
+                                positions[category] =
+                                    clampPanelPosition(
+                                        current + delta,
+                                        logicalWidth,
+                                        logicalHeight,
+                                    )
+                            },
+                            onMoveFinished = {
+                                savePanelPosition(
+                                    category,
+                                    clampPanelPosition(
+                                        positions[category] ?: position,
+                                        logicalWidth,
+                                        logicalHeight,
+                                    ),
                                 )
-                        },
-                        onMoveFinished = {
-                            savePanelPosition(category, positions[category] ?: position)
-                        },
-                        onCollapse = { collapsed[category] = !(collapsed[category] == true) },
-                        onExpandModule = { id ->
-                            val opening = expanded[id] != true
-                            modules.forEach { expanded.remove(it.id()) }
-                            if (opening) expanded[id] = true
-                        },
-                        onBindingModuleChange = onBindingModuleChange,
-                        onMutated = onMutated,
-                    )
+                            },
+                            onCollapse = { collapsed[category] = !(collapsed[category] == true) },
+                            onExpandModule = { id ->
+                                val opening = expanded[id] != true
+                                modules.forEach { expanded.remove(it.id()) }
+                                if (opening) expanded[id] = true
+                            },
+                            onBindingModuleChange = onBindingModuleChange,
+                            onMutated = onMutated,
+                        )
+                    }
                 }
 
                 ControlMenu(
+                    viewportWidth = maxWidth,
+                    viewportHeight = maxHeight,
                     sections = sections,
                     openSections = openSections,
                     settingsOpen = settingsOpen,
@@ -224,8 +240,7 @@ internal fun MoonsPanelClickGui(
                     onMutated = onMutated,
                     onEditHudLayout = onEditHudLayout,
                     onClose = onClose,
-                    modifier =
-                        Modifier.align(Alignment.CenterStart).padding(start = 12.dp).zIndex(100f),
+                    modifier = Modifier.align(Alignment.TopStart).zIndex(100f),
                 )
             }
         }

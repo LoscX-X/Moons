@@ -15,6 +15,7 @@ import java.util.List;
 /** Direct manipulation for HUD components while the ClickGUI remains open. */
 public final class HudLayoutController {
     private static final int SNAP_DISTANCE = 3;
+    private static final int RESIZE_HANDLE_SIZE = 6;
 
     private HudEditorRegistry.Target active;
     private Action action = Action.NONE;
@@ -56,6 +57,20 @@ public final class HudLayoutController {
                 canvas.drawRRect(
                         RRect.makeLTRB(left + 0.5f, top + 0.5f, right - 0.5f, bottom - 0.5f, 3.5f),
                         paint);
+                float handleRight = (float) bounds.right() - 1;
+                float handleBottom = (float) bounds.bottom() - 1;
+                canvas.drawLine(
+                        handleRight - RESIZE_HANDLE_SIZE + 1,
+                        handleBottom,
+                        handleRight,
+                        handleBottom,
+                        paint);
+                canvas.drawLine(
+                        handleRight,
+                        handleBottom - RESIZE_HANDLE_SIZE + 1,
+                        handleRight,
+                        handleBottom,
+                        paint);
             }
         }
     }
@@ -67,7 +82,13 @@ public final class HudLayoutController {
         for (int index = targets.size() - 1; index >= 0; index--) {
             HudEditorRegistry.Target target = targets.get(index);
             Bounds bounds = target.currentBounds();
-            if (button == InputConstants.MOUSE_BUTTON_RIGHT && bounds.contains(x, y)) {
+            if (bounds.width() <= 0.0D || bounds.height() <= 0.0D) continue;
+            boolean resizeHandle =
+                    bounds.contains(x, y)
+                            && x >= bounds.right() - RESIZE_HANDLE_SIZE
+                            && y >= bounds.bottom() - RESIZE_HANDLE_SIZE;
+            if (bounds.contains(x, y)
+                    && (button == InputConstants.MOUSE_BUTTON_RIGHT || resizeHandle)) {
                 beginInteraction();
                 active = target;
                 action = Action.RESIZE;
@@ -89,8 +110,8 @@ public final class HudLayoutController {
                 return true;
             }
         }
+        mouseReleased();
         active = null;
-        action = Action.NONE;
         return false;
     }
 

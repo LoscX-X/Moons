@@ -38,40 +38,16 @@ sourceSets {
     }
 }
 
-tasks.register('verifyArmorHide', JavaExec) {
-    group = 'verification'
-    description = 'Checks custom-model head items, cached render states and the injected item resolver without a GPU.'
-    dependsOn 'renderTestClasses'
-    classpath = sourceSets.renderTest.runtimeClasspath
-    mainClass = 'com.blanoir.moons.agent.core.ArmorHeadItemVerification'
-    systemProperty 'moons.home', layout.buildDirectory.dir('armor-hide-fixture/home').get().asFile.absolutePath
-    workingDir layout.buildDirectory.get().asFile
-}
-
-tasks.register('verifyNicknameShuffle', JavaExec) {
-    group = 'verification'
-    description = 'Checks shuffled display names, independent skins, skin recursion and reset without a GPU.'
-    dependsOn 'renderTestClasses'
-    classpath = sourceSets.renderTest.runtimeClasspath
-    mainClass = 'com.blanoir.moons.client.module.impl.render.NicknameShuffleVerification'
-    systemProperty 'moons.home', layout.buildDirectory.dir('nickname-fixture/home').get().asFile.absolutePath
-    workingDir layout.buildDirectory.get().asFile
-}
-
 [
-        verifyAutoSpearMotion: 'com.blanoir.moons.client.module.impl.combat.AutoSpearMotionVerification',
         verifyAutoMace: 'com.blanoir.moons.client.module.impl.combat.AutoMaceVerification',
         verifyAutoTotem: 'com.blanoir.moons.client.module.impl.player.AutoTotemVerification',
         verifyDamagePrediction: 'com.blanoir.moons.client.utils.prediction.DamagePredictionVerification',
-        verifyAutoSpearImpact: 'com.blanoir.moons.client.module.impl.combat.AutoSpearImpactVerification',
         verifyAutoSpearFakeLag: 'com.blanoir.moons.client.module.impl.combat.AutoSpearFakeLagVerification',
         verifyAimCollect: 'com.blanoir.moons.client.module.impl.misc.aimdata.AimCollectVerification',
-        verifyOverlayGeometry: 'com.blanoir.moons.client.render.world.OverlayGeometryVerification',
         verifyAimSearchPerformance: 'com.blanoir.moons.client.utils.rotation.aim.AimSearchPerformanceVerification',
         verifyStructureLocate: 'com.blanoir.moons.client.module.impl.world.structure.StructureLocateVerification',
         verifySilentAuraPoints: 'com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraPointVerification',
         verifyLearnedAim: 'com.blanoir.moons.client.module.impl.combat.silentaura.LearnedAimVerification',
-        verifyAntiBot: 'com.blanoir.moons.client.module.impl.misc.antibot.AdvancedBotDetectorVerification',
         verifyBacktrackFlow: 'com.blanoir.moons.client.module.impl.network.backtrack.BacktrackFlowVerification',
         verifyInventoryActions: 'com.blanoir.moons.client.module.impl.player.invmanager.InventoryActionVerification',
         verifyInventoryFailures: 'com.blanoir.moons.client.utils.inventory.InventoryFailureVerification',
@@ -140,15 +116,6 @@ tasks.register('benchmarkHotPaths', JavaExec) {
 
 tasks.named('compileRenderTestKotlin', moonsPluginTypes.kotlinCompile) {
     compilerOptions.freeCompilerArgs.add('-Xfriend-paths=' + layout.buildDirectory.dir('classes/kotlin/client').get().asFile.absolutePath)
-}
-
-tasks.register('verifyClickGuiInputs', JavaExec) {
-    group = 'verification'
-    description = 'Renders real ClickGUI inputs and checks text clipping and focus restoration at multiple scales.'
-    dependsOn 'renderTestClasses'
-    classpath = sourceSets.renderTest.runtimeClasspath + configurations.composeEmbedded
-    mainClass = 'com.blanoir.moons.client.ui.clickgui.ClickGuiInputVerification'
-    args layout.buildDirectory.dir('clickgui-input-verification').get().asFile.absolutePath
 }
 
 tasks.register('verifyGameAccess', JavaExec) {

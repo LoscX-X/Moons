@@ -208,12 +208,20 @@ internal fun ModuleRow(
                         CompactSetting(module, setting, refreshSettings)
                     }
                 }
-                if (module.id() == "xray") PluginBlocksSetting(refreshSettings)
-                if (module.id() == "invmanager") InventoryLayoutSetting()
-                if (module.id() == "autoarmor") AutoArmorPreview()
-                if (module.id() == "invclear") InvClearPreview()
+                ModuleExtraSettings(module, refreshSettings)
             }
         }
+    }
+}
+
+/** Keep module-specific editors reachable in both ClickGUI layouts. */
+@Composable
+internal fun ModuleExtraSettings(module: Module, onMutated: () -> Unit) {
+    when (module.id()) {
+        "xray" -> PluginBlocksSetting(onMutated)
+        "invmanager" -> InventoryLayoutSetting()
+        "autoarmor" -> AutoArmorPreview()
+        "invclear" -> InvClearPreview()
     }
 }
 

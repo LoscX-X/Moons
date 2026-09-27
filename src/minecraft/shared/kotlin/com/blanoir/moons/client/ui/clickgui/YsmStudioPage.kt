@@ -10,6 +10,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -162,14 +169,29 @@ internal fun YsmStudioPage(page: String) {
                         mutableStateOf(model.bones().firstOrNull().orEmpty())
                     }
                 var expanded by remember { mutableStateOf(false) }
+                val menuFocus = remember { FocusRequester() }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Box {
                         SettingsAction(bone.ifEmpty { "Select a bone" }) { expanded = true }
                         DropdownMenu(
                             expanded,
                             { expanded = false },
-                            modifier = Modifier.heightIn(max = 320.dp),
+                            modifier =
+                                Modifier.heightIn(max = 320.dp)
+                                    .focusRequester(menuFocus)
+                                    .onPreviewKeyEvent {
+                                        // Embedded Compose scenes do not have the desktop back
+                                        // dispatcher.
+                                        if (
+                                            it.key == Key.Escape && it.type == KeyEventType.KeyDown
+                                        ) {
+                                            expanded = false
+                                            true
+                                        } else false
+                                    }
+                                    .focusable(),
                         ) {
+                            LaunchedEffect(Unit) { menuFocus.requestFocus() }
                             model
                                 .bones()
                                 .filter { it.contains(search, true) }

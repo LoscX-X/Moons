@@ -56,13 +56,19 @@ internal fun savePanelPosition(category: String, position: Offset) {
 }
 
 internal fun clampPanelPosition(position: Offset, width: Float, height: Float): Offset {
-    val maxX = (width - PANEL_WIDTH * 0.65f).coerceAtLeast(0f)
+    val maxX = (width - PANEL_WIDTH).coerceAtLeast(0f)
     val minX = (CONTROL_WIDTH + PANEL_MARGIN).coerceAtMost(maxX)
     return Offset(
         position.x.coerceIn(minX, maxX),
-        position.y.coerceIn(0f, (height - 28f).coerceAtLeast(0f)),
+        position.y.coerceIn(0f, (height - 159f).coerceAtLeast(0f)),
     )
 }
+
+internal fun clampMenuPosition(position: Offset, width: Float, height: Float, menuHeight: Float) =
+    Offset(
+        position.x.coerceIn(0f, (width - PANEL_WIDTH).coerceAtLeast(0f)),
+        position.y.coerceIn(0f, (height - menuHeight).coerceAtLeast(0f)),
+    )
 
 internal fun jsonRange(low: Double, high: Double) =
     JsonArray().apply {

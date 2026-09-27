@@ -19,9 +19,9 @@ internal object GlfwComposeEvents {
         var result = 0
         if (pressedMouse(window, GLFW.GLFW_MOUSE_BUTTON_1))
             result = result or InputEvent.BUTTON1_DOWN_MASK
-        if (pressedMouse(window, GLFW.GLFW_MOUSE_BUTTON_2))
+        if (pressedMouse(window, GLFW.GLFW_MOUSE_BUTTON_MIDDLE))
             result = result or InputEvent.BUTTON2_DOWN_MASK
-        if (pressedMouse(window, GLFW.GLFW_MOUSE_BUTTON_3))
+        if (pressedMouse(window, GLFW.GLFW_MOUSE_BUTTON_RIGHT))
             result = result or InputEvent.BUTTON3_DOWN_MASK
         if (pressedKey(window, GLFW.GLFW_KEY_LEFT_CONTROL, GLFW.GLFW_KEY_RIGHT_CONTROL)) {
             result = result or InputEvent.CTRL_DOWN_MASK
@@ -46,8 +46,8 @@ internal object GlfwComposeEvents {
             1,
             false,
             when (button) {
-                GLFW.GLFW_MOUSE_BUTTON_2 -> AwtMouseEvent.BUTTON2
-                GLFW.GLFW_MOUSE_BUTTON_3 -> AwtMouseEvent.BUTTON3
+                GLFW.GLFW_MOUSE_BUTTON_MIDDLE -> AwtMouseEvent.BUTTON2
+                GLFW.GLFW_MOUSE_BUTTON_RIGHT -> AwtMouseEvent.BUTTON3
                 else -> AwtMouseEvent.BUTTON1
             },
         )

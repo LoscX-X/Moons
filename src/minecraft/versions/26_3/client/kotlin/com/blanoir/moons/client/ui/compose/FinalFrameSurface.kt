@@ -5,23 +5,14 @@ import com.mojang.blaze3d.systems.RenderSystem
 import com.mojang.renderpearl.api.GpuFormat
 import com.mojang.renderpearl.api.textures.GpuTexture
 import com.mojang.renderpearl.api.textures.GpuTextureView
-import java.nio.ByteBuffer
 import kotlin.math.ceil
 import kotlin.math.floor
 import org.jetbrains.skia.Canvas
-import org.jetbrains.skia.ColorAlphaType
-import org.jetbrains.skia.ColorSpace
-import org.jetbrains.skia.ColorType
-import org.jetbrains.skia.ImageInfo
 import org.jetbrains.skia.Rect
-import org.jetbrains.skia.Surface
-import org.lwjgl.system.MemoryUtil
 
 /** 26.3 raster Skia layer uploaded through RenderPearl for both OpenGL and Vulkan. */
 internal class FinalFrameSurface : AutoCloseable {
-    private var surface: Surface? = null
-    private var pixels: ByteBuffer? = null
-    private var uploadPixels: ByteBuffer? = null
+    private var surface: RasterFrameBuffer? = null
     private var texture: GpuTexture? = null
     private var view: GpuTextureView? = null
     private var device: Any? = null
@@ -52,21 +43,7 @@ internal class FinalFrameSurface : AutoCloseable {
             close()
             width = frameWidth
             height = frameHeight
-            val buffer =
-                MemoryUtil.memCalloc(Math.multiplyExact(Math.multiplyExact(width, height), 4))
-            pixels = buffer
-            surface =
-                Surface.makeRasterDirect(
-                    ImageInfo(
-                        width,
-                        height,
-                        ColorType.RGBA_8888,
-                        ColorAlphaType.PREMUL,
-                        ColorSpace.sRGB,
-                    ),
-                    MemoryUtil.memAddress(buffer),
-                    width * 4,
-                )
+            surface = RasterFrameBuffer(width, height)
             texture =
                 RenderSystem.getDevice()
                     .createTexture(
@@ -90,7 +67,7 @@ internal class FinalFrameSurface : AutoCloseable {
             if (!content.isEmpty) {
                 encoder.writeToTexture(
                     texture!!,
-                    packPixels(content),
+                    surface!!.pack(content.left, content.top, content.width, content.height),
                     0,
                     0,
                     content.left,
@@ -158,49 +135,14 @@ internal class FinalFrameSurface : AutoCloseable {
         )
     }
 
-    private fun packPixels(bounds: PixelBounds): ByteBuffer {
-        val rowBytes = bounds.width * 4
-        val byteCount = Math.multiplyExact(rowBytes, bounds.height)
-        var upload = uploadPixels
-        if (upload == null || upload.capacity() < byteCount) {
-            val capacity =
-                minOf(pixels!!.capacity().toLong(), (byteCount.toLong() + 65_535L) and -65_536L)
-                    .toInt()
-            val replacement = MemoryUtil.memAlloc(capacity)
-            upload?.let { MemoryUtil.memFree(it) }
-            uploadPixels = replacement
-            upload = replacement
-        }
-        upload.clear()
-        upload.limit(byteCount)
-        // Keep font rasterization top-down. Reflecting the canvas breaks aliased glyphs
-        // at fractional scales. Pack only the visible rectangle, reversing rows once
-        // into reusable upload memory instead of swapping the entire framebuffer.
-        val stride = width * 4L
-        val address = MemoryUtil.memAddress(pixels!!)
-        val destination = MemoryUtil.memAddress(upload)
-        for (row in 0 until bounds.height) {
-            MemoryUtil.memCopy(
-                address + (bounds.bottom - row - 1) * stride + bounds.left * 4L,
-                destination + row * rowBytes.toLong(),
-                rowBytes.toLong(),
-            )
-        }
-        return upload
-    }
-
     override fun close() {
         view?.close()
         texture?.close()
         surface?.close()
-        pixels?.let { MemoryUtil.memFree(it) }
-        uploadPixels?.let { MemoryUtil.memFree(it) }
         view = null
         device = null
         texture = null
         surface = null
-        pixels = null
-        uploadPixels = null
         width = 0
         height = 0
         content = PixelBounds.EMPTY

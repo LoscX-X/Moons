@@ -121,17 +121,23 @@ public final class TransformerVerification {
         for (MethodNode method : node.methods) {
             for (var instruction : method.instructions) {
                 if (!(instruction instanceof MethodInsnNode blit)
-                        || !blit.owner.equals("com/mojang/renderpearl/api/device/GpuSurface")
+                        || !(blit.owner.equals("com/mojang/renderpearl/api/device/GpuSurface")
+                                || blit.owner.equals("com/mojang/blaze3d/systems/GpuSurface"))
                         || !blit.name.equals("blitFromTexture")) continue;
+                String viewType =
+                        blit.owner.startsWith("com/mojang/renderpearl/")
+                                ? "com/mojang/renderpearl/api/textures/GpuTextureView"
+                                : "com/mojang/blaze3d/textures/GpuTextureView";
                 var cast = blit.getPrevious();
                 var bridge = cast == null ? null : cast.getPrevious();
                 if (!(cast instanceof org.objectweb.asm.tree.TypeInsnNode type)
                         || type.getOpcode() != Opcodes.CHECKCAST
-                        || !type.desc.equals("com/mojang/renderpearl/api/textures/GpuTextureView")
+                        || !type.desc.equals(viewType)
                         || !(bridge instanceof MethodInsnNode call)
                         || !call.owner.equals("com/blanoir/moons/api/bridge/AgentBridge")
                         || !call.name.equals("onObjectValue")) {
-                    throw new AssertionError("Presentation must replace the blit input view, not mutate the screenshot target");
+                    throw new AssertionError(
+                            "Presentation must replace the blit input view, not mutate the screenshot target");
                 }
             }
         }

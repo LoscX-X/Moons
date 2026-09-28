@@ -2,6 +2,7 @@ package com.blanoir.moons.agent.core;
 
 import com.blanoir.moons.agent.core.hooks.ItemHooks;
 import com.blanoir.moons.agent.core.hooks.TerrainHooks;
+import com.blanoir.moons.agent.core.hooks.VersionTransformer;
 import com.blanoir.moons.agent.core.hooks.YsmHooks;
 
 import java.util.List;
@@ -89,7 +90,8 @@ final class VersionMappings {
                                 List.of("net/minecraft/client/Minecraft"),
                                 List.of("renderFrame"),
                                 "(Z)V",
-                                TargetMethod.HookKind.PRESENT_BEFORE_GPU_PRESENT),
+                                TargetMethod.HookKind.VERSION_SPECIFIC,
+                                VersionTransformer::load),
                         new TargetMethod(
                                 "client.world-render",
                                 List.of("net/minecraft/client/renderer/LevelRenderer"),

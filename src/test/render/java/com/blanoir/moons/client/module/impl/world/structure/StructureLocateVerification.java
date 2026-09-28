@@ -155,7 +155,9 @@ public final class StructureLocateVerification {
         for (int x = 13; x < 20; x++)
             for (int z = -3; z < 4; z++) {
                 if (x >= 17 && z >= 1 || x == 15 && z == 0) continue;
-                markers.add(new StructureEvidence.Marker(DUNGEON, new BlockPos(x, -30, z), true));
+                markers.add(
+                        new StructureEvidence.Marker(
+                                DUNGEON, new BlockPos(x, -30, z), true, false, true));
             }
         var dungeonOnly = EnumSet.of(DUNGEON);
         require(
@@ -168,6 +170,32 @@ public final class StructureLocateVerification {
         require(
                 inferred.size() == 1 && inferred.getFirst().kind() == DUNGEON,
                 "Partial mossy floor plus one surviving wall produces a suspected room");
+        var blocked =
+                markers.stream()
+                        .map(
+                                m ->
+                                        new StructureEvidence.Marker(
+                                                m.kind(), m.pos(), m.mossy(), m.calcite(), false))
+                        .toList();
+        require(
+                StructureEvidence.locate(blocked, dungeonOnly).isEmpty(),
+                "Dense moss with no verified headroom must not become a dungeon");
+        var mossWalls =
+                markers.stream()
+                        .map(
+                                m ->
+                                        new StructureEvidence.Marker(
+                                                m.kind(), m.pos(), true, false, m.openAbove()))
+                        .toList();
+        require(
+                StructureEvidence.locate(mossWalls, dungeonOnly).isEmpty(),
+                "Raised moss alone is not a surviving cobblestone wall");
+        var pillar = new ArrayList<>(markers.stream().filter(m -> m.pos().getY() == -30).toList());
+        for (int y = -29; y <= -27; y++)
+            pillar.add(new StructureEvidence.Marker(DUNGEON, new BlockPos(13, y, -3)));
+        require(
+                StructureEvidence.locate(pillar, dungeonOnly).isEmpty(),
+                "One pillar beside dense moss paving is not a room wall");
         var cage = new StructureEvidence.Marker(SPAWNER, new BlockPos(16, -29, 0));
         markers.add(cage);
         var confirmed = StructureEvidence.locate(markers, EnumSet.of(SPAWNER, DUNGEON));

@@ -73,9 +73,9 @@ final class RenderRotationController {
                 rotation.fullLockRenderTick = Integer.MIN_VALUE;
             }
             boolean aggressiveBody = aura && SilentAura.isLockMode();
-            if (scaffold) {
+            if (scaffold && Scaffold.tellyBodyLockEnabled()) {
                 // Scaffold already smooths this yaw per frame. Share it with
-                // the body instead of adding another response curve and dead zone.
+                // the body when locked; otherwise use the independent body response below.
                 rotation.bodyYaw += Mth.wrapDegrees(silentYaw - rotation.bodyYaw);
                 rotation.velocity = 0.0F;
             } else if (aura && SilentAura.isCrossingTarget()) {

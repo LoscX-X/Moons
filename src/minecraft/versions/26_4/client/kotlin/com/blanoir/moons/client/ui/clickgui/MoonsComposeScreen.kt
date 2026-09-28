@@ -45,6 +45,7 @@ import com.blanoir.moons.client.module.framework.ModuleKeybinds
 import com.blanoir.moons.client.module.impl.player.invmanager.InvManager
 import com.blanoir.moons.client.module.impl.render.xray.PluginBlockPreviews
 import com.blanoir.moons.client.ui.MinecraftScreenAccess
+import com.blanoir.moons.client.ui.compose.ComposeTextInputContext
 import com.blanoir.moons.client.ui.compose.FinalFrameSurface
 import com.blanoir.moons.client.ui.compose.SdlComposeEvents
 import com.blanoir.moons.client.ui.hud.HudLayoutController
@@ -72,6 +73,9 @@ internal val ClickGuiRevision = mutableIntStateOf(0)
 class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} ClickGUI")) {
     private var composeScene: ComposeScene? = null
     private val frameSurface = FinalFrameSurface()
+    private val textInputContext = ComposeTextInputContext { focused ->
+        Minecraft.getInstance().textInputManager().onTextInputFocusChange(this, focused)
+    }
     private var currentScale = 1f
     private var currentUiDensity = 1.4f
     @Volatile private var sceneDirty = true
@@ -147,6 +151,18 @@ class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} Cl
                 }
             }
             scene.render(canvas.asComposeCanvas(), now)
+            if (textInputContext.isEditing) {
+                scene.focusManager.getFocusRect(afterLayout = false)?.let { rect ->
+                    Minecraft.getInstance()
+                        .textInputManager()
+                        .setTextInputArea(
+                            (rect.left / currentScale).toInt(),
+                            (rect.top / currentScale).toInt(),
+                            (rect.right / currentScale).toInt(),
+                            (rect.bottom / currentScale).toInt(),
+                        )
+                }
+            }
         }
     }
 
@@ -156,6 +172,7 @@ class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} Cl
                 ?: CanvasLayersComposeScene(
                         density = Density(currentUiDensity),
                         invalidate = { sceneDirty = true },
+                        platformContext = textInputContext,
                     )
                     .also {
                         composeScene = it
@@ -176,6 +193,7 @@ class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} Cl
         composeScene?.close()
         composeScene = null
         sceneDirty = true
+        textInputContext.stopInput()
         frameSurface.close()
         NativeItemIcons.clear()
         PluginBlockPreviews.clear()
@@ -188,6 +206,7 @@ class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} Cl
         setDragging(false)
         composeScene?.cancelPointerInput()
         composeScene?.focusManager?.releaseFocus()
+        textInputContext.stopInput()
         bindingModuleId = null
         InvManager.cancelKeyBinding()
         hudLayoutEditing = false

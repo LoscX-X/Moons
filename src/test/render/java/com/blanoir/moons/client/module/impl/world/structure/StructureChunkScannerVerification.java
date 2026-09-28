@@ -11,6 +11,7 @@ import java.util.EnumSet;
 
 final class StructureChunkScannerVerification {
     static void run() {
+        verifyDungeonHeadroom();
         var types =
                 EnumSet.of(StructureEvidence.Kind.SPAWNER, StructureEvidence.Kind.AMETHYST_GEODE);
         var section =
@@ -78,6 +79,92 @@ final class StructureChunkScannerVerification {
                 "Unrequested solid section is skipped entirely");
         System.out.println(
                 "Structure snapshot isolation, odd voxels, cancellation and palette checks passed.");
+    }
+
+    private static void verifyDungeonHeadroom() {
+        var types = EnumSet.of(StructureEvidence.Kind.DUNGEON);
+        var floor = section(Blocks.STONE);
+        var room = section(Blocks.AIR);
+        for (int x = 2; x <= 8; x++)
+            for (int z = 2; z <= 8; z++)
+                floor.setBlockState(x, 15, z, Blocks.MOSSY_COBBLESTONE.defaultBlockState());
+        for (int y = 0; y < 3; y++)
+            for (int z = 2; z <= 8; z++)
+                room.setBlockState(2, y, z, Blocks.COBBLESTONE.defaultBlockState());
+        room.setBlockState(5, 0, 5, Blocks.CHEST.defaultBlockState());
+        var sections = new LevelChunkSection[] {floor, room};
+        var copy = StructureChunkScanner.capture(sections, -32, types, false);
+        for (int y = 0; y < 3; y++)
+            for (int x = 3; x <= 8; x++)
+                for (int z = 2; z <= 8; z++)
+                    room.setBlockState(x, y, z, Blocks.MOSSY_COBBLESTONE.defaultBlockState());
+        var original = StructureChunkScanner.scan(0, 0, copy, types, false, () -> false);
+        require(
+                StructureEvidence.locate(original.markers(), types).size() == 1,
+                "Dense moss floor with a wall and real headroom survives across a section boundary");
+        require(
+                original.markers().stream()
+                        .anyMatch(m -> m.pos().equals(new BlockPos(5, -17, 5)) && m.openAbove()),
+                "A chest on the floor does not erase otherwise valid room evidence");
+        var filled =
+                StructureChunkScanner.scan(
+                        0,
+                        0,
+                        StructureChunkScanner.capture(sections, -32, types, false),
+                        types,
+                        false,
+                        () -> false);
+        require(
+                StructureEvidence.locate(filled.markers(), types).isEmpty(),
+                "A dense moss pile beside cobblestone must not be inferred as a dungeon");
+        room = section(Blocks.STONE);
+        var solid =
+                StructureChunkScanner.scan(
+                        0,
+                        0,
+                        StructureChunkScanner.capture(
+                                new LevelChunkSection[] {floor, room}, -32, types, false),
+                        types,
+                        false,
+                        () -> false);
+        require(
+                solid.markers().stream().noneMatch(StructureEvidence.Marker::openAbove),
+                "Unmarked stone above the floor is not empty space");
+        var missing =
+                StructureChunkScanner.scan(
+                        0,
+                        0,
+                        StructureChunkScanner.capture(
+                                new LevelChunkSection[] {floor}, -32, types, false),
+                        types,
+                        false,
+                        () -> false);
+        require(
+                missing.markers().stream().noneMatch(StructureEvidence.Marker::openAbove),
+                "Missing upper section is not treated as air");
+        var air =
+                StructureChunkScanner.scan(
+                        0,
+                        0,
+                        StructureChunkScanner.capture(
+                                new LevelChunkSection[] {floor, section(Blocks.AIR)},
+                                -32,
+                                types,
+                                false),
+                        types,
+                        false,
+                        () -> false);
+        require(
+                air.markers().stream().allMatch(StructureEvidence.Marker::openAbove),
+                "Marker-free upper section is copied even with geode shape scanning disabled");
+    }
+
+    private static LevelChunkSection section(Block block) {
+        return new LevelChunkSection(
+                new PalettedContainer<>(
+                        block.defaultBlockState(),
+                        Strategy.createForBlockStates(Block.BLOCK_STATE_REGISTRY)),
+                null);
     }
 
     private static void require(boolean value, String message) {

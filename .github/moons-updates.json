@@ -78,6 +78,32 @@
           "text": "精简稳定功能遗留的独立 verification 源码与构建入口，保留跨版本兼容、注入、加载和缓存边界检查，以及复杂算法与时序的按需验证。"
         }
       ]
+    },
+    {
+      "id": "2026-09-28-01",
+      "summary": "9 月 28 日 Moons 修复更新",
+      "changes": [
+        {
+          "type": "fix",
+          "text": "修复 Minecraft 26.3 / 26.4 快照中 ClickGUI 输入框无法输入文字的问题，补齐文本焦点与原生输入的启停和关闭清理。"
+        },
+        {
+          "type": "fix",
+          "text": "修复 Minecraft 26.2 使用 Vulkan 时 ClickGUI 和 HUD 不显示的问题，界面及世界叠加层改用兼容 OpenGL/Vulkan 的显示合成，保留原版截图源隔离。"
+        },
+        {
+          "type": "fix",
+          "text": "收紧 StructureLocate 疑似地牢判定：检查地板上方实际净空和连续圆石墙，减少密集苔石堆、实心填充和孤立石柱导致的误报，保留真实刷怪笼独立标记。"
+        },
+        {
+          "type": "feat",
+          "text": "Scaffold 新增 Head/body lock 开关，默认保持头身同步；关闭后身体独立平滑跟随 Telly 旋转，不影响搭桥放置逻辑，共用旋转的 Jump、GodBridge 模式同样生效。"
+        },
+        {
+          "type": "fix",
+          "text": "优化 GodBridge 直线与斜线切换：选格同时考虑惯性和新按键方向，常规角度失效时补瞄真实支撑侧面，减少转向漏放，保留边缘保护和放置射线校验。"
+        }
+      ]
     }
   ]
 }

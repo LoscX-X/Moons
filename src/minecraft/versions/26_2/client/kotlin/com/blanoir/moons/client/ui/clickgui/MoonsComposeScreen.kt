@@ -66,8 +66,8 @@ import org.lwjgl.glfw.GLFW
 internal val ClickGuiRevision = mutableIntStateOf(0)
 
 /**
- * Compose/Skia ClickGUI rendered independently into GLFW's default framebuffer. Minecraft still
- * owns the Screen lifecycle and input; Compose owns layout and final-frame drawing.
+ * Compose/Skia ClickGUI composited into an independent display texture. Minecraft still owns the
+ * Screen lifecycle and input; Compose owns layout and final-frame drawing.
  */
 @OptIn(InternalComposeUiApi::class)
 class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} ClickGUI")) {
@@ -75,6 +75,7 @@ class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} Cl
     private val frameSurface = FinalFrameSurface()
     private var currentScale = 1f
     private var currentUiDensity = 1.4f
+    @Volatile private var sceneDirty = true
 
     private var bindingModuleId by mutableStateOf<String?>(null)
     private var revision by ClickGuiRevision
@@ -128,7 +129,13 @@ class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} Cl
         val scene = composeScene ?: return
         NativeItemIcons.prepareFrame()
         PluginBlockPreviews.prepareFrame()
-        frameSurface.render(frameWidth, frameHeight) { canvas ->
+        // Reuse uploaded pixels until Compose invalidates; animations still request frames.
+        frameSurface.render(
+            frameWidth,
+            frameHeight,
+            redraw = hudLayoutEditing || sceneDirty || scene.hasInvalidations(),
+        ) { canvas ->
+            sceneDirty = false
             if (hudLayoutEditing) {
                 canvas.save()
                 try {
@@ -147,19 +154,27 @@ class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} Cl
             composeScene
                 ?: CanvasLayersComposeScene(
                         density = Density(currentUiDensity),
-                        invalidate = {},
+                        invalidate = { sceneDirty = true },
                     )
                     .also {
                         composeScene = it
                         it.setContent { ClickGuiContent() }
                     }
-        scene.density = Density(currentUiDensity)
-        scene.size = IntSize(frameWidth, frameHeight)
+        if (scene.density.density != currentUiDensity) {
+            scene.density = Density(currentUiDensity)
+            sceneDirty = true
+        }
+        val size = scene.size
+        if (size == null || size.width != frameWidth || size.height != frameHeight) {
+            scene.size = IntSize(frameWidth, frameHeight)
+            sceneDirty = true
+        }
     }
 
     fun dispose() {
         composeScene?.close()
         composeScene = null
+        sceneDirty = true
         frameSurface.close()
         NativeItemIcons.clear()
         PluginBlockPreviews.clear()

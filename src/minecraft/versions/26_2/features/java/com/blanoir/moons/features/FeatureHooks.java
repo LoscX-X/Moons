@@ -267,7 +267,10 @@ public final class FeatureHooks {
                     hook.value(false);
                 }
             }
-            case "render.present" -> VisualPresentation.render();
+            case "render.present" -> {
+                if (hook.value() instanceof com.mojang.blaze3d.textures.GpuTextureView source)
+                    hook.value(VisualPresentation.present(source));
+            }
             case "render.scoreboard" -> {
                 if (hook.argument() instanceof Object[] values
                         && values.length == 2

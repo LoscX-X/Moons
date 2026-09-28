@@ -154,6 +154,7 @@ public final class ScaffoldManager {
     private static final BooleanSetting RENDER = bool("scaffold.render", true);
     private static final BooleanSetting SHOW_SHADE = bool("scaffold.showTargetShade", false);
     private static final BooleanSetting OUTLINE_FADE = bool("scaffold.outlineFadeOut", true);
+    private static final BooleanSetting TELLY_BODY_LOCK = bool("scaffold.tellyBodyLock", true);
     private static final BooleanSetting TELLY_BPS_LIMIT =
             bool("scaffold.tellyBlocksPerSecondEnabled", true);
     private static final BooleanSetting TELLY_FLAT = bool("scaffold.tellyFlat", false);
@@ -566,6 +567,15 @@ public final class ScaffoldManager {
     public static int setTellyRotation(Minecraft client, String mode) {
         TELLY_ROTATION.deserialize(mode);
         placementRotationStarted = false;
+        return 1;
+    }
+
+    public static boolean tellyBodyLockEnabled() {
+        return TELLY_BODY_LOCK.get();
+    }
+
+    public static int setTellyBodyLock(Minecraft client, boolean value) {
+        TELLY_BODY_LOCK.set(value);
         return 1;
     }
 
@@ -1861,21 +1871,25 @@ public final class ScaffoldManager {
     }
 
     private static Rotation godBridgeRotation(Minecraft client) {
-        float forward =
-                impulse(
-                        CombatInputController.isPhysicallyDown(client, client.options.keyUp),
-                        CombatInputController.isPhysicallyDown(client, client.options.keyDown));
-        float sideways =
-                impulse(
-                        CombatInputController.isPhysicallyDown(client, client.options.keyLeft),
-                        CombatInputController.isPhysicallyDown(client, client.options.keyRight));
+        Input input = godBridgeInput(client);
         return GOD_BRIDGE_ROTATION.update(
                 client.player.getYRot(),
-                forward,
-                sideways,
+                impulse(input.forward(), input.backward()),
+                impulse(input.left(), input.right()),
                 client.player.getX(),
                 client.player.getZ(),
                 client.player.onGround());
+    }
+
+    private static Input godBridgeInput(Minecraft client) {
+        return new Input(
+                CombatInputController.isPhysicallyDown(client, client.options.keyUp),
+                CombatInputController.isPhysicallyDown(client, client.options.keyDown),
+                CombatInputController.isPhysicallyDown(client, client.options.keyLeft),
+                CombatInputController.isPhysicallyDown(client, client.options.keyRight),
+                false,
+                false,
+                false);
     }
 
     /** Prefer the bridge angle, then re-aim at a real side face while remaining on the bridge row. */
@@ -1885,6 +1899,7 @@ public final class ScaffoldManager {
                 RAYS,
                 client,
                 eye,
+                TrajectoryPrediction.nextInputBox(client, godBridgeInput(client)),
                 desired.getY(),
                 new Rotation(outgoingYaw, outgoingPitch),
                 client.player.blockInteractionRange(),

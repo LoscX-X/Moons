@@ -295,6 +295,13 @@ final class World {
                                         Scaffold.tellyRotationOptions(),
                                         Scaffold::setTellyRotation)
                                 .visibleWhen(Scaffold::standardBridgeSelected),
+                        bool(
+                                        "telly_body_lock",
+                                        "Head/body lock",
+                                        "scaffold.tellyBodyLock",
+                                        true,
+                                        Scaffold::setTellyBodyLock)
+                                .visibleWhen(Scaffold::tellySelected),
                         number(
                                         "telly_start_speed",
                                         "Start turn limit",

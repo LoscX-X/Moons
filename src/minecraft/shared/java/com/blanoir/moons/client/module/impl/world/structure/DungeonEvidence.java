@@ -16,6 +16,7 @@ final class DungeonEvidence {
 
     static List<StructureEvidence.Found> locate(List<StructureEvidence.Marker> markers) {
         Set<BlockPos> masonry = new HashSet<>(), moss = new HashSet<>();
+        Set<BlockPos> cobble = new HashSet<>(), openFloors = new HashSet<>();
         List<BlockPos> spawners = new ArrayList<>();
         for (var marker : markers) {
             if (marker.kind() == StructureEvidence.Kind.SPAWNER) spawners.add(marker.pos());
@@ -24,6 +25,8 @@ final class DungeonEvidence {
                 continue;
             masonry.add(marker.pos());
             if (marker.mossy()) moss.add(marker.pos());
+            else cobble.add(marker.pos());
+            if (marker.openAbove()) openFloors.add(marker.pos());
         }
         List<BlockPos> seeds = new ArrayList<>(moss);
         seeds.sort(
@@ -55,12 +58,29 @@ final class DungeonEvidence {
             int width = maxX - minX + 1, depth = maxZ - minZ + 1;
             // Vanilla outer floor dimensions are 7/9 per axis. Smaller remnants are allowed.
             if (count < 6
-                    || width < 3
-                    || depth < 3
+                    || width < 5
+                    || depth < 5
                     || width > 9
                     || depth > 9
                     || count < width * depth * .3) continue;
             int floorY = seed.getY();
+            // Dense moss piles also have horizontal layers and raised edges. Require
+            // actual two-block headroom over most of the surviving interior floor.
+            int interior = 0, open = 0;
+            boolean openSquare = false;
+            for (int x = minX + 1; x < maxX; x++)
+                for (int z = minZ + 1; z < maxZ; z++) {
+                    BlockPos pos = new BlockPos(x, floorY, z);
+                    if (masonry.contains(pos)) interior++;
+                    if (!openFloors.contains(pos)) continue;
+                    open++;
+                    if (x + 1 < maxX
+                            && z + 1 < maxZ
+                            && openFloors.contains(pos.offset(1, 0, 0))
+                            && openFloors.contains(pos.offset(0, 0, 1))
+                            && openFloors.contains(pos.offset(1, 0, 1))) openSquare = true;
+                }
+            if (open < 6 || open < interior * .7 || !openSquare) continue;
             AABB bounds = new AABB(minX, floorY, minZ, maxX + 1, floorY + 5, maxZ + 1);
             boolean confirmed =
                     spawners.stream()
@@ -71,27 +91,36 @@ final class DungeonEvidence {
                                                             net.minecraft.world.phys.Vec3
                                                                     .atCenterOf(p)));
             if (confirmed) continue; // A visible cage already gets its exact one-block marker.
-            int wallBlocks = 0, levels = 0;
-            // Require some raised masonry, not a complete shell: mine/cave intersections can remove
-            // walls.
-            for (int y = floorY + 1; y <= floorY + 3; y++) {
-                boolean onLevel = false;
-                for (int x = minX - 1; x <= maxX + 1; x++)
-                    for (int z = minZ - 1; z <= maxZ + 1; z++) {
-                        if (x > minX && x < maxX && z > minZ && z < maxZ) continue;
-                        if (masonry.contains(new BlockPos(x, y, z))) {
-                            wallBlocks++;
-                            onLevel = true;
-                        }
-                    }
-                if (onLevel) levels++;
-            }
-            if (wallBlocks < 3 || levels < 2) continue;
+            // Vanilla walls are plain cobble. Scattered raised moss or a single pillar
+            // cannot stand in for a surviving wall; retain a contiguous 3 x 2 strip.
+            if (!hasWall(cobble, floorY, minX, maxX, minZ, maxZ)) continue;
             result.add(
                     new StructureEvidence.Found(
                             StructureEvidence.Kind.DUNGEON, bounds, count, false));
             if (result.size() == 512) break;
         }
         return result;
+    }
+
+    private static boolean hasWall(
+            Set<BlockPos> cobble, int y, int minX, int maxX, int minZ, int maxZ) {
+        for (int x : new int[] {minX - 1, minX, maxX, maxX + 1})
+            if (wallStrip(cobble, x, y, minZ, maxZ, true)) return true;
+        for (int z : new int[] {minZ - 1, minZ, maxZ, maxZ + 1})
+            if (wallStrip(cobble, z, y, minX, maxX, false)) return true;
+        return false;
+    }
+
+    private static boolean wallStrip(
+            Set<BlockPos> cobble, int edge, int floorY, int min, int max, boolean alongZ) {
+        for (int y = floorY + 1; y <= floorY + 2; y++) {
+            int run = 0;
+            for (int i = min; i <= max; i++) {
+                BlockPos pos = alongZ ? new BlockPos(edge, y, i) : new BlockPos(i, y, edge);
+                run = cobble.contains(pos) && cobble.contains(pos.above()) ? run + 1 : 0;
+                if (run >= 3) return true;
+            }
+        }
+        return false;
     }
 }

@@ -32,6 +32,7 @@ final class StructureChunkScanner {
             EnumSet<StructureEvidence.Kind> enabled,
             boolean shapeEnabled) {
         var result = new ArrayList<Section>();
+        boolean previousDungeon = false;
         for (int i = 0; i < sections.length; i++) {
             var section = sections[i];
             int y = minY + i * 16;
@@ -39,13 +40,27 @@ final class StructureChunkScanner {
                     section.maybeHas(
                             state -> wants(enabled, StructureEvidence.marker(state.getBlock())));
             boolean shape = shapeEnabled && y >= CavitySnapshot.MIN_Y && y < CavitySnapshot.MAX_Y;
-            if (!markers && !shape) continue;
+            boolean dungeon =
+                    enabled.contains(StructureEvidence.Kind.DUNGEON)
+                            && y >= -64
+                            && y <= 80
+                            && section.maybeHas(
+                                    state ->
+                                            state.is(Blocks.MOSSY_COBBLESTONE)
+                                                    || state.is(Blocks.COBBLESTONE));
+            // Floor headroom can cross the top of a section. Copy its neighbour even if
+            // that palette contains no structure markers; absent data is never air.
+            boolean headroom = previousDungeon;
+            previousDungeon = dungeon;
+            if (!markers && !shape && !headroom) continue;
             boolean uniformWall = shape && !section.maybeHas(state -> !state.isSolidRender());
             // A solid palette needs no per-block copy when no material markers are requested.
             result.add(
                     new Section(
                             y,
-                            !markers && uniformWall ? null : section.getStates().copy(),
+                            !markers && uniformWall && !headroom
+                                    ? null
+                                    : section.getStates().copy(),
                             markers,
                             shape));
         }
@@ -63,6 +78,8 @@ final class StructureChunkScanner {
         var cavity = shapeEnabled ? new CavitySnapshot.Builder(chunkX, chunkZ) : null;
         for (var section : sections) {
             if (cancelled.getAsBoolean()) return null;
+            // Headroom-only copies are queried by the floor below, not scanned in full.
+            if (!section.markers && !section.shape) continue;
             if (section.blocks == null) {
                 cavity.solidSection(section.y);
                 continue;
@@ -80,9 +97,33 @@ final class StructureChunkScanner {
                                     kind,
                                     new BlockPos((chunkX << 4) + x, y, (chunkZ << 4) + z),
                                     state.is(Blocks.MOSSY_COBBLESTONE),
-                                    state.is(Blocks.CALCITE)));
+                                    state.is(Blocks.CALCITE),
+                                    kind == StructureEvidence.Kind.DUNGEON
+                                            && openAbove(sections, section, x, y, z)));
             }
         }
         return new Result(List.copyOf(markers), cavity == null ? null : cavity.build());
+    }
+
+    private static boolean openAbove(List<Section> sections, Section floor, int x, int y, int z) {
+        Section upper = floor;
+        for (int dy = 1; dy <= 2; dy++) {
+            int aboveY = y + dy;
+            if (aboveY >= upper.y + 16) {
+                upper = null;
+                for (var candidate : sections)
+                    if (candidate.y == floor.y + 16) {
+                        upper = candidate;
+                        break;
+                    }
+            }
+            if (upper == null || upper.blocks == null) return false;
+            var state = upper.blocks.get(x, aboveY - upper.y, z);
+            // A remaining chest/cage may occupy the first cell of a genuine room.
+            if (!state.isAir()
+                    && !(dy == 1 && (state.is(Blocks.CHEST) || state.is(Blocks.SPAWNER))))
+                return false;
+        }
+        return true;
     }
 }

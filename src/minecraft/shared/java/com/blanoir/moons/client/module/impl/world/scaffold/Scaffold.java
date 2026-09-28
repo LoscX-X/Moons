@@ -105,6 +105,14 @@ public final class Scaffold {
         return ScaffoldManager.setTellyRotation(c, v);
     }
 
+    public static boolean tellyBodyLockEnabled() {
+        return ScaffoldManager.tellyBodyLockEnabled();
+    }
+
+    public static int setTellyBodyLock(Minecraft c, boolean v) {
+        return ScaffoldManager.setTellyBodyLock(c, v);
+    }
+
     public static boolean tellyBpsLimitSelected() {
         return ScaffoldManager.tellyBpsLimitSelected();
     }

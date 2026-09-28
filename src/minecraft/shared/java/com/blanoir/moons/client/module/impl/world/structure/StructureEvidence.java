@@ -47,7 +47,12 @@ public final class StructureEvidence {
         }
     }
 
-    public record Marker(Kind kind, BlockPos pos, boolean mossy, boolean calcite) {
+    public record Marker(
+            Kind kind, BlockPos pos, boolean mossy, boolean calcite, boolean openAbove) {
+        public Marker(Kind kind, BlockPos pos, boolean mossy, boolean calcite) {
+            this(kind, pos, mossy, calcite, false);
+        }
+
         public Marker(Kind kind, BlockPos pos) {
             this(kind, pos, false);
         }

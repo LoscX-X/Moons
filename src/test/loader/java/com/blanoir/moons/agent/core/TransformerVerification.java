@@ -28,6 +28,7 @@ public final class TransformerVerification {
         if (arguments.length == 0)
             throw new IllegalArgumentException("Expected one or more Minecraft JAR paths");
         verifyBootstrapBridgeBoundary();
+        ClassHierarchyVerification.verify();
         BoxedGateVerification.verify();
         FloatArgumentsVerification.verify();
         YsmAudioHookVerification.verify();
@@ -115,6 +116,42 @@ public final class TransformerVerification {
         }
         verifyMovementHookOrdering(className, node);
         verifyPresentationInput(node);
+        verifyPlayerHandEntrypoints(node);
+    }
+
+    private static void verifyPlayerHandEntrypoints(ClassNode node) {
+        if (!node.name.equals("net/minecraft/client/renderer/entity/player/AvatarRenderer")) return;
+        for (MethodNode method : node.methods) {
+            String id =
+                    switch (method.name) {
+                        case "renderRightHand" -> "render.ysm-right-hand";
+                        case "renderLeftHand" -> "render.ysm-left-hand";
+                        default -> null;
+                    };
+            if (id == null || (method.access & Opcodes.ACC_PUBLIC) == 0) continue;
+            // NeoForge retains old wrappers but its item renderer calls the new overloads.
+            // Counting installed hook IDs alone cannot detect an unhooked overload.
+            boolean identified = false;
+            boolean hooked = false;
+            for (var instruction : method.instructions) {
+                if (instruction instanceof org.objectweb.asm.tree.LdcInsnNode constant
+                        && id.equals(constant.cst)) identified = true;
+                if (identified
+                        && instruction instanceof MethodInsnNode call
+                        && call.owner.equals("com/blanoir/moons/api/bridge/AgentBridge")
+                        && call.name.equals("onBooleanValue")) {
+                    hooked = true;
+                    break;
+                }
+            }
+            if (!hooked)
+                throw new AssertionError(
+                        "Unhooked player hand entrypoint: "
+                                + node.name
+                                + "."
+                                + method.name
+                                + method.desc);
+        }
     }
 
     private static void verifyPresentationInput(ClassNode node) {

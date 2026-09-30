@@ -147,6 +147,75 @@ tasks.register("verifyMinecraftTransformers", JavaExec) {
     }
 }
 
+// Opt-in checks use a locally installed NeoForge profile, not the unpatched Loom JAR.
+def neoForgeClientJar = {
+    def path = providers.gradleProperty('moons_neoforge_client_jar').orNull
+    if (path == null || !file(path).isFile()) {
+        throw new GradleException('Set -Pmoons_neoforge_client_jar to the patched Minecraft client JAR')
+    }
+    return file(path)
+}
+
+tasks.register('verifyNeoForgeTransformers', JavaExec) {
+    group = 'verification'
+    description = 'Verifies production hooks against an installed NeoForge patched client.'
+    dependsOn 'loaderTestClasses'
+    classpath = sourceSets.loaderTest.runtimeClasspath
+    mainClass = 'com.blanoir.moons.agent.core.TransformerVerification'
+    doFirst {
+        args = [neoForgeClientJar().absolutePath]
+    }
+}
+
+def neoForgeRuntimeClasspath = { vanillaClasspath ->
+    def path = providers.gradleProperty('moons_neoforge_profile_json').orNull
+    if (path == null || !file(path).isFile()) {
+        throw new GradleException('Set -Pmoons_neoforge_profile_json to the installed version JSON')
+    }
+    def profileFile = file(path)
+    def profile = new groovy.json.JsonSlurper().parse(profileFile)
+    def librariesRoot = new File(profileFile.parentFile.parentFile.parentFile, 'libraries')
+    def versionIndex = profile.arguments.game.indexOf('--fml.neoForgeVersion')
+    if (versionIndex < 0 || versionIndex + 1 >= profile.arguments.game.size()) {
+        throw new GradleException('The profile does not specify --fml.neoForgeVersion')
+    }
+    def neoForgeVersion = profile.arguments.game[versionIndex + 1]
+    def universal = new File(librariesRoot,
+            "net/neoforged/neoforge/${neoForgeVersion}/neoforge-${neoForgeVersion}-universal.jar")
+    if (!universal.isFile()) throw new GradleException("Missing NeoForge universal JAR: ${universal}")
+    def libraries = profile.libraries.collect { library ->
+        def artifactPath = library.downloads?.artifact?.path
+        if (artifactPath == null) {
+            def parts = library.name.split(':')
+            def artifact = "${parts[1]}-${parts[2]}" + (parts.length > 3 ? "-${parts[3]}" : '') + '.jar'
+            artifactPath = parts[0].replace('.', '/') + "/${parts[1]}/${parts[2]}/${artifact}"
+        }
+        new File(librariesRoot, artifactPath)
+    }.findAll { it.isFile() && !it.name.startsWith('minecraft-client-patched-') }
+    return files(neoForgeClientJar(), universal, libraries,
+            vanillaClasspath.files.findAll { !it.name.startsWith('minecraft-') })
+}
+
+tasks.register('verifyNeoForgeGameAccess', JavaExec) {
+    group = 'verification'
+    description = 'Resolves private members and visual pipelines against an installed NeoForge profile.'
+    dependsOn 'gameAccessTestClasses'
+    mainClass = 'com.blanoir.moons.client.access.GameAccessVerification'
+    doFirst {
+        classpath = neoForgeRuntimeClasspath(sourceSets.gameAccessTest.runtimeClasspath + configurations.minecraftNatives)
+    }
+}
+
+tasks.register('verifyNeoForgeYsmRenderSetup', JavaExec) {
+    group = 'verification'
+    description = 'Constructs YSM materials and resolves private entity members in an installed NeoForge profile.'
+    dependsOn 'ysmAdapterTestClasses'
+    mainClass = 'com.blanoir.moons.ysm.adapter.YsmRenderSetupVerification'
+    doFirst {
+        classpath = neoForgeRuntimeClasspath(sourceSets.ysmAdapterTest.runtimeClasspath + configurations.minecraftNatives)
+    }
+}
+
 
 tasks.named("check").configure {
     dependsOn "clientClasses", "featuresClasses", "verifyMinecraftTransformers", "verifyGameAccess",

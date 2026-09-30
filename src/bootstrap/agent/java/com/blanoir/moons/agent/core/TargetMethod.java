@@ -6,7 +6,7 @@ public record TargetMethod(
         String id,
         List<String> classNames,
         List<String> methodNames,
-        String descriptor,
+        List<String> descriptors,
         HookKind hook,
         java.util.function.BiFunction<org.objectweb.asm.tree.MethodNode, String, Boolean>
                 installer) {
@@ -16,7 +16,34 @@ public record TargetMethod(
             List<String> methodNames,
             String descriptor,
             HookKind hook) {
-        this(id, classNames, methodNames, descriptor, hook, null);
+        this(id, classNames, methodNames, List.of(descriptor), hook, null);
+    }
+
+    public TargetMethod(
+            String id,
+            List<String> classNames,
+            List<String> methodNames,
+            String descriptor,
+            HookKind hook,
+            java.util.function.BiFunction<org.objectweb.asm.tree.MethodNode, String, Boolean>
+                    installer) {
+        this(id, classNames, methodNames, List.of(descriptor), hook, installer);
+    }
+
+    TargetMethod(
+            String id,
+            List<String> classNames,
+            List<String> methodNames,
+            List<String> descriptors,
+            HookKind hook) {
+        this(id, classNames, methodNames, descriptors, hook, null);
+    }
+
+    public TargetMethod {
+        classNames = List.copyOf(classNames);
+        methodNames = List.copyOf(methodNames);
+        descriptors = List.copyOf(descriptors);
+        if (descriptors.isEmpty()) throw new IllegalArgumentException("Missing method descriptors");
     }
 
     boolean matchesClass(String internalName) {
@@ -24,7 +51,7 @@ public record TargetMethod(
     }
 
     boolean matchesMethod(String name, String methodDescriptor) {
-        return methodNames.contains(name) && descriptor.equals(methodDescriptor);
+        return methodNames.contains(name) && descriptors.contains(methodDescriptor);
     }
 
     boolean required() {

@@ -96,16 +96,7 @@ final class VersionMappings {
                                 "client.world-render",
                                 List.of("net/minecraft/client/renderer/LevelRenderer"),
                                 List.of("lambda$addMainPass$0"),
-                                "(Lcom/mojang/blaze3d/buffers/GpuBufferSlice;"
-                                        + "Lnet/minecraft/client/renderer/state/level/LevelRenderState;"
-                                        + "Lnet/minecraft/util/profiling/ProfilerFiller;"
-                                        + "Lnet/minecraft/client/renderer/chunk/ChunkSectionsToRender;"
-                                        + "Lcom/mojang/blaze3d/resource/ResourceHandle;"
-                                        + "Lnet/minecraft/client/renderer/feature/FeatureRenderDispatcher$PreparedFrame;"
-                                        + "Lcom/mojang/blaze3d/resource/ResourceHandle;"
-                                        + "Lcom/mojang/blaze3d/resource/ResourceHandle;"
-                                        + "Lcom/mojang/blaze3d/resource/ResourceHandle;"
-                                        + "Lcom/mojang/blaze3d/resource/ResourceHandle;)V",
+                                mainPassDescriptors(),
                                 TargetMethod.HookKind.WORLD_RENDER),
                         new TargetMethod(
                                 "input.key",
@@ -426,14 +417,14 @@ final class VersionMappings {
                                 List.of(
                                         "net/minecraft/client/renderer/entity/player/AvatarRenderer"),
                                 List.of("renderRightHand"),
-                                "(Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;ILnet/minecraft/resources/Identifier;Z)V",
+                                handDescriptors(),
                                 TargetMethod.HookKind.BOXED_ARGS_VOID_GATE),
                         new TargetMethod(
                                 "render.ysm-left-hand",
                                 List.of(
                                         "net/minecraft/client/renderer/entity/player/AvatarRenderer"),
                                 List.of("renderLeftHand"),
-                                "(Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;ILnet/minecraft/resources/Identifier;Z)V",
+                                handDescriptors(),
                                 TargetMethod.HookKind.BOXED_ARGS_VOID_GATE),
                         new TargetMethod(
                                 "render.clip-occlusion",
@@ -471,16 +462,7 @@ final class VersionMappings {
                                 "render.chams-frame",
                                 List.of("net/minecraft/client/renderer/LevelRenderer"),
                                 List.of("lambda$addMainPass$0"),
-                                "(Lcom/mojang/blaze3d/buffers/GpuBufferSlice;"
-                                        + "Lnet/minecraft/client/renderer/state/level/LevelRenderState;"
-                                        + "Lnet/minecraft/util/profiling/ProfilerFiller;"
-                                        + "Lnet/minecraft/client/renderer/chunk/ChunkSectionsToRender;"
-                                        + "Lcom/mojang/blaze3d/resource/ResourceHandle;"
-                                        + "Lnet/minecraft/client/renderer/feature/FeatureRenderDispatcher$PreparedFrame;"
-                                        + "Lcom/mojang/blaze3d/resource/ResourceHandle;"
-                                        + "Lcom/mojang/blaze3d/resource/ResourceHandle;"
-                                        + "Lcom/mojang/blaze3d/resource/ResourceHandle;"
-                                        + "Lcom/mojang/blaze3d/resource/ResourceHandle;)V",
+                                mainPassDescriptors(),
                                 TargetMethod.HookKind.CHAMS_FRAME),
                         new TargetMethod(
                                 "render.chams-submit",
@@ -618,5 +600,31 @@ final class VersionMappings {
                                 List.of("shouldUseOcclusionCulling"),
                                 "(Lnet/minecraft/client/Camera;Z)Z",
                                 TargetMethod.HookKind.BOOLEAN_RETURN_ARG)));
+    }
+
+    private static List<String> handDescriptors() {
+        String prefix =
+                "(Lcom/mojang/blaze3d/vertex/PoseStack;"
+                        + "Lnet/minecraft/client/renderer/SubmitNodeCollector;"
+                        + "ILnet/minecraft/resources/Identifier;Z";
+        return List.of(prefix + ")V", prefix + "Lnet/minecraft/world/entity/Avatar;)V");
+    }
+
+    private static List<String> mainPassDescriptors() {
+        String prefix =
+                "(Lcom/mojang/blaze3d/buffers/GpuBufferSlice;"
+                        + "Lnet/minecraft/client/renderer/state/level/LevelRenderState;"
+                        + "Lnet/minecraft/util/profiling/ProfilerFiller;"
+                        + "Lnet/minecraft/client/renderer/chunk/ChunkSectionsToRender;";
+        String suffix =
+                "Lcom/mojang/blaze3d/resource/ResourceHandle;"
+                        + "Lnet/minecraft/client/renderer/feature/FeatureRenderDispatcher$PreparedFrame;"
+                        + "Lcom/mojang/blaze3d/resource/ResourceHandle;"
+                        + "Lcom/mojang/blaze3d/resource/ResourceHandle;"
+                        + "Lcom/mojang/blaze3d/resource/ResourceHandle;"
+                        + "Lcom/mojang/blaze3d/resource/ResourceHandle;)V";
+        // NeoForge captures the model-view matrix after the terrain arguments.
+        // Earlier argument slots used by both hook installers remain unchanged.
+        return List.of(prefix + suffix, prefix + "Lorg/joml/Matrix4fc;" + suffix);
     }
 }

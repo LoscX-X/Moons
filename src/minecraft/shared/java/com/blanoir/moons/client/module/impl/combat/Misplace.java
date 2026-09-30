@@ -13,6 +13,7 @@ import com.blanoir.moons.client.event.network.PacketSendEvent;
 import com.blanoir.moons.client.event.render.EntityRenderStateEvent;
 import com.blanoir.moons.client.management.network.LagUtils;
 import com.blanoir.moons.client.management.targeting.Targeting;
+import com.blanoir.moons.client.module.impl.combat.misplace.MisplaceFeedback;
 import com.blanoir.moons.client.module.impl.combat.misplace.MisplaceLatencyModel;
 import com.blanoir.moons.client.module.impl.combat.misplace.MisplaceMotion;
 import com.blanoir.moons.client.module.impl.network.Backtrack;
@@ -55,7 +56,7 @@ public final class Misplace {
     private static final DoubleSetting DISTANCE =
             new DoubleSetting.Builder()
                     .name("misplace.distance")
-                    .defaultValue(.4)
+                    .defaultValue(.6)
                     .range(0, 1.5)
                     .build();
     private static final IntSetting PREDICTION =
@@ -73,20 +74,28 @@ public final class Misplace {
     private static final IntSetting SMOOTHING =
             new IntSetting.Builder()
                     .name("misplace.smoothingMs")
-                    .defaultValue(60)
+                    .defaultValue(20)
                     .range(0, 200)
                     .build();
     private static final Map<Integer, Track> TRACKS = new HashMap<>();
     private static ClientLevel level;
     private static Player player;
+    private static ClientLevel sentLevel;
+    private static Player sentPlayer;
     private static Vec3 sentPosition;
     private static long sentAt;
-    private static String modelStatus = "Warmup";
+    private static final MisplaceFeedback FEEDBACK = new MisplaceFeedback();
+    private static Track feedbackTrack;
 
     private Misplace() {}
 
     public static void init() {
-        EventBus.CLIENT_CONTEXT_CHANGED.register("Misplace.context", event -> reset());
+        EventBus.CLIENT_CONTEXT_CHANGED.register(
+                "Misplace.context",
+                event -> {
+                    resetSource();
+                    reset();
+                });
         EventBus.TICK_END.register("Misplace.motion", event -> tick(event.client()));
         EventBus.PACKET_RECEIVE_APPLY.register("Misplace.packet", Misplace::receive);
         EventBus.PACKET_SEND_POST.register("Misplace.source", Misplace::sent);
@@ -95,8 +104,11 @@ public final class Misplace {
     }
 
     private static boolean ready(Minecraft client) {
-        return ENABLED.get()
-                && ClientReady.aliveGameplay(client)
+        return ENABLED.get() && observing(client);
+    }
+
+    private static boolean observing(Minecraft client) {
+        return ClientReady.aliveGameplay(client)
                 && client.getConnection() != null
                 && !client.player.isSpectator()
                 && !client.player.isPassenger()
@@ -107,7 +119,7 @@ public final class Misplace {
     }
 
     private static boolean context(Minecraft client) {
-        if (!ready(client)) {
+        if (!observing(client)) {
             reset();
             return false;
         }
@@ -145,12 +157,22 @@ public final class Misplace {
     private static void sent(PacketSendEvent.Post event) {
         if (!(event.packet() instanceof ServerboundMovePlayerPacket move)) return;
         Minecraft client = Minecraft.getInstance();
-        // Normal movement is sent on the client thread. Queued/artificial lag is paused.
+        // Cache actual sends while disabled so enabling while stationary need not
+        // wait for vanilla's next position reminder. Keep the cache context-bound.
         if (!client.isSameThread()
-                || !context(client)
+                || client.player == null
+                || client.level == null
+                || client.getConnection() == null
                 || event.connection() != client.getConnection().getConnection()) return;
+        if (Backtrack.isEnabled() || FakeLag.isEnabled()) {
+            resetSource();
+            return;
+        }
+        if (sentLevel != client.level || sentPlayer != client.player) resetSource();
         if (move.hasPosition()) {
             sentPosition = new Vec3(move.getX(0), move.getY(0), move.getZ(0));
+            sentLevel = client.level;
+            sentPlayer = client.player;
         }
         // Rotation-only packets preserve the last transmitted coordinate.
         if (sentPosition != null) sentAt = LagUtils.nowMillis();
@@ -168,13 +190,15 @@ public final class Misplace {
 
     private static void receive(PacketReceiveEvent.Apply event) {
         Minecraft client = Minecraft.getInstance();
-        if (!context(client) || event.listener() != client.getConnection()) return;
+        if (event.listener() != client.getConnection()) return;
         var packet = event.packet();
-        long now = LagUtils.nowMillis();
         if (packet instanceof ClientboundPlayerPositionPacket) {
+            resetSource();
             reset();
             return;
         }
+        if (!context(client)) return;
+        long now = LagUtils.nowMillis();
         if (packet instanceof ClientboundRemoveEntitiesPacket remove) {
             for (int id : PacketAccess.removedEntityIds(remove)) TRACKS.remove(id);
         } else if (packet instanceof ClientboundTeleportEntityPacket teleport) {
@@ -197,12 +221,11 @@ public final class Misplace {
                     && level.getEntity(damage.entityId()) instanceof Player target
                     && eligible(client, target)) {
                 Track track = track(target, now);
-                if (track != null) track.motion.impact(now, ping(client, target), 50, JITTER.get());
+                if (track != null) track.motion.impact(now, ping(client, target));
             }
         } else {
             Entity entity = null;
             Vec3 position = null;
-            boolean discontinuity = false;
             if (packet instanceof ClientboundMoveEntityPacket move && move.hasPosition()) {
                 entity = move.getEntity(level);
                 if (entity != null)
@@ -210,48 +233,70 @@ public final class Misplace {
             } else if (packet instanceof ClientboundEntityPositionSyncPacket sync) {
                 entity = level.getEntity(sync.id());
                 position = PacketAccess.syncPosition(sync);
-                discontinuity = true;
+                // Absolute position sync is also sent for ordinary on-ground changes.
+                // Observe continuous motion; large jumps still reset inside observe().
             }
             if (entity instanceof Player target && eligible(client, target)) {
                 Track track = track(target, now);
                 if (track == null) return;
-                if (discontinuity) {
-                    track.motion.discontinuity(position, now);
-                    track.offset = Vec3.ZERO;
-                } else track.motion.observe(position, now);
+                track.motion.observe(position, now);
             }
         }
     }
 
     private static void update(Minecraft client) {
-        if (!context(client)) return;
+        if (!ready(client) || !context(client)) return;
         double nearest = Double.POSITIVE_INFINITY;
-        modelStatus = "Warmup";
+        Track closest = null;
         for (Track track : TRACKS.values()) {
             track.offset = Vec3.ZERO;
             if (!eligible(client, track.entity)) continue;
             refreshTrack(client, track);
-            var estimate = track.motion.estimate();
             double distance = track.entity.distanceToSqr(player);
-            if (estimate != null && distance < nearest) {
+            if (distance < nearest) {
                 nearest = distance;
-                modelStatus =
-                        switch (estimate.verdict()) {
-                            case IN_RANGE -> "In range*";
-                            case OUT_OF_RANGE -> "Out of range*";
-                            case KNOCKBACK_TRANSITION -> "KB pending";
-                            case HORIZON_EXCEEDED -> "Delay limit";
-                            case UNCERTAIN -> "Uncertain";
-                            default -> "Warmup";
-                        };
+                closest = track;
             }
         }
+        Track aimed =
+                client.crosshairPickEntity == null
+                        ? null
+                        : TRACKS.get(client.crosshairPickEntity.getId());
+        if (aimed != null
+                && aimed.entity == client.crosshairPickEntity
+                && eligible(client, aimed.entity)) {
+            feedbackTrack = aimed;
+        } else if (feedbackTrack == null
+                || TRACKS.get(feedbackTrack.entity.getId()) != feedbackTrack
+                || !eligible(client, feedbackTrack.entity)
+                || nearest < feedbackTrack.entity.distanceToSqr(player) * .64) {
+            feedbackTrack = closest;
+        }
+        double applied = feedbackTrack == null ? 0 : feedbackTrack.offset.length();
+        FEEDBACK.update(applied, inactiveReason(feedbackTrack), LagUtils.nowMillis());
+    }
+
+    private static String inactiveReason(Track track) {
+        if (track == null) return "No target";
+        if (track.requestedAmount >= .005 && track.offset.lengthSqr() == 0) return "Blocked";
+        var estimate = track.motion.estimate();
+        if (estimate == null) return "Teleport";
+        if (!ADAPTIVE.get()) return "No pull";
+        return switch (estimate.verdict()) {
+            case NO_SOURCE -> "No source";
+            case STALE -> "No packets";
+            case WARMUP -> "Sampling";
+            case KNOCKBACK_TRANSITION -> "KB pending";
+            case HORIZON_EXCEEDED -> "Delay limit";
+            case UNCERTAIN -> "Uncertain";
+            default -> "No pull";
+        };
     }
 
     /** Reuses the exact display translation without changing the entity's packet/physics state. */
     public static CombatGeometry.Shape attackShape(Minecraft client, Entity entity) {
         var original = new CombatGeometry.Shape(entity.getBoundingBox(), Vec3.ZERO);
-        if (!context(client) || !eligible(client, entity)) return original;
+        if (!ready(client) || !context(client) || !eligible(client, entity)) return original;
         Track track = track((Player) entity, LagUtils.nowMillis());
         if (track == null) return original;
         var shifted = refreshTrack(client, track);
@@ -264,7 +309,10 @@ public final class Misplace {
         Vec3 visible = track.entity.getPosition(partial);
         AABB visibleBox =
                 track.entity.getBoundingBox().move(visible.subtract(track.entity.position()));
-        Vec3 source = sentPosition == null ? null : sentPosition.add(0, player.getEyeHeight(), 0);
+        Vec3 source =
+                sentPosition == null || sentLevel != level || sentPlayer != player
+                        ? null
+                        : sentPosition.add(0, player.getEyeHeight(), 0);
         var network =
                 new MisplaceLatencyModel.Network(
                         ping(client, player),
@@ -285,8 +333,9 @@ public final class Misplace {
         double amount =
                 track.motion.advance(
                         query, DISTANCE.get(), ADAPTIVE.get(), KNOCKBACK.get(), SMOOTHING.get());
+        track.requestedAmount = amount;
         Vec3 offset = MisplaceMotion.offset(observer, visible, amount);
-        // Warmup, stale/uncertain motion and disabled pull all produce zero displacement.
+        // Unavailable predictions and disabled pull produce zero displacement.
         // Collision enumeration cannot change that result and becomes costly in crowds.
         track.offset =
                 offset.lengthSqr() == 0
@@ -314,7 +363,7 @@ public final class Misplace {
 
     private static void pick(PickResultEvent event) {
         Minecraft client = event.client();
-        if (!context(client) || TRACKS.isEmpty()) return;
+        if (!ready(client) || !context(client) || TRACKS.isEmpty()) return;
         // Pick is the display/interaction update boundary. Repeating the same full-player
         // update from FRAME adds collision queries after extraction on newer versions.
         update(client);
@@ -367,9 +416,24 @@ public final class Misplace {
         TRACKS.clear();
         level = null;
         player = null;
+        feedbackTrack = null;
+        FEEDBACK.reset();
+    }
+
+    private static void clearPresentation() {
+        for (Track track : TRACKS.values()) {
+            track.motion.release();
+            track.offset = Vec3.ZERO;
+            track.requestedAmount = 0;
+        }
+        FEEDBACK.reset();
+    }
+
+    private static void resetSource() {
         sentPosition = null;
         sentAt = 0;
-        modelStatus = "Warmup";
+        sentLevel = null;
+        sentPlayer = null;
     }
 
     public static boolean isEnabled() {
@@ -378,11 +442,11 @@ public final class Misplace {
 
     public static String statusTag() {
         if (Backtrack.isEnabled() || FakeLag.isEnabled()) return "Paused";
-        return ADAPTIVE.get() ? modelStatus : "Fixed";
+        return FEEDBACK.tag(ADAPTIVE.get());
     }
 
     public static int setEnabled(Minecraft client, boolean value) {
-        reset();
+        clearPresentation();
         ENABLED.set(value);
         ClientChat.send(client, "Misplace " + (value ? "enabled" : "disabled") + ".");
         return 1;
@@ -427,6 +491,7 @@ public final class Misplace {
         final Player entity;
         final MisplaceMotion motion = new MisplaceMotion();
         Vec3 offset = Vec3.ZERO;
+        double requestedAmount;
 
         Track(Player entity) {
             this.entity = entity;

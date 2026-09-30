@@ -37,12 +37,10 @@ import net.minecraft.world.phys.Vec2;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
-import java.util.List;
 import java.util.Map;
 
 /** Centralized private Minecraft access used by the standalone feature host. */
 public final class GameAccess {
-    private static final VarHandle KEY_MAP;
     private static final VarHandle BOUND_KEY;
     private static final MethodHandle MOUSE_BUTTON;
     private static final MethodHandle START_ATTACK;
@@ -71,7 +69,6 @@ public final class GameAccess {
         try {
             MethodHandles.Lookup keyLookup =
                     MethodHandles.privateLookupIn(KeyMapping.class, MethodHandles.lookup());
-            KEY_MAP = keyLookup.findStaticVarHandle(KeyMapping.class, "MAP", Map.class);
             BOUND_KEY = keyLookup.findVarHandle(KeyMapping.class, "key", InputConstants.Key.class);
 
             MethodHandles.Lookup mouseLookup =
@@ -265,11 +262,6 @@ public final class GameAccess {
     }
 
     private GameAccess() {}
-
-    @SuppressWarnings("unchecked")
-    public static Map<InputConstants.Key, List<KeyMapping>> keyMappings() {
-        return (Map<InputConstants.Key, List<KeyMapping>>) KEY_MAP.get();
-    }
 
     public static InputConstants.Key boundKey(KeyMapping mapping) {
         return (InputConstants.Key) BOUND_KEY.get(mapping);

@@ -77,7 +77,7 @@ final class Combat {
                                 "distance",
                                 "Maximum offset",
                                 "misplace.distance",
-                                .4,
+                                .6,
                                 0,
                                 1.5,
                                 .05,
@@ -110,21 +110,30 @@ final class Combat {
                                 "smoothing",
                                 "Smoothing (ms)",
                                 "misplace.smoothingMs",
-                                60,
+                                20,
                                 0,
                                 200,
                                 10,
                                 Misplace::setSmoothing))
                 .withHudTag(
                         Misplace::statusTag,
-                        "Warmup",
-                        "In range*",
-                        "Out of range*",
-                        "KB pending",
-                        "Delay limit",
-                        "Uncertain",
-                        "Paused",
-                        "Fixed");
+                        "Pull 1.50",
+                        "Pull 0.00 No target",
+                        "Pull 0.00 No source",
+                        "Pull 0.00 No packets",
+                        "Pull 0.00 Sampling",
+                        "Pull 0.00 KB pending",
+                        "Pull 0.00 Delay limit",
+                        "Pull 0.00 Uncertain",
+                        "Pull 0.00 Blocked",
+                        "Pull 0.00 Teleport",
+                        "Pull 0.00 No pull",
+                        "Fixed 1.50",
+                        "Fixed 0.00 No target",
+                        "Fixed 0.00 Blocked",
+                        "Fixed 0.00 Teleport",
+                        "Fixed 0.00 No pull",
+                        "Paused");
     }
 
     static ModuleRegistry.Module autoMace() {

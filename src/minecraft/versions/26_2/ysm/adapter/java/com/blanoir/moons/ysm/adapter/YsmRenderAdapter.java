@@ -318,15 +318,15 @@ final class YsmRenderAdapter implements AutoCloseable {
     @SuppressWarnings({"rawtypes", "unchecked"})
     boolean submitFirstPerson(Object owner, Object[] args, boolean left) {
         if (closed
-                || args.length != 5
+                || (args.length != 5 && args.length != 6)
                 || !(args[0] instanceof PoseStack pose)
                 || !(args[1] instanceof SubmitNodeCollector collector)
-                || !(owner
-                        instanceof
-                        net.minecraft.client.renderer.entity.player.AvatarRenderer))
+                || !(owner instanceof net.minecraft.client.renderer.entity.player.AvatarRenderer))
             return false;
         LocalPlayer player = Minecraft.getInstance().player;
         if (player == null || player.isInvisible() || player.isSpectator()) return false;
+        // NeoForge supplies the rendered avatar explicitly; only replace the local player's arms.
+        if (args.length == 6 && args[5] != player) return false;
         var frame = playerFrame.sample(player);
         var queries = frame.queries();
         // Keep third-person state and authored parameters current even when no body pass is

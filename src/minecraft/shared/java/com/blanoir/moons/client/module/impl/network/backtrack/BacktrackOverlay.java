@@ -28,67 +28,85 @@ import net.minecraft.world.phys.Vec3;
 final class BacktrackOverlay {
     private final BacktrackConfig config;
     // Preserve saved visual preferences without exposing six more tuning controls.
-    private final int boxFill = color("box.color", 0x1456cfe1);
-    private final int boxOutline = color("box.outlineColor", 0xbe56cfe1);
+    private final int boxFill = color("box.color", 0x64058669);
+    private final int boxOutline = color("box.outlineColor", darkerTwice(boxFill));
     private final int modelOutline = color("model.outlineColor", 0xffffffff);
     private final int wireFill = color("wireframe.color", 0xffffffff);
     private final int wireOutline = color("wireframe.outlineColor", 0xff000000);
     private final float modelLight =
             Mth.clamp(Settings.getInt("backtrack.esp.model.lightPercent", 100), 0, 100) * 0.01F;
     private BacktrackWireframePlayer wireframe;
-    private Vec3 renderPosition;
+    private Vec3 previousRenderPosition;
+    private Vec3 currentRenderPosition;
+    private Vec3 targetRenderPosition;
+    private int interpolationSteps;
 
     BacktrackOverlay(BacktrackConfig config) {
         this.config = config;
     }
 
     void reset() {
-        renderPosition = null;
+        previousRenderPosition = currentRenderPosition = targetRenderPosition = null;
+        interpolationSteps = 0;
     }
 
-    void frame(LivingEntity target, Vec3 real, double deltaSeconds) {
-        if (target == null || config.espMode() == BacktrackConfig.EspMode.NONE) {
-            reset();
-            return;
+    void start(Vec3 real) {
+        previousRenderPosition = currentRenderPosition = targetRenderPosition = real;
+        interpolationSteps = 0;
+    }
+
+    /** OpenVA's three-tick presentation follows snapshots, never the replayed entity. */
+    void observe(Vec3 real) {
+        targetRenderPosition = real;
+        interpolationSteps = 3;
+    }
+
+    void tick() {
+        if (currentRenderPosition == null) return;
+        previousRenderPosition = currentRenderPosition;
+        if (interpolationSteps > 0) {
+            currentRenderPosition =
+                    currentRenderPosition.add(
+                            targetRenderPosition
+                                    .subtract(currentRenderPosition)
+                                    .scale(1.0 / interpolationSteps));
+            interpolationSteps--;
         }
-        if (renderPosition == null || renderPosition.distanceToSqr(real) > 4.0) {
-            renderPosition = real;
-            return;
-        }
-        double response = 1.0 - Math.exp(-28.0 * Mth.clamp(deltaSeconds, 0.0, 0.05));
-        renderPosition = renderPosition.add(real.subtract(renderPosition).scale(response));
+    }
+
+    private Vec3 renderPosition(Vec3 real, float partialTick) {
+        if (currentRenderPosition == null) return real;
+        return previousRenderPosition.add(
+                currentRenderPosition
+                        .subtract(previousRenderPosition)
+                        .scale(Mth.clamp(partialTick, 0.0F, 1.0F)));
     }
 
     void renderEsp(WorldRenderEvent event, LivingEntity target, Vec3 real) {
-        if (!visible(target, real)
+        if (!visible(target)
                 || (config.espMode() != BacktrackConfig.EspMode.BOX
                         && config.espMode() != BacktrackConfig.EspMode.WIREFRAME)) return;
         Minecraft client = Minecraft.getInstance();
         Vec3 camera = MinecraftClientAccess.camera(client).position();
-        Vec3 at = renderPosition == null ? real : renderPosition;
+        Vec3 at = renderPosition(real, event.tickDelta());
         PoseStack poses = event.poseStack();
         poses.pushPose();
         try {
             poses.translate(-camera.x, -camera.y, -camera.z);
             if (config.espMode() == BacktrackConfig.EspMode.BOX) {
                 EntityDimensions dimensions = target.getDimensions(target.getPose());
-                double halfWidth = dimensions.width() / 2.0;
+                double halfWidth =
+                        (target.getBoundingBox().getXsize() + target.getPickRadius()) / 2.0;
                 AABB box =
                         new AABB(
                                         -halfWidth,
-                                        0,
+                                        0.01,
                                         -halfWidth,
                                         halfWidth,
-                                        dimensions.height(),
+                                        dimensions.height() + 0.01,
                                         halfWidth)
-                                .inflate(0.015)
                                 .move(at);
-                BacktrackRenderer.renderBox(
-                        poses,
-                        box,
-                        BacktrackVisual.fill(boxFill),
-                        BacktrackVisual.outline(boxOutline),
-                        "backtrack box");
+                BacktrackRenderer.renderBox(poses, box, boxFill, boxOutline, "backtrack box");
             } else {
                 if (wireframe == null) wireframe = new BacktrackWireframePlayer();
                 poses.translate(at.x, at.y, at.z);
@@ -111,7 +129,7 @@ final class BacktrackOverlay {
             SubmitNodeCollector collector,
             LivingEntity target,
             Vec3 real) {
-        if (config.espMode() != BacktrackConfig.EspMode.MODEL || !visible(target, real)) return;
+        if (config.espMode() != BacktrackConfig.EspMode.MODEL || !visible(target)) return;
         Minecraft client = Minecraft.getInstance();
         Entity entity = target;
         EntityRenderer<? super Entity, ?> renderer =
@@ -123,7 +141,7 @@ final class BacktrackOverlay {
         state.shadowPieces.clear();
         state.displayFireAnimation = false;
         state.leashStates = java.util.List.of();
-        Vec3 at = renderPosition == null ? real : renderPosition;
+        Vec3 at = renderPosition(real, client.getDeltaTracker().getGameTimeDeltaPartialTick(true));
         state.x = at.x;
         state.y = at.y;
         state.z = at.z;
@@ -160,15 +178,20 @@ final class BacktrackOverlay {
                                         isolated));
     }
 
-    private static boolean visible(LivingEntity target, Vec3 real) {
-        if (target == null
-                || AntiBot.shouldHide(target)
-                || real.distanceToSqr(target.position()) < 0.0025) return false;
+    private static boolean visible(LivingEntity target) {
+        if (target == null || AntiBot.shouldHide(target)) return false;
         Minecraft client = Minecraft.getInstance();
         return client != null
                 && client.player != null
                 && client.level != null
                 && client.level.getEntity(target.getId()) == target;
+    }
+
+    private static int darkerTwice(int argb) {
+        int red = (int) ((int) (((argb >>> 16) & 0xff) * 0.7) * 0.7);
+        int green = (int) ((int) (((argb >>> 8) & 0xff) * 0.7) * 0.7);
+        int blue = (int) ((int) ((argb & 0xff) * 0.7) * 0.7);
+        return (argb & 0xff000000) | red << 16 | green << 8 | blue;
     }
 
     private static int color(String suffix, int fallback) {

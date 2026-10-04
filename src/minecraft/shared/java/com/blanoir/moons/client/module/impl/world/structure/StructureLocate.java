@@ -1,5 +1,6 @@
 package com.blanoir.moons.client.module.impl.world.structure;
 
+import com.blanoir.moons.api.ScopedResources;
 import com.blanoir.moons.client.access.MinecraftClientAccess;
 import com.blanoir.moons.client.access.PacketAccess;
 import com.blanoir.moons.client.chat.ClientChat;
@@ -8,6 +9,7 @@ import com.blanoir.moons.client.config.settings.DoubleSetting;
 import com.blanoir.moons.client.config.settings.IntSetting;
 import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.event.frame.WorldRenderEvent;
+import com.blanoir.moons.client.management.task.TaskScope;
 import com.blanoir.moons.client.module.impl.render.xray.OreHighlighter;
 import com.blanoir.moons.client.render.StructureLabelRenderer;
 import com.blanoir.moons.client.render.WorldOverlayRenderer;
@@ -26,7 +28,6 @@ import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public final class StructureLocate {
@@ -66,13 +67,16 @@ public final class StructureLocate {
                     .defaultValue(1)
                     .range(.1, 3)
                     .build();
-    private static final ExecutorService WORKER =
-            Executors.newSingleThreadExecutor(
-                    runnable -> {
-                        var thread = new Thread(runnable, "Moons-structure-scanner");
-                        thread.setDaemon(true);
-                        return thread;
-                    });
+    private static final TaskScope WORKER =
+            new TaskScope(
+                    "structure scanner",
+                    Executors.newSingleThreadExecutor(
+                            runnable -> {
+                                var thread = new Thread(runnable, "Moons-structure-scanner");
+                                thread.setDaemon(true);
+                                return thread;
+                            }),
+                    Integer.MAX_VALUE);
     private static boolean groupingFinal;
     private static StructureScanResults.Snapshot groupingSnapshot;
     private static final StructureChunkCache CHUNKS = new StructureChunkCache();
@@ -93,6 +97,7 @@ public final class StructureLocate {
     }
 
     public static void init() {
+        ScopedResources.own(WORKER);
         EventBus.CLIENT_CONTEXT_CHANGED.register("StructureLocate.context", event -> reset());
         EventBus.TICK_END.register("StructureLocate.tick", event -> tick(event.client()));
         EventBus.WORLD_RENDER.register("StructureLocate.render", StructureLocate::render);
@@ -115,6 +120,16 @@ public final class StructureLocate {
                     } else if (event.packet() instanceof ClientboundForgetLevelChunkPacket packet)
                         invalidate(packet.pos().x(), packet.pos().z());
                 });
+    }
+
+    public static void shutdown() {
+        reset();
+        WORKER.close();
+    }
+
+    public static void suspend() {
+        reset();
+        WORKER.cancelOutstanding();
     }
 
     private static void invalidate(int x, int z) {
@@ -260,7 +275,7 @@ public final class StructureLocate {
             scan.nextPublish = ticks + 10;
             groupingFinal = complete;
             grouping =
-                    CompletableFuture.supplyAsync(
+                    WORKER.submit(
                             () -> {
                                 if (owner.cancelled) return List.of();
                                 var result =
@@ -274,8 +289,7 @@ public final class StructureLocate {
                                                     result,
                                                     () -> owner.cancelled));
                                 return List.copyOf(result);
-                            },
-                            WORKER);
+                            });
         }
     }
 
@@ -444,7 +458,7 @@ public final class StructureLocate {
                         StructureChunkScanner.capture(
                                 chunk.getSections(), chunk.getMinY(), enabled, shapeEnabled);
                 var future =
-                        CompletableFuture.supplyAsync(
+                        WORKER.submit(
                                 () ->
                                         StructureChunkScanner.scan(
                                                 position.x(),
@@ -452,8 +466,7 @@ public final class StructureLocate {
                                                 sections,
                                                 enabled,
                                                 shapeEnabled,
-                                                () -> cancelled),
-                                WORKER);
+                                                () -> cancelled));
                 jobs.addLast(new Job(key, entry, future));
                 copied++;
             }

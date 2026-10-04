@@ -36,25 +36,30 @@ final class AutoSpearFakeLag {
     static void initPacketListeners() {
         EventBus.PACKET_SEND_PRE.register(
                 "AutoSpear.fakeLagSend", EventPriority.HIGH, AutoSpearFakeLag::send);
-        EventBus.PACKET_RECEIVE_APPLY.register("AutoSpear.fakeLagReceive", AutoSpearFakeLag::receive);
+        EventBus.PACKET_RECEIVE_APPLY.register(
+                "AutoSpear.fakeLagReceive", AutoSpearFakeLag::receive);
     }
 
     static synchronized void start(Minecraft client) {
         flush(client);
-        if (!AutoSpear.isEnabled() || !AutoSpear.fakeLagEnabled()
-                || AutoSpearImpact.active() || !ClientReady.aliveGameplay(client))
-            return;
+        if (!AutoSpear.isEnabled()
+                || !AutoSpear.fakeLagEnabled()
+                || AutoSpearImpact.active()
+                || !ClientReady.aliveGameplay(client)) return;
         PACKETS.observeClient(client);
         player = client.player;
         level = client.level;
         spear = player.getMainHandItem().getItem();
         slot = player.getInventory().getSelectedSlot();
-        TIMING.start(LagUtils.nowMillis(), AutoSpear.fakeLagDelayMs(), AutoSpear.fakeLagDurationMs());
+        TIMING.start(
+                LagUtils.nowMillis(), AutoSpear.fakeLagDelayMs(), AutoSpear.fakeLagDurationMs());
     }
 
     private static boolean sameContext(Minecraft client) {
-        return player != null && ClientReady.world(client)
-                && client.player == player && client.level == level;
+        return player != null
+                && ClientReady.world(client)
+                && client.player == player
+                && client.level == level;
     }
 
     private static boolean ready(Minecraft client) {
@@ -85,14 +90,14 @@ final class AutoSpearFakeLag {
     private static synchronized void send(PacketSendEvent.Pre event) {
         if (player == null || LagUtils.isReplaying()) return;
         Minecraft client = Minecraft.getInstance();
-        if (!sameContext(client) || client.getConnection() == null
+        if (!sameContext(client)
+                || client.getConnection() == null
                 || event.connection() != client.getConnection().getConnection()) {
             discard();
             return;
         }
         PACKETS.observe(event.connection(), client.level);
-        if (!ready(client) || PACKETS.isFull()
-                || LagPacketPolicy.mustFlushBefore(event.packet())) {
+        if (!ready(client) || PACKETS.isFull() || LagPacketPolicy.mustFlushBefore(event.packet())) {
             // Actions, especially the next STAB, follow all earlier positions/rotations.
             flush(client);
             return;
@@ -137,7 +142,7 @@ final class AutoSpearFakeLag {
         PACKETS.flushClient(client);
     }
 
-    private static synchronized void discard() {
+    static synchronized void discard() {
         player = null;
         level = null;
         spear = null;

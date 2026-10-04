@@ -12,7 +12,7 @@ public final class MisplaceMotion {
     private double velocityError;
     private int samples;
     private long receivedAt, settleUntil;
-    private long damageAt = -1;
+    private long damageAt = -1, damageUntil;
     private int damageRtt;
     private double amount;
     private long advancedAt = -1;
@@ -23,13 +23,6 @@ public final class MisplaceMotion {
 
     private MisplaceLatencyModel.Estimate estimate;
 
-    /** Drops visible displacement while preserving packet history for prewarming. */
-    public void release() {
-        amount = 0;
-        advancedAt = -1;
-        estimate = null;
-    }
-
     public void reset(Vec3 at, long now) {
         position = MisplaceLatencyModel.finite(at) ? at : null;
         velocity = Vec3.ZERO;
@@ -38,7 +31,9 @@ public final class MisplaceMotion {
         receivedAt = now;
         settleUntil = 0;
         damageAt = -1;
-        release();
+        amount = 0;
+        advancedAt = -1;
+        estimate = null;
         history.clear();
         if (position != null) history.add(new Sample(position, now));
         sampleSpan = 0;
@@ -61,13 +56,11 @@ public final class MisplaceMotion {
         }
         position = at;
         receivedAt = now;
-        // Start the new trajectory at the first fresh report after damage.
-        // One subsequent movement segment is enough; there is no separate RTT timer.
-        if (damageAt >= 0 && now > damageAt) {
+        // A report after the complete target RTT/tick window is new trajectory evidence.
+        if (damageAt >= 0 && now >= damageUntil) {
             damageAt = -1;
             samples = 0;
             velocity = Vec3.ZERO;
-            velocityError = 0;
             history.clear();
             history.add(new Sample(at, now));
             sampleSpan = 0;
@@ -79,7 +72,7 @@ public final class MisplaceMotion {
         while (history.size() > 64) history.removeFirst();
         Sample first = history.peekFirst();
         sampleSpan = now - first.time();
-        if (sampleSpan < 50) return;
+        if (sampleSpan < 100) return;
         Vec3 measured = at.subtract(first.position()).scale(1000.0 / sampleSpan);
         if (measured.lengthSqr() > 400) {
             discontinuity(at, now);
@@ -111,10 +104,11 @@ public final class MisplaceMotion {
         samples = history.size() - 1;
     }
 
-    public void impact(long now, int targetRtt) {
+    public void impact(long now, int targetRtt, int tickMs, int jitterMs) {
         if (position == null) return;
         damageAt = now;
         damageRtt = Math.clamp(targetRtt, 0, 2000);
+        damageUntil = now + damageRtt + 2L * tickMs + 4L * jitterMs;
     }
 
     public MisplaceLatencyModel.Observation observation(boolean knockback) {

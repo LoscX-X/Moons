@@ -9,210 +9,61 @@ def nestedGradleExecutable = moonsToolchains.gradleExecutable
 def nestedInvocation = ProcessHandle.current().pid().toString()
 def nestedPayloadBuildRoot = layout.buildDirectory.dir("universal-work/${nestedInvocation}").get().asFile
 
-def universalPayload26_1 = tasks.register("universalPayload26_1", Exec) {
-    group = "build"
-    description = "Builds the Minecraft 26.1 payload for the universal loader."
-    def nestedBuild = "${nestedPayloadBuildRoot}/26.1"
-    def nestedPayload = file("${nestedBuild}/universal/26.1/moons.jar")
-    def publishedPayload = layout.buildDirectory.file("universal/26.1/moons.jar")
-    outputs.file(publishedPayload)
-    outputs.upToDateWhen { false }
-    workingDir project.projectDir
-    executable nestedGradleExecutable.absolutePath
-    args moonsToolchains.nestedGradleArguments([
-            "moonsJar",
-            "-Pminecraft_version=26.1.2",
-            "-Pmoons_build_directory=${nestedBuild}",
-            "-Pmoons_jar_output_directory=universal/26.1"
-    ].collect { it.toString() })
-    doLast {
-        if (!nestedPayload.isFile()) {
-            throw new GradleException("Nested 26.1 payload was not produced: ${nestedPayload}")
+def profiles = moonsVersions.profiles
+def baseProfile = profiles.first()
+def payloadTasks = [:]
+def patchTasks = []
+profiles.eachWithIndex { profile, index ->
+    def previous = index == 0 ? null : payloadTasks[profiles[index - 1].profileId]
+    def payloadTask = tasks.register("universalPayload${profile.profileId}", Exec) {
+        group = 'build'
+        description = "Builds the Minecraft ${profile.artifactId} payload for the universal loader."
+        if (previous != null) dependsOn previous
+        else mustRunAfter apiJar, bridgeDll
+        def nestedBuild = "${nestedPayloadBuildRoot}/${profile.artifactId}"
+        def nestedPayload = file("${nestedBuild}/universal/${profile.artifactId}/moons.jar")
+        def publishedPayload = layout.buildDirectory.file("universal/${profile.artifactId}/moons.jar")
+        outputs.file(publishedPayload)
+        outputs.upToDateWhen { false }
+        workingDir project.projectDir
+        executable nestedGradleExecutable.absolutePath
+        args moonsToolchains.nestedGradleArguments([
+                'moonsJar',
+                "-Pminecraft_version=${profile.gameId}",
+                "-Pmoons_build_directory=${nestedBuild}",
+                "-Pmoons_jar_output_directory=universal/${profile.artifactId}"
+        ].collect { it.toString() })
+        doLast {
+            if (!nestedPayload.isFile()) {
+                throw new GradleException("Nested ${profile.artifactId} payload was not produced: ${nestedPayload}")
+            }
+            def destination = publishedPayload.get().asFile.toPath()
+            java.nio.file.Files.createDirectories(destination.parent)
+            java.nio.file.Files.copy(nestedPayload.toPath(), destination,
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING)
         }
-        def destination = publishedPayload.get().asFile.toPath()
-        java.nio.file.Files.createDirectories(destination.parent)
-        java.nio.file.Files.copy(
-                nestedPayload.toPath(),
-                destination,
-                java.nio.file.StandardCopyOption.REPLACE_EXISTING
-        )
     }
-}
-universalPayload26_1.configure {
-    mustRunAfter apiJar, bridgeDll
-}
-
-def universalPayload26_2 = tasks.register("universalPayload26_2", Exec) {
-    group = "build"
-    description = "Builds the Minecraft 26.2 payload for the universal loader."
-    dependsOn universalPayload26_1
-    def nestedBuild = "${nestedPayloadBuildRoot}/26.2"
-    def nestedPayload = file("${nestedBuild}/universal/26.2/moons.jar")
-    def publishedPayload = layout.buildDirectory.file("universal/26.2/moons.jar")
-    outputs.file(publishedPayload)
-    outputs.upToDateWhen { false }
-    workingDir project.projectDir
-    executable nestedGradleExecutable.absolutePath
-    args moonsToolchains.nestedGradleArguments([
-            "moonsJar",
-            "-Pminecraft_version=26.2",
-            "-Pmoons_build_directory=${nestedBuild}",
-            "-Pmoons_jar_output_directory=universal/26.2"
-    ].collect { it.toString() })
-    doLast {
-        if (!nestedPayload.isFile()) {
-            throw new GradleException("Nested 26.2 payload was not produced: ${nestedPayload}")
-        }
-        def destination = publishedPayload.get().asFile.toPath()
-        java.nio.file.Files.createDirectories(destination.parent)
-        java.nio.file.Files.copy(
-                nestedPayload.toPath(),
-                destination,
-                java.nio.file.StandardCopyOption.REPLACE_EXISTING
-        )
-    }
-}
-
-def universalPayload26_3 = tasks.register("universalPayload26_3", Exec) {
-    group = "build"
-    description = "Builds the Minecraft 26.3 payload for the universal loader."
-    dependsOn universalPayload26_2
-    def nestedBuild = "${nestedPayloadBuildRoot}/26.3"
-    def nestedPayload = file("${nestedBuild}/universal/26.3/moons.jar")
-    def publishedPayload = layout.buildDirectory.file("universal/26.3/moons.jar")
-    outputs.file(publishedPayload)
-    outputs.upToDateWhen { false }
-    workingDir project.projectDir
-    executable nestedGradleExecutable.absolutePath
-    args moonsToolchains.nestedGradleArguments([
-            "moonsJar",
-            "-Pminecraft_version=${moonsBuild.supportedVersions.find { it.value == '26_3' }.key}",
-            "-Pmoons_build_directory=${nestedBuild}",
-            "-Pmoons_jar_output_directory=universal/26.3"
-    ].collect { it.toString() })
-    doLast {
-        if (!nestedPayload.isFile()) {
-            throw new GradleException("Nested 26.3 payload was not produced: ${nestedPayload}")
-        }
-        def destination = publishedPayload.get().asFile.toPath()
-        java.nio.file.Files.createDirectories(destination.parent)
-        java.nio.file.Files.copy(
-                nestedPayload.toPath(),
-                destination,
-                java.nio.file.StandardCopyOption.REPLACE_EXISTING
-        )
-    }
-}
-
-def universalPayload26_4 = tasks.register("universalPayload26_4", Exec) {
-    group = "build"
-    description = "Builds the Minecraft 26.4-snapshot-1 payload for the universal loader."
-    dependsOn universalPayload26_3
-    def nestedBuild = "${nestedPayloadBuildRoot}/26.4-snapshot-1"
-    def nestedPayload = file("${nestedBuild}/universal/26.4-snapshot-1/moons.jar")
-    def publishedPayload = layout.buildDirectory.file("universal/26.4-snapshot-1/moons.jar")
-    outputs.file(publishedPayload)
-    outputs.upToDateWhen { false }
-    workingDir project.projectDir
-    executable nestedGradleExecutable.absolutePath
-    args moonsToolchains.nestedGradleArguments([
-            "moonsJar",
-            "-Pminecraft_version=26.4-snapshot-1",
-            "-Pmoons_build_directory=${nestedBuild}",
-            "-Pmoons_jar_output_directory=universal/26.4-snapshot-1"
-    ].collect { it.toString() })
-    doLast {
-        if (!nestedPayload.isFile()) {
-            throw new GradleException("Nested 26.4-snapshot-1 payload was not produced: ${nestedPayload}")
-        }
-        def destination = publishedPayload.get().asFile.toPath()
-        java.nio.file.Files.createDirectories(destination.parent)
-        java.nio.file.Files.copy(
-                nestedPayload.toPath(),
-                destination,
-                java.nio.file.StandardCopyOption.REPLACE_EXISTING
-        )
-    }
-}
-
-def universalPayloadPatch = tasks.register("universalPayloadPatch", Exec) {
-    group = "build"
-    description = "Builds a compact entry-level 26.2 overlay over the 26.1 payload."
-    dependsOn universalPayload26_2
-
-    def source = layout.projectDirectory.file("tools/PayloadPatchBuilder.java")
-    def payload26_1 = layout.buildDirectory.file("universal/26.1/moons.jar")
-    def payload26_2 = layout.buildDirectory.file("universal/26.2/moons.jar")
-    def output = layout.buildDirectory.file("universal/moons-26.2.patch.zip")
-    inputs.file(source)
-    inputs.file(payload26_1)
-    inputs.file(payload26_2)
-    outputs.file(output)
-
-    doFirst {
-        output.get().asFile.parentFile.mkdirs()
-        def javaExecutable = new File(locateJdkHome(), "bin/java.exe")
-        executable javaExecutable.absolutePath
-        args(
-                source.asFile.absolutePath,
-                payload26_1.get().asFile.absolutePath,
-                payload26_2.get().asFile.absolutePath,
-                output.get().asFile.absolutePath
-        )
-    }
-}
-
-def universalPayload26_3Patch = tasks.register("universalPayload26_3Patch", Exec) {
-    group = "build"
-    description = "Builds a compact entry-level 26.3 overlay over the 26.1 payload."
-    dependsOn universalPayload26_3
-
-    def source = layout.projectDirectory.file("tools/PayloadPatchBuilder.java")
-    def payload26_1 = layout.buildDirectory.file("universal/26.1/moons.jar")
-    def payload26_3 = layout.buildDirectory.file("universal/26.3/moons.jar")
-    def output = layout.buildDirectory.file("universal/moons-26.3.patch.zip")
-    inputs.file(source)
-    inputs.file(payload26_1)
-    inputs.file(payload26_3)
-    outputs.file(output)
-
-    doFirst {
-        output.get().asFile.parentFile.mkdirs()
-        def javaExecutable = new File(locateJdkHome(), "bin/java.exe")
-        executable javaExecutable.absolutePath
-        args(
-                source.asFile.absolutePath,
-                payload26_1.get().asFile.absolutePath,
-                payload26_3.get().asFile.absolutePath,
-                output.get().asFile.absolutePath
-        )
-    }
-}
-
-def universalPayload26_4Patch = tasks.register("universalPayload26_4Patch", Exec) {
-    group = "build"
-    description = "Builds a compact 26.4-snapshot-1 overlay over the 26.1 payload."
-    dependsOn universalPayload26_4
-
-    def source = layout.projectDirectory.file("tools/PayloadPatchBuilder.java")
-    def payload26_1 = layout.buildDirectory.file("universal/26.1/moons.jar")
-    def payload26_4 = layout.buildDirectory.file("universal/26.4-snapshot-1/moons.jar")
-    def output = layout.buildDirectory.file("universal/moons-26.4-snapshot-1.patch.zip")
-    inputs.file(source)
-    inputs.file(payload26_1)
-    inputs.file(payload26_4)
-    outputs.file(output)
-
-    doFirst {
-        output.get().asFile.parentFile.mkdirs()
-        def javaExecutable = new File(locateJdkHome(), "bin/java.exe")
-        executable javaExecutable.absolutePath
-        args(
-                source.asFile.absolutePath,
-                payload26_1.get().asFile.absolutePath,
-                payload26_4.get().asFile.absolutePath,
-                output.get().asFile.absolutePath
-        )
+    payloadTasks[profile.profileId] = payloadTask
+    if (index > 0) {
+        // Preserve the existing public 26.2 task name as a compatibility entry.
+        def taskName = index == 1 ? 'universalPayloadPatch' : "universalPayload${profile.profileId}Patch"
+        patchTasks.add(tasks.register(taskName, Exec) {
+            group = 'build'
+            description = "Builds a compact ${profile.artifactId} overlay over the ${baseProfile.artifactId} payload."
+            dependsOn payloadTask
+            def source = layout.projectDirectory.file('tools/PayloadPatchBuilder.java')
+            def base = layout.buildDirectory.file("universal/${baseProfile.artifactId}/moons.jar")
+            def overlay = layout.buildDirectory.file("universal/${profile.artifactId}/moons.jar")
+            def output = layout.buildDirectory.file("universal/moons-${profile.artifactId}.patch.zip")
+            inputs.files(source, base, overlay)
+            outputs.file(output)
+            doFirst {
+                output.get().asFile.parentFile.mkdirs()
+                executable new File(locateJdkHome(), 'bin/java.exe').absolutePath
+                args source.asFile.absolutePath, base.get().asFile.absolutePath,
+                        overlay.get().asFile.absolutePath, output.get().asFile.absolutePath
+            }
+        })
     }
 }
 
@@ -304,6 +155,8 @@ def launcherDependencyMetadata = tasks.register('launcherDependencyMetadata') {
 def releaseMetadata = layout.buildDirectory.file('generated/launcher/release.properties')
 def assemblyVersionSource = layout.buildDirectory.file('generated/launcher/LauncherVersion.cs')
 def clientVersion = project.version.toString()
+if (!(clientVersion ==~ /[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+-(?:Experiment|Release)/))
+    throw new GradleException('load_version must use X.Y.Z.x-Experiment or X.Y.Z.x-Release; x is the patch sequence')
 def launcherBuildId = providers.gradleProperty('moons_build_id')
         .getOrElse(providers.environmentVariable('GITHUB_SHA').getOrElse('local'))
 def launcherVersionMetadata = tasks.register('launcherVersionMetadata') {
@@ -313,8 +166,6 @@ def launcherVersionMetadata = tasks.register('launcherVersionMetadata') {
     inputs.property('buildId', launcherBuildId)
     outputs.files(releaseMetadata, assemblyVersionSource)
     doLast {
-        if (!(clientVersion ==~ /[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?(?:\+[A-Za-z0-9.-]+)?/))
-            throw new GradleException('load_version must use major.minor.patch, optionally with a prerelease/build suffix')
         if (!(launcherBuildId ==~ /[A-Za-z0-9._-]+/))
             throw new GradleException('moons_build_id must contain only letters, digits, dots, underscores or dashes')
         def numeric = clientVersion.split('[-+]')[0]
@@ -333,8 +184,8 @@ def launcherVersionMetadata = tasks.register('launcherVersionMetadata') {
                 + "dependencies.version=${dependencyHash.take(12)}\n"
                 + "ui.version=${uiHash.take(12)}\nysm.version=${ysmHash.take(12)}\n", 'UTF-8')
         assemblyVersionSource.get().asFile.setText(
-                "using System.Reflection;\n[assembly: AssemblyVersion(\"${numeric}.0\")]\n"
-                + "[assembly: AssemblyFileVersion(\"${numeric}.0\")]\n"
+                "using System.Reflection;\n[assembly: AssemblyVersion(\"${numeric}\")]\n"
+                + "[assembly: AssemblyFileVersion(\"${numeric}\")]\n"
                 + "[assembly: AssemblyInformationalVersion(\"${clientVersion} (${launcherBuildId})\")]\n", 'UTF-8')
     }
 }
@@ -343,11 +194,12 @@ def registerLauncher = { String taskName, String fileName, boolean installer ->
     tasks.register(taskName, Exec) {
         group = 'build'
         description = installer ? 'Builds the dependency installer/updater.' : 'Builds the game loader using installed dependencies.'
-        dependsOn launcherVersionMetadata
-        if (!installer) dependsOn universalPayloadPatch, universalPayload26_3Patch, universalPayload26_4Patch, apiJar, bridgeDll, moonsHwidExe
+        dependsOn launcherVersionMetadata, 'launcherVersionCatalog'
+        if (!installer) dependsOn patchTasks, apiJar, bridgeDll, moonsHwidExe
         def sources = files(
-                'src/tools/shared/Hashing.cs', 'src/tools/shared/StagedFile.cs',
+                'src/tools/shared/Hashing.cs', 'src/tools/shared/StagedFile.cs', 'src/tools/shared/DirectoryJunction.cs',
                 'src/tools/launcher/csharp/RuntimeMetadata.cs',
+                'src/tools/launcher/csharp/VersionCatalog.cs', moonsVersions.launcherSource,
                 'src/tools/launcher/csharp/DependencyRuntime.cs',
                 'src/tools/launcher/csharp/CacheMaintenance.cs', assemblyVersionSource)
         if (installer) {
@@ -367,10 +219,12 @@ def registerLauncher = { String taskName, String fileName, boolean installer ->
             resources['Moons.Ysm.zip'] = ysmPackage
             resources['Moons.UiRuntime.jar'] = uiRuntime
         } else {
-            resources['Moons.Payload.26_1.jar'] = layout.buildDirectory.file('universal/26.1/moons.jar')
-            resources['Moons.Payload.26_2.patch'] = layout.buildDirectory.file('universal/moons-26.2.patch.zip')
-            resources['Moons.Payload.26_3.patch'] = layout.buildDirectory.file('universal/moons-26.3.patch.zip')
-            resources['Moons.Payload.26_4.patch'] = layout.buildDirectory.file('universal/moons-26.4-snapshot-1.patch.zip')
+            profiles.eachWithIndex { profile, index ->
+                def suffix = index == 0 ? 'jar' : 'patch'
+                resources["Moons.Payload.${profile.profileId}.${suffix}"] = index == 0
+                        ? layout.buildDirectory.file("universal/${profile.artifactId}/moons.jar")
+                        : layout.buildDirectory.file("universal/moons-${profile.artifactId}.patch.zip")
+            }
             resources['Moons.Api.jar'] = apiJar.flatMap { it.archiveFile }
             resources['Moons.Bridge.dll'] = layout.buildDirectory.file("${moonsBuild.loaderStagingDirectory}/moons-bridge.dll")
         }

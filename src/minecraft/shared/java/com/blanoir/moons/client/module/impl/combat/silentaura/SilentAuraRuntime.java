@@ -162,7 +162,8 @@ public final class SilentAuraRuntime {
         return baseCanRun(client)
                 && Targeting.isHoldingTriggerWeapon(client)
                 && (!SilentAuraConfig.requireLeftClick()
-                        || CombatInputController.isPhysicallyDown(client, client.options.keyAttack));
+                        || CombatInputController.isPhysicallyDown(
+                                client, client.options.keyAttack));
     }
 
     public static boolean shouldApplyRotation() {

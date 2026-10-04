@@ -64,6 +64,10 @@ public final class IntSetting {
             return this;
         }
 
+        public Builder spec(SettingSpec<Integer> spec) {
+            return name(spec.key()).defaultValue(spec.defaultValue()).range(spec.min(), spec.max());
+        }
+
         public Builder defaultValue(int value) {
             this.defaultValue = value;
             return this;

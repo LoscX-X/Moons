@@ -191,7 +191,7 @@ public final class MisplaceSimulation {
                     1 - target,
                     false,
                     () -> {
-                        clients[1 - target].tracker.impact(now, rtt(target));
+                        clients[1 - target].tracker.impact(now, rtt(target), 50, config.jitter());
                         trace.add(now + ":observer_receives_damage_" + target);
                     });
         }

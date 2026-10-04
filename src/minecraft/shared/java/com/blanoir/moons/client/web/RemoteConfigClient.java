@@ -1,5 +1,6 @@
 package com.blanoir.moons.client.web;
 
+import com.blanoir.moons.api.ScopedResources;
 import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.config.Settings;
 import com.blanoir.moons.client.module.framework.ModuleRegistry;
@@ -16,13 +17,17 @@ import java.net.http.HttpClient;
 import java.net.http.WebSocket;
 import java.nio.ByteBuffer;
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Supplier;
 
 /** WebSocket bridge between the module registry and the web UI. */
 public final class RemoteConfigClient {
@@ -51,6 +56,13 @@ public final class RemoteConfigClient {
                 }
             };
     private final AtomicBoolean initialized = new AtomicBoolean();
+    private final Executor clientExecutor;
+    private final Supplier<JsonObject> configuration;
+    private final Map<String, Long> pendingCommands = new HashMap<>();
+    private ScheduledFuture<?> reconnect;
+    private volatile long generation;
+    private boolean resumeDesired;
+    private boolean closed;
 
     private volatile WebSocket socket;
     private volatile boolean desired;
@@ -59,15 +71,43 @@ public final class RemoteConfigClient {
     private volatile boolean requestPairing;
     private volatile int reconnectAttempt;
 
-    private RemoteConfigClient() {}
+    private RemoteConfigClient() {
+        this(task -> Minecraft.getInstance().execute(task), ModuleRegistry::snapshot);
+    }
+
+    RemoteConfigClient(Executor clientExecutor, Supplier<JsonObject> configuration) {
+        this.clientExecutor = java.util.Objects.requireNonNull(clientExecutor);
+        this.configuration = java.util.Objects.requireNonNull(configuration);
+    }
 
     public static void init() {
-        INSTANCE.initialized.compareAndSet(false, true);
+        if (INSTANCE.initialized.compareAndSet(false, true))
+            ScopedResources.own((AutoCloseable) RemoteConfigClient::shutdown);
     }
 
     public static void shutdown() {
-        INSTANCE.stop(false);
+        synchronized (INSTANCE) {
+            INSTANCE.closed = true;
+            INSTANCE.stop(false);
+        }
         INSTANCE.scheduler.shutdownNow();
+        INSTANCE.httpClient.shutdownNow();
+    }
+
+    public static void suspend() {
+        synchronized (INSTANCE) {
+            INSTANCE.resumeDesired = INSTANCE.desired;
+            INSTANCE.stop(false);
+        }
+    }
+
+    public static void resume() {
+        synchronized (INSTANCE) {
+            if (!INSTANCE.resumeDesired) return;
+            INSTANCE.resumeDesired = false;
+            INSTANCE.desired = true;
+            INSTANCE.open();
+        }
     }
 
     public static String hardwareId() {
@@ -177,7 +217,7 @@ public final class RemoteConfigClient {
     }
 
     private synchronized void open() {
-        if (!desired || connected || connecting || socket != null) return;
+        if (closed || !desired || connected || connecting || socket != null) return;
         URI uri;
         try {
             uri = URI.create(socketUrl());
@@ -192,25 +232,34 @@ public final class RemoteConfigClient {
         }
 
         connecting = true;
+        long attempt = ++generation;
         httpClient
                 .newWebSocketBuilder()
                 .connectTimeout(Duration.ofSeconds(8))
                 .header("X-Moons-HWID", hardwareId())
-                .buildAsync(uri, new Listener())
+                .buildAsync(uri, new Listener(attempt))
                 .whenComplete(
                         (webSocket, error) -> {
-                            connecting = false;
-                            if (error != null) {
-                                synchronized (this) {
+                            synchronized (this) {
+                                if (attempt != generation || closed || !desired) {
+                                    if (webSocket != null) webSocket.abort();
+                                    return;
+                                }
+                                connecting = false;
+                                if (error != null) {
                                     socket = null;
                                     connected = false;
+                                    scheduleReconnect();
                                 }
-                                scheduleReconnect();
                             }
                         });
     }
 
     private synchronized void stop(boolean notify) {
+        generation++;
+        pendingCommands.clear();
+        if (reconnect != null) reconnect.cancel(false);
+        reconnect = null;
         desired = false;
         connected = false;
         connecting = false;
@@ -221,27 +270,39 @@ public final class RemoteConfigClient {
         if (notify) notifyChat("Web remote control disconnected.");
     }
 
-    private void scheduleReconnect() {
-        if (!desired) return;
+    private synchronized void scheduleReconnect() {
+        if (closed || !desired || reconnect != null && !reconnect.isDone()) return;
+        long attempt = generation;
         int delay = Math.min(30, 1 << Math.min(reconnectAttempt++, 5));
-        scheduler.schedule(this::open, delay, TimeUnit.SECONDS);
+        reconnect =
+                scheduler.schedule(
+                        () -> {
+                            synchronized (this) {
+                                if (attempt != generation || closed || !desired) return;
+                                reconnect = null;
+                                open();
+                            }
+                        },
+                        delay,
+                        TimeUnit.SECONDS);
     }
 
-    private void sendHello(WebSocket target) {
-        Minecraft client = Minecraft.getInstance();
-        client.execute(
+    private void sendHello(WebSocket target, long attempt) {
+        clientExecutor.execute(
                 () -> {
+                    if (!current(target, attempt)) return;
                     JsonObject hello = new JsonObject();
                     hello.addProperty("type", "hello");
                     hello.addProperty("protocol", PROTOCOL_VERSION);
                     hello.addProperty("hwid", hardwareId());
                     hello.addProperty("deviceKey", DeviceKey.get(socketUrl()));
-                    hello.add("config", ModuleRegistry.snapshot());
+                    hello.add("config", configuration.get());
                     target.sendText(GSON.toJson(hello), true);
                 });
     }
 
-    private void handleMessage(String raw) {
+    private void handleMessage(WebSocket source, long attempt, String raw) {
+        if (!current(source, attempt)) return;
         if (raw.length() > MAX_MESSAGE_CHARS) return;
         JsonObject message;
         try {
@@ -253,36 +314,74 @@ public final class RemoteConfigClient {
         if (("welcome".equals(type) || "pairing".equals(type) || "command".equals(type))
                 && integer(message, "protocol") != PROTOCOL_VERSION) return;
         if ("welcome".equals(type)) {
-            connected = true;
-            if (requestPairing) sendPairRequest();
+            boolean pairing;
+            synchronized (this) {
+                if (!current(source, attempt)) return;
+                connected = true;
+                pairing = requestPairing;
+            }
+            if (pairing) {
+                JsonObject request = new JsonObject();
+                request.addProperty("type", "pair_request");
+                request.addProperty("protocol", PROTOCOL_VERSION);
+                send(source, attempt, GSON.toJson(request));
+            }
             return;
         }
         if ("pairing".equals(type)) {
-            requestPairing = false;
+            synchronized (this) {
+                if (!current(source, attempt)) return;
+                requestPairing = false;
+            }
             String code = string(message, "code");
-            if (!code.isBlank()) notifyChat("Web pairing code: " + code + " (valid for 5 minutes)");
+            if (!code.isBlank())
+                notifyChat("Web pairing code: " + code + " (valid for 5 minutes)", attempt);
             return;
         }
         if (!"command".equals(type)) return;
         String commandId = string(message, "commandId");
         if (commandId.isBlank()) return;
 
+        String previous;
         synchronized (completedCommands) {
-            String previous = completedCommands.get(commandId);
-            if (previous != null) {
-                send(previous);
+            previous = completedCommands.get(commandId);
+        }
+        if (previous != null) {
+            send(source, attempt, previous);
+            return;
+        }
+        synchronized (this) {
+            if (!current(source, attempt) || pendingCommands.containsKey(commandId)) return;
+            if (pendingCommands.size() >= MAX_REMEMBERED_COMMANDS) {
+                JsonObject busy = new JsonObject();
+                busy.addProperty("type", "ack");
+                busy.addProperty("protocol", PROTOCOL_VERSION);
+                busy.addProperty("commandId", commandId);
+                busy.addProperty("ok", false);
+                busy.addProperty("error", "Command queue is full; retry later");
+                send(source, attempt, GSON.toJson(busy));
                 return;
             }
+            pendingCommands.put(commandId, attempt);
         }
 
         JsonObject mutation =
                 message.has("mutation") && message.get("mutation").isJsonObject()
                         ? message.getAsJsonObject("mutation")
                         : null;
-        Minecraft.getInstance().execute(() -> apply(commandId, mutation));
+        clientExecutor.execute(
+                () -> {
+                    try {
+                        if (current(source, attempt)) apply(source, attempt, commandId, mutation);
+                    } finally {
+                        synchronized (this) {
+                            pendingCommands.remove(commandId, attempt);
+                        }
+                    }
+                });
     }
 
-    private void apply(String commandId, JsonObject mutation) {
+    private void apply(WebSocket source, long attempt, String commandId, JsonObject mutation) {
         JsonObject result;
         try {
             if (mutation == null) throw new IllegalArgumentException("Missing mutation");
@@ -316,12 +415,24 @@ public final class RemoteConfigClient {
         ack.addProperty("commandId", commandId);
         ack.addProperty("ok", result.has("ok") && result.get("ok").getAsBoolean());
         if (result.has("error")) ack.add("error", result.get("error"));
-        ack.add("config", ModuleRegistry.snapshot());
+        for (String field :
+                java.util.List.of(
+                        "persisted", "appliedRevision", "persistedRevision", "persistenceError"))
+            if (result.has(field)) ack.add(field, result.get(field));
+        ack.add("config", configuration.get());
         String serialized = GSON.toJson(ack);
         synchronized (completedCommands) {
             completedCommands.put(commandId, serialized);
         }
-        send(serialized);
+        send(source, attempt, serialized);
+    }
+
+    private synchronized boolean current(WebSocket source, long attempt) {
+        return !closed && desired && generation == attempt && socket == source;
+    }
+
+    private void send(WebSocket source, long attempt, String serialized) {
+        if (current(source, attempt) && connected) source.sendText(serialized, true);
     }
 
     private void send(String serialized) {
@@ -337,8 +448,16 @@ public final class RemoteConfigClient {
     }
 
     private void notifyChat(String message) {
+        notifyChat(message, generation);
+    }
+
+    private void notifyChat(String message, long attempt) {
         Minecraft client = Minecraft.getInstance();
-        if (client != null) client.execute(() -> ClientChat.send(client, message));
+        if (client != null)
+            clientExecutor.execute(
+                    () -> {
+                        if (!closed && generation == attempt) ClientChat.send(client, message);
+                    });
     }
 
     private static JsonElement required(JsonObject object, String name) {
@@ -357,26 +476,32 @@ public final class RemoteConfigClient {
 
     private final class Listener implements WebSocket.Listener {
         private final StringBuilder text = new StringBuilder();
+        private final long attempt;
+
+        private Listener(long attempt) {
+            this.attempt = attempt;
+        }
 
         @Override
         public void onOpen(WebSocket webSocket) {
             synchronized (RemoteConfigClient.this) {
-                connecting = false;
-                if (!desired) {
+                if (closed || !desired || attempt != generation) {
                     webSocket.sendClose(WebSocket.NORMAL_CLOSURE, "client disabled");
                     return;
                 }
+                connecting = false;
                 socket = webSocket;
                 connected = false;
                 reconnectAttempt = 0;
             }
             webSocket.request(1);
-            sendHello(webSocket);
-            notifyChat("Web remote connection started.");
+            sendHello(webSocket, attempt);
+            notifyChat("Web remote connection started.", attempt);
         }
 
         @Override
         public CompletionStage<?> onText(WebSocket webSocket, CharSequence data, boolean last) {
+            if (!current(webSocket, attempt)) return null;
             if (text.length() + data.length() > MAX_MESSAGE_CHARS) {
                 text.setLength(0);
                 webSocket.sendClose(WebSocket.NORMAL_CLOSURE, "message too large");
@@ -386,7 +511,7 @@ public final class RemoteConfigClient {
             if (last) {
                 String complete = text.toString();
                 text.setLength(0);
-                handleMessage(complete);
+                handleMessage(webSocket, attempt, complete);
             }
             webSocket.request(1);
             return null;
@@ -394,6 +519,7 @@ public final class RemoteConfigClient {
 
         @Override
         public CompletionStage<?> onPing(WebSocket webSocket, ByteBuffer message) {
+            if (!current(webSocket, attempt)) return null;
             webSocket.request(1);
             return webSocket.sendPong(message);
         }
@@ -410,13 +536,20 @@ public final class RemoteConfigClient {
         }
 
         private void closed(WebSocket webSocket, int statusCode, String reason) {
+            long notification;
             synchronized (RemoteConfigClient.this) {
-                if (socket == webSocket) socket = null;
+                if (!current(webSocket, attempt)) return;
+                generation++;
+                pendingCommands.clear();
+                socket = null;
                 connected = false;
                 if (statusCode == 1008 || statusCode == 4003) desired = false;
+                notification = generation;
             }
             if (statusCode == 1008 || statusCode == 4003) {
-                notifyChat("Web authentication failed" + (reason.isBlank() ? "." : ": " + reason));
+                notifyChat(
+                        "Web authentication failed" + (reason.isBlank() ? "." : ": " + reason),
+                        notification);
             } else {
                 scheduleReconnect();
             }

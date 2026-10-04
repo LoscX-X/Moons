@@ -55,6 +55,16 @@ public class Event<T> {
 
     /** Registers a listener for the lifetime of the loading module's resource scope. */
     public void register(String listenerName, EventPriority priority, Consumer<T> listener) {
+        ScopedResources.own(subscribe(listenerName, priority, listener));
+    }
+
+    /** The caller explicitly owns this subscription; registration order and dispatch stay synchronous. */
+    public Subscription subscribe(Consumer<T> listener) {
+        return subscribe(null, EventPriority.NORMAL, listener);
+    }
+
+    public Subscription subscribe(
+            String listenerName, EventPriority priority, Consumer<T> listener) {
         Objects.requireNonNull(priority, "priority");
         Objects.requireNonNull(listener, "listener");
         RegisteredListener<T> registration =
@@ -70,16 +80,15 @@ public class Event<T> {
         }
 
         AtomicBoolean closed = new AtomicBoolean();
-        ScopedResources.<Subscription>own(
-                () -> {
-                    if (!closed.compareAndSet(false, true)) {
-                        return;
-                    }
-                    synchronized (registrationLock) {
-                        listeners.remove(registration);
-                        snapshot = listeners.toArray(new RegisteredListener<?>[0]);
-                    }
-                });
+        return () -> {
+            if (!closed.compareAndSet(false, true)) {
+                return;
+            }
+            synchronized (registrationLock) {
+                listeners.remove(registration);
+                snapshot = listeners.toArray(new RegisteredListener<?>[0]);
+            }
+        };
     }
 
     @SuppressWarnings("unchecked")

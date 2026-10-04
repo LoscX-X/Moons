@@ -60,7 +60,8 @@ final class AutoSpearMotion {
     private static void request(Minecraft client) {
         AutoSpearImpact.stop(client);
         reset();
-        if (AutoSpear.motionMultiply() <= 1.0 && !AutoSpear.fakeLagEnabled()
+        if (AutoSpear.motionMultiply() <= 1.0
+                && !AutoSpear.fakeLagEnabled()
                 && !AutoSpear.impactBurstEnabled()) return;
         ItemStack stack = client.player.getMainHandItem();
         if (!stack.has(DataComponents.PIERCING_WEAPON)) return;
@@ -80,7 +81,8 @@ final class AutoSpearMotion {
 
     private static boolean valid(Minecraft client) {
         return AutoSpear.isEnabled()
-                && (AutoSpear.motionMultiply() > 1.0 || AutoSpear.fakeLagEnabled()
+                && (AutoSpear.motionMultiply() > 1.0
+                        || AutoSpear.fakeLagEnabled()
                         || AutoSpear.impactBurstEnabled())
                 && ClientReady.interaction(client)
                 && client.player == player

@@ -36,6 +36,8 @@ struct BridgeConfig {
     std::string name;
     std::string hwid;
     std::string attempt;
+    std::string dependencies;
+    std::string dependency_hash;
 };
 
 JavaVM* g_vm = nullptr;
@@ -44,6 +46,12 @@ jobject g_payload_loader = nullptr;
 jclass g_bridge_class = nullptr;
 jmethodID g_transform_method = nullptr;
 jmethodID g_start_method = nullptr;
+jmethodID g_begin_attempt_method = nullptr;
+jmethodID g_configure_dependencies_method = nullptr;
+jmethodID g_startup_status_method = nullptr;
+jmethodID g_accept_method = nullptr;
+jmethodID g_delivery_failure_method = nullptr;
+jmethodID g_required_class_method = nullptr;
 jmethodID g_game_bridge_names_method = nullptr;
 jmethodID g_game_bridge_bytes_method = nullptr;
 jclass g_game_runtime_bridge_class = nullptr;
@@ -52,6 +60,7 @@ std::unordered_set<std::string> g_target_names;
 std::atomic<bool> g_ready{false};
 std::atomic<bool> g_vm_dead{false};
 std::atomic<bool> g_runtime_started{false};
+std::atomic<bool> g_startup_hard_failure{false};
 thread_local bool g_inside_transform = false;
 std::string g_attempt;
 std::mutex g_log_mutex;
@@ -179,6 +188,8 @@ BridgeConfig read_config() {
         else if (key == "name") config.name = value;
         else if (key == "hwid") config.hwid = value;
         else if (key == "attempt") config.attempt = value;
+        else if (key == "dependencies") config.dependencies = value;
+        else if (key == "dependencies.sha256") config.dependency_hash = value;
     }
     input.close();
     if (!config.payload.empty()) {
@@ -268,12 +279,21 @@ bool load_java_bridge(JNIEnv* env, const std::string& payload) {
             bridge_class, "targetClassNames", "()[Ljava/lang/String;");
     jmethodID start = env->GetStaticMethodID(
             bridge_class, "startRuntime", kStartSignature);
+    jmethodID begin_attempt = env->GetStaticMethodID(bridge_class, "beginAttempt", "(Ljava/lang/String;)V");
+    jmethodID configure_dependencies = env->GetStaticMethodID(bridge_class, "configureDependencies", "(Ljava/lang/String;Ljava/lang/String;)V");
+    jmethodID startup_status = env->GetStaticMethodID(bridge_class, "startupStatus", "()Ljava/lang/String;");
+    jmethodID accept = env->GetStaticMethodID(bridge_class, "retransformAccepted",
+            "(Ljava/lang/String;Ljava/lang/ClassLoader;Z)V");
+    jmethodID delivery_failure = env->GetStaticMethodID(bridge_class, "transformDeliveryFailed",
+            "(Ljava/lang/String;Ljava/lang/ClassLoader;)V");
+    jmethodID required_class = env->GetStaticMethodID(bridge_class, "requiredClass", "(Ljava/lang/String;)Z");
     jmethodID bridge_names = env->GetStaticMethodID(
             bridge_class, "gameBridgeClassNames", "()[Ljava/lang/String;");
     jmethodID bridge_bytes = env->GetStaticMethodID(
             bridge_class, "gameBridgeClassBytes", "()[[B");
     if (env->ExceptionCheck() || transform == nullptr || targets == nullptr
-            || start == nullptr || bridge_names == nullptr || bridge_bytes == nullptr) {
+            || start == nullptr || bridge_names == nullptr || bridge_bytes == nullptr
+            || begin_attempt == nullptr || configure_dependencies == nullptr || startup_status == nullptr || accept == nullptr || delivery_failure == nullptr || required_class == nullptr) {
         describe_and_clear(env, "NativeTransformerBridge method lookup");
         env->PopLocalFrame(nullptr);
         return false;
@@ -303,6 +323,12 @@ bool load_java_bridge(JNIEnv* env, const std::string& payload) {
     g_bridge_class = reinterpret_cast<jclass>(env->NewGlobalRef(bridge_class));
     g_transform_method = transform;
     g_start_method = start;
+    g_begin_attempt_method = begin_attempt;
+    g_configure_dependencies_method = configure_dependencies;
+    g_startup_status_method = startup_status;
+    g_accept_method = accept;
+    g_delivery_failure_method = delivery_failure;
+    g_required_class_method = required_class;
     g_game_bridge_names_method = bridge_names;
     g_game_bridge_bytes_method = bridge_bytes;
     success = g_payload_loader != nullptr && g_bridge_class != nullptr
@@ -389,6 +415,14 @@ void JNICALL on_vm_death(jvmtiEnv*, JNIEnv*) {
     if (g_reload_event != nullptr) SetEvent(g_reload_event);
 }
 
+void report_delivery_failure(JNIEnv* env, jstring name, jobject loader) {
+    if (name != nullptr) env->CallStaticVoidMethod(g_bridge_class, g_delivery_failure_method, name, loader);
+    if (name == nullptr || env->ExceptionCheck()) {
+        if (env->ExceptionCheck()) describe_and_clear(env, "transform delivery receipt");
+        log_line("hard failure: transform delivery receipt unavailable");
+    }
+}
+
 void JNICALL on_class_file_load(
         jvmtiEnv* jvmti,
         JNIEnv* env,
@@ -415,6 +449,7 @@ void JNICALL on_class_file_load(
     jbyteArray input = env->NewByteArray(class_data_length);
     if (class_name == nullptr || input == nullptr || env->ExceptionCheck()) {
         describe_and_clear(env, "transform input allocation");
+        report_delivery_failure(env, class_name, loader);
         if (input != nullptr) env->DeleteLocalRef(input);
         if (class_name != nullptr) env->DeleteLocalRef(class_name);
         g_inside_transform = false;
@@ -424,6 +459,7 @@ void JNICALL on_class_file_load(
             reinterpret_cast<const jbyte*>(class_data));
     if (env->ExceptionCheck()) {
         describe_and_clear(env, "transform input copy");
+        report_delivery_failure(env, class_name, loader);
         env->DeleteLocalRef(input);
         env->DeleteLocalRef(class_name);
         g_inside_transform = false;
@@ -435,6 +471,7 @@ void JNICALL on_class_file_load(
             g_bridge_class, g_transform_method, class_name, loader, input, flags));
     if (env->ExceptionCheck()) {
         describe_and_clear(env, name);
+        report_delivery_failure(env, class_name, loader);
     } else if (output != nullptr) {
         const jsize output_length = env->GetArrayLength(output);
         if (output_length > 0) {
@@ -446,6 +483,7 @@ void JNICALL on_class_file_load(
                         reinterpret_cast<jbyte*>(allocated));
                 if (env->ExceptionCheck()) {
                     describe_and_clear(env, "transform output copy");
+                    report_delivery_failure(env, class_name, loader);
                     jvmti->Deallocate(allocated);
                 } else {
                     *new_class_data_length = output_length;
@@ -453,7 +491,11 @@ void JNICALL on_class_file_load(
                 }
             } else {
                 log_jvmti_error("Allocate transformed class bytes", allocation_error);
+                report_delivery_failure(env, class_name, loader);
             }
+        } else {
+            if (env->ExceptionCheck()) describe_and_clear(env, "transform output length");
+            report_delivery_failure(env, class_name, loader);
         }
         env->DeleteLocalRef(output);
     }
@@ -519,8 +561,24 @@ std::string internal_name(jvmtiEnv* jvmti, jclass klass) {
     return result;
 }
 
+void JNICALL on_class_prepare(jvmtiEnv* jvmti, JNIEnv* env, jthread, jclass klass) {
+    if (!g_ready.load(std::memory_order_acquire) || g_inside_transform) return;
+    const std::string name = internal_name(jvmti, klass);
+    if (g_target_names.find(name) == g_target_names.end()) return;
+    jobject loader = nullptr;
+    if (jvmti->GetClassLoader(klass, &loader) != JVMTI_ERROR_NONE) return;
+    jstring class_name = new_utf8_string(env, name);
+    if (class_name != nullptr && !env->ExceptionCheck()) {
+        env->CallStaticVoidMethod(g_bridge_class, g_accept_method, class_name, loader, JNI_TRUE);
+    }
+    if (env->ExceptionCheck()) describe_and_clear(env, "class preparation receipt");
+    if (class_name != nullptr) env->DeleteLocalRef(class_name);
+    if (loader != nullptr) env->DeleteLocalRef(loader);
+}
+
 bool start_runtime(JNIEnv* env, const BridgeConfig& config) {
     if (g_runtime_started.load(std::memory_order_acquire)) return true;
+    g_startup_hard_failure.store(false, std::memory_order_release);
     jobject game_loader = local_game_loader(env);
     if (game_loader == nullptr) return false;
     if (!define_game_bridge(env, game_loader)) {
@@ -530,6 +588,31 @@ bool start_runtime(JNIEnv* env, const BridgeConfig& config) {
     jstring home = new_utf8_string(env, config.home);
     jstring payload = new_utf8_string(env, config.payload);
     jstring hwid = new_utf8_string(env, config.hwid);
+    jstring attempt = new_utf8_string(env, config.attempt);
+    env->CallStaticVoidMethod(g_bridge_class, g_begin_attempt_method, attempt);
+    if (attempt != nullptr) env->DeleteLocalRef(attempt);
+    if (env->ExceptionCheck()) {
+        describe_and_clear(env, "startup attempt initialization");
+        if (payload != nullptr) env->DeleteLocalRef(payload);
+        if (hwid != nullptr) env->DeleteLocalRef(hwid);
+        if (home != nullptr) env->DeleteLocalRef(home);
+        env->DeleteLocalRef(game_loader);
+        return false;
+    }
+    jstring dependencies = new_utf8_string(env, config.dependencies);
+    jstring dependency_hash = new_utf8_string(env, config.dependency_hash);
+    if (!env->ExceptionCheck())
+        env->CallStaticVoidMethod(g_bridge_class, g_configure_dependencies_method, dependencies, dependency_hash);
+    if (dependencies != nullptr) env->DeleteLocalRef(dependencies);
+    if (dependency_hash != nullptr) env->DeleteLocalRef(dependency_hash);
+    if (env->ExceptionCheck()) {
+        describe_and_clear(env, "dependency context initialization");
+        if (payload != nullptr) env->DeleteLocalRef(payload);
+        if (hwid != nullptr) env->DeleteLocalRef(hwid);
+        if (home != nullptr) env->DeleteLocalRef(home);
+        env->DeleteLocalRef(game_loader);
+        return false;
+    }
     const jboolean started = env->CallStaticBooleanMethod(
             g_bridge_class, g_start_method, home, payload, game_loader, hwid,
             g_game_agent_bridge_class, g_game_runtime_bridge_class);
@@ -576,6 +659,15 @@ std::vector<jclass> collect_loaded_targets(JNIEnv* env) {
                 continue;
             }
             log_line("target is not modifiable: " + name);
+            jstring class_name = new_utf8_string(env, name);
+            const bool required = class_name != nullptr && !env->ExceptionCheck()
+                    && env->CallStaticBooleanMethod(g_bridge_class, g_required_class_method, class_name) == JNI_TRUE;
+            if (required || class_name == nullptr || env->ExceptionCheck()) {
+                if (env->ExceptionCheck()) describe_and_clear(env, "unmodifiable target requirement");
+                g_startup_hard_failure.store(true, std::memory_order_release);
+                log_line("hard failure: required target is not modifiable: " + name);
+            }
+            if (class_name != nullptr) env->DeleteLocalRef(class_name);
         }
         env->DeleteLocalRef(klass);
     }
@@ -605,21 +697,63 @@ bool find_loaded_game_loader(JNIEnv* env) {
     return found;
 }
 
-void retransform_targets(JNIEnv* env, std::vector<jclass>& targets) {
+bool retransform_targets(JNIEnv* env, std::vector<jclass>& targets) {
     int transformed = 0;
+    int failed = 0;
     for (jclass klass : targets) {
         const std::string name = internal_name(g_jvmti, klass);
+        jstring class_name = new_utf8_string(env, name);
+        const bool required = env->CallStaticBooleanMethod(g_bridge_class, g_required_class_method, class_name) == JNI_TRUE;
+        if (env->ExceptionCheck()) { describe_and_clear(env, "hook requirement"); ++failed; }
         const jvmtiError error = g_jvmti->RetransformClasses(1, &klass);
         if (error == JVMTI_ERROR_NONE) {
             ++transformed;
         } else {
+            if (required) ++failed;
             log_jvmti_error(("RetransformClasses " + name).c_str(), error);
         }
+        jobject loader = nullptr;
+        const jvmtiError loader_error = g_jvmti->GetClassLoader(klass, &loader);
+        env->CallStaticVoidMethod(g_bridge_class, g_accept_method, class_name, loader,
+                error == JVMTI_ERROR_NONE && loader_error == JVMTI_ERROR_NONE ? JNI_TRUE : JNI_FALSE);
+        if (env->ExceptionCheck()) { describe_and_clear(env, "retransformation receipt"); ++failed; }
+        if (loader_error != JVMTI_ERROR_NONE) { log_jvmti_error("GetClassLoader receipt", loader_error); if (required) ++failed; }
+        if (class_name != nullptr) env->DeleteLocalRef(class_name);
+        if (loader != nullptr) env->DeleteLocalRef(loader);
         env->DeleteLocalRef(klass);
     }
     targets.clear();
     log_line("initial retransformation complete: " + std::to_string(transformed)
             + " target classes");
+    if (failed != 0) log_line("hard failure: retransformation receipt failures=" + std::to_string(failed));
+    return failed == 0 && !g_startup_hard_failure.load(std::memory_order_acquire);
+}
+
+void wait_core_ready(JNIEnv* env) {
+    const ULONGLONG deadline = GetTickCount64() + 20000;
+    while (!g_vm_dead.load(std::memory_order_acquire) && GetTickCount64() < deadline) {
+        auto status = reinterpret_cast<jstring>(env->CallStaticObjectMethod(g_bridge_class, g_startup_status_method));
+        if (env->ExceptionCheck()) {
+            describe_and_clear(env, "core startup status");
+            log_line("hard failure: core startup status unavailable");
+            return;
+        }
+        std::string text;
+        if (status != nullptr) {
+            const char* chars = env->GetStringUTFChars(status, nullptr);
+            if (chars != nullptr) { text = chars; env->ReleaseStringUTFChars(status, chars); }
+            env->DeleteLocalRef(status);
+        }
+        if (env->ExceptionCheck()) {
+            describe_and_clear(env, "core startup status text");
+            log_line("hard failure: core startup status text unavailable");
+            return;
+        }
+        if (text.rfind("READY:", 0) == 0) { log_line("core ready: " + text); return; }
+        if (text.rfind("FAILED:", 0) == 0) { log_line("hard failure: " + text); return; }
+        Sleep(100);
+    }
+    log_line("startup failed: first client tick/core readiness timed out");
 }
 
 bool initialize_jvmti(JNIEnv* env, const BridgeConfig& config) {
@@ -685,6 +819,7 @@ bool initialize_jvmti(JNIEnv* env, const BridgeConfig& config) {
     }
     jvmtiEventCallbacks callbacks{};
     callbacks.ClassFileLoadHook = &on_class_file_load;
+    callbacks.ClassPrepare = &on_class_prepare;
     callbacks.VMDeath = &on_vm_death;
     jvmtiError error = g_jvmti->SetEventCallbacks(&callbacks, sizeof(callbacks));
     if (error != JVMTI_ERROR_NONE) {
@@ -695,6 +830,12 @@ bool initialize_jvmti(JNIEnv* env, const BridgeConfig& config) {
             JVMTI_ENABLE, JVMTI_EVENT_VM_DEATH, nullptr);
     if (error != JVMTI_ERROR_NONE) {
         log_jvmti_error("Enable VMDeath", error);
+        return false;
+    }
+    error = g_jvmti->SetEventNotificationMode(
+            JVMTI_ENABLE, JVMTI_EVENT_CLASS_PREPARE, nullptr);
+    if (error != JVMTI_ERROR_NONE) {
+        log_jvmti_error("Enable ClassPrepare", error);
         return false;
     }
     error = g_jvmti->SetEventNotificationMode(
@@ -710,7 +851,7 @@ bool initialize_jvmti(JNIEnv* env, const BridgeConfig& config) {
     if (start_runtime(env, config)) {
         Sleep(100);
         std::vector<jclass> targets = collect_loaded_targets(env);
-        retransform_targets(env, targets);
+        if (retransform_targets(env, targets)) wait_core_ready(env);
     }
     return true;
 }
@@ -764,7 +905,7 @@ DWORD WINAPI worker(LPVOID) {
             if (start_runtime(env, config)) {
                 Sleep(100);
                 std::vector<jclass> targets = collect_loaded_targets(env);
-                retransform_targets(env, targets);
+                if (retransform_targets(env, targets)) wait_core_ready(env);
                 break;
             }
         }
@@ -793,6 +934,8 @@ DWORD WINAPI worker(LPVOID) {
             g_runtime_started.store(false, std::memory_order_release);
             if (start_runtime(env, reload)) {
                 log_line("Java runtime reload complete");
+                std::vector<jclass> targets = collect_loaded_targets(env);
+                if (retransform_targets(env, targets)) wait_core_ready(env);
             } else {
                 log_line("Java runtime reload failed; waiting for another request");
             }

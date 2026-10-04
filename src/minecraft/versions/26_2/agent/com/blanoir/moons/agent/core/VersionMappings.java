@@ -16,6 +16,25 @@ final class VersionMappings {
     }
 
     static MappingService create() {
+        return shared().withDescriptors(
+                        "client.world-render",
+                        InjectionPoint.Environment.NEOFORGE,
+                        mainPassDescriptors(true))
+                .withDescriptors(
+                        "render.chams-frame",
+                        InjectionPoint.Environment.NEOFORGE,
+                        mainPassDescriptors(true))
+                .withDescriptors(
+                        "render.ysm-right-hand",
+                        InjectionPoint.Environment.NEOFORGE,
+                        handDescriptors(true))
+                .withDescriptors(
+                        "render.ysm-left-hand",
+                        InjectionPoint.Environment.NEOFORGE,
+                        handDescriptors(true));
+    }
+
+    private static MappingService shared() {
         return new MappingService(
                 List.of(
                         new TargetMethod(
@@ -96,7 +115,7 @@ final class VersionMappings {
                                 "client.world-render",
                                 List.of("net/minecraft/client/renderer/LevelRenderer"),
                                 List.of("lambda$addMainPass$0"),
-                                mainPassDescriptors(),
+                                mainPassDescriptors(false),
                                 TargetMethod.HookKind.WORLD_RENDER),
                         new TargetMethod(
                                 "input.key",
@@ -417,14 +436,14 @@ final class VersionMappings {
                                 List.of(
                                         "net/minecraft/client/renderer/entity/player/AvatarRenderer"),
                                 List.of("renderRightHand"),
-                                handDescriptors(),
+                                handDescriptors(false),
                                 TargetMethod.HookKind.BOXED_ARGS_VOID_GATE),
                         new TargetMethod(
                                 "render.ysm-left-hand",
                                 List.of(
                                         "net/minecraft/client/renderer/entity/player/AvatarRenderer"),
                                 List.of("renderLeftHand"),
-                                handDescriptors(),
+                                handDescriptors(false),
                                 TargetMethod.HookKind.BOXED_ARGS_VOID_GATE),
                         new TargetMethod(
                                 "render.clip-occlusion",
@@ -462,7 +481,7 @@ final class VersionMappings {
                                 "render.chams-frame",
                                 List.of("net/minecraft/client/renderer/LevelRenderer"),
                                 List.of("lambda$addMainPass$0"),
-                                mainPassDescriptors(),
+                                mainPassDescriptors(false),
                                 TargetMethod.HookKind.CHAMS_FRAME),
                         new TargetMethod(
                                 "render.chams-submit",
@@ -602,15 +621,15 @@ final class VersionMappings {
                                 TargetMethod.HookKind.BOOLEAN_RETURN_ARG)));
     }
 
-    private static List<String> handDescriptors() {
+    private static List<String> handDescriptors(boolean neoForge) {
         String prefix =
                 "(Lcom/mojang/blaze3d/vertex/PoseStack;"
                         + "Lnet/minecraft/client/renderer/SubmitNodeCollector;"
                         + "ILnet/minecraft/resources/Identifier;Z";
-        return List.of(prefix + ")V", prefix + "Lnet/minecraft/world/entity/Avatar;)V");
+        return List.of(prefix + (neoForge ? "Lnet/minecraft/world/entity/Avatar;)V" : ")V"));
     }
 
-    private static List<String> mainPassDescriptors() {
+    private static List<String> mainPassDescriptors(boolean neoForge) {
         String prefix =
                 "(Lcom/mojang/blaze3d/buffers/GpuBufferSlice;"
                         + "Lnet/minecraft/client/renderer/state/level/LevelRenderState;"
@@ -625,6 +644,6 @@ final class VersionMappings {
                         + "Lcom/mojang/blaze3d/resource/ResourceHandle;)V";
         // NeoForge captures the model-view matrix after the terrain arguments.
         // Earlier argument slots used by both hook installers remain unchanged.
-        return List.of(prefix + suffix, prefix + "Lorg/joml/Matrix4fc;" + suffix);
+        return List.of(prefix + (neoForge ? "Lorg/joml/Matrix4fc;" : "") + suffix);
     }
 }

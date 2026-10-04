@@ -17,9 +17,10 @@ internal static class LoadSessionVerification
             using (LoadSession session = LoadSession.Acquire(pid, () => false))
             {
                 File.WriteAllText(log, "[" + session.Attempt + "] hard failure stale\n");
-                session.Prepare(root, "payload.jar", "api.jar", Path.Combine(root, "home"), "fixture", "test");
+                session.Prepare(root, "payload.jar", "api.jar", Path.Combine(root, "home"), "fixture", "test", "中文 context.properties", new string('a', 64));
                 string config = File.ReadAllText(Path.Combine(root, "bridge-" + pid + ".conf"));
                 Check(config.Contains("attempt=" + session.Attempt) && config.Contains("payload=payload.jar"), "One session owns its config token");
+                Check(config.Contains("dependencies=中文 context.properties") && config.Contains("dependencies.sha256=" + new string('a', 64)), "Exact dependency context was lost in the UTF-8 native handoff");
                 Expect<InvalidOperationException>(() => session.Prepare(root, "", "", root, "", ""));
                 Exception workerFailure = null;
                 var worker = new Thread(() => {
@@ -36,7 +37,7 @@ internal static class LoadSessionVerification
                 worker.Start();
                 Check(worker.Join(3000), "Concurrent acquisition finishes on cancellation");
                 if (workerFailure != null) throw workerFailure;
-                File.AppendAllText(log, "[other] hard failure unrelated\n[" + session.Attempt + "] initial retransformation complete\n", new UTF8Encoding(false));
+                File.AppendAllText(log, "[other] hard failure unrelated\n[" + session.Attempt + "] initial retransformation complete\n[" + session.Attempt + "] core ready: READY:core-features-active;first-client-tick\n", new UTF8Encoding(false));
                 session.WaitForReady(IntPtr.Zero);
             }
             using (LoadSession session = LoadSession.Acquire(pid, () => false))
@@ -46,6 +47,19 @@ internal static class LoadSessionVerification
                 Expect<InvalidOperationException>(() => session.WaitForReady(IntPtr.Zero));
             }
             bool cancel = false;
+            int observed = 0;
+            using (LoadSession session = LoadSession.Acquire(pid, () => ++observed > 3))
+            {
+                session.Prepare(root, "payload.jar", "api.jar", root, "fixture", "test");
+                File.AppendAllText(log, "[" + session.Attempt + "] initial retransformation complete\n[other] core ready: READY:foreign\n");
+                Expect<OperationCanceledException>(() => session.WaitForReady(IntPtr.Zero));
+            }
+            using (LoadSession session = LoadSession.Acquire(pid, () => false))
+            {
+                session.Prepare(root, "payload.jar", "api.jar", root, "fixture", "test");
+                File.AppendAllText(log, "[" + session.Attempt + "] initial retransformation complete\n[" + session.Attempt + "] hard failure: core initialization failed\n");
+                Expect<InvalidOperationException>(() => session.WaitForReady(IntPtr.Zero));
+            }
             using (LoadSession session = LoadSession.Acquire(pid, () => cancel))
             {
                 Expect<InvalidOperationException>(() => session.WaitForReady(IntPtr.Zero));

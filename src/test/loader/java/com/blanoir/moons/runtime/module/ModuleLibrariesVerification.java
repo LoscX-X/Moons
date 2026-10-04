@@ -122,6 +122,35 @@ public final class ModuleLibrariesVerification {
                 manager.unload("fixture");
                 check(events.methodHook().listenerCount() == 0, "unload released listener");
             }
+            // Pinned installation A remains on its own libraries after root installation B changes.
+            Path pinnedRoot = home.resolve("installations/A");
+            Files.createDirectories(pinnedRoot.resolve("libraries"));
+            Files.createDirectories(pinnedRoot.resolve("modules"));
+            Path pinnedLibrary = pinnedRoot.resolve("libraries/fixture.jar");
+            buildLibrary(root, pinnedLibrary, "pinned-A");
+            Path pinnedModule = pinnedRoot.resolve("modules/fixture.jar");
+            jar(pinnedModule, classes, descriptor("fixture", "fixture.Module", "fixture.jar"));
+            buildLibrary(root, library, "root-B");
+            RuntimeEvents pinnedEvents = new RuntimeEvents();
+            try (var manager =
+                    new ModuleManager(
+                            home, outer, pinnedEvents, "26.1.2", pinnedRoot, pinnedModule)) {
+                manager.start();
+                check(
+                        "pinned-A".equals(value(pinnedEvents)),
+                        "Pinned module read mutable root library");
+                manager.replace(module);
+                check(
+                        "pinned-A".equals(value(pinnedEvents)),
+                        "Root adapter replaced pinned module");
+                buildLibrary(root, library, "root-C");
+                manager.replace(pinnedModule);
+                check(
+                        "pinned-A".equals(value(pinnedEvents))
+                                && pinnedEvents.methodHook().listenerCount() == 1,
+                        "Legacy installation change affected pinned module or duplicated listeners");
+            }
+            check(pinnedEvents.methodHook().listenerCount() == 0, "Pinned module resources leaked");
             Path invalid = root.resolve("invalid.jar");
             jar(invalid, classes, descriptor("fixture", "fixture.Module", "../escape.jar"));
             try {

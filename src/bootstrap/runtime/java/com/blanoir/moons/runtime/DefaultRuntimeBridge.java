@@ -20,14 +20,28 @@ public final class DefaultRuntimeBridge implements RuntimeBridge {
     private final AtomicBoolean unloadRequested = new AtomicBoolean();
     private final ModuleManager modules;
     private final String minecraftVersion;
+    private volatile String startupFailure;
 
     public DefaultRuntimeBridge(LoadMode mode, Path home, Path outerJar, String minecraftVersion)
+            throws Exception {
+        this(mode, home, outerJar, minecraftVersion, null, null);
+    }
+
+    public DefaultRuntimeBridge(
+            LoadMode mode,
+            Path home,
+            Path outerJar,
+            String minecraftVersion,
+            Path dependencyRoot,
+            Path dependencyModule)
             throws Exception {
         this.mode = mode;
         this.home = home;
         this.minecraftVersion =
                 java.util.Objects.requireNonNull(minecraftVersion, "minecraftVersion");
-        this.modules = new ModuleManager(home, outerJar, events, minecraftVersion);
+        this.modules =
+                new ModuleManager(
+                        home, outerJar, events, minecraftVersion, dependencyRoot, dependencyModule);
     }
 
     public RuntimeEvents events() {
@@ -41,6 +55,7 @@ public final class DefaultRuntimeBridge implements RuntimeBridge {
                 try {
                     MinecraftVersionGuard.verify(minecraft, minecraftVersion);
                 } catch (Throwable failure) {
+                    startupFailure = failure.toString();
                     versionVerified.set(false);
                     if (failure instanceof RuntimeException runtimeFailure) {
                         throw runtimeFailure;
@@ -49,7 +64,7 @@ public final class DefaultRuntimeBridge implements RuntimeBridge {
                             "Minecraft version verification failed", failure);
                 }
             }
-            startAndReloadModules();
+            if (!startAndReloadModules()) return;
             if (firstTickReported.compareAndSet(false, true)) {
                 System.out.println(
                         Branding.prefix()
@@ -59,6 +74,16 @@ public final class DefaultRuntimeBridge implements RuntimeBridge {
             events.clientTick()
                     .publish(new RuntimeEvents.ClientTick(minecraft, RuntimeEvents.Phase.START));
         }
+    }
+
+    public String startupStatus() {
+        if (closed.get()) return "FAILED:runtime-closed";
+        String failure = startupFailure;
+        if (failure != null) return "FAILED:" + failure;
+        if (!firstTickReported.get()) return "WAITING:first-client-tick";
+        if (!modules.isEnabled("core-features")) return "FAILED:core-features-disabled-or-missing";
+        return "READY:core-features-active;first-client-tick;optional-module-failures="
+                + modules.startupDiagnostics().size();
     }
 
     @Override
@@ -327,7 +352,7 @@ public final class DefaultRuntimeBridge implements RuntimeBridge {
         return event.value() instanceof Number replacement ? replacement.floatValue() : value;
     }
 
-    private void startAndReloadModules() {
+    private boolean startAndReloadModules() {
         try {
             if (modulesStarted.compareAndSet(false, true)) {
                 try {
@@ -338,10 +363,18 @@ public final class DefaultRuntimeBridge implements RuntimeBridge {
                 }
             }
             modules.drainReloads();
+            if (!modules.isEnabled("core-features")) {
+                startupFailure = "core-features-disabled-or-missing";
+                return false;
+            }
+            startupFailure = null;
+            return true;
         } catch (Throwable failure) {
+            startupFailure = failure.toString();
             System.err.println(
                     Branding.prefix() + " Module operation failed on client thread: " + failure);
             failure.printStackTrace(System.err);
+            return false;
         }
     }
 

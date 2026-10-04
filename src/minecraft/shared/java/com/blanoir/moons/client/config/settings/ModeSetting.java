@@ -128,6 +128,20 @@ public final class ModeSetting<T> {
         }
     }
 
+    public record Spec<T>(String key, T defaultValue, List<Option<T>> options) {
+        public Spec {
+            options = List.copyOf(options);
+        }
+
+        public String defaultId() {
+            return options.stream()
+                    .filter(option -> Objects.equals(option.value(), defaultValue))
+                    .findFirst()
+                    .orElseThrow()
+                    .id();
+        }
+    }
+
     public static final class Builder<T> {
         private String key;
         private T defaultValue;
@@ -137,6 +151,14 @@ public final class ModeSetting<T> {
 
         public Builder<T> name(String key) {
             this.key = key;
+            return this;
+        }
+
+        public Builder<T> spec(Spec<T> spec) {
+            key = spec.key();
+            defaultValue = spec.defaultValue();
+            options.clear();
+            options.addAll(spec.options());
             return this;
         }
 

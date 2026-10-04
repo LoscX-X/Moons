@@ -52,7 +52,8 @@ public final class ArmorHide {
         var player = Minecraft.getInstance().player;
         return player == null
                 || wearer != player
-                || !ItemStack.isSameItemSameComponents(item, player.getItemBySlot(EquipmentSlot.HEAD));
+                || !ItemStack.isSameItemSameComponents(
+                        item, player.getItemBySlot(EquipmentSlot.HEAD));
     }
 
     public static int setEnabled(Minecraft client, boolean enabled) {

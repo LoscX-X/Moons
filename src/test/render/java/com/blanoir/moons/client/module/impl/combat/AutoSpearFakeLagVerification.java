@@ -3,6 +3,7 @@ package com.blanoir.moons.client.module.impl.combat;
 import com.blanoir.moons.client.management.network.LagPacketPolicy;
 import com.blanoir.moons.client.management.network.LagUtils;
 import com.blanoir.moons.client.management.network.PacketDelayQueue;
+import com.blanoir.moons.client.management.network.SessionToken;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -20,14 +21,16 @@ import java.util.List;
 public final class AutoSpearFakeLagVerification {
     public static void main(String[] args) {
         verifyTimedDelivery();
+        verifyCoreSuspension();
         var queue = new PacketDelayQueue(2);
         var connection = new RecordingConnection(queue);
         Object world = new Object();
         queue.observe(connection, world);
         Packet<?> first = new ServerboundMovePlayerPacket.Pos(1, 64, 1, true, false);
         Packet<?> second = new ServerboundMovePlayerPacket.Rot(45, 0, true, false);
-        Packet<?> stab = new ServerboundPlayerActionPacket(
-                ServerboundPlayerActionPacket.Action.STAB, BlockPos.ZERO, Direction.DOWN);
+        Packet<?> stab =
+                new ServerboundPlayerActionPacket(
+                        ServerboundPlayerActionPacket.Action.STAB, BlockPos.ZERO, Direction.DOWN);
 
         require(queue.offer(first) && queue.offer(second), "Movement is buffered");
         require(connection.sent.isEmpty(), "Buffered movement is not sent early");
@@ -35,17 +38,22 @@ public final class AutoSpearFakeLagVerification {
         require(LagPacketPolicy.mustFlushBefore(stab), "STAB must follow buffered movement");
         queue.flush();
         connection.send(stab);
-        require(connection.sent.equals(List.of(first, second, stab)),
+        require(
+                connection.sent.equals(List.of(first, second, stab)),
                 "Original position/rotation packets precede STAB in FIFO order");
         queue.flush();
         require(connection.sent.size() == 3, "Repeated flush does not replay twice");
         require(!LagUtils.isReplaying(), "Replay guard is restored");
 
-        require(!LagPacketPolicy.mustFlushBefore(new ServerboundKeepAlivePacket(1)),
+        require(
+                !LagPacketPolicy.mustFlushBefore(new ServerboundKeepAlivePacket(1)),
                 "Keepalive can pass without ending the movement window");
-        require(LagPacketPolicy.mustFlushBefore(new ServerboundPlayerActionPacket(
-                        ServerboundPlayerActionPacket.Action.RELEASE_USE_ITEM,
-                        BlockPos.ZERO, Direction.DOWN)),
+        require(
+                LagPacketPolicy.mustFlushBefore(
+                        new ServerboundPlayerActionPacket(
+                                ServerboundPlayerActionPacket.Action.RELEASE_USE_ITEM,
+                                BlockPos.ZERO,
+                                Direction.DOWN)),
                 "Releasing use sends earlier movement first");
 
         queue.offer(first);
@@ -61,9 +69,50 @@ public final class AutoSpearFakeLagVerification {
         queue.offer(first);
         connection.connected = false;
         queue.flush();
-        require(queue.isEmpty() && connection.sent.size() == 3,
+        require(
+                queue.isEmpty() && connection.sent.size() == 3,
                 "Disconnect discards pending packets");
+        connection.connected = true;
+        queue.observe(connection, world);
+        queue.offer(first);
+        queue.offer(second);
+        connection.onSend = () -> queue.observe(connection, new Object());
+        queue.flush();
+        require(
+                connection.sent.equals(List.of(first, second, stab, first)) && queue.isEmpty(),
+                "Reentrant session change stops the current replay after its first send");
+        Object sameValue = new String("world");
+        var token = new SessionToken<>(connection, sameValue);
+        require(
+                token.matches(connection, sameValue)
+                        && token.equals(new SessionToken<>(connection, sameValue))
+                        && !token.equals(new SessionToken<>(connection, new String("world")))
+                        && !token.matches(connection, new String("world"))
+                        && !token.matches(new RecordingConnection(queue), sameValue),
+                "Session tokens compare identity, never equal values");
         System.out.println("MOONS_AUTOSPEAR_FAKELAG_VERIFIED");
+    }
+
+    private static void verifyCoreSuspension() {
+        try {
+            var field = AutoSpearFakeLag.class.getDeclaredField("PACKETS");
+            field.setAccessible(true);
+            var queue = (PacketDelayQueue) field.get(null);
+            var connection = new RecordingConnection(queue);
+            queue.observe(connection, new Object());
+            require(
+                    queue.offer(new ServerboundMovePlayerPacket.Pos(1, 64, 1, true, false)),
+                    "Capture outstanding AutoSpear movement");
+            AutoSpear.suspend(null);
+            queue.flush();
+            require(
+                    queue.isEmpty() && connection.sent.isEmpty(),
+                    "Core suspension discards AutoSpear movement without replay");
+            AutoBlock.suspend(null);
+            com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraBlock.suspend();
+        } catch (ReflectiveOperationException failure) {
+            throw new AssertionError(failure);
+        }
     }
 
     private static void verifyTimedDelivery() {
@@ -95,6 +144,7 @@ public final class AutoSpearFakeLagVerification {
         private final PacketDelayQueue queue;
         private final List<Packet<?>> sent = new ArrayList<>();
         private boolean connected = true;
+        private Runnable onSend;
 
         private RecordingConnection(PacketDelayQueue queue) {
             super(PacketFlow.CLIENTBOUND);
@@ -111,6 +161,7 @@ public final class AutoSpearFakeLagVerification {
             if (LagUtils.isReplaying())
                 require(!queue.offer(packet), "Replayed packets cannot be buffered again");
             sent.add(packet);
+            if (onSend != null) onSend.run();
         }
     }
 

@@ -1,8 +1,6 @@
 package com.blanoir.moons.client.module.impl.world.structure;
 
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.Identifier;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.AABB;
@@ -18,15 +16,6 @@ import java.util.Set;
 
 /** Marker rules ported from Open-Kawasaki's StructureFinderModule and its support classes. */
 public final class StructureEvidence {
-    private static final Block COPPER_BULB =
-            BuiltInRegistries.BLOCK
-                    .getOptional(Identifier.parse("minecraft:copper_bulb"))
-                    .orElseThrow();
-    private static final Block OXIDIZED_COPPER_BULB =
-            BuiltInRegistries.BLOCK
-                    .getOptional(Identifier.parse("minecraft:oxidized_copper_bulb"))
-                    .orElseThrow();
-
     public enum Kind {
         ANCIENT_CITY("Ancient City", 0x0096FF, 96),
         STRONGHOLD("Stronghold", 0x96FF64, 80),
@@ -88,19 +77,9 @@ public final class StructureEvidence {
                 || block == Blocks.BUDDING_AMETHYST
                 || block == Blocks.CALCITE) return Kind.AMETHYST_GEODE;
         if (block == Blocks.COBBLESTONE || block == Blocks.MOSSY_COBBLESTONE) return Kind.DUNGEON;
-        if (block == COPPER_BULB
-                || block == OXIDIZED_COPPER_BULB
-                || block == Blocks.CHISELED_TUFF
-                || block == Blocks.CHISELED_TUFF_BRICKS
-                || block == Blocks.TUFF_BRICKS
-                || block == Blocks.POLISHED_TUFF) return Kind.TRIAL_CHAMBER;
-        if (block == Blocks.REINFORCED_DEEPSLATE
-                || block == Blocks.DEEPSLATE_BRICKS
-                || block == Blocks.CRACKED_DEEPSLATE_BRICKS
-                || block == Blocks.DEEPSLATE_TILES
-                || block == Blocks.CRACKED_DEEPSLATE_TILES
-                || block == Blocks.CHISELED_DEEPSLATE
-                || block == Blocks.POLISHED_DEEPSLATE) return Kind.ANCIENT_CITY;
+        // Shared building materials cannot prove a structure: both types also occur in builds.
+        if (block == Blocks.TRIAL_SPAWNER || block == Blocks.VAULT) return Kind.TRIAL_CHAMBER;
+        if (block == Blocks.REINFORCED_DEEPSLATE) return Kind.ANCIENT_CITY;
         return null;
     }
 
@@ -144,8 +123,7 @@ public final class StructureEvidence {
             }
             if (groups.size() < 512) groups.add(next);
         }
-        // Apply the source's city size check after grouping, rather than making the
-        // marker count depend on the traversal order of partial bounding boxes.
+        // Require a surviving portion of the central reinforced frame, including vertical extent.
         groups.removeIf(f -> f.kind == Kind.ANCIENT_CITY && !cityShape(f));
         if (enabled.contains(Kind.DUNGEON)) {
             for (Found room : DungeonEvidence.locate(markers)) {
@@ -188,8 +166,7 @@ public final class StructureEvidence {
         double x = found.bounds.getXsize(),
                 y = found.bounds.getYsize(),
                 z = found.bounds.getZsize();
-        return found.markers < 3
-                || (!(x < 4 && z < 4) && y >= 2 && (found.markers >= 8 || x >= 6 && z >= 6));
+        return found.markers >= 8 && Math.max(x, z) >= 4 && y >= 2;
     }
 
     public static List<Found> carryVisits(List<Found> fresh, List<Found> previous, Vec3 player) {

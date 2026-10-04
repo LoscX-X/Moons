@@ -32,10 +32,6 @@ namespace Moons.WindowsLauncher
         private static readonly Color Muted = Color.FromArgb(139, 143, 148);
         private static readonly Color Accent = Color.FromArgb(145, 116, 255);
         private static readonly Color AccentHover = Color.FromArgb(161, 137, 255);
-        private const string Payload26_1Resource = "Moons.Payload.26_1.jar";
-        private const string Payload26_2PatchResource = "Moons.Payload.26_2.patch";
-        private const string Payload26_3PatchResource = "Moons.Payload.26_3.patch";
-        private const string Payload26_4PatchResource = "Moons.Payload.26_4.patch";
         private const string FeaturesJarEntry =
             "META-INF/moons/modules/moons-core-features.jar";
         private const string BootstrapApiResource = "Moons.Api.jar";
@@ -139,9 +135,41 @@ namespace Moons.WindowsLauncher
             {
                 return SelfTestVersionDetection();
             }
+            if (Contains(arguments, "--legacy-view")) {
+                try {
+                    string home = ResolveHome();
+                    var ui = DependencyRuntime.Metadata(DependencyRuntime.UiMetadataResource);
+                    var ysm = DependencyRuntime.Metadata(DependencyRuntime.YsmMetadataResource);
+                    string view = DependencyRuntime.LegacyView(home, ui, ysm);
+                    DependencyRuntime.Verify(view, ui, ysm);
+                    Console.WriteLine(view);
+                    return 0;
+                } catch (Exception error) { Console.Error.WriteLine(error.Message); return 1; }
+            }
+            if (Contains(arguments, "--dependency-context")) {
+                try {
+                    string version = VersionCatalog.Normalize(OptionArgument(arguments, "--minecraft-version"));
+                    var context = DependencyRuntime.Resolve(ResolveHome(), VersionCatalog.FindArtifact(version));
+                    Console.WriteLine(context.Path);
+                    return 0;
+                } catch (Exception error) { Console.Error.WriteLine(error.Message); return 1; }
+            }
+            if (Contains(arguments, "--legacy-release")) {
+                string release;
+                string version = OptionArgument(arguments, "--minecraft-version");
+                if (version != null && VersionCatalog.LegacyReleases.TryGetValue(version.Trim(), out release)) {
+                    Console.WriteLine(release); return 0;
+                }
+                Console.Error.WriteLine("No frozen legacy release is registered for this version."); return 1;
+            }
             if (Contains(arguments, "--verify-dependencies"))
             {
-                try { DependencyRuntime.Verify(ResolveHome()); return 0; }
+                try {
+                    string version = OptionArgument(arguments, "--minecraft-version");
+                    if (version == null) DependencyRuntime.Verify(ResolveHome());
+                    else DependencyRuntime.Resolve(ResolveHome(), VersionCatalog.FindArtifact(VersionCatalog.Normalize(version)));
+                    return 0;
+                }
                 catch (Exception error) { Console.Error.WriteLine(error.Message); return 1; }
             }
             if (Contains(arguments, "--install-ysm-only"))
@@ -155,10 +183,7 @@ namespace Moons.WindowsLauncher
                 {
                     string home = ResolveHome();
                     DependencyRuntime.Verify(home);
-                    ExtractPayload(home, "26.1");
-                    ExtractPayload(home, "26.2");
-                    ExtractPayload(home, "26.3");
-                    ExtractPayload(home, "26.4-snapshot-1");
+                    foreach (var profile in VersionCatalog.Profiles) ExtractPayload(home, profile.ArtifactId);
                     ExtractBootstrapApi(home);
                     ExtractBridge(home);
                     HardwareIdGenerator.Generate();
@@ -501,8 +526,7 @@ namespace Moons.WindowsLauncher
         {
             string home = ResolveHome();
             CacheMaintenance.Run(home);
-            progress(4, "Checking UI runtime dependencies");
-            DependencyRuntime.Verify(home);
+            progress(4, "Preparing version selection");
             progress(18, "Extracting shared " + DisplayName + " JVMTI components");
             string hardwareId = HardwareIdGenerator.Generate();
             string bootstrapApi = ExtractBootstrapApi(home);
@@ -548,10 +572,11 @@ namespace Moons.WindowsLauncher
                 target, OptionArgument(arguments, "--minecraft-version"));
             ThrowIfCancelled(cancelled);
             progress(43, "Minecraft " + detectedVersion + " selected: " + target.Label);
+            var dependencies = DependencyRuntime.Resolve(home, VersionCatalog.FindArtifact(detectedVersion));
             string payload = ExtractPayload(home, detectedVersion);
             progress(48, "Loaded embedded Minecraft " + detectedVersion + " payload");
             LoadBridge(bridge, payload, bootstrapApi, home, hardwareId,
-                target.Pid, progress, cancelled);
+                target.Pid, progress, cancelled, dependencies);
         }
 
         private sealed class LoaderForm : Form
@@ -1005,7 +1030,7 @@ namespace Moons.WindowsLauncher
                 {
                     throw new InvalidOperationException(
                         "Unsupported --minecraft-version value: " + configured
-                        + ". Expected 26.1, 26.1.2, 26.2, 26.3, 26.4-snapshot-1.");
+                        + ". Expected " + VersionCatalog.ConfiguredVersions(", ") + ".");
                 }
                 return selected;
             }
@@ -1025,55 +1050,20 @@ namespace Moons.WindowsLauncher
 
             throw new InvalidOperationException(
                 "Unable to identify whether PID " + target.Pid
-                + " is Minecraft 26.1.2, 26.2, 26.3, 26.4-snapshot-1. Load was cancelled to avoid loading "
+                + " is Minecraft " + VersionCatalog.GameVersions(", ") + ". Load was cancelled to avoid loading "
                 + "the wrong mappings.\r\n\r\n"
                 + "Start the game normally so its command line contains --version, or run "
-                + DisplayName + " with --minecraft-version 26.1/26.1.2/26.2/26.3/26.4-snapshot-1.");
+                + DisplayName + " with --minecraft-version " + VersionCatalog.ConfiguredVersions("/") + ".");
         }
 
         private static string NormalizeConfiguredVersion(string configured)
         {
-            string value = configured == null ? String.Empty : configured.Trim();
-            if (String.Equals(value, "26.1", StringComparison.OrdinalIgnoreCase)
-                || String.Equals(value, "26.1.2", StringComparison.OrdinalIgnoreCase))
-            {
-                return "26.1";
-            }
-            if (String.Equals(value, "26.3", StringComparison.OrdinalIgnoreCase))
-            {
-                return "26.3";
-            }
-            if (String.Equals(value, "26.4-snapshot-1", StringComparison.OrdinalIgnoreCase))
-            {
-                return "26.4-snapshot-1";
-            }
-            return String.Equals(value, "26.2", StringComparison.OrdinalIgnoreCase)
-                ? "26.2" : null;
+            return VersionCatalog.Normalize(configured);
         }
 
         private static string MatchSupportedVersion(string evidence)
         {
-            if (String.IsNullOrWhiteSpace(evidence))
-            {
-                return null;
-            }
-            bool is26_1 = Regex.IsMatch(evidence,
-                @"(?<![0-9.])26\.1\.2(?![0-9.])",
-                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-            bool is26_2 = Regex.IsMatch(evidence,
-                @"(?<![0-9.])26\.2(?![0-9.])",
-                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-            bool is26_3 = Regex.IsMatch(evidence,
-                @"(?<![0-9A-Za-z_.\-])26\.3(?=\.jar(?:$|[^0-9A-Za-z_.\-])|$|[^0-9A-Za-z_.\-])",
-                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-            bool is26_4 = Regex.IsMatch(evidence,
-                @"(?<![0-9A-Za-z_.\-])26\.4-snapshot-1(?=\.jar(?:$|[^0-9A-Za-z_.\-])|$|[^0-9A-Za-z_.\-])",
-                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-            if ((is26_1 ? 1 : 0) + (is26_2 ? 1 : 0) + (is26_3 ? 1 : 0) + (is26_4 ? 1 : 0) != 1)
-            {
-                return null;
-            }
-            return is26_4 ? "26.4-snapshot-1" : is26_3 ? "26.3" : is26_2 ? "26.2" : "26.1";
+            return VersionCatalog.MatchEvidence(evidence);
         }
 
         private static string ReadProcessCommandLine(int pid)
@@ -1276,28 +1266,17 @@ namespace Moons.WindowsLauncher
 
         private static string ExtractPayload(string home, string version)
         {
-            if (String.Equals(version, "26.1", StringComparison.Ordinal))
-            {
-                return ExtractResource(home, Payload26_1Resource, "moons-26.1.jar");
-            }
-            if (String.Equals(version, "26.2", StringComparison.Ordinal))
-            {
-                return ExtractPatchedPayload(home, Payload26_2PatchResource, "moons-26.2.jar");
-            }
-            if (String.Equals(version, "26.3", StringComparison.Ordinal))
-            {
-                return ExtractPatchedPayload(home, Payload26_3PatchResource, "moons-26.3.jar");
-            }
-            if (String.Equals(version, "26.4-snapshot-1", StringComparison.Ordinal))
-            {
-                return ExtractPatchedPayload(home, Payload26_4PatchResource, "moons-26.4-snapshot-1.jar");
-            }
-            throw new InvalidOperationException("No embedded payload for Minecraft " + version + ".");
+            var profile = VersionCatalog.FindArtifact(version);
+            if (profile == null)
+                throw new InvalidOperationException("No embedded payload for Minecraft " + version + ".");
+            return profile == VersionCatalog.BaseProfile
+                ? ExtractResource(home, profile.PayloadResource, profile.PayloadFileName)
+                : ExtractPatchedPayload(home, profile.PayloadResource, profile.PayloadFileName);
         }
 
         private static string ExtractPatchedPayload(string home, string patchResource, string fileName)
         {
-            byte[] basePayload = ReadResourceBytes(Payload26_1Resource);
+            byte[] basePayload = ReadResourceBytes(VersionCatalog.BaseProfile.PayloadResource);
             byte[] patch = ReadResourceBytes(patchResource);
             string identity = Hashing.Sha256(Encoding.UTF8.GetBytes(
                 Hashing.Sha256(basePayload) + ":" + Hashing.Sha256(patch)));
@@ -1498,7 +1477,8 @@ namespace Moons.WindowsLauncher
             string hardwareId,
             string pidText,
             Action<int, string> progress,
-            Func<bool> cancelled)
+            Func<bool> cancelled,
+            DependencyRuntime.Context dependencies)
         {
             int pid;
             if (!Int32.TryParse(pidText, out pid) || pid <= 0)
@@ -1517,7 +1497,7 @@ namespace Moons.WindowsLauncher
             using (LoadSession session = LoadSession.Acquire(pid, cancelled))
             {
                 LoadBridgeLocked(bridge, payload, bootstrapApi, home, hardwareId,
-                    pid, session, progress, cancelled);
+                    pid, session, progress, cancelled, dependencies);
             }
         }
 
@@ -1530,7 +1510,8 @@ namespace Moons.WindowsLauncher
             int pid,
             LoadSession session,
             Action<int, string> progress,
-            Func<bool> cancelled)
+            Func<bool> cancelled,
+            DependencyRuntime.Context dependencies)
         {
             progress(52, "Validating target identity and architecture");
             ThrowIfCancelled(cancelled);
@@ -1627,7 +1608,8 @@ namespace Moons.WindowsLauncher
                 ThrowIfCancelled(cancelled);
                 string dataDirectory = Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), ".moons");
-                session.Prepare(dataDirectory, payload, bootstrapApi, home, DisplayName, hardwareId);
+                session.Prepare(dataDirectory, payload, bootstrapApi, home, DisplayName, hardwareId,
+                    dependencies.Path, dependencies.Hash);
 
                 progress(70, "Loading JVMTI bridge into target JVM");
                 byte[] pathBytes = Encoding.Unicode.GetBytes(bridge + "\0");

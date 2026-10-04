@@ -13,6 +13,8 @@ import java.util.function.Predicate;
 
 /** Shared aiming/attack geometry. Backtrack already updates the live entity by delayed replay. */
 public final class CombatGeometry {
+    private static int originalPositionsDepth;
+
     public record Shape(AABB box, Vec3 offset) {
         public Vec3 original(Vec3 point) {
             return point.subtract(offset);
@@ -25,7 +27,18 @@ public final class CombatGeometry {
 
     private CombatGeometry() {}
 
+    /** Keeps a synchronous client-thread attack and its Critical forecast on raw entity boxes. */
+    public static void withOriginalPositions(Runnable attack) {
+        originalPositionsDepth++;
+        try {
+            attack.run();
+        } finally {
+            originalPositionsDepth--;
+        }
+    }
+
     public static Shape shape(Minecraft client, Entity entity) {
+        if (originalPositionsDepth > 0) return new Shape(entity.getBoundingBox(), Vec3.ZERO);
         return Misplace.attackShape(client, entity);
     }
 
@@ -47,7 +60,7 @@ public final class CombatGeometry {
 
     // Offset <= 1.5 plus up to 3 blocks of non-teleport interpolation movement.
     public static double searchPadding() {
-        return Misplace.isEnabled() ? 5.5 : 1;
+        return originalPositionsDepth == 0 && Misplace.isEnabled() ? 5.5 : 1;
     }
 
     public static Entity findTargetOnRay(

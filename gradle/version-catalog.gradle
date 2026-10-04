@@ -1,0 +1,100 @@
+/* Ordered product profiles. Only implemented profiles generate build/launcher entries. */
+def catalogFile = file('config/version-catalog.json')
+def catalog = new groovy.json.JsonSlurper().parse(catalogFile)
+if (catalog.keySet() != ['schema', 'activeWindow', 'profiles'].toSet()) {
+    throw new GradleException('Unknown or missing version catalog fields')
+}
+if (catalog.schema != 1 || catalog.activeWindow != 4) {
+    throw new GradleException('Unsupported version catalog schema or active window')
+}
+def profiles = catalog.profiles
+if (!(profiles instanceof List) || profiles.isEmpty()) {
+    throw new GradleException('Version catalog must declare ordered profiles')
+}
+['profileId', 'gameId', 'artifactId'].each { key ->
+    def values = profiles.collect { it[key] }
+    if (values.any { !(it instanceof String) || !(it ==~ /[A-Za-z0-9]+(?:[._-][A-Za-z0-9]+)*/) }
+            || values.toSet().size() != values.size()) {
+        throw new GradleException("Invalid or duplicate version catalog ${key}")
+    }
+}
+def aliases = []
+profiles.each { profile ->
+    def required = ['profileId', 'gameId', 'aliases', 'artifactId', 'status', 'available'].toSet()
+    if (profile.available && profile.status == 'legacy') required.add('releaseLock')
+    else if (profile.available) required.addAll(['javaVersion', 'payloadFamily', 'backend', 'evidencePattern', 'overlayBackend'])
+    if (profile.keySet() != required) {
+        throw new GradleException("Unknown or missing support profile fields: ${profile.profileId}")
+    }
+    if (!(profile.status in ['active', 'legacy', 'special']) || !(profile.available instanceof Boolean)
+            || !(profile.aliases instanceof List) || profile.aliases.isEmpty()) {
+        throw new GradleException("Invalid support profile ${profile.profileId}")
+    }
+    profile.aliases.each { alias ->
+        if (!(alias instanceof String) || !(alias ==~ /[A-Za-z0-9._-]+/)
+                || aliases.contains(alias.toLowerCase(Locale.ROOT))) {
+            throw new GradleException("Invalid or duplicate version alias ${alias}")
+        }
+        aliases.add(alias.toLowerCase(Locale.ROOT))
+    }
+    if (!profile.aliases.contains(profile.gameId)) {
+        throw new GradleException("Missing exact game ID alias for ${profile.profileId}")
+    }
+    if (profile.available && profile.status == 'legacy') {
+        if (!(profile.releaseLock instanceof String) || !(profile.releaseLock ==~ /[a-f0-9]{64}/))
+            throw new GradleException("Legacy profile requires a complete frozen release lock: ${profile.profileId}")
+    } else if (profile.available) {
+        if (profile.javaVersion != 25 || profile.payloadFamily != 'modern'
+                || profile.backend != 'windows-x64-jvmti' || !(profile.evidencePattern instanceof String)
+                || !(profile.overlayBackend in ['gl', 'blaze3d', 'renderpearl'])
+                || !file("src/minecraft/versions/${profile.profileId}").isDirectory()) {
+            throw new GradleException("Unimplemented build profile ${profile.profileId}")
+        }
+        java.util.regex.Pattern.compile(profile.evidencePattern)
+    }
+}
+def active = profiles.findAll { it.status == 'active' }
+if (active.size() != catalog.activeWindow || active.any { !it.available }) {
+    throw new GradleException('The active window must contain four implemented profiles')
+}
+// Legacy artifacts are frozen externally; never rebuild them with the active toolchain.
+def frozenProfiles = profiles.collect { profile ->
+    (profile + [aliases: profile.aliases.asImmutable()]).asImmutable()
+}.asImmutable()
+def buildProfiles = frozenProfiles.findAll { it.available && it.status != 'legacy' }.asImmutable()
+ext.moonsVersions = [
+        catalogProfiles: frozenProfiles,
+        activeWindow: catalog.activeWindow,
+        profiles: buildProfiles,
+        supportedVersions: buildProfiles.collectEntries { [(it.gameId): it.profileId] }.asImmutable(),
+        catalogFile: catalogFile,
+        launcherSource: layout.buildDirectory.file('generated/launcher/VersionCatalogData.cs')
+].asImmutable()
+
+tasks.register('launcherVersionCatalog') {
+    inputs.file(catalogFile)
+    outputs.file(moonsVersions.launcherSource)
+    doLast {
+        // C# string literals generated from data; no JSON library is needed in the EXE.
+        def literal = { String value -> groovy.json.JsonOutput.toJson(value) }
+        def entries = buildProfiles.withIndex().collect { profile, index ->
+            def resource = "Moons.Payload.${profile.profileId}." + (index == 0 ? 'jar' : 'patch')
+            ('            new SupportProfile(' + [profile.profileId, profile.gameId, profile.artifactId,
+                    profile.status, resource, profile.evidencePattern].collect(literal).join(', ')
+                    + ', new string[] { ' + profile.aliases.collect(literal).join(', ') + ' }, ' + profile.javaVersion + ')')
+        }
+        def legacyEntries = frozenProfiles.findAll { it.available && it.status == 'legacy' }.collectMany { profile ->
+            profile.aliases.collect { alias -> '            { ' + literal(alias) + ', ' + literal(profile.releaseLock) + ' }' }
+        }
+        def output = moonsVersions.launcherSource.get().asFile
+        output.parentFile.mkdirs()
+        output.setText('// Generated from config/version-catalog.json.\n'
+                + 'namespace Moons.WindowsLauncher\n{\n'
+                + '    internal static partial class VersionCatalog\n    {\n'
+                + '        internal static readonly SupportProfile[] Profiles = {\n'
+                + entries.join(',\n') + '\n        };\n'
+                + '        internal static readonly System.Collections.Generic.Dictionary<string,string> LegacyReleases =\n'
+                + '            new System.Collections.Generic.Dictionary<string,string>(System.StringComparer.OrdinalIgnoreCase) {\n'
+                + legacyEntries.join(',\n') + '\n        };\n    }\n}\n', 'UTF-8')
+    }
+}

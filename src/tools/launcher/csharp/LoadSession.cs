@@ -61,7 +61,8 @@ namespace Moons.WindowsLauncher
         }
 
         internal void Prepare(string directory, string payload, string bootstrapApi,
-            string home, string displayName, string hardwareId) {
+            string home, string displayName, string hardwareId,
+            string dependencyContext = null, string dependencyHash = null) {
             if (!owned) throw new ObjectDisposedException("LoadSession");
             if (dataDirectory != null) throw new InvalidOperationException("Load attempt already prepared.");
             Directory.CreateDirectory(directory);
@@ -73,7 +74,10 @@ namespace Moons.WindowsLauncher
                 + "home=" + home + Environment.NewLine
                 + "name=" + displayName + Environment.NewLine
                 + "hwid=" + hardwareId + Environment.NewLine
-                + "attempt=" + Attempt, new UTF8Encoding(false));
+                + "attempt=" + Attempt
+                + (dependencyContext == null ? String.Empty : Environment.NewLine
+                    + "dependencies=" + dependencyContext + Environment.NewLine
+                    + "dependencies.sha256=" + dependencyHash), new UTF8Encoding(false));
             initialOffset = CaptureOffset(directory);
             dataDirectory = directory;
         }
@@ -119,6 +123,8 @@ namespace Moons.WindowsLauncher
             DateTime deadline = DateTime.UtcNow.AddSeconds(20);
             long offset = Math.Max(0L, initialOffset);
             string pending = String.Empty;
+            bool retransformed = false;
+            bool coreReady = false;
 
             while (DateTime.UtcNow < deadline)
             {
@@ -157,15 +163,17 @@ namespace Moons.WindowsLauncher
                         if (line.IndexOf("initial retransformation complete",
                             StringComparison.Ordinal) >= 0)
                         {
-                            return;
+                            retransformed = true;
                         }
+                        if (line.IndexOf("core ready: READY:", StringComparison.Ordinal) >= 0) coreReady = true;
+                        if (retransformed && coreReady) return;
                     }
                 }
                 Thread.Sleep(75);
             }
 
             throw new TimeoutException(
-                "The bridge loaded, but Runtime startup and initial retransformation "
+                "The bridge loaded, but required hooks, first client tick and core startup "
                 + "did not complete. Check " + log);
         }
 

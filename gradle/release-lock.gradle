@@ -1,0 +1,167 @@
+/* Freeze the actual offline distribution and its precise installation/launch contract. */
+def profiles = moonsVersions.profiles
+def launcher = layout.buildDirectory.file('dist/moon.exe')
+def installer = layout.buildDirectory.file('dist/moon-install.exe')
+def ui = tasks.named('uiDependenciesJar').flatMap { it.archiveFile }
+def ysm = layout.buildDirectory.file('dist/moons-ysm-all.zip')
+def api = tasks.named('apiJar', Jar).flatMap { it.archiveFile }
+def bridge = layout.buildDirectory.file("${moonsBuild.loaderStagingDirectory}/moons-bridge.dll")
+def payloads = profiles.collect { layout.buildDirectory.file("universal/${it.artifactId}/moons.jar") }
+def patches = profiles.drop(1).collect { layout.buildDirectory.file("universal/moons-${it.artifactId}.patch.zip") }
+def output = layout.buildDirectory.file('dist/moons-release-lock.json')
+def checksum = layout.buildDirectory.file('dist/moons-release-lock.json.sha256')
+def archiveRoot = layout.buildDirectory.dir('dist/releases')
+def buildId = providers.gradleProperty('moons_build_id')
+        .getOrElse(providers.environmentVariable('GITHUB_SHA').getOrElse('local'))
+
+def releaseLock = tasks.register('moonsReleaseLock') {
+    group = 'build'
+    description = 'Locks hashes, embedded component sources and the matching offline EXEs into an immutable release snapshot.'
+    dependsOn 'moonsExe', 'moonsInstallExe'
+    inputs.files(launcher, installer, ui, ysm, api, bridge, payloads, patches, moonsVersions.catalogFile)
+    inputs.property('clientVersion', project.version.toString())
+    inputs.property('buildId', buildId)
+    outputs.files(output, checksum)
+    // The digest is only known after building; restore a manually removed offline snapshot.
+    outputs.upToDateWhen {
+        def sidecar = checksum.get().asFile
+        sidecar.isFile() && new File(archiveRoot.get().asFile,
+                sidecar.getText('US-ASCII').trim() + '/moons-release-lock.json').isFile()
+    }
+    doLast {
+        def digest = { byte[] bytes -> java.util.HexFormat.of().formatHex(
+                java.security.MessageDigest.getInstance('SHA-256').digest(bytes)) }
+        def fileDigest = { File artifact ->
+            def hash = java.security.MessageDigest.getInstance('SHA-256')
+            artifact.withInputStream { stream ->
+                byte[] buffer = new byte[65536]
+                int count
+                while ((count = stream.read(buffer)) >= 0) if (count > 0) hash.update(buffer, 0, count)
+            }
+            java.util.HexFormat.of().formatHex(hash.digest())
+        }
+        def components = []
+        def archiveFiles = []
+        def component = { String id, String domain, Map source, File artifact ->
+            if (!artifact.isFile()) throw new GradleException("Missing release component ${id}: ${artifact}")
+            def entry = [id: id, domain: domain, sha256: fileDigest(artifact), size: artifact.length(), source: source]
+            components.add(entry)
+            entry
+        }
+        def launcherEntry = component('launcher', 'host', [file: 'moon.exe'], launcher.get().asFile)
+        def installerEntry = component('installer', 'host', [file: 'moon-install.exe'], installer.get().asFile)
+        archiveFiles.add([entry: launcherEntry, artifact: launcher.get().asFile])
+        archiveFiles.add([entry: installerEntry, artifact: installer.get().asFile])
+        component('api', 'bootstrap', [exe: 'launcher', resource: 'Moons.Api.jar'], api.get().asFile)
+        component('native-bridge', 'native', [exe: 'launcher', resource: 'Moons.Bridge.dll'], bridge.get().asFile)
+        component('ui', 'runtime', [exe: 'installer', resource: 'Moons.UiRuntime.jar'], ui.get().asFile)
+        component('ysm-package', 'archive', [exe: 'installer', resource: 'Moons.Ysm.zip'], ysm.get().asFile)
+        def requiredYsmNames = (['core', 'codecs', 'images'].collect { "libraries/moons-ysm-${it}.jar".toString() }
+                + profiles.collect { "modules/moons-ysm-${it.gameId}.jar".toString() })
+        def ysmEntries = []
+        new java.util.zip.ZipFile(ysm.get().asFile).withCloseable { zip ->
+            zip.entries().findAll { !it.directory }.sort { it.name }.each { item ->
+                byte[] bytes = zip.getInputStream(item).withCloseable { it.readAllBytes() }
+                components.add([id: "ysm:${item.name}".toString(), domain: item.name.startsWith('modules/') ? 'feature' : 'module-library',
+                        sha256: digest(bytes), size: bytes.length, source: [zip: 'ysm-package', entry: item.name]])
+                if (requiredYsmNames.contains(item.name)) ysmEntries.add("ysm:${item.name}".toString())
+            }
+        }
+        def declaredProfiles = []
+        profiles.eachWithIndex { profile, index ->
+            def payloadId = "payload:${profile.profileId}".toString()
+            def recipe = index == 0
+                    ? [exe: 'launcher', resource: "Moons.Payload.${profile.profileId}.jar".toString()]
+                    : [base: "payload:${profiles.first().profileId}".toString(), patch: "patch:${profile.profileId}".toString(), recipe: 'entry-overlay-1']
+            // An entry overlay preserves contents, but C# ZIP serialization need not preserve the
+            // full build JAR's byte hash. Archive the actual build JAR and describe launch separately.
+            def payloadEntry = component(payloadId, 'game-loader',
+                    [file: "payloads/${profile.artifactId}/moons.jar".toString()], payloads[index].get().asFile)
+            archiveFiles.add([entry: payloadEntry, artifact: payloads[index].get().asFile])
+            if (index > 0) component("patch:${profile.profileId}".toString(), 'archive',
+                    [exe: 'launcher', resource: "Moons.Payload.${profile.profileId}.patch".toString()], patches[index - 1].get().asFile)
+            def nested = []
+            new java.util.zip.ZipFile(payloads[index].get().asFile).withCloseable { zip ->
+                [api: 'META-INF/moons/bootstrap/moons-api.jar', runtime: 'META-INF/moons/runtime/moons-runtime.jar',
+                 features: 'META-INF/moons/modules/moons-core-features.jar'].each { kind, name ->
+                    def item = zip.getEntry(name)
+                    if (item == null) throw new GradleException("Missing ${name} in ${payloadId}")
+                    byte[] bytes = zip.getInputStream(item).withCloseable { it.readAllBytes() }
+                    def id = "${kind}:${profile.profileId}".toString()
+                    components.add([id: id, domain: kind == 'api' ? 'bootstrap' : kind == 'runtime' ? 'runtime' : 'feature',
+                            sha256: digest(bytes), size: bytes.length, source: [zip: payloadId, entry: name]])
+                    nested.add(id)
+                }
+            }
+            def profileYsm = ysmEntries.findAll { it.startsWith('ysm:libraries/')
+                    || it == "ysm:modules/moons-ysm-${profile.gameId}.jar".toString() }
+            declaredProfiles.add([profileId: profile.profileId, gameId: profile.gameId, artifactId: profile.artifactId,
+                    status: profile.status, aliases: profile.aliases, javaVersion: profile.javaVersion,
+                    classMajor: profile.javaVersion + 44, backend: profile.backend, payloadFamily: profile.payloadFamily,
+                    launchRecipe: recipe,
+                    requiredComponents: ['launcher', 'installer', 'api', 'native-bridge', 'ui', 'ysm-package', payloadId]
+                            + (index > 0 ? ["payload:${profiles.first().profileId}".toString(), "patch:${profile.profileId}".toString()] : [])
+                            + nested + profileYsm,
+                    installationComponents: ['ui'] + profileYsm])
+        }
+        def ids = components.collect { it.id }.toSet()
+        if (ids.size() != components.size() || ysmEntries.size() != requiredYsmNames.size() || declaredProfiles.any { profile ->
+            profile.requiredComponents.any { !ids.contains(it) }
+                    || [profile.launchRecipe.base, profile.launchRecipe.patch].findAll { it != null }.any {
+                        !profile.requiredComponents.contains(it)
+                    }
+        }) throw new GradleException('Invalid release component closure')
+        def document = [schema: 1, releaseId: "${project.version}-${buildId}".toString(),
+                catalogSha256: fileDigest(moonsVersions.catalogFile), activeWindow: moonsVersions.activeWindow,
+                declaredSupport: moonsVersions.catalogProfiles, profiles: declaredProfiles,
+                protocol: [dependencyMetadata: 2, launchContext: 'attempt-scoped-sha256-context', manifestAwareRuntime: true,
+                           readiness: 'required-hooks-jvm-acceptance-first-tick-core-active',
+                           legacyLayout: 'compatibility-current-pointer', userData: 'shared-home-data'],
+                components: components]
+        byte[] bytes = (groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(document)) + '\n').getBytes('UTF-8')
+        def lockHash = digest(bytes)
+        def frozen = new File(archiveRoot.get().asFile, lockHash)
+        frozen.mkdirs()
+        // Publish the immutable lock only after both self-contained offline EXEs have been copied and checked.
+        archiveFiles.each { archived ->
+            def entry = archived.entry
+            def sourceFile = archived.artifact
+            def destination = new File(frozen, entry.source.file)
+            destination.parentFile.mkdirs()
+            if (!destination.exists()) java.nio.file.Files.copy(sourceFile.toPath(), destination.toPath())
+            if (destination.length() != entry.size || fileDigest(destination) != entry.sha256)
+                throw new GradleException("Immutable release artifact mismatch: ${destination}")
+        }
+        def frozenLock = new File(frozen, 'moons-release-lock.json')
+        if (frozenLock.exists()) {
+            if (!java.util.Arrays.equals(frozenLock.bytes, bytes)) throw new GradleException('Immutable release lock mismatch')
+        } else java.nio.file.Files.write(frozenLock.toPath(), bytes, java.nio.file.StandardOpenOption.CREATE_NEW)
+        java.nio.file.Files.write(output.get().asFile.toPath(), bytes)
+        checksum.get().asFile.setText(lockHash + '\n', 'US-ASCII')
+        logger.lifecycle("MOONS_RELEASE_LOCK ${lockHash} components=${components.size()} profiles=${declaredProfiles.size()}")
+    }
+}
+
+def releaseArchive = tasks.register('moonsReleaseArchive', Zip) {
+    group = 'build'
+    description = 'Packages the immutable lock, exact payloads and matching offline installer/loader.'
+    dependsOn releaseLock
+    archiveFileName = 'moons-release-archive.zip'
+    destinationDirectory = layout.buildDirectory.dir('dist')
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+    from(archiveRoot) {
+        include { details ->
+            def sidecar = checksum.get().asFile
+            sidecar.isFile() && details.relativePath.segments[0] == sidecar.getText('US-ASCII').trim()
+        }
+        eachFile { details ->
+            details.relativePath = new org.gradle.api.file.RelativePath(true,
+                    details.relativePath.segments.drop(1) as String[])
+        }
+        includeEmptyDirs = false
+    }
+    from(checksum)
+}
+
+tasks.named('moonsPackages').configure { dependsOn releaseArchive }

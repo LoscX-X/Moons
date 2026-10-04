@@ -11,9 +11,7 @@ import net.minecraft.network.protocol.Packet;
  */
 public final class PacketDelayQueue {
     private final LagUtils<Packet<?>> packets;
-    private Connection connection;
-    private Object context;
-    private long generation;
+    private final PacketSession<Connection, Object> session = new PacketSession<>();
 
     public PacketDelayQueue(int capacity) {
         packets = new LagUtils<>(capacity);
@@ -33,15 +31,13 @@ public final class PacketDelayQueue {
 
     /** Identity changes discard stale packets; they must never reach another session. */
     public synchronized void observe(Connection connection, Object context) {
-        if (this.connection != connection
-                || this.context != context
+        if (!session.matches(connection, context)
                 || connection == null
                 || !connection.isConnected()) {
             packets.clear();
-            generation++;
+            session.invalidate();
         }
-        this.connection = connection;
-        this.context = context;
+        session.bind(connection, context);
     }
 
     /** Manual Blink: only cancel the original event when this returns true. */
@@ -55,6 +51,7 @@ public final class PacketDelayQueue {
     }
 
     private boolean canCapture() {
+        Connection connection = session.owner();
         return !LagUtils.isReplaying() && connection != null && connection.isConnected();
     }
 
@@ -100,14 +97,14 @@ public final class PacketDelayQueue {
 
     private void replay(int count, boolean dueOnly) {
         if (LagUtils.isReplaying()) return;
-        Connection observed = connection;
-        long observedGeneration = generation;
+        Connection observed = session.owner();
+        long observedGeneration = session.generation();
         long now = LagUtils.nowMillis();
         LagUtils.replay(
                 () -> {
                     for (int sent = 0; sent < count; sent++) {
                         // A synchronous observer can discard or replace the context during send.
-                        if (observedGeneration != generation) return;
+                        if (observedGeneration != session.generation()) return;
                         if (observed == null || !observed.isConnected()) {
                             discard();
                             return;
@@ -121,12 +118,11 @@ public final class PacketDelayQueue {
 
     public synchronized void clear() {
         packets.clear();
-        generation++;
+        session.invalidate();
     }
 
     public synchronized void discard() {
         clear();
-        connection = null;
-        context = null;
+        session.bind(null, null);
     }
 }

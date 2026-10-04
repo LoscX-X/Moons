@@ -300,7 +300,8 @@ public final class ChestStealer {
         long now = System.nanoTime();
         if (closeAfterTick == Integer.MIN_VALUE) {
             closeAfterTick = client.player.tickCount + (legitMode() ? 0 : 1);
-            int delay = ThreadLocalRandom.current().nextInt(closeDelayMinMs(), closeDelayMaxMs() + 1);
+            int delay =
+                    ThreadLocalRandom.current().nextInt(closeDelayMinMs(), closeDelayMaxMs() + 1);
             closeAtNanos = now + delay * 1_000_000L;
         }
         if (client.player.tickCount - closeAfterTick < 0 || now - closeAtNanos < 0L) return;

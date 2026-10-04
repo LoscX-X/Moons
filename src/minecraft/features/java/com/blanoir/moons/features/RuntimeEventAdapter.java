@@ -32,6 +32,7 @@ import com.blanoir.moons.client.management.rotation.MoveFix;
 import com.blanoir.moons.client.management.rotation.RotationManager;
 import com.blanoir.moons.client.management.rotation.RotationQuantizer;
 import com.blanoir.moons.client.management.rotation.SilentPacketRotation;
+import com.blanoir.moons.client.management.task.ActivationGate;
 import com.blanoir.moons.client.module.framework.ModuleKeybinds;
 import com.blanoir.moons.client.module.impl.combat.SilentAura;
 import com.blanoir.moons.client.module.impl.combat.SprintReset;
@@ -89,6 +90,7 @@ final class RuntimeEventAdapter {
     private static final double INITIAL_FRAME_SECONDS = 1.0D / 240.0D;
 
     private final RuntimeEvents runtime;
+    private final ActivationGate activation;
     private final FrameClock frameClock = new FrameClock(INITIAL_FRAME_SECONDS);
     private final Map<Object, MouseCapture> mouseCaptures = weakMap();
     private final Map<Object, PositionCapture> positionCaptures = weakMap();
@@ -100,31 +102,36 @@ final class RuntimeEventAdapter {
     private volatile DeltaTracker deltaTracker;
     private final KeybindInputListener bindingInputs = new KeybindInputListener();
 
-    RuntimeEventAdapter(RuntimeEvents runtime) {
+    RuntimeEventAdapter(RuntimeEvents runtime, ActivationGate activation) {
         this.runtime = runtime;
+        this.activation = activation;
     }
 
     void bind(ResourceScope resources) {
         // Registration order is observable for cancellation and capture state.
-        resources.own(runtime.clientTick().subscribe(this::tick));
-        resources.own(runtime.frame().subscribe(this::frame));
-        resources.own(runtime.hud().subscribe(this::hud));
-        resources.own(runtime.worldRender().subscribe(this::worldRender));
-        resources.own(runtime.key().subscribe(this::key));
-        resources.own(runtime.mouse().subscribe(this::mouse));
-        resources.own(runtime.mouseScroll().subscribe(this::mouseScroll));
-        resources.own(runtime.mouseMove().subscribe(this::mouseMove));
-        resources.own(runtime.action().subscribe(this::action));
-        resources.own(runtime.packet().subscribe(this::packet));
-        resources.own(runtime.blockUpdate().subscribe(this::blockUpdate));
-        resources.own(runtime.playerUpdate().subscribe(this::playerUpdate));
-        resources.own(runtime.moveInput().subscribe(this::moveInput));
-        resources.own(runtime.playerMove().subscribe(this::playerMove));
-        resources.own(runtime.playerMoveEnd().subscribe(this::playerMoveEnd));
-        resources.own(runtime.playerPosition().subscribe(this::playerPosition));
-        resources.own(runtime.renderState().subscribe(this::renderState));
-        resources.own(runtime.rendererClose().subscribe(this::rendererClose));
-        resources.own(runtime.methodHook().subscribe(FeatureHooks::isActive, FeatureHooks::apply));
+        resources.own(runtime.clientTick().subscribe(activation.guard(this::tick)));
+        resources.own(runtime.frame().subscribe(activation.guard(this::frame)));
+        resources.own(runtime.hud().subscribe(activation.guard(this::hud)));
+        resources.own(runtime.worldRender().subscribe(activation.guard(this::worldRender)));
+        resources.own(runtime.key().subscribe(activation.guard(this::key)));
+        resources.own(runtime.mouse().subscribe(activation.guard(this::mouse)));
+        resources.own(runtime.mouseScroll().subscribe(activation.guard(this::mouseScroll)));
+        resources.own(runtime.mouseMove().subscribe(activation.guard(this::mouseMove)));
+        resources.own(runtime.action().subscribe(activation.guard(this::action)));
+        resources.own(runtime.packet().subscribe(activation.guard(this::packet)));
+        resources.own(runtime.blockUpdate().subscribe(activation.guard(this::blockUpdate)));
+        resources.own(runtime.playerUpdate().subscribe(activation.guard(this::playerUpdate)));
+        resources.own(runtime.moveInput().subscribe(activation.guard(this::moveInput)));
+        resources.own(runtime.playerMove().subscribe(activation.guard(this::playerMove)));
+        resources.own(runtime.playerMoveEnd().subscribe(activation.guard(this::playerMoveEnd)));
+        resources.own(runtime.playerPosition().subscribe(activation.guard(this::playerPosition)));
+        resources.own(runtime.renderState().subscribe(activation.guard(this::renderState)));
+        resources.own(runtime.rendererClose().subscribe(activation.guard(this::rendererClose)));
+        resources.own(
+                runtime.methodHook()
+                        .subscribe(
+                                activation.guardFilter(FeatureHooks::isActive),
+                                activation.guard(FeatureHooks::apply)));
     }
 
     private void tick(RuntimeEvents.ClientTick event) {
@@ -528,7 +535,8 @@ final class RuntimeEventAdapter {
 
     private void playerMove(RuntimeEvents.PlayerMove event) {
         Minecraft client = Minecraft.getInstance();
-        if (!client.isSameThread() || !(event.player() instanceof LocalPlayer entity)
+        if (!client.isSameThread()
+                || !(event.player() instanceof LocalPlayer entity)
                 || client.player != entity) return;
         MoveFix.State movementFix = MoveFix.current(client);
         if (!movementFix.active()) return;
@@ -544,7 +552,8 @@ final class RuntimeEventAdapter {
         Minecraft client = Minecraft.getInstance();
         // Entity.moveRelative is also hooked for integrated-server players and mobs.
         // Their returns must never restore a client player's temporary movement yaw.
-        if (!client.isSameThread() || !(event.player() instanceof LocalPlayer player)
+        if (!client.isSameThread()
+                || !(event.player() instanceof LocalPlayer player)
                 || client.player != player) return;
         restoreMovementYaw();
         EventBus.PLAYER_MOVE_END.post(new PlayerMoveEndEvent(player));

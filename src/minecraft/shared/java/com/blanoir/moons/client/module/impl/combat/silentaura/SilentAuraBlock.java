@@ -35,6 +35,10 @@ public final class SilentAuraBlock {
         LegacyBlock.reset(client);
     }
 
+    public static void suspend() {
+        LegacyBlock.suspend();
+    }
+
     public static boolean isEnabled() {
         return SilentAuraConfig.enabled() && SilentAuraConfig.block();
     }

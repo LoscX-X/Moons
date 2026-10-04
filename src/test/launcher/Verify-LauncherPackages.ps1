@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][string]$Distribution, [Parameter(Mandatory=$true)][string]$FixtureRoot)
+param([Parameter(Mandatory=$true)][string]$Distribution, [Parameter(Mandatory=$true)][string]$FixtureRoot, [string]$LegacyDistribution)
 $ErrorActionPreference = 'Stop'
 $Distribution = [IO.Path]::GetFullPath($Distribution)
 $fixture = Join-Path ([IO.Path]::GetFullPath($FixtureRoot)) ([Guid]::NewGuid().ToString('N'))
@@ -39,7 +39,7 @@ try {
     $installerVersion = Get-Content (Join-Path $fixture ('run-' + $script:attempt + '.out')) -Raw
     Run-Tool $loader '--version' 0
     $loaderVersion = Get-Content (Join-Path $fixture ('run-' + $script:attempt + '.out')) -Raw
-    if ($installerVersion -ne $loaderVersion -or $loaderVersion -notmatch 'client.version=\d+\.\d+\.\d+' -or
+    if ($installerVersion -ne $loaderVersion -or $loaderVersion -cnotmatch 'client.version=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+-(Experiment|Release)(\r?\n|$)' -or
         $loaderVersion -notmatch 'dependencies.version=[0-9a-f]{12}') { throw 'Mismatched package version metadata.' }
     $installerResources = [Reflection.Assembly]::LoadFile($installer).GetManifestResourceNames()
     $loaderResources = [Reflection.Assembly]::LoadFile($loader).GetManifestResourceNames()
@@ -56,6 +56,7 @@ try {
     if (Test-Path -LiteralPath $env:MOONS_HOME) { throw 'Loader modified a missing installation.' }
     Run-Tool $installer '--install-only' 0
     Run-Tool $loader '--verify-dependencies' 0
+    Run-Tool $loader '--verify-dependencies --minecraft-version 26.2' 0
     if (-not (Test-Path -LiteralPath (Join-Path $env:MOONS_HOME 'modules/moons-ysm-26.4-snapshot-1.jar'))) {
         throw '26.4 snapshot YSM adapter was not installed.'
     }
@@ -105,6 +106,44 @@ try {
     if ($null -eq $snapshotPayload -or $snapshotPayload.Length -eq 0) {
         throw '26.4 snapshot payload was not extracted.'
     }
-    Write-Output 'LAUNCHER_PACKAGES_VERIFIED: isolated roles, read-only loader, offline install, idempotence, 26.4 payload extraction, failed extraction preservation and UI/YSM repair.'
+    if ($LegacyDistribution) {
+        $currentHome = $env:MOONS_HOME
+        $env:MOONS_HOME = Join-Path $fixture 'old-home'
+        $oldInstaller = Join-Path $LegacyDistribution 'moon-install.exe'
+        $oldLoader = Join-Path $LegacyDistribution 'moon.exe'
+        Run-Tool $oldInstaller '--install-only' 0
+        Run-Tool $oldLoader '--verify-dependencies' 0
+        $oldUi = (Get-Content -LiteralPath (Join-Path $env:MOONS_HOME 'libraries/moons-ui-runtime.current') -Raw).Trim()
+        $oldFiles = @{}
+        Get-ChildItem -LiteralPath (Join-Path $env:MOONS_HOME 'libraries') -Filter 'moons-ysm-*.jar' | ForEach-Object {
+            $oldFiles['libraries/' + $_.Name] = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
+        }
+        Get-ChildItem -LiteralPath (Join-Path $env:MOONS_HOME 'modules') -Filter 'moons-ysm-*.jar' | ForEach-Object {
+            $oldFiles['modules/' + $_.Name] = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
+        }
+        $sharedData = Join-Path $env:MOONS_HOME 'data/core-features/config'
+        New-Item -ItemType Directory -Path $sharedData -Force | Out-Null
+        [IO.File]::WriteAllText((Join-Path $sharedData 'moons.properties'), 'existing-user-setting=true')
+        Run-Tool $installer '--install-only' 0
+        $oldView = $null
+        foreach ($view in Get-ChildItem -LiteralPath (Join-Path $env:MOONS_HOME 'legacy') -Directory) {
+            $viewPointer = Join-Path $view.FullName 'libraries/moons-ui-runtime.current'
+            if (-not (Test-Path -LiteralPath $viewPointer) -or (Get-Content -LiteralPath $viewPointer -Raw).Trim() -ne $oldUi) { continue }
+            $matches = $true
+            foreach ($name in $oldFiles.Keys) {
+                $path = Join-Path $view.FullName $name
+                if (-not (Test-Path -LiteralPath $path) -or (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ne $oldFiles[$name]) { $matches = $false; break }
+            }
+            if ($matches) { $oldView = $view.FullName; break }
+        }
+        if (-not $oldView) { throw 'New installer did not preserve the old executable dependency closure.' }
+        $env:MOONS_HOME = $oldView
+        Run-Tool $oldLoader '--verify-dependencies' 0
+        $linkedConfig = Join-Path $oldView 'data/core-features/config/moons.properties'
+        if ([IO.File]::ReadAllText($linkedConfig) -ne 'existing-user-setting=true') { throw 'Old installation view reset user configuration.' }
+        $env:MOONS_HOME = $currentHome
+        Write-Output 'LEGACY_EXE_VIEW_VERIFIED: actual old installer -> new installer -> actual old loader, unchanged dependencies and shared user configuration.'
+    }
+    Write-Output 'LAUNCHER_PACKAGES_VERIFIED: isolated roles, read-only loader, offline install, idempotence, selected profile, 26.4 payload extraction, failed extraction preservation and UI/YSM repair.'
 }
 finally { $env:MOONS_HOME = $previousHome }

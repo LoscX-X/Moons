@@ -5,6 +5,7 @@ import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.event.frame.FrameEvent;
 import com.blanoir.moons.client.event.frame.WorldRenderEvent;
 import com.blanoir.moons.client.management.network.LagUtils;
+import com.blanoir.moons.client.management.network.SessionToken;
 import com.blanoir.moons.client.management.network.TrackedEntityPosition;
 import com.blanoir.moons.client.utils.math.RandomMath;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -107,6 +108,7 @@ public final class BacktrackRuntime {
             }
             target = entity;
             position.setBaseFrom(target);
+            overlay.start(position.base());
             baseDelay = RandomMath.betweenInclusive(config.minDelayMillis(), config.delayMillis());
             currentDelay = sessionDelay(client);
             packets.start(currentDelay);
@@ -142,10 +144,13 @@ public final class BacktrackRuntime {
         if (distanceSquared(client, target, real) > maxRangeSquared()) packets.drain(now);
         if (packets.size() >= config.queueLimit()
                 || !packets.offer(
-                        new Snapshot(packet, client.getConnection(), client.level), now)) {
+                        new Snapshot(
+                                packet, new SessionToken<>(client.getConnection(), client.level)),
+                        now)) {
             release();
             return false;
         }
+        overlay.observe(real);
         packets.releaseDue(now, this::replay);
         return true;
     }
@@ -164,6 +169,7 @@ public final class BacktrackRuntime {
                 && !BacktrackTargets.intended(client, target, config.maxRange()))
             packets.drain(nowMillis());
         advance(client);
+        overlay.tick();
         if (config.actionBar() && tick % 4 == 0)
             ClientChat.actionBar(client, "Backtrack " + hudStats());
     }
@@ -171,7 +177,6 @@ public final class BacktrackRuntime {
     public void frame(FrameEvent event) {
         if (!config.enabled() || !event.client().isSameThread()) return;
         advance(event.client());
-        overlay.frame(visibleTarget(), position.base(), event.deltaSeconds());
     }
 
     private void advance(Minecraft client) {
@@ -270,17 +275,13 @@ public final class BacktrackRuntime {
     }
 
     private LivingEntity visibleTarget() {
-        return config.enabled() && target != null && target.isAlive() && !packets.isEmpty()
-                ? target
-                : null;
+        return config.enabled() && target != null && target.isAlive() ? target : null;
     }
 
     private void replay(Snapshot snapshot) {
         Minecraft client = Minecraft.getInstance();
-        if (client != null
-                && client.getConnection() == snapshot.listener()
-                && client.level == snapshot.level()) {
-            apply(snapshot.packet(), snapshot.listener());
+        if (client != null && snapshot.session().matches(client.getConnection(), client.level)) {
+            apply(snapshot.packet(), snapshot.session().owner());
         }
     }
 
@@ -331,7 +332,8 @@ public final class BacktrackRuntime {
         return LagUtils.nowMillis();
     }
 
-    private record Snapshot(Packet<?> packet, ClientPacketListener listener, ClientLevel level) {}
+    private record Snapshot(
+            Packet<?> packet, SessionToken<ClientPacketListener, ClientLevel> session) {}
 
     /** Local processor envelope; never serialized or sent to the server. */
     private record TrackingPacket(BacktrackRuntime runtime, Packet<?> original)

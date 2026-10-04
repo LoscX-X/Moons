@@ -1,5 +1,6 @@
 package com.blanoir.moons.client.service.profile;
 
+import com.blanoir.moons.client.management.task.TaskScope;
 import com.blanoir.moons.client.utils.json.JsonFields;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
@@ -21,7 +22,6 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public final class MojangProfileClient implements AutoCloseable {
@@ -33,19 +33,22 @@ public final class MojangProfileClient implements AutoCloseable {
     private final Gson gson = new Gson();
     private final HttpClient httpClient =
             HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10L)).build();
-    private final ExecutorService executor =
-            Executors.newSingleThreadExecutor(
-                    task -> {
-                        Thread thread = new Thread(task, "moons-profile-lookup");
-                        thread.setDaemon(true);
-                        return thread;
-                    });
+    private final TaskScope tasks =
+            new TaskScope(
+                    "profile lookup",
+                    Executors.newSingleThreadExecutor(
+                            task -> {
+                                Thread thread = new Thread(task, "moons-profile-lookup");
+                                thread.setDaemon(true);
+                                return thread;
+                            }),
+                    Integer.MAX_VALUE);
 
     public CompletableFuture<Map<String, MojangProfile>> lookupAsyncBatched(
             Collection<String> names) {
         List<String> uniqueNames = deduplicateNames(names);
 
-        return CompletableFuture.supplyAsync(
+        return tasks.submit(
                 () -> {
                     Map<String, MojangProfile> profiles = new LinkedHashMap<>();
 
@@ -61,12 +64,19 @@ public final class MojangProfileClient implements AutoCloseable {
                     }
 
                     return profiles;
-                },
-                executor);
+                });
     }
 
     public CompletableFuture<MojangProfile> lookupByUuidAsync(UUID uuid) {
-        return CompletableFuture.supplyAsync(() -> lookupByUuid(uuid), executor);
+        return tasks.submit(() -> lookupByUuid(uuid));
+    }
+
+    public TaskScope.Token lifetime() {
+        return tasks.token();
+    }
+
+    public void cancelPending() {
+        tasks.cancelOutstanding();
     }
 
     private MojangProfile lookupByUuid(UUID uuid) {
@@ -180,6 +190,6 @@ public final class MojangProfileClient implements AutoCloseable {
 
     @Override
     public void close() {
-        executor.shutdownNow();
+        tasks.close();
     }
 }

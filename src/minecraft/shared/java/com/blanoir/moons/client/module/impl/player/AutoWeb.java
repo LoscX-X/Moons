@@ -189,7 +189,8 @@ public final class AutoWeb {
         }
 
         if (!ClientReady.gameplay(client)) {
-            // A completed single use stays consumed even if a screen/world change interrupts return.
+            // A completed single use stays consumed even if a screen/world change interrupts
+            // return.
             if (disableAfterPlacement) ENABLED.set(false);
             resetAll(client);
 
@@ -1262,7 +1263,8 @@ public final class AutoWeb {
 
     public static int setTriggerMode(Minecraft client, String value) {
         if (!TRIGGER_MODE.tryDeserialize(value))
-            throw new IllegalArgumentException("AutoWeb trigger mode must be continuous or single.");
+            throw new IllegalArgumentException(
+                    "AutoWeb trigger mode must be continuous or single.");
         if (TRIGGER_MODE.get().equals("continuous")) disableAfterPlacement = false;
         return 1;
     }

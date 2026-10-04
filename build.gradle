@@ -16,8 +16,8 @@ ext.moonsPluginTypes = [
 
 // Applied scripts share only this immutable configuration and the lazily
 // resolved tools in moonsToolchains. Task providers are obtained by name.
-def supportedVersions = ["26.1.2": "26_1", "26.2": "26_2", "26.3": "26_3",
-        "26.4-snapshot-1": "26_4"].asImmutable()
+apply from: "gradle/version-catalog.gradle"
+def supportedVersions = moonsVersions.supportedVersions
 def minecraftVersion = project.minecraft_version.toString()
 def versionDirectory = supportedVersions[minecraftVersion]
 if (versionDirectory == null) {
@@ -41,7 +41,7 @@ ext.moonsBuild = [
         jarOutputDirectory     : providers.gradleProperty("moons_jar_output_directory")
                 .getOrElse("dist/agent/${versionDirectory}"),
         windowsHost            : System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("windows"),
-        targetJavaVersion      : 25
+        targetJavaVersion      : moonsVersions.profiles.find { it.profileId == versionDirectory }.javaVersion
 ].asImmutable()
 
 apply from: "gradle/toolchains.gradle"
@@ -52,3 +52,4 @@ apply from: "gradle/distribution.gradle"
 apply from: "gradle/verification.gradle"
 apply from: "gradle/code-style.gradle"
 apply from: "gradle/ysm.gradle"
+apply from: "gradle/release-lock.gradle"

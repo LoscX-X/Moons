@@ -1,9 +1,11 @@
 package com.blanoir.moons.client.command;
 
+import com.blanoir.moons.api.ScopedResources;
 import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.IntSetting;
 import com.blanoir.moons.client.event.EventBus;
+import com.blanoir.moons.client.management.task.ThreadDomain;
 import com.blanoir.moons.client.service.profile.MojangProfileClient;
 
 import net.minecraft.ChatFormatting;
@@ -45,6 +47,7 @@ public final class PremiumCheckCommand {
 
     public static synchronized void init() {
         if (initialized) return;
+        ScopedResources.own(LOOKUP);
         initialized = true;
         EventBus.TICK.register("PremiumCheckCommand.tick", event -> tick(event.client()));
     }
@@ -62,6 +65,11 @@ public final class PremiumCheckCommand {
         lookupRunning = false;
         STATUS_BY_UUID.clear();
         STATUS_BY_NAME.clear();
+    }
+
+    public static void suspend() {
+        LOOKUP.cancelPending();
+        lookupRunning = false;
     }
 
     public static int showStatus(Minecraft client) {
@@ -164,10 +172,13 @@ public final class PremiumCheckCommand {
         lookupRunning = true;
         nextLookupAtMillis =
                 now + Math.max(REQUEST_COOLDOWN_MILLIS, INTERVAL_SECONDS.get() * 1000L);
+        var domain = new ThreadDomain("PremiumCheck result", client::isSameThread, client::execute);
+        var lifetime = LOOKUP.lifetime();
         LOOKUP.lookupAsyncBatched(lookupNames)
                 .thenAccept(
                         result ->
-                                client.execute(
+                                domain.execute(
+                                        lifetime,
                                         () -> {
                                             lookupRunning = false;
                                             if (client.getConnection() == connection)
@@ -180,10 +191,11 @@ public final class PremiumCheckCommand {
                                         }))
                 .exceptionally(
                         ex -> {
-                            client.execute(
+                            domain.execute(
+                                    lifetime,
                                     () -> {
                                         lookupRunning = false;
-                                        if (announce)
+                                        if (announce && client.getConnection() == connection)
                                             ClientChat.send(
                                                     client,
                                                     "§cPremiumCheck: 批量查询失败: " + rootMessage(ex));

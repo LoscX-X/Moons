@@ -21,12 +21,17 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntitySelector;
+import net.minecraft.world.item.ItemStack;
 
+import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 public final class TriggerBot {
     private static final double DEFAULT_MAX_CHARGE = 1.0D;
@@ -34,6 +39,9 @@ public final class TriggerBot {
 
     private static final StringSetting TARGET_ENTITIES =
             new StringSetting.Builder().name("triggerbot.target.entities").defaultValue("").build();
+    private static final StringSetting ADDITIONAL_ITEMS =
+            new StringSetting.Builder().name("triggerbot.additionalItems").defaultValue("").build();
+    private static volatile Set<Identifier> additionalItemIds = loadAdditionalItemIds();
 
     private static double nextAttackCharge = DEFAULT_MAX_CHARGE;
     private static int fullChargeTicks = 0;
@@ -110,12 +118,14 @@ public final class TriggerBot {
             return;
         }
         if (!ENABLED.get()) return;
-        playerUpdateCameraRay(client);
+        // Misplace remains visual for TriggerBot. Include Critical's synchronous
+        // forecast so its reach/timing cannot still use the displaced target.
+        CombatGeometry.withOriginalPositions(() -> playerUpdateCameraRay(client));
     }
 
     /** Ordinary TriggerBot entry: use the player's current view within vanilla reach. */
     private static void playerUpdateCameraRay(Minecraft client) {
-        if (!Targeting.isHoldingTriggerWeapon(client)) {
+        if (!isHoldingSupportedItem(client)) {
             rejectCameraRay(client);
             return;
         }
@@ -249,7 +259,7 @@ public final class TriggerBot {
                 || !target.isAlive()) {
             return new AutomaticAttackResult(false, "invalid");
         }
-        if (!Targeting.isHoldingTriggerWeapon(client)) {
+        if (!isHoldingSupportedItem(client)) {
             return new AutomaticAttackResult(false, "weapon");
         }
 
@@ -394,6 +404,64 @@ public final class TriggerBot {
 
     public static JsonArray selectedEntities() {
         return RegistryLists.entityIds(targetEntityTypes);
+    }
+
+    private static boolean isHoldingSupportedItem(Minecraft client) {
+        if (Targeting.isHoldingTriggerWeapon(client)) return true;
+        return client != null
+                && client.player != null
+                && isAdditionalItem(client.player.getMainHandItem());
+    }
+
+    private static boolean isAdditionalItem(ItemStack stack) {
+        return !stack.isEmpty()
+                && additionalItemIds.contains(BuiltInRegistries.ITEM.getKey(stack.getItem()));
+    }
+
+    private static Set<Identifier> loadAdditionalItemIds() {
+        Set<Identifier> result = new LinkedHashSet<>();
+        // Retain syntactically valid mod IDs when a later launch omits that mod.
+        for (String token : ADDITIONAL_ITEMS.get().split("[,;\\s]+")) {
+            if (token.isBlank()) continue;
+            Identifier id = Identifier.tryParse(token);
+            if (id != null && !id.toString().equals("minecraft:air")) result.add(id);
+        }
+        return Collections.unmodifiableSet(result);
+    }
+
+    public static JsonArray additionalItems() {
+        JsonArray result = new JsonArray();
+        additionalItemIds.forEach(id -> result.add(RegistryLists.entry(id.toString(), null)));
+        return result;
+    }
+
+    public static void setAdditionalItems(Minecraft client, JsonElement value) {
+        Set<Identifier> next = new LinkedHashSet<>();
+        if (value == null || !value.isJsonArray()) {
+            throw new IllegalArgumentException("Invalid additional item list");
+        }
+        for (JsonElement element : value.getAsJsonArray()) {
+            // Previously saved IDs may be absent in this mod profile. Keep them removable
+            // without accepting new unknown IDs from the editor/API.
+            if (!element.isJsonObject()
+                    || !element.getAsJsonObject().has("id")
+                    || !element.getAsJsonObject().get("id").isJsonPrimitive()
+                    || !element.getAsJsonObject().get("id").getAsJsonPrimitive().isString()) {
+                throw new IllegalArgumentException("Invalid additional item list");
+            }
+            Identifier id = Identifier.tryParse(element.getAsJsonObject().get("id").getAsString());
+            if (id == null
+                    || id.toString().equals("minecraft:air")
+                    || !next.add(id)
+                    || !additionalItemIds.contains(id)
+                            && BuiltInRegistries.ITEM.getOptional(id).isEmpty()) {
+                throw new IllegalArgumentException("Invalid additional item ID");
+            }
+        }
+        ADDITIONAL_ITEMS.set(
+                next.stream().map(Identifier::toString).collect(Collectors.joining(",")));
+        additionalItemIds = Collections.unmodifiableSet(next);
+        rejectCameraRay(client);
     }
 
     public static void setSelectedEntities(Minecraft client, JsonElement value) {

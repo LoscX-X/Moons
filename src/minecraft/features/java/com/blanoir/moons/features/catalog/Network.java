@@ -3,6 +3,7 @@ package com.blanoir.moons.features.catalog;
 import static com.blanoir.moons.client.module.framework.ModuleRegistry.*;
 
 import com.blanoir.moons.client.config.Settings;
+import com.blanoir.moons.client.config.settings.SettingSpec;
 import com.blanoir.moons.client.module.framework.ModuleCategories;
 import com.blanoir.moons.client.module.framework.ModuleRegistry;
 import com.blanoir.moons.client.module.impl.network.Backtrack;
@@ -10,6 +11,7 @@ import com.blanoir.moons.client.module.impl.network.Disabler;
 import com.blanoir.moons.client.module.impl.network.FakeLag;
 import com.blanoir.moons.client.module.impl.network.LowHealthFakeLag;
 import com.blanoir.moons.client.module.impl.network.RandomFakeLag;
+import com.blanoir.moons.client.module.impl.network.backtrack.BacktrackSettings;
 
 /** Defines network module descriptors; ordering is owned by ModuleCatalog. */
 final class Network {
@@ -40,7 +42,7 @@ final class Network {
                                 Backtrack::targetModeName,
                                 Backtrack.targetModeOptions(),
                                 Backtrack::setTargetMode)
-                        .withDefault("attack"),
+                        .withDefault(BacktrackSettings.TARGET_MODE.defaultId()),
                 new Setting(
                                 "delay",
                                 "Time (ms)",
@@ -51,8 +53,8 @@ final class Network {
                                     value.add(Backtrack.delayMillis());
                                     return value;
                                 },
-                                0.0,
-                                1000.0,
+                                BacktrackSettings.DELAY_MAX.min().doubleValue(),
+                                BacktrackSettings.DELAY_MAX.max().doubleValue(),
                                 1.0,
                                 java.util.List.of(),
                                 (client, value) ->
@@ -61,109 +63,90 @@ final class Network {
                                                 value.getAsJsonArray().get(0).getAsInt()
                                                         + "-"
                                                         + value.getAsJsonArray().get(1).getAsInt()))
-                        .withDefault(50, 70),
+                        .withDefault(
+                                BacktrackSettings.DELAY_MIN.defaultValue(),
+                                BacktrackSettings.DELAY_MAX.defaultValue()),
                 numeric(
                                 "range",
                                 "Max range",
                                 "number",
                                 Backtrack::maxRange,
-                                0,
-                                10,
+                                BacktrackSettings.RANGE_MAX.min(),
+                                BacktrackSettings.RANGE_MAX.max(),
                                 .1,
                                 (client, value) ->
                                         Backtrack.setRange(client, Double.toString(value)))
-                        .withDefault(4.0),
+                        .withDefault(BacktrackSettings.RANGE_MAX.defaultValue()),
                 choice(
                         "esp",
                         "ESP",
-                        "backtrack.esp",
-                        "box",
+                        BacktrackSettings.ESP.key(),
+                        BacktrackSettings.ESP.defaultId(),
                         Backtrack.espModeOptions(),
                         Backtrack::setEsp),
-                internalNumber("min_range", "Min range", "backtrack.range.min", 1, 0, 10),
+                internalNumber("min_range", "Min range", BacktrackSettings.RANGE_MIN),
+                internalInt("next_min", "Next delay min", BacktrackSettings.NEXT_MIN),
+                internalInt("next_max", "Next delay max", BacktrackSettings.NEXT_MAX),
                 internalInt(
-                        "next_min",
-                        "Next delay min",
-                        "backtrack.nextBacktrackDelay.min",
-                        100,
-                        0,
-                        2000),
-                internalInt(
-                        "next_max",
-                        "Next delay max",
-                        "backtrack.nextBacktrackDelay.max",
-                        150,
-                        0,
-                        2000),
-                internalInt(
-                        "tracking_buffer",
-                        "Tracking buffer",
-                        "backtrack.trackingBuffer",
-                        150,
-                        0,
-                        2000),
-                internalNumber("chance", "Chance", "backtrack.chance", 100, 0, 100),
-                internalBool(
-                        "pause_hurt", "Pause on hurt", "backtrack.pauseOnHurtTime.enabled", false),
-                internalInt(
-                        "hurt_time", "Hurt time", "backtrack.pauseOnHurtTime.hurtTime", 3, 0, 10),
-                internalInt(
-                        "last_attack",
-                        "Last attack",
-                        "backtrack.lastAttackTimeToWork",
-                        1000,
-                        0,
-                        5000),
-                internalInt("max_queue", "Queue limit", "backtrack.maxQueueSize", 64, 32, 1024),
-                internalNumber("ping_ratio", "Ping ratio", "backtrack.pingRatio", 0, 0, 3),
-                internalBool("actionbar", "Action bar", "backtrack.actionbar", false));
+                        "tracking_buffer", "Tracking buffer", BacktrackSettings.TRACKING_BUFFER),
+                internalNumber("chance", "Chance", BacktrackSettings.CHANCE),
+                internalBool("pause_hurt", "Pause on hurt", BacktrackSettings.PAUSE_HURT),
+                internalInt("hurt_time", "Hurt time", BacktrackSettings.HURT_TIME),
+                internalInt("last_attack", "Last attack", BacktrackSettings.LAST_ATTACK),
+                internalInt("max_queue", "Queue limit", BacktrackSettings.QUEUE_LIMIT),
+                internalNumber("ping_ratio", "Ping ratio", BacktrackSettings.PING_RATIO),
+                internalBool("actionbar", "Action bar", BacktrackSettings.ACTION_BAR));
     }
 
-    private static Setting internalInt(
-            String id, String label, String key, int fallback, int min, int max) {
+    private static Setting internalInt(String id, String label, SettingSpec<Integer> spec) {
         return numeric(
                         id,
                         label,
                         "integer",
-                        () -> Math.clamp(Settings.getInt(key, fallback), min, max),
-                        min,
-                        max,
+                        () ->
+                                Math.clamp(
+                                        Settings.getInt(spec.key(), spec.defaultValue()),
+                                        spec.min(),
+                                        spec.max()),
+                        spec.min(),
+                        spec.max(),
                         1,
                         (client, value) -> {
-                            Settings.setInt(key, (int) Math.round(value));
+                            Settings.setInt(spec.key(), (int) Math.round(value));
                         })
-                .withDefault(fallback)
+                .withDefault(spec.defaultValue())
                 .visibleWhen(() -> false);
     }
 
-    private static Setting internalNumber(
-            String id, String label, String key, double fallback, double min, double max) {
+    private static Setting internalNumber(String id, String label, SettingSpec<Double> spec) {
         return numeric(
                         id,
                         label,
                         "number",
                         () -> {
-                            double value = Settings.getDouble(key, fallback);
-                            return Double.isFinite(value) ? Math.clamp(value, min, max) : fallback;
+                            double value = Settings.getDouble(spec.key(), spec.defaultValue());
+                            return Double.isFinite(value)
+                                    ? Math.clamp(value, spec.min(), spec.max())
+                                    : spec.defaultValue();
                         },
-                        min,
-                        max,
+                        spec.min(),
+                        spec.max(),
                         .1,
                         (client, value) -> {
-                            Settings.setDouble(key, value);
+                            Settings.setDouble(spec.key(), value);
                         })
-                .withDefault(fallback)
+                .withDefault(spec.defaultValue())
                 .visibleWhen(() -> false);
     }
 
-    private static Setting internalBool(String id, String label, String key, boolean fallback) {
+    private static Setting internalBool(String id, String label, SettingSpec<Boolean> spec) {
         return bool(
                         id,
                         label,
-                        key,
-                        fallback,
+                        spec.key(),
+                        spec.defaultValue(),
                         (client, value) -> {
-                            Settings.setBoolean(key, value);
+                            Settings.setBoolean(spec.key(), value);
                             return 1;
                         })
                 .visibleWhen(() -> false);

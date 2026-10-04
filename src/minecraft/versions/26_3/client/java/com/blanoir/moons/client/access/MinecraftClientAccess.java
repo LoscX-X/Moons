@@ -23,7 +23,8 @@ public final class MinecraftClientAccess {
 
     public static void piercingAttack(
             Minecraft client, net.minecraft.world.item.component.PiercingWeapon weapon) {
-        client.gameMode.piercingAttack(client.player.getMainHandItem().getAttackAnimation(), weapon);
+        client.gameMode.piercingAttack(
+                client.player.getMainHandItem().getAttackAnimation(), weapon);
     }
 
     public static net.minecraft.server.packs.PackResources vanillaResources(Minecraft client) {

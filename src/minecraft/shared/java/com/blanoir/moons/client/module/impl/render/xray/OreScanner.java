@@ -1,10 +1,14 @@
 package com.blanoir.moons.client.module.impl.render.xray;
 
+import com.blanoir.moons.api.ScopedResources;
 import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.config.ClientBranding;
 import com.blanoir.moons.client.config.MoonsConfig;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.event.EventBus;
+import com.blanoir.moons.client.management.task.SnapshotJob;
+import com.blanoir.moons.client.management.task.TaskScope;
+import com.blanoir.moons.client.management.task.ThreadDomain;
 import com.blanoir.moons.client.module.framework.ModuleKeybinds;
 import com.blanoir.moons.client.utils.world.BlockDistance;
 import com.blanoir.moons.client.utils.world.ChunkKey;
@@ -24,25 +28,34 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Queue;
 import java.util.Set;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public final class OreScanner {
     private static final Queue<ChunkPos> SCAN_QUEUE = new ArrayDeque<>();
-    private static final ExecutorService SCAN_EXECUTOR =
-            Executors.newSingleThreadExecutor(
-                    runnable -> {
-                        Thread thread =
-                                new Thread(runnable, ClientBranding.name() + "-ore-scanner");
-                        thread.setDaemon(true);
-                        return thread;
-                    });
-    private static final AtomicInteger IN_FLIGHT = new AtomicInteger();
+    private static final TaskScope SCAN_TASKS =
+            new TaskScope(
+                    "ore scanner",
+                    new ThreadPoolExecutor(
+                            1,
+                            1,
+                            0L,
+                            TimeUnit.MILLISECONDS,
+                            new ArrayBlockingQueue<>(MoonsConfig.CHUNKS_PER_TICK),
+                            runnable -> {
+                                Thread thread =
+                                        new Thread(
+                                                runnable, ClientBranding.name() + "-ore-scanner");
+                                thread.setDaemon(true);
+                                return thread;
+                            }),
+                    MoonsConfig.CHUNKS_PER_TICK);
     private static final AtomicInteger SCAN_GENERATION = new AtomicInteger();
-    private static final Queue<ScanBatch> COMPLETED_SCANS = new ConcurrentLinkedQueue<>();
+    private static final Queue<SnapshotJob<ScanInput, ScanBatch>> SCAN_JOBS = new ArrayDeque<>();
     private static ScanBatch currentScan;
     private static int currentScanIndex;
     private static final AtomicInteger FOUND_TARGETS = new AtomicInteger();
@@ -70,6 +83,7 @@ public final class OreScanner {
     private OreScanner() {}
 
     public static void init() {
+        ScopedResources.own(SCAN_TASKS);
         ModuleKeybinds.registerAction("clearscan", () -> clearAll(Minecraft.getInstance()));
         EventBus.CLIENT_CONTEXT_CHANGED.register(
                 "OreScanner.context",
@@ -87,7 +101,7 @@ public final class OreScanner {
                     if (AUTO_SCAN.get()) {
                         tickAutoScan(client);
                     } else {
-                        COMPLETED_SCANS.clear();
+                        clearJobs();
                     }
                 });
     }
@@ -194,69 +208,75 @@ public final class OreScanner {
     private static void processScanQueue(Minecraft client, int maxChunks) {
         ClientLevel level = client.level;
         if (level == null || client.player == null) return;
+        var owner = new ThreadDomain("ore scanner client", client::isSameThread, client::execute);
         int generation = SCAN_GENERATION.get();
         int submitted = 0;
         while (submitted < maxChunks
-                && IN_FLIGHT.get() + COMPLETED_SCANS.size() + (currentScan == null ? 0 : 1)
-                        < maxChunks) {
+                && SCAN_JOBS.size() + (currentScan == null ? 0 : 1) < maxChunks) {
             ChunkPos chunkPos = SCAN_QUEUE.poll();
             if (chunkPos == null) break;
             long key = ChunkKey.pack(chunkPos.x(), chunkPos.z());
             QUEUED_CHUNKS.remove(key);
             LevelChunk chunk = level.getChunkSource().getChunk(chunkPos.x(), chunkPos.z(), false);
             if (chunk == null) continue;
-            IN_FLIGHT.incrementAndGet();
-            submitted++;
-            // The expensive column walk is kept off the render/client tick thread.
-            SCAN_EXECUTOR.execute(
-                    () -> {
-                        try {
-                            List<BlockPos> positions =
-                                    scanChunk(chunk, chunkPos.x(), chunkPos.z(), generation);
-                            if (positions != null && generation == SCAN_GENERATION.get()) {
-                                COMPLETED_SCANS.add(
-                                        new ScanBatch(level, generation, key, positions));
-                            }
-                        } finally {
-                            IN_FLIGHT.decrementAndGet();
-                        }
-                    });
-        }
-    }
-
-    private static List<BlockPos> scanChunk(
-            LevelChunk chunk, int chunkX, int chunkZ, int generation) {
-        List<BlockPos> positions = new ArrayList<>();
-
-        int startX = chunkX << 4;
-        int startZ = chunkZ << 4;
-
-        int bottomY = chunk.getMinY();
-        int topYExclusive = bottomY + chunk.getHeight();
-
-        BlockPos.MutableBlockPos mutablePos = new BlockPos.MutableBlockPos();
-
-        for (int localX = 0; localX < 16; localX++) {
-            if (Thread.currentThread().isInterrupted() || generation != SCAN_GENERATION.get())
-                return null;
-            int worldX = startX + localX;
-
-            for (int localZ = 0; localZ < 16; localZ++) {
-                int worldZ = startZ + localZ;
-
-                for (int y = bottomY; y < topYExclusive; y++) {
-                    mutablePos.set(worldX, y, worldZ);
-
-                    BlockState state = chunk.getBlockState(mutablePos);
-                    if (XrayBlockTarget.findEnabledTarget(state) != null) {
-                        positions.add(mutablePos.immutable());
-                    }
-                }
+            try {
+                SCAN_JOBS.add(
+                        new SnapshotJob<>(
+                                owner,
+                                SCAN_TASKS,
+                                () ->
+                                        new ScanInput(
+                                                level,
+                                                generation,
+                                                key,
+                                                chunkPos.x(),
+                                                chunkPos.z(),
+                                                OreChunkSnapshot.capture(
+                                                        chunk.getSections(),
+                                                        chunk.getMinY(),
+                                                        state ->
+                                                                XrayBlockTarget.findEnabledTarget(
+                                                                                state)
+                                                                        != null)),
+                                input -> {
+                                    var positions =
+                                            input.snapshot()
+                                                    .scan(
+                                                            input.chunkX(),
+                                                            input.chunkZ(),
+                                                            () ->
+                                                                    Thread.currentThread()
+                                                                                    .isInterrupted()
+                                                                            || input.generation()
+                                                                                    != SCAN_GENERATION
+                                                                                            .get());
+                                    return positions == null
+                                            ? null
+                                            : new ScanBatch(
+                                                    input.level(),
+                                                    input.generation(),
+                                                    input.key(),
+                                                    positions);
+                                },
+                                input ->
+                                        client.level == input.level()
+                                                && SCAN_GENERATION.get() == input.generation(),
+                                ignored -> {}));
+                submitted++;
+            } catch (RejectedExecutionException busy) {
+                if (QUEUED_CHUNKS.add(key)) SCAN_QUEUE.add(chunkPos);
+                break;
             }
         }
-
-        return positions;
     }
+
+    private record ScanInput(
+            ClientLevel level,
+            int generation,
+            long key,
+            int chunkX,
+            int chunkZ,
+            OreChunkSnapshot snapshot) {}
 
     /** Apply a bounded amount of work on the client thread, after checking the world identity. */
     private static void processCompletedScans(Minecraft client) {
@@ -265,8 +285,18 @@ public final class OreScanner {
         int processed = 0;
         while (processed < MoonsConfig.SCAN_RESULTS_PER_TICK) {
             if (currentScan == null) {
-                currentScan = COMPLETED_SCANS.poll();
+                var job = SCAN_JOBS.peek();
+                if (job == null || !job.ready()) return;
+                SCAN_JOBS.remove();
+                try {
+                    currentScan = job.take().orElse(null);
+                } catch (CompletionException failure) {
+                    System.err.println("[client] Ore scanner failed: " + failure.getCause());
+                } finally {
+                    job.close();
+                }
                 currentScanIndex = 0;
+                if (currentScan == null) continue;
             }
             if (currentScan == null) return;
             if (currentScan.level() != level || currentScan.generation() != SCAN_GENERATION.get()) {
@@ -439,7 +469,8 @@ public final class OreScanner {
 
     private static void resetScannerState() {
         SCAN_GENERATION.incrementAndGet();
-        COMPLETED_SCANS.clear();
+        clearJobs();
+        SCAN_TASKS.cancelOutstanding();
         currentScan = null;
         currentScanIndex = 0;
         tickCounter = 0;
@@ -450,19 +481,21 @@ public final class OreScanner {
         clearPendingUpdates();
     }
 
-    /** Stops the module-owned worker so its class loader can be reclaimed. */
+    private static void clearJobs() {
+        SnapshotJob<ScanInput, ScanBatch> job;
+        while ((job = SCAN_JOBS.poll()) != null) job.close();
+    }
+
+    public static void suspend() {
+        resetScannerState();
+    }
+
+    /** Releases ownership without blocking the client thread on a worker's termination. */
     public static void shutdown() {
         resetScannerState();
         PluginXrayTargets.resetIndex();
         OreCache.clear();
-        SCAN_EXECUTOR.shutdownNow();
-        try {
-            if (!SCAN_EXECUTOR.awaitTermination(2, TimeUnit.SECONDS)) {
-                System.err.println("[client] Ore scanner worker did not stop within 2 seconds");
-            }
-        } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt();
-        }
+        SCAN_TASKS.close();
     }
 
     private static void removeFarScannedChunkKeys(Minecraft client) {

@@ -6,6 +6,7 @@ import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.DoubleSetting;
 import com.blanoir.moons.client.config.settings.IntSetting;
 import com.blanoir.moons.client.config.settings.ModeSetting;
+import com.blanoir.moons.client.config.settings.SettingSpec;
 
 import net.minecraft.client.Minecraft;
 
@@ -14,37 +15,20 @@ import java.util.List;
 /** The compact editor exposes core controls; saved advanced policy remains active. */
 public final class BacktrackConfig {
     private final BooleanSetting enabled =
-            new BooleanSetting.Builder().name("backtrack.enabled").defaultValue(false).build();
+            new BooleanSetting.Builder().spec(BacktrackSettings.ENABLED).build();
     // Reuse the old upper bounds so saved delay/range preferences keep working.
     private final IntSetting delay =
-            new IntSetting.Builder()
-                    .name("backtrack.delay.max")
-                    .defaultValue(70)
-                    .range(0, 1000)
-                    .build();
+            new IntSetting.Builder().spec(BacktrackSettings.DELAY_MAX).build();
     private final ModeSetting<TargetMode> targetMode =
-            new ModeSetting.Builder<TargetMode>()
-                    .name("backtrack.targetMode")
-                    .defaultValue(TargetMode.ATTACK)
-                    .option(TargetMode.ATTACK, "attack")
-                    .option(TargetMode.RANGE, "range")
-                    .option(TargetMode.INTENT, "intent")
-                    .build();
+            new ModeSetting.Builder<TargetMode>().spec(BacktrackSettings.TARGET_MODE).build();
     private final DoubleSetting range =
-            new DoubleSetting.Builder()
-                    .name("backtrack.range.max")
-                    .defaultValue(4.0)
-                    .range(0.0, 10.0)
-                    .build();
+            new DoubleSetting.Builder().spec(BacktrackSettings.RANGE_MAX).build();
     private final ModeSetting<EspMode> esp =
-            new ModeSetting.Builder<EspMode>()
-                    .name("backtrack.esp")
-                    .defaultValue(EspMode.BOX)
-                    .option(EspMode.BOX, "box")
-                    .option(EspMode.MODEL, "model")
-                    .option(EspMode.WIREFRAME, "wireframe")
-                    .option(EspMode.NONE, "none")
-                    .build();
+            new ModeSetting.Builder<EspMode>().spec(BacktrackSettings.ESP).build();
+
+    private static boolean readBoolean(SettingSpec<Boolean> spec) {
+        return Settings.getBoolean(spec.key(), spec.defaultValue());
+    }
 
     public boolean enabled() {
         return enabled.get();
@@ -59,11 +43,21 @@ public final class BacktrackConfig {
     }
 
     public int minDelayMillis() {
-        return Math.clamp(Settings.getInt("backtrack.delay.min", 50), 0, delayMillis());
+        return Math.clamp(
+                Settings.getInt(
+                        BacktrackSettings.DELAY_MIN.key(),
+                        BacktrackSettings.DELAY_MIN.defaultValue()),
+                BacktrackSettings.DELAY_MIN.min(),
+                delayMillis());
     }
 
     public double minRange() {
-        return Math.clamp(Settings.getDouble("backtrack.range.min", 1.0), 0.0, maxRange());
+        return Math.clamp(
+                Settings.getDouble(
+                        BacktrackSettings.RANGE_MIN.key(),
+                        BacktrackSettings.RANGE_MIN.defaultValue()),
+                BacktrackSettings.RANGE_MIN.min(),
+                maxRange());
     }
 
     public String targetModeName() {
@@ -79,44 +73,82 @@ public final class BacktrackConfig {
     }
 
     int lastAttackMillis() {
-        return Math.clamp(Settings.getInt("backtrack.lastAttackTimeToWork", 1000), 0, 5000);
+        return Math.clamp(
+                Settings.getInt(
+                        BacktrackSettings.LAST_ATTACK.key(),
+                        BacktrackSettings.LAST_ATTACK.defaultValue()),
+                BacktrackSettings.LAST_ATTACK.min(),
+                BacktrackSettings.LAST_ATTACK.max());
     }
 
     int trackingBufferMillis() {
-        return Math.clamp(Settings.getInt("backtrack.trackingBuffer", 150), 0, 2000);
+        return Math.clamp(
+                Settings.getInt(
+                        BacktrackSettings.TRACKING_BUFFER.key(),
+                        BacktrackSettings.TRACKING_BUFFER.defaultValue()),
+                BacktrackSettings.TRACKING_BUFFER.min(),
+                BacktrackSettings.TRACKING_BUFFER.max());
     }
 
     double chance() {
-        return Math.clamp(Settings.getDouble("backtrack.chance", 100), 0, 100);
+        return Math.clamp(
+                Settings.getDouble(
+                        BacktrackSettings.CHANCE.key(), BacktrackSettings.CHANCE.defaultValue()),
+                BacktrackSettings.CHANCE.min(),
+                BacktrackSettings.CHANCE.max());
     }
 
     int nextDelayMin() {
-        return Math.clamp(Settings.getInt("backtrack.nextBacktrackDelay.min", 100), 0, 2000);
+        return Math.clamp(
+                Settings.getInt(
+                        BacktrackSettings.NEXT_MIN.key(),
+                        BacktrackSettings.NEXT_MIN.defaultValue()),
+                BacktrackSettings.NEXT_MIN.min(),
+                BacktrackSettings.NEXT_MIN.max());
     }
 
     int nextDelayMax() {
         return Math.clamp(
-                Settings.getInt("backtrack.nextBacktrackDelay.max", 150), nextDelayMin(), 2000);
+                Settings.getInt(
+                        BacktrackSettings.NEXT_MAX.key(),
+                        BacktrackSettings.NEXT_MAX.defaultValue()),
+                nextDelayMin(),
+                BacktrackSettings.NEXT_MAX.max());
     }
 
     boolean pauseOnHurt() {
-        return Settings.getBoolean("backtrack.pauseOnHurtTime.enabled", false);
+        return readBoolean(BacktrackSettings.PAUSE_HURT);
     }
 
     int hurtTime() {
-        return Math.clamp(Settings.getInt("backtrack.pauseOnHurtTime.hurtTime", 3), 0, 10);
+        return Math.clamp(
+                Settings.getInt(
+                        BacktrackSettings.HURT_TIME.key(),
+                        BacktrackSettings.HURT_TIME.defaultValue()),
+                BacktrackSettings.HURT_TIME.min(),
+                BacktrackSettings.HURT_TIME.max());
     }
 
     int queueLimit() {
-        return Math.clamp(Settings.getInt("backtrack.maxQueueSize", 64), 32, 1024);
+        return Math.clamp(
+                Settings.getInt(
+                        BacktrackSettings.QUEUE_LIMIT.key(),
+                        BacktrackSettings.QUEUE_LIMIT.defaultValue()),
+                BacktrackSettings.QUEUE_LIMIT.min(),
+                BacktrackSettings.QUEUE_LIMIT.max());
     }
 
     double pingRatio() {
-        return Math.clamp(Settings.getDouble("backtrack.pingRatio", 0), 0, 3);
+        return Math.clamp(
+                Settings.getDouble(
+                        BacktrackSettings.PING_RATIO.key(),
+                        BacktrackSettings.PING_RATIO.defaultValue()),
+                BacktrackSettings.PING_RATIO.min(),
+                BacktrackSettings.PING_RATIO.max());
     }
 
     boolean actionBar() {
-        return Settings.getBoolean("backtrack.actionbar", false);
+        return readBoolean(BacktrackSettings.ACTION_BAR);
     }
 
     public int setTargetMode(Minecraft client, String value) {
@@ -125,7 +157,7 @@ public final class BacktrackConfig {
 
     public double maxRange() {
         double value = range.get();
-        return Double.isFinite(value) ? value : 4.0;
+        return Double.isFinite(value) ? value : BacktrackSettings.RANGE_MAX.defaultValue();
     }
 
     EspMode espMode() {
@@ -147,14 +179,16 @@ public final class BacktrackConfig {
         } catch (NumberFormatException exception) {
             return 0;
         }
-        if (low < 0 || high > 1000 || low > high) {
+        if (low < BacktrackSettings.DELAY_MIN.min()
+                || high > BacktrackSettings.DELAY_MAX.max()
+                || low > high) {
             ClientChat.send(client, "Invalid Backtrack delay. Use 0-1000 ms.");
             return 0;
         }
         Settings.beginBatch();
         try {
             delay.set(high);
-            Settings.setInt("backtrack.delay.min", low);
+            Settings.setInt(BacktrackSettings.DELAY_MIN.key(), low);
         } finally {
             Settings.endBatch();
         }
@@ -169,7 +203,10 @@ public final class BacktrackConfig {
         } catch (NumberFormatException exception) {
             value = null;
         }
-        if (value == null || !Double.isFinite(value) || value < 0 || value > 10) {
+        if (value == null
+                || !Double.isFinite(value)
+                || value < BacktrackSettings.RANGE_MAX.min()
+                || value > BacktrackSettings.RANGE_MAX.max()) {
             ClientChat.send(client, "Invalid Backtrack max range. Use 0-10 blocks.");
             return 0;
         }
@@ -192,7 +229,7 @@ public final class BacktrackConfig {
         return 1;
     }
 
-    enum TargetMode {
+    public enum TargetMode {
         ATTACK,
         RANGE,
         INTENT;
@@ -202,7 +239,7 @@ public final class BacktrackConfig {
         }
     }
 
-    enum EspMode {
+    public enum EspMode {
         BOX,
         MODEL,
         WIREFRAME,

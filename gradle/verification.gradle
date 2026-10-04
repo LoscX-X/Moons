@@ -8,6 +8,7 @@ sourceSets {
     renderTest {
         java.setSrcDirs(['src/test/render/java'])
         kotlin.setSrcDirs(['src/test/render/kotlin'])
+        kotlin.exclude('**/compose/RasterFramePipelineVerification.kt')
         resources.setSrcDirs(['src/test/render/resources'])
         compileClasspath += sourceSets.features.output + sourceSets.client.output + sourceSets.agent.output + sourceSets.runtime.output + sourceSets.api.output + sourceSets.features.compileClasspath + configurations.agentRuntimeClasspath
         runtimeClasspath += compileClasspath
@@ -18,6 +19,24 @@ sourceSets {
         kotlin.setSrcDirs([])
         resources.setSrcDirs([])
         compileClasspath += sourceSets.renderTest.compileClasspath
+        runtimeClasspath += compileClasspath
+    }
+    rasterTest {
+        java.setSrcDirs([])
+        kotlin.setSrcDirs(['src/minecraft/shared/kotlin', 'src/test/render/kotlin'])
+        kotlin.include('**/compose/OverlayBackend.kt', '**/compose/RasterFramePipeline.kt',
+                '**/compose/RasterFrameBuffer.kt', '**/compose/RasterRegion.kt',
+                '**/compose/RasterFramePipelineVerification.kt')
+        resources.setSrcDirs([])
+        compileClasspath += sourceSets.client.compileClasspath
+        runtimeClasspath += sourceSets.client.runtimeClasspath
+    }
+    taskScopeTest {
+        java.setSrcDirs(['src/minecraft/shared/java', 'src/test/render/java'])
+        java.include('**/management/task/*.java')
+        kotlin.setSrcDirs([])
+        resources.setSrcDirs([])
+        compileClasspath += sourceSets.runtime.output + sourceSets.api.output
         runtimeClasspath += compileClasspath
     }
     misplaceTest {
@@ -38,6 +57,22 @@ sourceSets {
     }
 }
 
+tasks.register('verifyTaskScope', JavaExec) {
+    group = 'verification'
+    description = 'Checks real task termination, bounded admission, stale dispatch and result disposal without a game.'
+    dependsOn 'taskScopeTestClasses'
+    classpath = sourceSets.taskScopeTest.runtimeClasspath
+    mainClass = 'com.blanoir.moons.client.management.task.TaskScopeVerification'
+}
+
+tasks.register('verifyRasterPipeline', JavaExec) {
+    group = 'verification'
+    description = 'Compares real raster pixels and lifecycle behavior through a fake GPU transport.'
+    dependsOn 'rasterTestClasses'
+    classpath = sourceSets.rasterTest.runtimeClasspath + configurations.minecraftNatives
+    mainClass = 'com.blanoir.moons.client.ui.compose.RasterFramePipelineVerification'
+}
+
 [
         verifyAutoMace: 'com.blanoir.moons.client.module.impl.combat.AutoMaceVerification',
         verifyAutoTotem: 'com.blanoir.moons.client.module.impl.player.AutoTotemVerification',
@@ -46,6 +81,8 @@ sourceSets {
         verifyAimCollect: 'com.blanoir.moons.client.module.impl.misc.aimdata.AimCollectVerification',
         verifyAimSearchPerformance: 'com.blanoir.moons.client.utils.rotation.aim.AimSearchPerformanceVerification',
         verifyStructureLocate: 'com.blanoir.moons.client.module.impl.world.structure.StructureLocateVerification',
+        verifyRemoteConfig: 'com.blanoir.moons.client.web.RemoteConfigVerification',
+        verifySettingsPersistence: 'com.blanoir.moons.client.config.SettingsPersistenceVerification',
         verifySilentAuraPoints: 'com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraPointVerification',
         verifyLearnedAim: 'com.blanoir.moons.client.module.impl.combat.silentaura.LearnedAimVerification',
         verifyBacktrackFlow: 'com.blanoir.moons.client.module.impl.network.backtrack.BacktrackFlowVerification',
@@ -275,6 +312,16 @@ tasks.register('verifyLoadSession', Exec) {
     executable layout.buildDirectory.file('verification/load-session.exe').get().asFile.absolutePath
 }
 
+tasks.register('verifyRuntimeStartup', JavaExec) {
+    group = 'verification'
+    description = 'Checks real core initialization, first-tick readiness and failure cleanup without a game.'
+    dependsOn 'loaderTestClasses'
+    classpath = sourceSets.loaderTest.runtimeClasspath
+    mainClass = 'com.blanoir.moons.runtime.RuntimeStartupVerification'
+    def fixture = layout.buildDirectory.dir('verification/runtime-startup')
+    doFirst { fixture.get().asFile.mkdirs(); args fixture.get().asFile.absolutePath }
+}
+
 tasks.register('verifyLauncherPackages', Exec) {
     group = 'verification'
     description = 'Verifies the real installer and loader against an isolated dependency home without loading a game.'
@@ -289,10 +336,12 @@ tasks.register('verifyLauncherPackages', Exec) {
 
 
 def cacheMaintenanceCheckExe = tasks.register('cacheMaintenanceVerificationExe', Exec) {
+    dependsOn 'launcherVersionCatalog'
     onlyIf { moonsBuild.windowsHost }
     def sources = files('src/tools/launcher/csharp/CacheMaintenance.cs',
-            'src/tools/launcher/csharp/DependencyRuntime.cs', 'src/tools/launcher/csharp/RuntimeMetadata.cs',
-            'src/tools/shared/Hashing.cs', 'src/tools/shared/StagedFile.cs',
+            'src/tools/launcher/csharp/DependencyRuntime.cs',
+            'src/tools/launcher/csharp/VersionCatalog.cs', moonsVersions.launcherSource, 'src/tools/launcher/csharp/RuntimeMetadata.cs',
+            'src/tools/shared/Hashing.cs', 'src/tools/shared/StagedFile.cs', 'src/tools/shared/DirectoryJunction.cs',
             'src/test/launcher/CacheMaintenanceVerification.cs')
     def output = layout.buildDirectory.file('verification/cache-maintenance.exe')
     inputs.files(sources)
@@ -312,6 +361,41 @@ tasks.register('verifyCacheMaintenance', Exec) {
     dependsOn cacheMaintenanceCheckExe
     executable layout.buildDirectory.file('verification/cache-maintenance.exe').get().asFile.absolutePath
     args layout.buildDirectory.dir('verification/cache-maintenance').get().asFile.absolutePath
+}
+
+def dependencyContextsExe = tasks.register('dependencyContextsVerificationExe', Exec) {
+    dependsOn 'launcherVersionCatalog'
+    onlyIf { moonsBuild.windowsHost }
+    def sources = files('src/tools/launcher/csharp/DependencyRuntime.cs',
+            'src/tools/launcher/csharp/VersionCatalog.cs', moonsVersions.launcherSource,
+            'src/tools/launcher/csharp/RuntimeMetadata.cs', 'src/tools/launcher/csharp/CacheMaintenance.cs',
+            'src/tools/shared/Hashing.cs', 'src/tools/shared/StagedFile.cs', 'src/tools/shared/DirectoryJunction.cs',
+            'src/test/launcher/DependencyContextsVerification.cs')
+    def output = layout.buildDirectory.file('verification/dependency-contexts.exe')
+    inputs.files(sources); outputs.file(output)
+    doFirst {
+        output.get().asFile.parentFile.mkdirs()
+        executable moonsToolchains.locateCSharpCompiler().absolutePath
+        args '/nologo', '/target:exe', "/out:${output.get().asFile.absolutePath}"
+        args sources.files.collect { it.absolutePath }.sort()
+    }
+}
+def dependencyContextsFixture = layout.buildDirectory.dir('verification/dependency-contexts')
+def verifyCSharpContexts = tasks.register('verifyCSharpDependencyContexts', Exec) {
+    group = 'verification'
+    onlyIf { moonsBuild.windowsHost }
+    dependsOn dependencyContextsExe
+    executable layout.buildDirectory.file('verification/dependency-contexts.exe').get().asFile.absolutePath
+    doFirst { dependencyContextsFixture.get().asFile.mkdirs(); args dependencyContextsFixture.get().asFile.absolutePath }
+}
+tasks.register('verifyDependencyContexts', JavaExec) {
+    group = 'verification'
+    description = 'Checks dependency coexistence, profile closure, retention and the exact C#/Java handoff.'
+    onlyIf { moonsBuild.windowsHost }
+    dependsOn verifyCSharpContexts, 'loaderTestClasses'
+    classpath = sourceSets.loaderTest.runtimeClasspath
+    mainClass = 'com.blanoir.moons.agent.core.DependencyContextVerification'
+    doFirst { args dependencyContextsFixture.get().asFile.absolutePath }
 }
 
 tasks.register('verifyPayloadCache', JavaExec) {

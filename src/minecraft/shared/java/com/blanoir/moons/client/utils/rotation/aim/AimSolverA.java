@@ -29,8 +29,7 @@ public final class AimSolverA {
                 entity,
                 aimPoint,
                 rotation,
-                AimSolverD.angleBetween(
-                        client.player.getYRot(), client.player.getXRot(), rotation),
+                AimSolverD.angleBetween(client.player.getYRot(), client.player.getXRot(), rotation),
                 eyePos.distanceToSqr(aimPoint));
     }
 }

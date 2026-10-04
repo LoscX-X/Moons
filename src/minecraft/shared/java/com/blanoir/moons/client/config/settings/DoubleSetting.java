@@ -84,6 +84,10 @@ public final class DoubleSetting {
             return this;
         }
 
+        public Builder spec(SettingSpec<Double> spec) {
+            return name(spec.key()).defaultValue(spec.defaultValue()).range(spec.min(), spec.max());
+        }
+
         public Builder defaultValue(double value) {
             this.defaultValue = value;
             return this;

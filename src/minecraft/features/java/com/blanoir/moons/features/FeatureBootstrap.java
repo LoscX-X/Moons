@@ -9,6 +9,7 @@ import com.blanoir.moons.client.management.input.CombatInputController;
 import com.blanoir.moons.client.management.lease.HotbarLease;
 import com.blanoir.moons.client.management.rotation.RotationManager;
 import com.blanoir.moons.client.management.rotation.SilentPacketRotation;
+import com.blanoir.moons.client.management.task.CleanupSequence;
 import com.blanoir.moons.client.management.time.TimerManager;
 import com.blanoir.moons.client.module.framework.ModuleRegistry;
 import com.blanoir.moons.client.module.impl.combat.AutoBlock;
@@ -85,6 +86,8 @@ import net.minecraft.client.Minecraft;
 
 /** Starts and stops feature listeners in their established runtime order. */
 final class FeatureBootstrap {
+    private static boolean transientReleased;
+
     private FeatureBootstrap() {}
 
     static void initialize() {
@@ -174,8 +177,30 @@ final class FeatureBootstrap {
         RandomFakeLag.init();
         FakeLag.init();
         RemoteConfigClient.init();
+    }
+
+    static void start() {
+        transientReleased = false;
         RemoteConfigClient.autoConnect();
         ClickGuiWarmup.start();
+    }
+
+    static void resume() {
+        transientReleased = false;
+        RemoteConfigClient.resume();
+        ClickGuiWarmup.start();
+    }
+
+    static void suspend() {
+        CleanupSequence.run(
+                "core suspension",
+                ClickGuiWarmup::cancel,
+                RemoteConfigClient::suspend,
+                PremiumCheckCommand::suspend,
+                AntiNick::suspend,
+                StructureLocate::suspend,
+                OreScanner::suspend,
+                () -> releaseTransientState(Minecraft.getInstance()));
     }
 
     private static void initializePacketListeners() {
@@ -197,49 +222,65 @@ final class FeatureBootstrap {
         LightningTracker.initPacketListeners();
     }
 
+    private static void releaseTransientState(Minecraft client) {
+        CleanupSequence.run(
+                "core transient state",
+                Backtrack::suspend,
+                () -> AimCollect.shutdown(),
+                () -> Disabler.discardPending(),
+                () -> FakeLag.discardPending(),
+                () -> RotationManager.reset(),
+                () -> FreeLook.reset(client),
+                () -> AutoBlock.suspend(client),
+                () -> AutoSpear.suspend(client),
+                () -> AutoMace.reset(client),
+                () -> RightClick.reset(),
+                () -> InvManager.reset(),
+                () -> AutoArmor.reset(),
+                () -> InvClear.reset(),
+                () -> TimerManager.reset(),
+                SilentAuraBlock::suspend,
+                () -> SilentAuraRuntime.reset(client),
+                () -> AutoMLG.shutdown(client),
+                () -> AutoBed.shutdown(client),
+                () -> AutoWeb.shutdown(client),
+                () -> BlockInRuntime.shutdown(client),
+                () -> AutoLava.shutdown(client),
+                () -> AntiLava.shutdown(client),
+                () -> AntiWeb.shutdown(client),
+                () -> ScaffoldManager.shutdown(client),
+                () -> SilentPacketRotation.discard(),
+                () -> HotbarLease.resetAll(client),
+                () -> CombatInputController.reset(client),
+                () -> {
+                    if (MinecraftClientAccess.screen(client) instanceof MoonsComposeScreen)
+                        MinecraftClientAccess.setScreen(client, null);
+                });
+        transientReleased = true;
+    }
+
     static void shutdown() {
-        AimCollect.shutdown();
-        Disabler.discardPending();
-        FakeLag.discardPending();
-        RotationManager.reset();
         Minecraft client = Minecraft.getInstance();
-        FreeLook.reset(client);
-        AutoBlock.reset(client);
-        AutoSpear.reset(client);
-        AutoMace.reset(client);
-        RightClick.reset();
-        InvManager.reset();
-        AutoArmor.reset();
-        InvClear.reset();
-        TimerManager.reset();
-        SilentAuraBlock.reset(client);
-        SilentAuraRuntime.reset(client);
-        AutoMLG.shutdown(client);
-        AutoBed.shutdown(client);
-        AutoWeb.shutdown(client);
-        BlockInRuntime.shutdown(client);
-        AutoLava.shutdown(client);
-        AntiLava.shutdown(client);
-        AntiWeb.shutdown(client);
-        ScaffoldManager.shutdown(client);
-        SilentPacketRotation.discard();
-        HotbarLease.resetAll(client);
-        CombatInputController.reset(client);
-        if (MinecraftClientAccess.screen(client) instanceof MoonsComposeScreen) {
-            MinecraftClientAccess.setScreen(client, null);
-        }
-        ComposeRenderBridge.close();
-        com.blanoir.moons.client.ui.render.SmoothGui.close();
-        RemoteConfigClient.shutdown();
-        PremiumCheckCommand.shutdown();
-        AntiNick.shutdown();
-        NicknameShuffle.reset();
-        OreScanner.shutdown();
-        StructureLocate.reset();
-        com.blanoir.moons.client.render.StructureLabelRenderer.close();
-        OreHighlighter.close();
-        Chams.close();
-        com.blanoir.moons.client.module.impl.network.backtrack.BacktrackRenderer.close();
-        WorldOverlayRenderer.close();
+        CleanupSequence.run(
+                "core feature shutdown",
+                () -> ClickGuiWarmup.cancel(),
+                () -> {
+                    if (!transientReleased) releaseTransientState(client);
+                },
+                () -> ComposeRenderBridge.close(),
+                () -> com.blanoir.moons.client.ui.render.SmoothGui.close(),
+                () -> RemoteConfigClient.shutdown(),
+                () -> PremiumCheckCommand.shutdown(),
+                () -> AntiNick.shutdown(),
+                () -> NicknameShuffle.reset(),
+                () -> OreScanner.shutdown(),
+                () -> StructureLocate.shutdown(),
+                () -> com.blanoir.moons.client.render.StructureLabelRenderer.close(),
+                () -> OreHighlighter.close(),
+                () -> Chams.close(),
+                () ->
+                        com.blanoir.moons.client.module.impl.network.backtrack.BacktrackRenderer
+                                .close(),
+                () -> WorldOverlayRenderer.close());
     }
 }

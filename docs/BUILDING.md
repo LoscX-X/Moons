@@ -24,7 +24,9 @@ Set-Location E:\McEnv\moons
 | --- | --- |
 | `moonsExe` | `moon.exe`，校验依赖并加载游戏 |
 | `moonsInstallExe` | `moon-install.exe`，安装/更新依赖，不加载游戏 |
-| `moonsPackages` | 安装器、加载器和 UI 运行库 |
+| `moonsPackages` | 安装器、加载器、UI 运行库、发行锁和离线留档 ZIP |
+| `moonsReleaseLock` | `moons-release-lock.json`、完整 SHA-256 文件与 `releases\<lock SHA-256>\` 冻结快照 |
+| `moonsReleaseArchive` | `moons-release-archive.zip`，包含匹配的 EXE、四版原始载荷及发行锁 |
 | `moonsUiRuntime` | `dependencies\moons-ui-runtime.jar` 及 SHA-256 文件 |
 | `ysmAllVersions` | `moons-ysm-all.zip` 和四个单版本 ZIP |
 | `ysmBundle -Pminecraft_version=26.2` | `moons-ysm-26.2.zip` |
@@ -32,7 +34,13 @@ Set-Location E:\McEnv\moons
 
 ## 客户端与依赖版本
 
-- `gradle.properties` 的 `load_version` 是客户端版本，使用 `major.minor.patch`，可带预发布后缀。
+四个维护目标由 `config/version-catalog.json` 统一声明，生成构建任务、启动器版本选择和资源索引。退役版登记为 legacy 并引用完整发行 lock 哈希，不使用当前工具链重编译；尚未实现的 special 不生成可用选项。发行锁记录实际制品的完整 SHA-256、大小、来源及依赖闭包；本地快照按完整 lock 哈希保存并校验，已有快照不会被新构建覆盖。载荷补丁重建的 ZIP 序列化可能不同于原始 JAR，因此原始制品哈希与加载器的重建配方分别记录。
+
+安装器发布 `MOONS_HOME/installations/<依赖 SHA-256>/` 下的库、适配模块和各 profile 上下文。生产加载器选择游戏版本后，只检查该 profile 的 UI、三个 YSM 库及一个适配模块；把上下文路径和 SHA-256 交给 native/Java，运行时再次校验，不通过全局 current 指针选库。模块和模型数据仍使用原 `MOONS_HOME/data`。
+
+- `gradle.properties` 的 `load_version` 是客户端版本，必须使用 `X.Y.Z.x-Experiment` 或 `X.Y.Z.x-Release`。前三段是发行基线，第四段 x 是补丁顺序。本地 Gradle 和 Actions 拒绝其他后缀、三段数字或缺少后缀的版本。
+- 首轮发布 `1.0.0.0-Experiment`；以后每次 push 前默认将 x 加 1，前三段变化时将 x 重置为 0。同一次 push 重新运行构建不增加 x，构建流程不会反向提交版本改动。Windows 文件版本使用完整四段数字。
+- `Experiment` 发布为预发布版，不覆盖 GitHub 的 Latest；稳定后使用 `Release` 发布为正式版并标记 Latest。版本号和提交 SHA 一起标识本次构建，旧版冻结制品的版本名保持不变。
 - 依赖版本由 UI 和全部 YSM 文件的哈希生成，界面显示前 12 位。
 - 两个 EXE 显示客户端/依赖版本，Windows 文件属性包含客户端版本，`--version` 输出详细元数据。
 - 依赖版本记录位于 `MOONS_HOME/libraries/moons-dependencies.properties`。
@@ -64,9 +72,11 @@ MOONS_HOME/
     moons-ysm-26.4-snapshot-1.jar
 ```
 
-将 `moons-ysm-all.zip` 解压至 `MOONS_HOME` 可安装 YSM 库和适配模块。运行 `build\dist\moon-install.exe --install-only` 可无界面安装全部依赖，退出码 0 表示成功。使用 `moon.exe --verify-dependencies` 检查依赖是否完整。
+根目录的库和模块布局用于旧协议兼容。将 `moons-ysm-all.zip` 解压至 `MOONS_HOME` 可供旧协议使用；新加载器需要匹配安装器发布完整上下文。运行 `build\dist\moon-install.exe --install-only` 可无界面安装全部依赖，退出码 0 表示成功。使用 `moon.exe --verify-dependencies --minecraft-version 26.2` 检查选定版本；不指定版本时检查旧兼容布局。
 
-修改 YSM 库或模块后，可通过模块重载更新。修改 bootstrap API、宿主渲染钩子或注入位置后，需要重新构建 EXE、重启游戏并重新注入。
+更新前先归档已安装的旧布局；`MOONS_HOME/legacy/<标识>/` 保存旧 UI 指针、库与模块，`view.sha256` 保存完整身份，data 目录通过 Windows junction 指向原有用户数据。旧 EXE 使用该视图作为 MOONS_HOME 即可读取自己的库和同一份配置。匹配加载器的 `--legacy-view` 输出已校验的视图路径；不要在视图内运行其他发行的安装器。正常新协议加载仍使用原 MOONS_HOME。
+
+外部扩展模块仍可通过模块重载更新。安装器管理的 YSM 使用上下文中的冻结库和适配模块，根目录旧布局的更新不会替换正在运行的冻结版本。修改 bootstrap API、宿主渲染钩子或注入位置后，需要重新构建 EXE、重启游戏并重新注入。
 
 查看构建产物路径和时间，并运行加载器：
 
@@ -81,14 +91,14 @@ Get-Item .\build\dist\moon.exe | Select-Object FullName, LastWriteTime, Length
 
 | 类别 | 保留上限 | 体积上限 | 过期时间 |
 | --- | --- | --- | --- |
-| UI runtime | 当前版本及一个旧版本 | 256 MiB | 旧版本 30 天 |
+| 未被安装视图引用的 UI runtime | 当前版本及一个旧版本 | 256 MiB | 旧版本 30 天 |
 | 载荷 / DLL / API 缓存 | 12 份 | 128 MiB | 30 天 |
 | 模块和库副本 | 32 份 | 256 MiB | 30 天 |
 | 宿主 runtime 副本 | 8 份 | 64 MiB | 30 天 |
 | 失败安装留下的 YSM 备份 | 2 份 | 64 MiB | 7 天 |
 | 旧 `%TEMP%/moons` runtime 缓存 | 8 份 | 64 MiB | 7 天 |
 
-YSM 临时备份在更新成功后删除。缓存清理保留当前 UI 版本和写入不足 10 分钟的文件，超量时优先移除较旧条目；受保护或被占用的文件可能使缓存暂时超过上限。
+YSM 临时备份在更新成功后删除。缓存清理保留当前及各安装上下文引用的 UI 版本和写入不足 10 分钟的文件，超量时优先移除较旧条目；无法读取上下文时暂停 UI 清理。冻结安装视图不由缓存预算删除，受保护或被占用的文件可能使缓存暂时超过上限。
 
 Runtime 缓存位于 `MOONS_HOME/cache/runtime`。配置、模型、预设和 `MOONS_HOME/modules` 中的正式模块不属于缓存清理范围。
 
@@ -109,6 +119,12 @@ Runtime 缓存位于 `MOONS_HOME/cache/runtime`。配置、模型、预设和 `M
 .\gradlew.bat verifyYsmCore '-Pysm_test_model=C:\Models\example.ysm'
 .\gradlew.bat verifyYsmPackage
 .\gradlew.bat verifyLauncherPackages # 隔离目录验证两个真实 EXE，不注入游戏
+.\gradlew.bat verifyRasterPipeline # 共享光栅流程的像素、缓存和资源生命周期检查
+.\gradlew.bat verifyTaskScope # 后台任务取消、真实终止和旧回调隔离
+.\gradlew.bat verifyRemoteConfig # 远程连接代次、命令重试与有界排队
+.\gradlew.bat verifySettingsPersistence # 写入失败保留 dirty 版本与重试
+.\gradlew.bat verifyRuntimeStartup # 首 tick、核心失败及资源清理
+.\gradlew.bat verifyDependencyContexts # A/B 共存、旧 EXE 视图与 C#/Java 上下文
 .\gradlew.bat verifyAutoTotem verifyDamagePrediction # 修改图腾或伤害预测时
 .\gradlew.bat verifyHitSelect verifyMisplace # 修改攻击时序或位置预测时
 .\gradlew.bat benchmarkYsm

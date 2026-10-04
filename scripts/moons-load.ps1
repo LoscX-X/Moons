@@ -1,8 +1,9 @@
-Z[CmdletBinding()]
+[CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][Alias("Pid")][int]$ProcessId,
     [Parameter(Mandatory = $true)][string]$Dll,
     [Parameter(Mandatory = $true)][string]$Payload,
+    [Parameter(Mandatory = $true)][string]$DependencyContext,
     [Alias("Home")][string]$DataHome,
     [string]$Name,
     [int]$WaitSeconds = 30
@@ -51,6 +52,8 @@ $dllFull = (Resolve-Path -LiteralPath $Dll).Path
 $payloadSource = (Resolve-Path -LiteralPath $Payload).Path
 if (-not $DataHome) { $DataHome = Join-Path $env:APPDATA ".moons" }
 $homeFull = [IO.Path]::GetFullPath($DataHome)
+$dependencyContextFull = (Resolve-Path -LiteralPath $DependencyContext).Path
+$dependencyContextHash = Get-Sha256Hex $dependencyContextFull
 $displayName = if ($Name) { $Name } elseif ($env:MOONS_NAME) { $env:MOONS_NAME } else { "Moons" }
 $displayName = ($displayName -replace '[\x00-\x1F\x7F]', '').Trim()
 if (-not $displayName) { $displayName = "Moons" }
@@ -162,6 +165,8 @@ try {
         "home=$homeFull"
         "name=$displayName"
         "attempt=$attempt"
+        "dependencies=$dependencyContextFull"
+        "dependencies.sha256=$dependencyContextHash"
     ) -join [Environment]::NewLine
     [IO.File]::WriteAllText($confPath, $configuration, (New-Object Text.UTF8Encoding($false)))
 

@@ -30,7 +30,29 @@ final class RuntimeLoader implements AutoCloseable {
             String minecraftVersion)
             throws Exception {
         if (gameLoader == null) throw new IllegalArgumentException("gameLoader");
-        return load(outerJar, home, mode, minecraftVersion, gameLoader);
+        return load(outerJar, home, mode, minecraftVersion, gameLoader, null);
+    }
+
+    static RuntimeLoader startNative(
+            Path outerJar,
+            Path home,
+            LoadMode mode,
+            ClassLoader gameLoader,
+            String minecraftVersion,
+            String manifest,
+            String hash)
+            throws Exception {
+        if (gameLoader == null) throw new IllegalArgumentException("gameLoader");
+        if (manifest == null || manifest.isBlank() || hash == null || hash.isBlank())
+            throw new IllegalArgumentException(
+                    "Exact dependency context is required by this bridge");
+        return load(
+                outerJar,
+                home,
+                mode,
+                minecraftVersion,
+                gameLoader,
+                DependencyContext.resolve(home, manifest, hash, minecraftVersion));
     }
 
     private static RuntimeLoader load(
@@ -38,14 +60,18 @@ final class RuntimeLoader implements AutoCloseable {
             Path home,
             LoadMode mode,
             String minecraftVersion,
-            ClassLoader gameLoader)
+            ClassLoader gameLoader,
+            DependencyContext dependencies)
             throws Exception {
         Path runtimeJar =
                 PayloadCache.extract(
-                        outerJar, home, "META-INF/moons/runtime/moons-runtime.jar", "moons-runtime.jar");
+                        outerJar,
+                        home,
+                        "META-INF/moons/runtime/moons-runtime.jar",
+                        "moons-runtime.jar");
         ClassLoader bridgeParent =
                 new BridgeParentClassLoader(gameLoader, RuntimeLoader.class.getClassLoader());
-        Path uiRuntime = resolveUiRuntime(home);
+        Path uiRuntime = dependencies == null ? resolveUiRuntime(home) : dependencies.ui();
         java.net.URL[] runtimeUrls =
                 uiRuntime == null
                         ? new java.net.URL[] {runtimeJar.toUri().toURL()}
@@ -60,10 +86,29 @@ final class RuntimeLoader implements AutoCloseable {
             Class<?> entrypoint =
                     Class.forName("com.blanoir.moons.runtime.RuntimeEntrypoint", true, loader);
             Method start =
-                    entrypoint.getMethod(
-                            "start", Path.class, Path.class, LoadMode.class, String.class);
+                    dependencies == null
+                            ? entrypoint.getMethod(
+                                    "start", Path.class, Path.class, LoadMode.class, String.class)
+                            : entrypoint.getMethod(
+                                    "start",
+                                    Path.class,
+                                    Path.class,
+                                    LoadMode.class,
+                                    String.class,
+                                    Path.class,
+                                    Path.class);
             RuntimeBridge bridge =
-                    (RuntimeBridge) start.invoke(null, home, outerJar, mode, minecraftVersion);
+                    (RuntimeBridge)
+                            (dependencies == null
+                                    ? start.invoke(null, home, outerJar, mode, minecraftVersion)
+                                    : start.invoke(
+                                            null,
+                                            home,
+                                            outerJar,
+                                            mode,
+                                            minecraftVersion,
+                                            dependencies.root(),
+                                            dependencies.module()));
             return new RuntimeLoader(loader, bridge);
         } catch (Throwable failure) {
             loader.close();

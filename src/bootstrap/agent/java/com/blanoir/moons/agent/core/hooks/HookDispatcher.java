@@ -110,6 +110,10 @@ public final class HookDispatcher {
         if (target.hook() == TargetMethod.HookKind.BOXED_ARGS_VOID_GATE) {
             return containsIdentifiedHook(method, target.id(), "onBooleanValue");
         }
+        if (target.hook() == TargetMethod.HookKind.VOID_HEAD
+                || target.hook() == TargetMethod.HookKind.VOID_RETURN) {
+            return containsIdentifiedHook(method, target.id(), "onVoidHook");
+        }
         String hookName =
                 switch (target.hook()) {
                     case VERSION_SPECIFIC -> throw new AssertionError("Handled above");

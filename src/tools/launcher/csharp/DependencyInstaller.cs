@@ -50,10 +50,12 @@ namespace Moons.WindowsLauncher
                     try { acquired = mutex.WaitOne(0); }
                     catch (AbandonedMutexException) { acquired = true; }
                     if (!acquired) throw new IOException("Another installer is updating these dependencies. Try again shortly.");
+                    DependencyRuntime.ArchiveInstalledLegacy(home);
                     EnsureUiRuntime(home, progress, cancelled);
                     ThrowIfCancelled(cancelled);
                     if (progress != null) progress(35, "Updating YSM libraries and game adapters");
                     YsmPackage.Install(home, DependencyRuntime.ReadResourceBytes("Moons.Ysm.zip"));
+                    DependencyRuntime.PublishViews(home);
                     DependencyRuntime.PublishUiRuntime(home);
                     DependencyRuntime.Verify(home);
                     DependencyRuntime.RecordInstalledVersion(home);

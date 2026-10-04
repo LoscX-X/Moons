@@ -322,9 +322,7 @@ final class YsmRenderAdapter implements AutoCloseable {
                 || args.length != 5
                 || !(args[0] instanceof PoseStack pose)
                 || !(args[1] instanceof SubmitNodeCollector collector)
-                || !(owner
-                        instanceof
-                        net.minecraft.client.renderer.entity.player.AvatarRenderer))
+                || !(owner instanceof net.minecraft.client.renderer.entity.player.AvatarRenderer))
             return false;
         LocalPlayer player = Minecraft.getInstance().player;
         if (player == null || player.isInvisible() || player.isSpectator()) return false;

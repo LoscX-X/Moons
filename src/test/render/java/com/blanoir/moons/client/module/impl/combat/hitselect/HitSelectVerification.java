@@ -3,6 +3,7 @@ package com.blanoir.moons.client.module.impl.combat.hitselect;
 import static com.blanoir.moons.client.module.impl.combat.hitselect.HitSelectCycle.Gate.*;
 
 import com.blanoir.moons.client.module.impl.combat.HitSelect;
+import com.blanoir.moons.client.module.impl.combat.Misplace;
 import com.blanoir.moons.client.utils.combat.CombatGeometry;
 import com.blanoir.moons.client.utils.raytrace.RaytraceUtils.EntityRayState;
 
@@ -15,9 +16,10 @@ public final class HitSelectVerification {
         confirmations();
         scope();
         geometry();
+        originalPositions();
         rates();
         System.out.println(
-                "HitSelect verified: bounded waits, damage clocks, TriggerBot bypass and shared displaced attack geometry.");
+                "HitSelect verified: bounded waits, damage clocks, TriggerBot bypass, raw-position scope and displaced attack geometry.");
     }
 
     private static HitSelectCycle.Policy policy(boolean server, int rtt) {
@@ -164,6 +166,36 @@ public final class HitSelectVerification {
                 CombatGeometry.traceShape(original, eye, look, 3, p -> true)
                         == EntityRayState.RANGE,
                 "Replayed newer position immediately invalidates old reach");
+    }
+
+    private static void originalPositions() {
+        boolean wasEnabled = Misplace.isEnabled();
+        try {
+            Misplace.setEnabled(null, true);
+            require(CombatGeometry.searchPadding() == 5.5, "Aura keeps displaced target search");
+            CombatGeometry.withOriginalPositions(
+                    () -> {
+                        require(CombatGeometry.searchPadding() == 1, "TriggerBot uses raw search");
+                        CombatGeometry.withOriginalPositions(
+                                () ->
+                                        require(
+                                                CombatGeometry.searchPadding() == 1,
+                                                "Nested raw search"));
+                        require(CombatGeometry.searchPadding() == 1, "Outer scope remains raw");
+                        require(Misplace.isEnabled(), "TriggerBot does not toggle Misplace");
+                    });
+            require(CombatGeometry.searchPadding() == 5.5, "Following Aura search stays displaced");
+            try {
+                CombatGeometry.withOriginalPositions(
+                        () -> {
+                            throw new IllegalStateException("fixture");
+                        });
+            } catch (IllegalStateException expected) {
+            }
+            require(CombatGeometry.searchPadding() == 5.5, "Failed attack cannot leak raw scope");
+        } finally {
+            Misplace.setEnabled(null, wasEnabled);
+        }
     }
 
     private static void rates() {

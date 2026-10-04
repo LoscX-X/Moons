@@ -52,6 +52,7 @@ object TextGuiSkiaOverlay {
     private var rowScale = Float.NaN
     private var rowPixelMode = false
     private val drawnBounds = DrawnBounds()
+    private val drawnRegions = ArrayList<Rect>(3)
     private var fittedValue = ""
     private var fittedResult = ""
     private var fittedWidth = Float.NaN
@@ -114,9 +115,10 @@ object TextGuiSkiaOverlay {
         if (startedNanos == 0L) startedNanos = now
         val seconds = (now - startedNanos) / 1_000_000_000.0
 
-        drawnBounds.reset()
-        frameSurface.render(width, height, contentBounds = { drawnBounds.rect() }) { canvas ->
-            if (drawTextGui)
+        drawnRegions.clear()
+        frameSurface.render(width, height, contentRegions = { drawnRegions }) { canvas ->
+            if (drawTextGui) {
+                drawnBounds.reset()
                 drawTextGui(
                     canvas,
                     client,
@@ -124,7 +126,13 @@ object TextGuiSkiaOverlay {
                     seconds,
                     animationSeconds,
                 )
-            if (targetSnapshot.visible()) drawTargetInfo(canvas, targetSnapshot)
+                drawnBounds.rect()?.let(drawnRegions::add)
+            }
+            if (targetSnapshot.visible()) {
+                drawnBounds.reset()
+                drawTargetInfo(canvas, targetSnapshot)
+                drawnBounds.rect()?.let(drawnRegions::add)
+            }
             if (inventorySnapshot.visible()) {
                 val resources = textResources
                 resources.configureFont(8f)
@@ -135,7 +143,9 @@ object TextGuiSkiaOverlay {
                         resources.font,
                         resources.targetPaint,
                     )
-                drawnBounds.include(rect.left - 2, rect.top - 2, rect.right + 2, rect.bottom + 2)
+                drawnRegions.add(
+                    Rect.makeLTRB(rect.left - 2, rect.top - 2, rect.right + 2, rect.bottom + 2)
+                )
             }
         }
     }

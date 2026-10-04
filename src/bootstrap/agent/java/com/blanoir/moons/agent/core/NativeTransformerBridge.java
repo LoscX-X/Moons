@@ -35,6 +35,48 @@ public final class NativeTransformerBridge {
     private static final MoonsTransformer TRANSFORMER =
             new MoonsTransformer(VersionMappings.create());
     private static RuntimeLoader runtime;
+    private static ClassLoader runtimeGameLoader;
+    private static String dependencyManifest;
+    private static String dependencyHash;
+
+    public static synchronized void configureDependencies(String manifest, String hash) {
+        dependencyManifest = manifest;
+        dependencyHash = hash;
+    }
+
+    public static synchronized void beginAttempt(String attempt) {
+        TRANSFORMER.beginAttempt(attempt);
+    }
+
+    public static void retransformAccepted(String className, ClassLoader loader, boolean success) {
+        TRANSFORMER.accepted(loader, className, success);
+    }
+
+    public static void transformDeliveryFailed(String className, ClassLoader loader) {
+        TRANSFORMER.deliveryFailed(loader, className);
+    }
+
+    public static boolean requiredClass(String className) {
+        return TRANSFORMER.requiredClass(className);
+    }
+
+    public static synchronized String startupStatus() {
+        if (runtime == null) return "WAITING:runtime-start";
+        String status;
+        try {
+            status =
+                    (String)
+                            runtime.bridge()
+                                    .getClass()
+                                    .getMethod("startupStatus")
+                                    .invoke(runtime.bridge());
+        } catch (ReflectiveOperationException failure) {
+            return "FAILED:startup-status:" + failure;
+        }
+        if (!status.startsWith("READY:")) return status;
+        String hooks = TRANSFORMER.readiness(runtimeGameLoader, true);
+        return hooks.startsWith("READY:") ? status : hooks;
+    }
 
     private NativeTransformerBridge() {}
 
@@ -118,10 +160,17 @@ public final class NativeTransformerBridge {
             }
             RuntimeLoader next =
                     RuntimeLoader.startNative(
-                            outerJar, home, LoadMode.JVMTI, gameLoader, VersionMappings.version());
+                            outerJar,
+                            home,
+                            LoadMode.JVMTI,
+                            gameLoader,
+                            VersionMappings.version(),
+                            dependencyManifest,
+                            dependencyHash);
             bindGameBridge(gameLoader, gameAgentBridge, gameRuntimeBridge, next.bridge());
             RuntimeBridge previous = AgentBridge.install(next.bridge());
             runtime = next;
+            runtimeGameLoader = gameLoader;
             if (previous != RuntimeBridge.NOOP) previous.close();
             log(
                     home,

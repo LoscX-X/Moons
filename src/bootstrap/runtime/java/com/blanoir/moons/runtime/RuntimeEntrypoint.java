@@ -12,6 +12,19 @@ public final class RuntimeEntrypoint {
     private RuntimeEntrypoint() {}
 
     public static RuntimeBridge start(
+            Path home,
+            Path outerJar,
+            LoadMode mode,
+            String minecraftVersion,
+            Path dependencyRoot,
+            Path dependencyModule)
+            throws Exception {
+        Files.createDirectories(home);
+        return new DefaultRuntimeBridge(
+                mode, home, outerJar, minecraftVersion, dependencyRoot, dependencyModule);
+    }
+
+    public static RuntimeBridge start(
             Path home, Path outerJar, LoadMode mode, String minecraftVersion) throws Exception {
         Files.createDirectories(home);
         DefaultRuntimeBridge runtime =

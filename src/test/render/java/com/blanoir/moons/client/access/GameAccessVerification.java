@@ -17,6 +17,14 @@ public final class GameAccessVerification {
 
     public static void main(String[] arguments) throws Exception {
         Class.forName(GameAccess.class.getName(), true, GameAccess.class.getClassLoader());
+        for (GameCapability capability : GameCapability.values()) {
+            var status = GameAccess.capability(capability);
+            if (!status.available()) {
+                throw new AssertionError(
+                        "Unavailable game capability " + capability, status.failure());
+            }
+        }
+        verifyCapabilityFailureIsolation();
         // Construct actual descriptors, including lazy blit variants, without opening a GPU.
         int pipelines = 0;
         for (String name :
@@ -44,6 +52,7 @@ public final class GameAccessVerification {
             pipelines++;
         }
         verifyRenderFailureIsolation();
+        verifySubscriptionOwnership();
         System.out.println(
                 "MOONS_RENDER_PIPELINES_VERIFIED count=" + pipelines + " shaders=resolved");
         System.out.println("MOONS_GAME_ACCESS_VERIFIED private-members=resolved");
@@ -65,6 +74,101 @@ public final class GameAccessVerification {
                         (Identifier) entry.getValue(), stage.equals("VERTEX") ? ".vsh" : ".fsh");
             }
         }
+    }
+
+    private static void verifyCapabilityFailureIsolation() throws Exception {
+        for (GameCapability capability : GameCapability.values()) {
+            verifyCapabilityFailureIsolation(capability);
+        }
+        System.out.println(
+                "MOONS_GAME_CAPABILITY_ISOLATION_VERIFIED capabilities=5 each=failed other=available");
+    }
+
+    private static void verifyCapabilityFailureIsolation(GameCapability failed) throws Exception {
+        String holder =
+                switch (failed) {
+                    case INPUT -> "InputMembers";
+                    case INTERACTION -> "InteractionMembers";
+                    case PACKET -> "PacketMembers";
+                    case RENDER -> "RenderMembers";
+                    case HUD -> "HudMembers";
+                };
+        String member =
+                switch (failed) {
+                    case INPUT -> "key";
+                    case INTERACTION -> "startAttack";
+                    case PACKET -> "genericsFtw";
+                    case RENDER -> "DEBUG_FILLED_SNIPPET";
+                    case HUD -> "header";
+                };
+        ClassLoader parent = GameAccess.class.getClassLoader();
+        ClassLoader faulted =
+                new ClassLoader(parent) {
+                    @Override
+                    protected Class<?> loadClass(String name, boolean resolve)
+                            throws ClassNotFoundException {
+                        if (!name.equals(GameAccess.class.getName())
+                                && !name.startsWith(GameAccess.class.getName() + "$")) {
+                            return super.loadClass(name, resolve);
+                        }
+                        synchronized (getClassLoadingLock(name)) {
+                            Class<?> loaded = findLoadedClass(name);
+                            if (loaded == null) {
+                                try (var input =
+                                        parent.getResourceAsStream(
+                                                name.replace('.', '/') + ".class")) {
+                                    if (input == null) throw new ClassNotFoundException(name);
+                                    byte[] bytes = input.readAllBytes();
+                                    if (name.endsWith("$" + holder)) {
+                                        var node = new org.objectweb.asm.tree.ClassNode();
+                                        new org.objectweb.asm.ClassReader(bytes).accept(node, 0);
+                                        boolean replaced = false;
+                                        for (var method : node.methods) {
+                                            for (var instruction : method.instructions) {
+                                                if (instruction
+                                                                instanceof
+                                                                org.objectweb.asm.tree.LdcInsnNode
+                                                                        constant
+                                                        && member.equals(constant.cst)) {
+                                                    constant.cst = "missingCapabilityMember";
+                                                    replaced = true;
+                                                }
+                                            }
+                                        }
+                                        if (!replaced)
+                                            throw new AssertionError(
+                                                    "Missing fixture member "
+                                                            + holder
+                                                            + "."
+                                                            + member);
+                                        var writer = new org.objectweb.asm.ClassWriter(0);
+                                        node.accept(writer);
+                                        bytes = writer.toByteArray();
+                                    }
+                                    loaded = defineClass(name, bytes, 0, bytes.length);
+                                } catch (java.io.IOException failure) {
+                                    throw new ClassNotFoundException(name, failure);
+                                }
+                            }
+                            if (resolve) resolveClass(loaded);
+                            return loaded;
+                        }
+                    }
+                };
+        Class<?> access = Class.forName(GameAccess.class.getName(), true, faulted);
+        var check = access.getMethod("capability", GameCapability.class);
+        var broken = (GameCapability.Status) check.invoke(null, failed);
+        if (broken.available() || broken.failure() == null)
+            throw new AssertionError("Missing " + failed + " member must report failure");
+        for (GameCapability capability : GameCapability.values()) {
+            if (capability == failed) continue;
+            var status = (GameCapability.Status) check.invoke(null, capability);
+            if (!status.available())
+                throw new AssertionError(
+                        failed + " failure poisoned " + capability, status.failure());
+        }
+        if (((GameCapability.Status) check.invoke(null, failed)).available())
+            throw new AssertionError("A failed resolver must not silently recover");
     }
 
     private static void verifyShader(Identifier shader, String extension) {
@@ -106,5 +210,33 @@ public final class GameAccessVerification {
         if (reports != 2 || calls[0] != 256 || calls[1] != 256)
             throw new AssertionError("Render failures must remain isolated and rate-limited");
         System.out.println("MOONS_RENDER_FAILURE_VERIFIED frames=256 reports=2 healthy=256");
+    }
+
+    private static void verifySubscriptionOwnership() throws Exception {
+        var event = new Event<Integer>();
+        var calls = new java.util.ArrayList<String>();
+        var explicit =
+                event.subscribe(
+                        "explicit",
+                        com.blanoir.moons.client.event.EventPriority.HIGH,
+                        value -> calls.add("explicit:" + value));
+        var scope = new com.blanoir.moons.runtime.lifecycle.DefaultResourceScope();
+        com.blanoir.moons.api.ScopedResources.run(
+                scope, () -> event.register("scoped", value -> calls.add("scoped:" + value)));
+        event.post(1);
+        if (!calls.equals(java.util.List.of("explicit:1", "scoped:1")))
+            throw new AssertionError("Subscription priority or order changed");
+        scope.close();
+        scope.close();
+        event.post(2);
+        explicit.close();
+        explicit.close();
+        event.post(3);
+        if (!calls.equals(java.util.List.of("explicit:1", "scoped:1", "explicit:2"))
+                || event.listenerCount() != 0)
+            throw new AssertionError(
+                    "Explicit and implicit ownership must close independently once");
+        System.out.println(
+                "MOONS_EVENT_OWNERSHIP_VERIFIED scoped explicit priority repeated-close");
     }
 }

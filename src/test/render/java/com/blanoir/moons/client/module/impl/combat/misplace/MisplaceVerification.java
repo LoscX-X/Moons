@@ -8,15 +8,11 @@ import net.minecraft.world.phys.Vec3;
 public final class MisplaceVerification {
     public static void main(String[] args) {
         causalGeometry();
-        fastWarmup();
-        prewarmedHistory();
-        appliedFeedback();
         knockbackEvidence();
-        repeatedCombatRecovery();
         lifecycleAndDisplay();
         independentTimelines();
         System.out.println(
-                "Misplace verified: prewarming, position sync continuity, applied HUD feedback and knockback phases.");
+                "Misplace verified: causal RTT geometry, FIFO attack origins, knockback phases and model bounds.");
     }
 
     private static Query query(
@@ -92,7 +88,7 @@ public final class MisplaceVerification {
         track.reset(position(4), 800);
         track.observe(position(3.9), 850);
         track.observe(position(3.8), 900);
-        track.impact(900, 250);
+        track.impact(900, 250, 50, 0);
         var before = estimate(track.observation(true), query(4, 0, 0, 20, 250, 900));
         require(
                 before.hasBounds(),
@@ -105,178 +101,15 @@ public final class MisplaceVerification {
                 !estimate(track.observation(true), query(4, 0, 0, 20, 250, 1200)).hasBounds(),
                 "Elapsed time without a movement report cannot confirm execution");
         track.observe(position(4.1), 1100);
-        require(
-                !estimate(track.observation(true), query(4.1, 0, 0, 20, 250, 1100)).hasBounds(),
-                "The first fresh damage report is the new motion baseline");
-        track.observe(position(4.2), 1150);
-        require(
-                estimate(track.observation(true), query(4.2, 0, 0, 20, 250, 1150)).hasBounds(),
-                "Fresh motion recovers before the old RTT window would have expired");
         track.observe(position(4.3), 1250);
         track.observe(position(4.4), 1300);
         require(
-                estimate(track.observation(true), query(4.4, 0, 0, 20, 250, 1300)).hasBounds(),
-                "One tick of fresh post-transition movement restores prediction");
+                !estimate(track.observation(true), query(4.4, 0, 0, 20, 250, 1300)).hasBounds(),
+                "One post-transition sample cannot establish the new velocity");
         track.observe(position(4.5), 1350);
         require(
                 estimate(track.observation(true), query(4.5, 0, 0, 20, 250, 1350)).hasBounds(),
                 "Fresh post-transition movement restores prediction without rewinding the victim");
-    }
-
-    private static void fastWarmup() {
-        MisplaceMotion track = new MisplaceMotion();
-        track.reset(position(4), 1000);
-        Query start =
-                new Query(
-                        eye(0),
-                        1000,
-                        eye(0),
-                        position(4.2),
-                        box(4.2),
-                        new Network(80, 20, 50, 15, 400),
-                        3,
-                        1000);
-        require(
-                track.advance(start, .6, true, true, 20) == 0,
-                "A single position does not establish motion");
-        track.observe(position(3.9), 1010);
-        require(
-                estimate(track.observation(true), query(4.2, 0, 0, 80, 20, 1010)).verdict()
-                        == Verdict.WARMUP,
-                "A packet burst shorter than one tick cannot end warmup");
-        track.observe(position(3.7), 1050);
-        Query ready =
-                new Query(
-                        eye(0),
-                        1050,
-                        eye(0),
-                        position(4.2),
-                        box(4.2),
-                        new Network(80, 20, 50, 15, 400),
-                        3,
-                        1050);
-        double amount = track.advance(ready, .6, true, true, 20);
-        require(
-                track.estimate().hasBounds() && amount > .5 && amount <= .6,
-                "Default jitter starts useful displacement after 50 ms, not 220 ms");
-        require(
-                track.estimate().maximumDistance() > distance(eye(0), box(4.2)),
-                "The early uncertainty envelope remains visible despite aggressive pulling");
-        near(
-                amount,
-                track.advance(ready, .6, true, true, 20),
-                "Same-time queries do not compound early displacement");
-        for (int jitter : new int[] {0, 15, 100}) {
-            Query wide =
-                    new Query(
-                            eye(0),
-                            1050,
-                            eye(0),
-                            position(4.2),
-                            box(4.2),
-                            new Network(80, 20, 50, jitter, 1000),
-                            3,
-                            1050);
-            require(
-                    estimate(track.observation(true), wide).hasBounds(),
-                    "Short history has finite bounds even when timing error exceeds its span");
-        }
-        track.impact(1050, 20);
-        require(
-                track.advance(ready, .6, true, true, 20) == 0,
-                "Aggressive pulling immediately stops across known knockback");
-    }
-
-    private static void repeatedCombatRecovery() {
-        for (int targetPing : new int[] {20, 250, 1000}) {
-            MisplaceMotion track = new MisplaceMotion();
-            double at = 4;
-            track.reset(position(at), 1000);
-            at -= .025;
-            track.observe(position(at), 1050);
-            for (int hit = 0; hit < 8; hit++) {
-                long now = 1100 + hit * 200;
-                track.impact(now, targetPing);
-                at -= .025;
-                track.observe(position(at), now + 50);
-                require(
-                        track.observation(true).samples() == 0,
-                        "Each hit starts one fresh trajectory baseline");
-                at -= .025;
-                track.observe(position(at), now + 100);
-                double amount =
-                        track.advance(
-                                query(at + .15, 0, 0, 80, targetPing, now + 100),
-                                .6,
-                                true,
-                                true,
-                                20);
-                require(
-                        track.estimate().hasBounds() && amount > 0,
-                        "Repeated hits recover after one fresh segment at target RTT="
-                                + targetPing);
-            }
-        }
-    }
-
-    private static void prewarmedHistory() {
-        MisplaceMotion track = new MisplaceMotion();
-        track.reset(position(4), 1000);
-        track.observe(position(3.7), 1050);
-        track.observe(position(3.4), 1100);
-        Query ready = query(3.9, 0, 0, 80, 20, 1100);
-        double before = track.advance(ready, .6, true, true, 0);
-        require(before > 0, "Prewarmed motion must be useful");
-        track.release();
-        require(track.estimate() == null, "Disabling releases displayed prediction");
-        near(
-                before,
-                track.advance(ready, .6, true, true, 0),
-                "Enabling reuses fresh packet history without another warmup");
-        // A routine absolute sync, such as an on-ground transition, follows the same
-        // observation path as delta movement rather than the teleport path.
-        track.observe(position(3.1), 1150);
-        require(
-                track.advance(query(3.6, 0, 0, 80, 20, 1150), .6, true, true, 0) > 0,
-                "Continuous absolute position sync does not erase warm history");
-        track.release();
-        require(
-                track.advance(query(3.6, 0, 0, 80, 20, 1401), .6, true, true, 0) == 0,
-                "Prewarming does not reuse expired samples");
-        track.observe(position(8), 1402);
-        track.observe(position(2), 1452);
-        require(
-                track.advance(query(2.5, 0, 0, 80, 20, 1502), .6, true, true, 0) == 0,
-                "Large position sync jumps still reset and settle");
-    }
-
-    private static void appliedFeedback() {
-        MisplaceFeedback feedback = new MisplaceFeedback();
-        feedback.update(.35, "", 1000);
-        require(feedback.tag(true).equals("Pull 0.35"), "HUD reports applied offset immediately");
-        feedback.update(0, "Sampling", 1050);
-        require(
-                feedback.tag(true).equals("Pull 0.00"),
-                "Loss of applied offset is immediate, not hidden by label debounce");
-        feedback.update(0, "Sampling", 1249);
-        require(feedback.tag(true).equals("Pull 0.00"), "Brief warmup does not flash a label");
-        feedback.update(0, "Sampling", 1250);
-        require(
-                feedback.tag(true).equals("Pull 0.00 Sampling"),
-                "Persistent inactivity explains why no offset is applied");
-        feedback.update(0, "No packets", 1260);
-        feedback.update(0, "KB pending", 1300);
-        require(feedback.tag(true).equals("Pull 0.00"), "Changing reasons do not flicker");
-        feedback.update(.6, "KB pending", 1320);
-        require(feedback.tag(true).equals("Pull 0.60"), "Active offset clears obsolete reasons");
-        require(feedback.tag(false).equals("Fixed 0.60"), "Fixed mode also reports applied amount");
-        feedback.update(0, "Blocked", 1400);
-        feedback.update(0, "Blocked", 1600);
-        require(
-                feedback.tag(true).equals("Pull 0.00 Blocked"),
-                "Blocked geometry is not presented as active displacement");
-        feedback.reset();
-        require(feedback.tag(true).equals("Pull 0.00"), "Context changes clear HUD feedback");
     }
 
     private static void lifecycleAndDisplay() {
@@ -289,10 +122,8 @@ public final class MisplaceVerification {
         require(amount > 0 && amount <= .4, "Useful correction remains bounded");
         var shifted = box(3.9).move(MisplaceMotion.offset(eye(0), position(3.9), amount));
         require(
-                distance(eye(0), shifted) + 1e-6
-                        >= (track.estimate().minimumDistance() + track.estimate().maximumDistance())
-                                * .5,
-                "Displayed distance stays at or beyond the model interval's center");
+                distance(eye(0), shifted) + 1e-6 >= track.estimate().maximumDistance(),
+                "Displayed distance cannot be more optimistic than the model bound");
         for (int i = 0; i < 100; i++)
             near(
                     amount,

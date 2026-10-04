@@ -2,6 +2,7 @@ package com.blanoir.moons.client.module.impl.network;
 
 import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.event.EventBus;
+import com.blanoir.moons.client.management.network.SessionToken;
 import com.blanoir.moons.client.module.impl.network.backtrack.BacktrackConfig;
 import com.blanoir.moons.client.module.impl.network.backtrack.BacktrackRuntime;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -20,6 +21,7 @@ import java.util.List;
 public final class Backtrack {
     private static final BacktrackConfig CONFIG = new BacktrackConfig();
     private static final BacktrackRuntime RUNTIME = new BacktrackRuntime(CONFIG);
+    private static volatile long activationGeneration;
 
     private Backtrack() {}
 
@@ -48,12 +50,15 @@ public final class Backtrack {
                         Minecraft client = Minecraft.getInstance();
                         var connection = client.getConnection();
                         var level = client.level;
+                        var session = new SessionToken<>(connection, level);
+                        long activation = activationGeneration;
                         client.execute(
                                 () -> {
-                                    if (connection != null
-                                            && connection == client.getConnection()
+                                    if (activation == activationGeneration
+                                            && connection != null
                                             && level != null
-                                            && level == client.level) {
+                                            && session.matches(
+                                                    client.getConnection(), client.level)) {
                                         onAttack(level.getEntity(attack.entityId()));
                                     }
                                 });
@@ -66,6 +71,12 @@ public final class Backtrack {
 
     public static boolean isEnabled() {
         return CONFIG.enabled();
+    }
+
+    /** Core deactivation discards retained state; it never starts a replay. */
+    public static void suspend() {
+        activationGeneration++;
+        RUNTIME.discard();
     }
 
     public static boolean handleIncomingPacket(Packet<?> packet, PacketListener listener) {

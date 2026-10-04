@@ -2,7 +2,6 @@ package com.blanoir.moons.client.config;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
@@ -17,6 +16,14 @@ public final class Settings {
     private static volatile long revision;
     private static int deferredSaveDepth;
     private static boolean savePending;
+    private static long persistedRevision;
+    private static String saveFailure = "";
+
+    public record SaveResult(long appliedRevision, long persistedRevision, String error) {
+        public boolean saved() {
+            return error.isEmpty() && appliedRevision == persistedRevision;
+        }
+    }
 
     private Settings() {}
 
@@ -58,27 +65,46 @@ public final class Settings {
         if (loaded) return;
 
         Path configPath = configPath();
-        if (Files.exists(configPath)) {
+        boolean firstRun = !Files.exists(configPath);
+        if (!firstRun) {
             try (InputStream input = Files.newInputStream(configPath)) {
                 PROPERTIES.load(input);
             } catch (IOException exception) {
                 System.err.println("[client] Failed to load config: " + exception.getMessage());
             }
-        }
+        } else FirstRunDefaults.apply(PROPERTIES);
         loaded = true;
+        if (firstRun) {
+            revision++;
+            save();
+        }
     }
 
     public static synchronized void save() {
         load();
         Path configPath = configPath();
         try {
-            Files.createDirectories(configPath.getParent());
-            try (OutputStream output = Files.newOutputStream(configPath)) {
-                PROPERTIES.store(output, "client settings");
-            }
+            ConfigStore.write(configPath, PROPERTIES);
+            persistedRevision = revision;
+            saveFailure = "";
+            savePending = false;
         } catch (IOException exception) {
+            saveFailure =
+                    exception.getMessage() == null ? exception.toString() : exception.getMessage();
+            savePending = true;
             System.err.println("[client] Failed to save config: " + exception.getMessage());
         }
+    }
+
+    public static synchronized SaveResult saveResult() {
+        load();
+        return new SaveResult(revision, persistedRevision, saveFailure);
+    }
+
+    /** Explicit retry; normal mutations retain their established synchronous save behavior. */
+    public static synchronized SaveResult flush() {
+        if (savePending) save();
+        return saveResult();
     }
 
     public static boolean getBoolean(String key, boolean defaultValue) {
@@ -145,7 +171,7 @@ public final class Settings {
         if (!loaded) load();
     }
 
-    private static void setProperty(String key, String value) {
+    private static synchronized void setProperty(String key, String value) {
         ensureLoaded();
         if (!value.equals(PROPERTIES.setProperty(key, value))) saveAfterMutation();
     }
@@ -165,7 +191,6 @@ public final class Settings {
         if (deferredSaveDepth <= 0) return;
         deferredSaveDepth--;
         if (deferredSaveDepth == 0 && savePending) {
-            savePending = false;
             save();
         }
     }

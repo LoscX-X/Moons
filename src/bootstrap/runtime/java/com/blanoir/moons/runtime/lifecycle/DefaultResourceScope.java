@@ -12,14 +12,16 @@ public final class DefaultResourceScope implements ResourceScope {
     private boolean closed;
 
     @Override
-    public synchronized <T extends AutoCloseable> T own(T resource) {
+    public <T extends AutoCloseable> T own(T resource) {
         T checked = Objects.requireNonNull(resource, "resource");
-        if (closed) {
-            closeQuietly(checked);
-            throw new IllegalStateException("Resource scope is already closed");
+        synchronized (this) {
+            if (!closed) {
+                resources.push(checked);
+                return checked;
+            }
         }
-        resources.push(checked);
-        return checked;
+        closeQuietly(checked);
+        throw new IllegalStateException("Resource scope is already closed");
     }
 
     @Override
@@ -28,14 +30,19 @@ public final class DefaultResourceScope implements ResourceScope {
     }
 
     @Override
-    public synchronized void close() {
-        if (closed) return;
-        closed = true;
+    public void close() {
+        Deque<AutoCloseable> acquired;
+        synchronized (this) {
+            if (closed) return;
+            closed = true;
+            acquired = new ArrayDeque<>(resources);
+            resources.clear();
+        }
         RuntimeException aggregate = null;
-        while (!resources.isEmpty()) {
+        while (!acquired.isEmpty()) {
             try {
-                resources.pop().close();
-            } catch (Exception failure) {
+                acquired.pop().close();
+            } catch (Throwable failure) {
                 if (aggregate == null) {
                     aggregate =
                             new RuntimeException("One or more module resources failed to close");
@@ -49,7 +56,7 @@ public final class DefaultResourceScope implements ResourceScope {
     private static void closeQuietly(AutoCloseable resource) {
         try {
             resource.close();
-        } catch (Exception ignored) {
+        } catch (Throwable ignored) {
         }
     }
 }

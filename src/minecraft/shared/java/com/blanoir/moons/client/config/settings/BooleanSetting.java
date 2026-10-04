@@ -38,6 +38,10 @@ public final class BooleanSetting {
             return this;
         }
 
+        public Builder spec(SettingSpec<Boolean> spec) {
+            return name(spec.key()).defaultValue(spec.defaultValue());
+        }
+
         public Builder defaultValue(boolean value) {
             this.defaultValue = value;
             return this;

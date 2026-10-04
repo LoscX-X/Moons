@@ -16,6 +16,7 @@ internal class FinalFrameSurface : AutoCloseable {
         frameWidth: Int,
         frameHeight: Int,
         contentBounds: (() -> Rect?)? = null,
+        contentRegions: (() -> List<Rect>)? = null,
         draw: (Canvas) -> Unit,
     ) {
         if (frameWidth <= 0 || frameHeight <= 0) return

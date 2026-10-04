@@ -604,6 +604,11 @@ public final class ModuleRegistry {
         JsonObject result = new JsonObject();
         result.addProperty("ok", true);
         result.add("value", value);
+        var saved = Settings.saveResult();
+        result.addProperty("persisted", saved.saved());
+        result.addProperty("appliedRevision", saved.appliedRevision());
+        result.addProperty("persistedRevision", saved.persistedRevision());
+        if (!saved.error().isEmpty()) result.addProperty("persistenceError", saved.error());
         return result;
     }
 

@@ -1,10 +1,12 @@
 package com.blanoir.moons.client.module.impl.misc;
 
+import com.blanoir.moons.api.ScopedResources;
 import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.IntSetting;
 import com.blanoir.moons.client.config.settings.StringSetting;
 import com.blanoir.moons.client.event.EventBus;
+import com.blanoir.moons.client.management.task.ThreadDomain;
 import com.blanoir.moons.client.module.impl.render.NicknameShuffle;
 import com.blanoir.moons.client.service.profile.MojangProfileClient;
 
@@ -36,6 +38,7 @@ public final class AntiNick {
     private AntiNick() {}
 
     public static void init() {
+        ScopedResources.own(MOJANG);
         EventBus.TICK_END.register("AntiNick.tickEnd", event -> tick(event.client()));
     }
 
@@ -49,6 +52,8 @@ public final class AntiNick {
         long now = System.currentTimeMillis();
         if (now < nextRefreshAt) return;
         nextRefreshAt = now + REFRESH_MS.get();
+        var domain = new ThreadDomain("AntiNick result", client::isSameThread, client::execute);
+        var lifetime = MOJANG.lifetime();
         for (PlayerInfo info : connection.getListedOnlinePlayers()) {
             UUID uuid = info.getProfile().id();
             String visibleName = info.getProfile().name();
@@ -62,7 +67,8 @@ public final class AntiNick {
             MOJANG.lookupByUuidAsync(uuid)
                     .whenComplete(
                             (profile, failure) ->
-                                    client.execute(
+                                    domain.execute(
+                                            lifetime,
                                             () -> {
                                                 inFlight.remove(uuid);
                                                 if (!ENABLED.get()
@@ -154,6 +160,11 @@ public final class AntiNick {
 
     public static void shutdown() {
         MOJANG.close();
+        inFlight.clear();
+    }
+
+    public static void suspend() {
+        MOJANG.cancelPending();
         inFlight.clear();
     }
 

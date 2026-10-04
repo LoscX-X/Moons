@@ -75,6 +75,11 @@ sourceSets.client.kotlin.setSrcDirs([
         "src/minecraft/shared/kotlin",
         "src/minecraft/versions/${selectedVersionDirectory}/client/kotlin"
 ])
+def overlayBackend = moonsVersions.profiles.find { it.profileId == selectedVersionDirectory }.overlayBackend
+if (overlayBackend != 'gl') {
+    sourceSets.client.kotlin.srcDir('src/minecraft/backends/raster/kotlin')
+    sourceSets.client.kotlin.srcDir("src/minecraft/backends/${overlayBackend}/kotlin")
+}
 sourceSets.client.resources.setSrcDirs([
         "src/minecraft/shared/resources",
         "src/minecraft/versions/${selectedVersionDirectory}/client/resources"

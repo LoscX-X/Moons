@@ -48,8 +48,8 @@ jobs:
           $properties = Get-Content gradle.properties -Raw
           $match = [regex]::Match($properties, '(?m)^load_version=([^\r\n]+)\r?$')
           $version = $match.Groups[1].Value.Trim()
-          if ($version -notmatch '^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?(?:\+[A-Za-z0-9.-]+)?$') {
-            throw 'Missing or invalid load_version in gradle.properties'
+          if ($version -cnotmatch '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+-(Experiment|Release)$') {
+            throw 'load_version must use X.Y.Z.x-Experiment or X.Y.Z.x-Release; x is the patch sequence'
           }
           $commit = (git rev-parse HEAD).Trim()
           if ($LASTEXITCODE -ne 0 -or $commit -notmatch '^[0-9a-f]{40}$') { throw 'Cannot determine checked-out commit' }
@@ -174,6 +174,19 @@ jobs:
           path: build/dist/moons-ysm-all.zip
           if-no-files-found: error
           compression-level: 0
+      - name: Upload exact release lock and offline archive
+        if: steps.package.outputs.kind == 'all'
+        uses: actions/upload-artifact@v6
+        with:
+          name: moons-release-${{ steps.version.outputs.client_version }}-${{ steps.version.outputs.short_sha }}
+          retention-days: 7
+          overwrite: true
+          path: |
+            build/dist/moons-release-lock.json
+            build/dist/moons-release-lock.json.sha256
+            build/dist/moons-release-archive.zip
+          if-no-files-found: error
+          compression-level: 0
       - name: Upload dependency installer
         if: steps.package.outputs.kind == 'all' || steps.package.outputs.kind == 'install'
         uses: actions/upload-artifact@v6
@@ -236,18 +249,30 @@ jobs:
           - The installer contains the runtime; no separate JAR or dependency download is required.
           - `moons-ysm-all.zip`: standalone YSM bundle with one shared library set and all supported adapters.
 
-          Only assets selected for this run are included. The loader supports Minecraft 26.1.2, 26.2, 26.3, 26.4-snapshot-1.
           NOTES
+          if [[ -f artifacts/moons-release-archive.zip ]]; then
+            printf '%s\n' '- `moons-release-archive.zip`: exact offline installer, loader, payloads and full SHA-256 release lock for this build.' >> release-notes.md
+          fi
+          supported_versions=$(node -e 'const c=JSON.parse(require("fs").readFileSync("config/version-catalog.json","utf8"));process.stdout.write(c.profiles.filter(p=>p.available&&p.status!=="legacy").map(p=>p.gameId).join(", "))')
+          printf '\nOnly assets selected for this run are included. The loader supports Minecraft %s.\n' "$supported_versions" >> release-notes.md
           shopt -s nullglob
           assets=(artifacts/*.exe artifacts/*.zip artifacts/build-info.md artifacts/moons-update-notes.md)
+          if [[ -f artifacts/moons-release-lock.json ]]; then
+            assets+=(artifacts/moons-release-lock.json artifacts/moons-release-lock.json.sha256)
+          fi
+          case "$CLIENT_VERSION" in
+            *-Experiment) release_flags=(--prerelease=true --latest=false) ;;
+            *-Release) release_flags=(--prerelease=false --latest=true) ;;
+            *) echo "Unsupported release channel: $CLIENT_VERSION" >&2; exit 1 ;;
+          esac
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" "${assets[@]}" --repo "$GITHUB_REPOSITORY" --clobber
-            gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --notes-file release-notes.md
+            gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" "${release_flags[@]}" --notes-file release-notes.md
           else
             gh release create "$RELEASE_TAG" "${assets[@]}" \
               --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
               --title "Moons $CLIENT_VERSION · $SHORT_SHA (Build $GITHUB_RUN_NUMBER)" \
-              --prerelease --latest=false --notes-file release-notes.md
+              "${release_flags[@]}" --notes-file release-notes.md
           fi
       - name: Queue Moons QQ update notification
         if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
@@ -295,7 +320,7 @@ jobs:
           $artifacts = @(foreach ($page in $pages) { $page.artifacts })
           $deletedArtifacts = 0
           foreach ($artifact in $artifacts) {
-            if ($artifact.name -cnotmatch '^moons-(build-info|ysm|install(?:-.+)?|loader(?:-.+)?)$' -or
+            if ($artifact.name -cnotmatch '^moons-(build-info|ysm|release(?:-.+)?|install(?:-.+)?|loader(?:-.+)?)$' -or
                 [DateTimeOffset]::Parse($artifact.created_at) -ge $cutoff -or
                 !$artifact.workflow_run.id -or $artifact.workflow_run.id -eq $env:GITHUB_RUN_ID) { continue }
             $run = Invoke-GhJson -Arguments @('api', "repos/$repo/actions/runs/$($artifact.workflow_run.id)")

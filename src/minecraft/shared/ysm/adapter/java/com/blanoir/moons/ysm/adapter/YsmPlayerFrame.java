@@ -29,7 +29,8 @@ final class YsmPlayerFrame {
             // drive the live animation/physics session shared with the world renderer.
             AvatarRenderState state =
                     (AvatarRenderState)
-                            minecraft.getEntityRenderDispatcher()
+                            minecraft
+                                    .getEntityRenderDispatcher()
                                     .getRenderer(current)
                                     .createRenderState(current, partial);
             frame = new Frame(state.ageInTicks / 20d, observations.sample(current, state));

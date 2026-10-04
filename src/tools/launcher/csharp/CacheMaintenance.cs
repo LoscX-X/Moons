@@ -67,12 +67,38 @@ namespace Moons.WindowsLauncher
                     current = Path.Combine(libraries, value.Substring(0, 64));
             }
             // An unreadable/missing pointer must not make every UI version eligible for deletion.
-            if (current != null) Trim(libraries, "ui", 2, 256 * MiB, 30, current, busy);
+            // Installation views retain old releases. An unreadable manifest cannot authorize GC.
+            var retained = RetainedUi(home);
+            if (current != null && retained != null) Trim(libraries, "ui", 2, 256 * MiB, 30, current, busy, retained);
             Trim(Path.Combine(home, "cache", "launcher"), "launcher", 12, 128 * MiB, 30, null, busy);
             Trim(Path.Combine(home, "cache", "modules"), "modules", 32, 256 * MiB, 30, null, busy);
             Trim(Path.Combine(home, "cache", "runtime"), "runtime", 8, 64 * MiB, 30, null, busy);
             Trim(Path.Combine(home, "cache", "ysm-install"), "backup", 2, 64 * MiB, 7, null, busy);
             Trim(legacyTemp, "runtime", 8, 64 * MiB, 7, null, busy);
+        }
+
+        private static ISet<string> RetainedUi(string home)
+        {
+            var retained = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            string root = Path.Combine(home, "installations");
+            if (!Directory.Exists(root)) return retained;
+            try {
+                if (!Safe(home, root)) return null;
+                foreach (string view in Directory.GetDirectories(root)) {
+                    if (!Safe(home, view)) return null;
+                    string contexts = Path.Combine(view, "contexts");
+                    if (!Safe(home, contexts) || !Directory.Exists(contexts)) return null;
+                    foreach (string file in Directory.GetFiles(contexts, "*.properties")) {
+                        if (!Safe(home, file)) return null;
+                        string ui;
+                        if (!RuntimeMetadata.Parse(File.ReadAllText(file)).TryGetValue("ui", out ui)
+                            || !Regex.IsMatch(ui, "^libraries/[0-9a-f]{64}/moons-ui-runtime.jar$")) return null;
+                        retained.Add(Path.Combine(home, "libraries", ui.Split('/')[1]));
+                    }
+                }
+                return retained;
+            } catch (IOException) { return null; }
+            catch (UnauthorizedAccessException) { return null; }
         }
 
         internal static void Touch(string path)
@@ -95,7 +121,7 @@ namespace Moons.WindowsLauncher
         }
 
         internal static void Trim(string root, string kind, int countLimit, long byteLimit,
-            int days, string keep, Func<bool> busy)
+            int days, string keep, Func<bool> busy, ISet<string> retained = null)
         {
             if (busy() || !Directory.Exists(root) || !Safe(root, root)) return;
             var entries = new List<Entry>();
@@ -114,6 +140,7 @@ namespace Moons.WindowsLauncher
             {
                 if (busy()) return;
                 if (String.Equals(entry.Path, keep, StringComparison.OrdinalIgnoreCase)
+                    || retained != null && retained.Contains(entry.Path)
                     || now - entry.Modified < Grace) continue;
                 if (count <= countLimit && bytes <= byteLimit && now - entry.Modified < TimeSpan.FromDays(days)) continue;
                 if (Remove(root, entry)) { count--; bytes -= entry.Bytes; }

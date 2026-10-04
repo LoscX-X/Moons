@@ -5,6 +5,7 @@ import androidx.compose.ui.graphics.asComposeCanvas
 import androidx.compose.ui.scene.CanvasLayersComposeScene
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
+import com.blanoir.moons.api.ScopedResources
 import com.blanoir.moons.client.module.framework.ModuleCategories
 import com.blanoir.moons.client.module.framework.ModuleRegistry
 import java.util.concurrent.atomic.AtomicBoolean
@@ -19,35 +20,35 @@ object ClickGuiWarmup {
     @Volatile private var worker: Thread? = null
 
     @JvmStatic
+    @Synchronized
     fun start() {
         if (!started.compareAndSet(false, true)) return
-        worker =
-            Thread.ofPlatform()
-                .daemon()
-                .name("moons-clickgui-warmup")
-                .unstarted {
-                    try {
-                        if (!cancelled) renderPreview()
-                    } catch (failure: Exception) {
-                        System.err.println("[client] ClickGUI warmup skipped: ${failure.message}")
-                    } catch (failure: LinkageError) {
-                        System.err.println(
-                            "[client] ClickGUI warmup unavailable: ${failure.message}"
-                        )
-                    }
+        ScopedResources.own(AutoCloseable { cancel() })
+        val task =
+            Thread.ofPlatform().daemon().name("moons-clickgui-warmup").unstarted {
+                try {
+                    if (!cancelled) renderPreview()
+                } catch (failure: Exception) {
+                    System.err.println("[client] ClickGUI warmup skipped: ${failure.message}")
+                } catch (failure: LinkageError) {
+                    System.err.println("[client] ClickGUI warmup unavailable: ${failure.message}")
+                } finally {
+                    if (worker === Thread.currentThread()) worker = null
                 }
-                .also {
-                    it.priority = Thread.MIN_PRIORITY
-                    it.start()
-                }
+            }
+        worker = task
+        task.priority = Thread.MIN_PRIORITY
+        task.start()
     }
 
     @JvmStatic
+    @Synchronized
     fun cancel() {
         cancelled = true
         worker?.interrupt()
-        worker = null
     }
+
+    @JvmStatic fun isRunning(): Boolean = worker?.isAlive == true
 
     @OptIn(InternalComposeUiApi::class)
     private fun renderPreview() {

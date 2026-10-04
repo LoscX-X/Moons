@@ -68,8 +68,7 @@ public final class MisplaceLatencyModel {
                 || query.now() < observation.receivedAt()
                 || query.now() - observation.receivedAt() > 250)
             return unavailable(Verdict.STALE, visible);
-        if (observation.samples() < 1 || observation.sampleSpanMs() < 50)
-            return unavailable(Verdict.WARMUP, visible);
+        if (observation.samples() < 2) return unavailable(Verdict.WARMUP, visible);
         if (network.ownRtt() < 0
                 || network.targetRtt() < 0
                 || network.ownRtt() > 2000
@@ -82,12 +81,12 @@ public final class MisplaceLatencyModel {
         // Two endpoint receipts include target-uplink and observer-downlink jitter.
         // A server snapshot also hides up to one movement-report tick of sample age.
         double sampleTimeError = tick + 4 * jitter;
-        // Start after one tick of observations. Short histories retain a wide error
-        // envelope instead of waiting for two complete timing-uncertainty windows.
+        if (observation.sampleSpanMs() < 2 * sampleTimeError)
+            return unavailable(Verdict.WARMUP, visible);
         double timingSpeedError =
                 observation.velocity().length()
                         * sampleTimeError
-                        / Math.max(tick, observation.sampleSpanMs() - sampleTimeError);
+                        / (observation.sampleSpanMs() - sampleTimeError);
         // Snapshot downlink + attack uplink = OWN RTT. Target uplink is already
         // present in the observed server coordinate; adding target RTT double counts it.
         double low = Math.max(0, age + network.ownRtt() - tick - 4 * jitter);
@@ -132,11 +131,10 @@ public final class MisplaceLatencyModel {
         return new Estimate(verdict, visible, minimum, maximum, low, high);
     }
 
-    /** Aggressive presentation targets the distance interval's center, not its upper bound. */
+    /** Never make the displayed box closer than the largest supported server distance. */
     public static double pull(Estimate estimate, Vec3 eye, AABB box, double maximum) {
-        if (!estimate.hasBounds()) return 0;
-        double desiredDistance = (estimate.minimumDistance() + estimate.maximumDistance()) * .5;
-        if (desiredDistance >= estimate.visibleDistance()) return 0;
+        if (!estimate.hasBounds() || estimate.maximumDistance() >= estimate.visibleDistance())
+            return 0;
         Vec3 center = box.getCenter();
         Vec3 direction = MisplaceMotion.toward(eye, center);
         double cap =
@@ -146,7 +144,8 @@ public final class MisplaceLatencyModel {
         double low = 0, high = cap;
         for (int i = 0; i < 16; i++) {
             double middle = (low + high) * .5;
-            if (distance(eye, box.move(direction.scale(-middle))) >= desiredDistance) low = middle;
+            if (distance(eye, box.move(direction.scale(-middle))) >= estimate.maximumDistance())
+                low = middle;
             else high = middle;
         }
         return low;

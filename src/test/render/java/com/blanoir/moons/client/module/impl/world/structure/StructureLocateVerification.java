@@ -42,6 +42,7 @@ public final class StructureLocateVerification {
         verifyChunkCache();
         verifyScanInvalidation();
         StructureChunkScannerVerification.run();
+        VanillaStructureMarkerVerification.run();
         boolean oldEnabled = StructureLocate.isEnabled();
         boolean oldDisplay =
                 com.blanoir.moons.client.module.impl.render.xray.OreHighlighter.isDisplayEnabled();
@@ -65,8 +66,7 @@ public final class StructureLocateVerification {
         require(
                 StructureEvidence.marker(Blocks.REINFORCED_DEEPSLATE) == ANCIENT_CITY,
                 "Reinforced deepslate mapping");
-        for (String id :
-                List.of("copper_bulb", "oxidized_copper_bulb", "chiseled_tuff", "tuff_bricks"))
+        for (String id : List.of("trial_spawner", "vault"))
             require(
                     StructureEvidence.marker(
                                     BuiltInRegistries.BLOCK
@@ -74,6 +74,27 @@ public final class StructureLocateVerification {
                                             .orElseThrow())
                             == TRIAL_CHAMBER,
                     "Trial marker " + id);
+        for (String id :
+                List.of(
+                        "copper_bulb",
+                        "oxidized_copper_bulb",
+                        "chiseled_tuff",
+                        "chiseled_tuff_bricks",
+                        "tuff_bricks",
+                        "polished_tuff",
+                        "deepslate_bricks",
+                        "cracked_deepslate_bricks",
+                        "deepslate_tiles",
+                        "cracked_deepslate_tiles",
+                        "chiseled_deepslate",
+                        "polished_deepslate"))
+            require(
+                    StructureEvidence.marker(
+                                    BuiltInRegistries.BLOCK
+                                            .getOptional(Identifier.parse("minecraft:" + id))
+                                            .orElseThrow())
+                            == null,
+                    "Ordinary building material must not identify a city or chamber: " + id);
         require(
                 StructureEvidence.allowedHeight(STRONGHOLD, 79)
                         && !StructureEvidence.allowedHeight(STRONGHOLD, 80),
@@ -133,6 +154,9 @@ public final class StructureLocateVerification {
         require(
                 StructureEvidence.locate(city, all).size() == 1,
                 "City structural extent survives aggregation");
+        require(
+                StructureEvidence.locate(city.subList(0, 2), all).isEmpty(),
+                "Isolated reinforced blocks do not identify a city");
         require(
                 StructureEvidence.locate(
                                 List.of(

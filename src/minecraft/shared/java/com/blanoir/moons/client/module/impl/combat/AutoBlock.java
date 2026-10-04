@@ -332,6 +332,10 @@ public final class AutoBlock {
         resetBlocking(client);
     }
 
+    public static void suspend(Minecraft client) {
+        discard(client);
+    }
+
     private static void resetBlocking(Minecraft client) {
         if (USE.stop(client)) releasedTick = tickId;
         clearPendingAttack(client);

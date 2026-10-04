@@ -34,6 +34,9 @@ public final class ModuleManager implements AutoCloseable {
     private final Path moduleDirectory;
     private final Path libraryDirectory;
     private final Path cacheDirectory;
+    private final Path dependencyRoot;
+    private final Path dependencyModule;
+    private String pinnedModuleId;
     private final RuntimeEvents events;
     private final ModuleServices services = new ModuleServices();
     private final String minecraftVersion;
@@ -44,13 +47,30 @@ public final class ModuleManager implements AutoCloseable {
     private Thread watchThread;
     private Path builtinModule;
     private volatile boolean closed;
+    private final java.util.List<String> startupDiagnostics = new java.util.ArrayList<>();
 
     public ModuleManager(Path home, Path outerJar, RuntimeEvents events, String minecraftVersion) {
+        this(home, outerJar, events, minecraftVersion, null, null);
+    }
+
+    public ModuleManager(
+            Path home,
+            Path outerJar,
+            RuntimeEvents events,
+            String minecraftVersion,
+            Path dependencyRoot,
+            Path dependencyModule) {
         this.home = home;
         this.outerJar = outerJar;
         this.moduleDirectory = home.resolve("modules");
         this.libraryDirectory = home.resolve("libraries");
         this.cacheDirectory = home.resolve("cache/modules");
+        this.dependencyRoot =
+                dependencyRoot == null ? null : dependencyRoot.toAbsolutePath().normalize();
+        this.dependencyModule =
+                dependencyModule == null ? null : dependencyModule.toAbsolutePath().normalize();
+        if ((this.dependencyRoot == null) != (this.dependencyModule == null))
+            throw new IllegalArgumentException("Incomplete dependency context");
         this.events = events;
         this.minecraftVersion =
                 java.util.Objects.requireNonNull(minecraftVersion, "minecraftVersion");
@@ -66,15 +86,33 @@ public final class ModuleManager implements AutoCloseable {
         Map<String, Path> selected = new LinkedHashMap<>();
         ModuleDescriptor builtinDescriptor = ModuleDescriptor.read(builtin);
         selected.put(builtinDescriptor.id(), builtin);
+        if (dependencyModule != null) {
+            ModuleDescriptor descriptor = ModuleDescriptor.read(dependencyModule);
+            if (!descriptor.supportsMinecraft(minecraftVersion)
+                    || descriptor.id().equals(builtinDescriptor.id()))
+                throw new IOException("Invalid installed dependency module");
+            pinnedModuleId = descriptor.id();
+            selected.put(descriptor.id(), dependencyModule);
+        }
         try (var files = Files.list(moduleDirectory)) {
             for (Path candidate : files.filter(ModuleManager::isJar).sorted().toList()) {
-                ModuleDescriptor descriptor = ModuleDescriptor.read(candidate);
-                if (!descriptor.supportsMinecraft(minecraftVersion)) continue;
-                selected.put(descriptor.id(), candidate);
+                try {
+                    ModuleDescriptor descriptor = ModuleDescriptor.read(candidate);
+                    if (!descriptor.supportsMinecraft(minecraftVersion)) continue;
+                    if (descriptor.id().equals(pinnedModuleId)) continue;
+                    selected.put(descriptor.id(), candidate);
+                } catch (Throwable failure) {
+                    recordStartupDiagnostic(candidate, failure);
+                }
             }
         }
-        for (Path source : selected.values()) {
-            replace(source);
+        for (var entry : selected.entrySet()) {
+            try {
+                replace(entry.getValue());
+            } catch (Throwable failure) {
+                if (entry.getKey().equals("core-features")) throw failure;
+                recordStartupDiagnostic(entry.getValue(), failure);
+            }
         }
         startWatcher();
     }
@@ -101,9 +139,14 @@ public final class ModuleManager implements AutoCloseable {
         Path cached = cacheCopy(source);
         ModuleDescriptor descriptor = ModuleDescriptor.read(cached);
         if (!descriptor.supportsMinecraft(minecraftVersion)) return;
+        if (descriptor.id().equals(pinnedModuleId) && !source.equals(dependencyModule)) return;
+        Path libraries =
+                source.equals(dependencyModule)
+                        ? dependencyRoot.resolve("libraries")
+                        : libraryDirectory;
         var cachedLibraries = new java.util.ArrayList<Path>();
         for (String library : descriptor.libraries()) {
-            cachedLibraries.add(cacheCopy(libraryDirectory.resolve(library)));
+            cachedLibraries.add(cacheCopy(libraries.resolve(library)));
         }
         LoadedModule previous = loaded.get(descriptor.id());
         if (previous != null
@@ -146,6 +189,21 @@ public final class ModuleManager implements AutoCloseable {
         Map<String, String> snapshot = new LinkedHashMap<>();
         loaded.forEach((id, module) -> snapshot.put(id, module.descriptor.version()));
         return Map.copyOf(snapshot);
+    }
+
+    private void recordStartupDiagnostic(Path source, Throwable failure) {
+        String diagnostic = source.getFileName() + ": " + failure;
+        startupDiagnostics.add(diagnostic);
+        System.err.println(Branding.prefix() + " Optional module unavailable: " + diagnostic);
+    }
+
+    public synchronized java.util.List<String> startupDiagnostics() {
+        return java.util.List.copyOf(startupDiagnostics);
+    }
+
+    public synchronized boolean isEnabled(String id) {
+        LoadedModule module = loaded.get(id);
+        return !closed && module != null && module.enabled;
     }
 
     public synchronized boolean setEnabled(String id, boolean enabled) throws Exception {
@@ -365,7 +423,7 @@ public final class ModuleManager implements AutoCloseable {
         for (int index = modules.length - 1; index >= 0; index--) {
             try {
                 modules[index].close();
-            } catch (Exception failure) {
+            } catch (Throwable failure) {
                 System.err.println(
                         Branding.prefix() + " Module did not unload cleanly: " + failure);
             }

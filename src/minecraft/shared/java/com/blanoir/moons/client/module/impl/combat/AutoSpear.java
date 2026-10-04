@@ -196,6 +196,14 @@ public final class AutoSpear {
         CombatInputController.releaseUse(client, CombatInputController.Owner.AUTO_SPEAR);
     }
 
+    /** Core suspension abandons delayed packets and held input without replaying or releasing use. */
+    public static void suspend(Minecraft client) {
+        AutoSpearFakeLag.discard();
+        AutoSpearMotion.reset();
+        AutoSpearImpact.stop(client);
+        discardHold(client);
+    }
+
     /** Releases our native use when the option/module is disabled or unloaded. */
     public static void reset(Minecraft client) {
         AutoSpearFakeLag.flush(client);

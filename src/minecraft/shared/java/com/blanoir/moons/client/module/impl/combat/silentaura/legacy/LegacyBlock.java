@@ -210,6 +210,10 @@ public final class LegacyBlock {
         resetBlocking(client);
     }
 
+    public static void suspend() {
+        discard();
+    }
+
     private static void resetBlocking(Minecraft client) {
         if (USE.stop(client)) releasedTick = SilentAuraCombat.tickId();
         blockedTick = attackReadyTick = reblockTick = Integer.MIN_VALUE;

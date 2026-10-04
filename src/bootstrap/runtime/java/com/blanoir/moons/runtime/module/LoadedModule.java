@@ -60,8 +60,8 @@ final class LoadedModule implements ModuleContext, AutoCloseable {
 
     void disable() throws Exception {
         if (!enabled) return;
-        instance.disable();
         enabled = false;
+        instance.disable();
     }
 
     @Override
@@ -91,30 +91,32 @@ final class LoadedModule implements ModuleContext, AutoCloseable {
     public void close() throws Exception {
         if (closed) return;
         closed = true;
-        Exception aggregate = null;
+        Throwable aggregate = null;
         try {
             disable();
-        } catch (Exception failure) {
+        } catch (Throwable failure) {
             aggregate = failure;
         }
         try {
             resources.close();
-        } catch (Exception failure) {
+        } catch (Throwable failure) {
             if (aggregate == null) aggregate = failure;
             else aggregate.addSuppressed(failure);
         }
         try {
             instance.unload();
-        } catch (Exception failure) {
+        } catch (Throwable failure) {
             if (aggregate == null) aggregate = failure;
             else aggregate.addSuppressed(failure);
         }
         try {
             classLoader.close();
-        } catch (Exception failure) {
+        } catch (Throwable failure) {
             if (aggregate == null) aggregate = failure;
             else aggregate.addSuppressed(failure);
         }
-        if (aggregate != null) throw aggregate;
+        if (aggregate instanceof Exception exception) throw exception;
+        if (aggregate instanceof Error error) throw error;
+        if (aggregate != null) throw new RuntimeException(aggregate);
     }
 }

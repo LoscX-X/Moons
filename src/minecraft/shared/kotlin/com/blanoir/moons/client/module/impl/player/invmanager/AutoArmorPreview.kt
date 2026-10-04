@@ -1,4 +1,5 @@
 package com.blanoir.moons.client.module.impl.player.invmanager
+import com.blanoir.moons.client.utils.render.isEmpty
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Text
@@ -15,11 +16,11 @@ import net.minecraft.client.Minecraft
 
 @Composable
 internal fun AutoArmorPreview() {
-    var armor by remember { mutableStateOf(AutoArmor.preview(Minecraft.getInstance())) }
+    var armor by remember { mutableStateOf(AutoArmor.preview(Minecraft.getMinecraft())) }
     var status by remember { mutableStateOf(AutoArmor.statusText()) }
     LaunchedEffect(Unit) {
         while (isActive) {
-            armor = AutoArmor.preview(Minecraft.getInstance())
+            armor = AutoArmor.preview(Minecraft.getMinecraft())
             status = AutoArmor.statusText()
             delay(150)
         }
@@ -42,7 +43,7 @@ internal fun AutoArmorPreview() {
                     Text(InventoryArmor.label(part.index()), fontSize = 10.sp)
                     Text(part.status(), color = PanelStyle.muted, fontSize = 9.sp)
                     if (!part.candidate().isEmpty)
-                        Text("Next: ${part.candidate().hoverName.string}", fontSize = 9.sp)
+                        Text("Next: ${part.candidate().displayName}", fontSize = 9.sp)
                 }
             }
         }

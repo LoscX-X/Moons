@@ -10,8 +10,8 @@ import com.blanoir.moons.client.module.impl.combat.velocity.VelocityPacketListen
 import com.blanoir.moons.client.utils.math.RandomMath;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.util.Vec3;
 
 import java.util.function.BooleanSupplier;
 
@@ -69,21 +69,22 @@ public final class JumpReset {
     }
 
     public static void handleEntityVelocity(int entityId, Vec3 velocity) {
-        Minecraft client = Minecraft.getInstance();
-        var currentPlayer = client == null ? null : client.player;
+        Minecraft client = Minecraft.getMinecraft();
+        var currentPlayer = client == null ? null : client.thePlayer;
 
-        if (currentPlayer == null || entityId != currentPlayer.getId()) {
+        if (currentPlayer == null || entityId != currentPlayer.getEntityId()) {
             return;
         }
 
-        fallDamageVelocity = velocity.x == 0.0D && velocity.z == 0.0D && velocity.y < 0.0D;
+        fallDamageVelocity =
+                velocity.xCoord == 0.0D && velocity.zCoord == 0.0D && velocity.yCoord < 0.0D;
         fallDamageVelocityTicks = fallDamageVelocity ? 3 : 0;
     }
 
     private static void tick(TickEvent event) {
         Minecraft client = event.client();
-        var currentPlayer = client == null ? null : client.player;
-        if (client == null || currentPlayer == null || client.level == null) {
+        var currentPlayer = client == null ? null : client.thePlayer;
+        if (client == null || currentPlayer == null || client.theWorld == null) {
             resetCooldownTicks = 0;
             fallDamageVelocity = false;
             fallDamageVelocityTicks = 0;
@@ -117,7 +118,9 @@ public final class JumpReset {
 
         if (newKnockbackTick) {
             // Ignore environmental hurt (fall, fire, etc.); jump-reset only PvP knockback.
-            if (currentPlayer.getLastHurtByMob() instanceof Player
+            if ((currentPlayer.getLastAttacker() instanceof EntityPlayer
+                            || com.blanoir.moons.client.module.impl.combat.Velocity
+                                    .recentPlayerDamage())
                     && canStartJumpReset(client)
                     && chancePassed()) {
                 // The reset must be present in the movement input generated for
@@ -130,9 +133,9 @@ public final class JumpReset {
     }
 
     private static boolean canStartJumpReset(Minecraft client) {
-        var currentPlayer = client == null ? null : client.player;
+        var currentPlayer = client == null ? null : client.thePlayer;
         if (currentPlayer != null) {
-            return currentPlayer.onGround()
+            return currentPlayer.onGround
                     && currentPlayer.isSprinting()
                     && resetCooldownTicks <= 0
                     && !fallDamageVelocity;
@@ -145,7 +148,7 @@ public final class JumpReset {
     }
 
     private static void forceJumpKey(Minecraft client) {
-        // A real keyboard/mouse press event, not a synthetic KeyMapping state
+        // A real keyboard/mouse press event, not a synthetic KeyBinding state
         // flip, so the knockback-tick jump is indistinguishable from user input.
         CombatInputController.pressJumpPhysical(client, CombatInputController.Owner.JUMP_RESET);
     }

@@ -3,21 +3,20 @@ package com.blanoir.moons.client.utils.combat;
 import com.blanoir.moons.client.utils.entity.EntityDistance;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.ai.attributes.Attributes;
-import net.minecraft.world.entity.player.Player;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.player.EntityPlayer;
 
 /** Shared entity-interaction range validation for combat features. */
 public final class CombatReach {
     private CombatReach() {}
 
-    /** Raw vanilla attribute; callers keep their own null checks and safety margins. */
-    public static double vanillaEntityInteractionRange(Player player) {
-        return player.getAttributeValue(Attributes.ENTITY_INTERACTION_RANGE);
+    /** Vanilla 1.8.9 entity picking reach; callers keep their own null checks and safety margins. */
+    public static double vanillaEntityInteractionRange(EntityPlayer player) {
+        return player.capabilities.isCreativeMode ? 6.0D : 3.0D;
     }
 
     public static double entityInteractionRange(Minecraft client, double requestedRange) {
-        var currentPlayer = client == null ? null : client.player;
+        var currentPlayer = client == null ? null : client.thePlayer;
         if (client == null || currentPlayer == null || !Double.isFinite(requestedRange)) {
             return 0.0D;
         }
@@ -38,8 +37,8 @@ public final class CombatReach {
 
     /** Rejection predicate shared by automatic attack timing and dispatch. */
     public static boolean outsideVanillaRange(Minecraft client, Entity target) {
-        if (client == null || client.player == null || target == null) return true;
+        if (client == null || client.thePlayer == null || target == null) return true;
         return !within(
-                client, target, Math.max(0.0D, vanillaEntityInteractionRange(client.player)));
+                client, target, Math.max(0.0D, vanillaEntityInteractionRange(client.thePlayer)));
     }
 }

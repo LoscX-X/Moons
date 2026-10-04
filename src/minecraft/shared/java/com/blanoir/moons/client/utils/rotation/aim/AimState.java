@@ -1,8 +1,9 @@
 package com.blanoir.moons.client.utils.rotation.aim;
 
+import com.blanoir.moons.client.compat.math.VecMath;
 import com.blanoir.moons.client.utils.prediction.MotionPrediction;
 
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.util.Vec3;
 
 /** Mutable history owned by one mode/controller. Utilities never retain or share this state. */
 public final class AimState {
@@ -18,7 +19,7 @@ public final class AimState {
     public long motionSeed;
     public double stickyAimY = Double.NaN;
     public Vec3 heldOrbitOffset;
-    public Vec3 orbitOffset = Vec3.ZERO;
+    public Vec3 orbitOffset = VecMath.ZERO;
     public MotionPrediction prediction = new MotionPrediction();
     public double noiseTime;
     public double noiseStrength;

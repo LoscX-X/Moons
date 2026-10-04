@@ -30,24 +30,12 @@ final class World {
                                     StructureLocate.rescan();
                                     return 1;
                                 }),
-                        StructureLocate.ANCIENT_CITY.describe(
-                                "ancient_city",
-                                "Ancient City",
-                                (c, v) ->
-                                        StructureLocate.changeTarget(
-                                                StructureLocate.ANCIENT_CITY, v)),
                         StructureLocate.STRONGHOLD.describe(
                                 "stronghold",
                                 "Stronghold",
                                 (c, v) ->
                                         StructureLocate.changeTarget(
                                                 StructureLocate.STRONGHOLD, v)),
-                        StructureLocate.TRIAL_CHAMBER.describe(
-                                "trial_chamber",
-                                "Trial Chamber",
-                                (c, v) ->
-                                        StructureLocate.changeTarget(
-                                                StructureLocate.TRIAL_CHAMBER, v)),
                         StructureLocate.NETHER_PORTAL.describe(
                                 "nether_portal",
                                 "Nether Portal",
@@ -62,20 +50,6 @@ final class World {
                                 "dungeon",
                                 "Possible dungeon",
                                 (c, v) -> StructureLocate.changeTarget(StructureLocate.DUNGEON, v)),
-                        StructureLocate.AMETHYST_GEODE.describe(
-                                "amethyst_geode",
-                                "Amethyst geode",
-                                (c, v) ->
-                                        StructureLocate.changeTarget(
-                                                StructureLocate.AMETHYST_GEODE, v)),
-                        StructureLocate.GEODE_SHAPE
-                                .describe(
-                                        "geode_shape",
-                                        "Geode shape fallback",
-                                        (c, v) ->
-                                                StructureLocate.changeTarget(
-                                                        StructureLocate.GEODE_SHAPE, v))
-                                .visibleWhen(StructureLocate.AMETHYST_GEODE::get),
                         StructureLocate.BOX.describe(
                                 "box",
                                 "Box",

@@ -14,14 +14,14 @@ import com.blanoir.moons.client.utils.client.ClientReady;
 import com.blanoir.moons.client.utils.math.RandomMath;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.network.Connection;
-import net.minecraft.network.protocol.Packet;
-import net.minecraft.world.entity.player.Player;
+import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.network.NetworkManager;
+import net.minecraft.network.Packet;
 
 /**
  * Bounded outgoing-packet delay while health is low. Outgoing
  * packets are retained in order for a small number of cycles, then silently
- * replayed through the normal Connection path.
+ * replayed through the normal NetworkManager path.
  */
 public final class LowHealthFakeLag {
     private static final double HEALTH_RATIO = 0.25D;
@@ -146,18 +146,18 @@ public final class LowHealthFakeLag {
     }
 
     /** @return true when the caller must cancel the original send. */
-    public static boolean handleOutgoing(Connection connection, Packet<?> packet) {
+    public static boolean handleOutgoing(NetworkManager connection, Packet<?> packet) {
         if (LagUtils.isReplaying()) {
             return false;
         }
 
         synchronized (LOCK) {
-            PACKETS.observe(connection, Minecraft.getInstance().level);
+            PACKETS.observe(connection, Minecraft.getMinecraft().theWorld);
             if (!ENABLED.get() || !queueing) {
                 return false;
             }
 
-            Minecraft client = Minecraft.getInstance();
+            Minecraft client = Minecraft.getMinecraft();
             long now = LagUtils.nowMillis();
             if (!ready(client)
                     || now - cycleStartedAtMs >= cycleDurationMs
@@ -181,7 +181,7 @@ public final class LowHealthFakeLag {
                 return;
             }
 
-            Minecraft client = Minecraft.getInstance();
+            Minecraft client = Minecraft.getMinecraft();
             if (LagPacketPolicy.mustFlushOnIncoming(client, packet)) {
                 finishCycleLocked(LagUtils.nowMillis());
             }
@@ -227,15 +227,15 @@ public final class LowHealthFakeLag {
     }
 
     private static void flushQueueLocked() {
-        PACKETS.flushClient(Minecraft.getInstance());
+        PACKETS.flushClient(Minecraft.getMinecraft());
     }
 
     private static boolean hasEnemyInActivationRange(Minecraft client) {
-        for (Player target : client.level.players()) {
+        for (EntityPlayer target : client.theWorld.playerEntities) {
             if (!Targeting.isValidTargetPlayer(client, target)) {
                 continue;
             }
-            double distance = client.player.distanceTo(target);
+            double distance = client.thePlayer.getDistanceToEntity(target);
             if (distance >= RANGE_MIN.get() && distance <= RANGE_MAX.get()) {
                 return true;
             }
@@ -244,11 +244,11 @@ public final class LowHealthFakeLag {
     }
 
     private static boolean ready(Minecraft client) {
-        return ClientReady.aliveGameplay(client) && !client.player.isInWater();
+        return ClientReady.aliveGameplay(client) && !client.thePlayer.isInWater();
     }
 
     private static double healthRatio(Minecraft client) {
-        return client.player.getHealth() / Math.max(1.0D, client.player.getMaxHealth());
+        return client.thePlayer.getHealth() / Math.max(1.0D, client.thePlayer.getMaxHealth());
     }
 
     private static void interruptEpisodeLocked(long now) {

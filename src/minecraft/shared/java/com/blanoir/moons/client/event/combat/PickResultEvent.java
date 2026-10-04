@@ -1,14 +1,14 @@
 package com.blanoir.moons.client.event.combat;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.world.phys.HitResult;
+import net.minecraft.util.MovingObjectPosition;
 
 /** Mutable result after Minecraft.pick and the built-in Reach adjustment. */
 public final class PickResultEvent {
     private final Minecraft client;
-    private HitResult result;
+    private MovingObjectPosition result;
 
-    public PickResultEvent(Minecraft client, HitResult result) {
+    public PickResultEvent(Minecraft client, MovingObjectPosition result) {
         this.client = client;
         this.result = result;
     }
@@ -17,11 +17,11 @@ public final class PickResultEvent {
         return client;
     }
 
-    public HitResult result() {
+    public MovingObjectPosition result() {
         return result;
     }
 
-    public void result(HitResult replacement) {
+    public void result(MovingObjectPosition replacement) {
         if (replacement != null) result = replacement;
     }
 }

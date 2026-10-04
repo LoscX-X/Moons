@@ -2,38 +2,37 @@ package com.blanoir.moons.client.module.impl.world;
 
 import com.blanoir.moons.client.access.GameAccess;
 import com.blanoir.moons.client.chat.ClientChat;
+import com.blanoir.moons.client.compat.math.VecMath;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.DoubleSetting;
 import com.blanoir.moons.client.event.EventBus;
+import com.blanoir.moons.client.utils.inventory.LegacyItems;
+import com.blanoir.moons.client.utils.world.LegacyRay;
+import com.blanoir.moons.client.utils.world.LegacyWorld;
+import com.blanoir.moons.client.utils.world.placement.LegacyPlacement;
 import com.blanoir.moons.client.utils.world.placement.PlacementRaycast;
 
+import net.minecraft.block.Block;
+import net.minecraft.block.BlockAnvil;
+import net.minecraft.block.BlockBed;
+import net.minecraft.block.BlockButton;
+import net.minecraft.block.BlockContainer;
+import net.minecraft.block.BlockDoor;
+import net.minecraft.block.BlockFence;
+import net.minecraft.block.BlockFenceGate;
+import net.minecraft.block.BlockJukebox;
+import net.minecraft.block.BlockLever;
+import net.minecraft.block.BlockTrapDoor;
+import net.minecraft.block.BlockWorkbench;
+import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.Minecraft;
-import net.minecraft.core.BlockPos;
-import net.minecraft.world.InteractionHand;
-import net.minecraft.world.item.BlockItem;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
-import net.minecraft.world.item.context.BlockPlaceContext;
-import net.minecraft.world.item.context.UseOnContext;
-import net.minecraft.world.level.ClipContext;
-import net.minecraft.world.level.block.AnvilBlock;
-import net.minecraft.world.level.block.BaseEntityBlock;
-import net.minecraft.world.level.block.BedBlock;
-import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.ButtonBlock;
-import net.minecraft.world.level.block.CraftingTableBlock;
-import net.minecraft.world.level.block.DoorBlock;
-import net.minecraft.world.level.block.FenceBlock;
-import net.minecraft.world.level.block.FenceGateBlock;
-import net.minecraft.world.level.block.JukeboxBlock;
-import net.minecraft.world.level.block.LeverBlock;
-import net.minecraft.world.level.block.TrapDoorBlock;
-import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.phys.BlockHitResult;
-import net.minecraft.world.phys.HitResult;
-import net.minecraft.world.phys.Vec3;
-import net.minecraft.world.phys.shapes.CollisionContext;
+import net.minecraft.init.Blocks;
+import net.minecraft.init.Items;
+import net.minecraft.item.ItemBlock;
+import net.minecraft.item.ItemStack;
+import net.minecraft.util.BlockPos;
+import net.minecraft.util.MovingObjectPosition;
+import net.minecraft.util.Vec3;
 
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
@@ -79,9 +78,9 @@ public final class FastPlace {
             return;
         }
         if (client == null
-                || client.player == null
-                || client.level == null
-                || client.gameMode == null) {
+                || client.thePlayer == null
+                || client.theWorld == null
+                || client.playerController == null) {
             return;
         }
 
@@ -98,14 +97,14 @@ public final class FastPlace {
     }
 
     private static boolean canPlace(Minecraft client) {
-        ItemStack stack = client.player.getMainHandItem();
-        if (!stack.isEmpty()) {
-            if (stack.is(Items.FISHING_ROD)) {
+        ItemStack stack = client.thePlayer.getHeldItem();
+        if (!LegacyItems.empty(stack)) {
+            if (LegacyItems.is(stack, Items.fishing_rod)) {
                 return false;
             }
-            if (stack.getItem() instanceof BlockItem blockItem) {
+            if (stack.getItem() instanceof ItemBlock blockItem) {
                 Block block = blockItem.getBlock();
-                if (SKIP_OBSIDIAN.get() && block == Blocks.OBSIDIAN) {
+                if (SKIP_OBSIDIAN.get() && block == Blocks.obsidian) {
                     return false;
                 }
                 if (SKIP_INTERACTABLE.get() && isInteractable(block)) {
@@ -121,42 +120,44 @@ public final class FastPlace {
     }
 
     /** Manual placement: choose the next usable support behind the first block on the look ray. */
-    public static BlockHitResult placementHit(Minecraft client) {
+    public static MovingObjectPosition placementHit(Minecraft client) {
         if (!ENABLED.get()
-                || client.player == null
-                || client.level == null
+                || client.thePlayer == null
+                || client.theWorld == null
                 || (!RAYS.throughEntity() && !RAYS.throughBlocks())
-                || !(client.player.getMainHandItem().getItem() instanceof BlockItem)) return null;
-        Vec3 eye = client.player.getEyePosition();
+                || !(client.thePlayer.getHeldItem().getItem() instanceof ItemBlock)) return null;
+        Vec3 eye = client.thePlayer.getPositionEyes(1.0F);
         Vec3 end =
-                eye.add(client.player.getLookAngle().scale(client.player.blockInteractionRange()));
-        BlockHitResult first =
-                client.level.clip(
-                        new ClipContext(
+                eye.add(
+                        VecMath.scale(
+                                client.thePlayer.getLookVec(),
+                                Minecraft.getMinecraft().playerController.getBlockReachDistance()));
+        MovingObjectPosition first =
+                LegacyWorld.clip(
+                        client.theWorld,
+                        new LegacyRay(
                                 eye,
                                 end,
-                                ClipContext.Block.OUTLINE,
-                                ClipContext.Fluid.NONE,
-                                client.player));
+                                LegacyRay.Block.OUTLINE,
+                                LegacyRay.Fluid.NONE,
+                                client.thePlayer));
         if (!RAYS.throughBlocks()) {
-            return first.getType() == HitResult.Type.BLOCK
-                            && !RAYS.entityBlocked(client, eye, first.getLocation())
+            return first.typeOfHit == MovingObjectPosition.MovingObjectType.BLOCK
+                            && !RAYS.entityBlocked(client, eye, first.hitVec)
                     ? first
                     : null;
         }
-        BlockHitResult best = null;
+        MovingObjectPosition best = null;
         double bestDistance = Double.MAX_VALUE;
-        for (BlockPos pos :
-                BlockPos.betweenClosed(BlockPos.containing(eye), BlockPos.containing(end))) {
-            if (first.getType() == HitResult.Type.BLOCK && pos.equals(first.getBlockPos()))
-                continue;
-            BlockHitResult candidate = RAYS.clip(client, eye, end, ClipContext.Fluid.NONE, pos);
-            if (candidate.getType() != HitResult.Type.BLOCK) continue;
-            BlockPlaceContext context =
-                    new BlockPlaceContext(
-                            new UseOnContext(client.player, InteractionHand.MAIN_HAND, candidate));
+        for (BlockPos pos : BlockPos.getAllInBox(new BlockPos(eye), new BlockPos(end))) {
+            if (first.typeOfHit == MovingObjectPosition.MovingObjectType.BLOCK
+                    && pos.equals(first.getBlockPos())) continue;
+            MovingObjectPosition candidate = RAYS.clip(client, eye, end, LegacyRay.Fluid.NONE, pos);
+            if (candidate.typeOfHit != MovingObjectPosition.MovingObjectType.BLOCK) continue;
+            LegacyPlacement.Context context =
+                    new LegacyPlacement.Context(client.thePlayer, candidate);
             if (!context.canPlace()) continue;
-            double distance = eye.distanceToSqr(candidate.getLocation());
+            double distance = eye.squareDistanceTo(candidate.hitVec);
             if (distance < bestDistance) {
                 best = candidate;
                 bestDistance = distance;
@@ -164,50 +165,51 @@ public final class FastPlace {
         }
         return best != null
                 ? best
-                : first.getType() == HitResult.Type.BLOCK
-                                && !RAYS.entityBlocked(client, eye, first.getLocation())
+                : first.typeOfHit == MovingObjectPosition.MovingObjectType.BLOCK
+                                && !RAYS.entityBlocked(client, eye, first.hitVec)
                         ? first
                         : null;
     }
 
-    private static boolean canPlaceAtCrosshair(Minecraft client, BlockItem blockItem) {
-        BlockHitResult replacement = placementHit(client);
-        BlockHitResult hit =
+    private static boolean canPlaceAtCrosshair(Minecraft client, ItemBlock blockItem) {
+        MovingObjectPosition replacement = placementHit(client);
+        MovingObjectPosition hit =
                 replacement != null
                         ? replacement
-                        : client.hitResult instanceof BlockHitResult original ? original : null;
-        if (hit == null || hit.getType() != HitResult.Type.BLOCK) return false;
-        double reach = client.player.blockInteractionRange();
-        if (hit.getLocation().distanceToSqr(client.player.getEyePosition()) > reach * reach) {
+                        : client.objectMouseOver instanceof MovingObjectPosition original
+                                ? original
+                                : null;
+        if (hit == null || hit.typeOfHit != MovingObjectPosition.MovingObjectType.BLOCK)
+            return false;
+        double reach = Minecraft.getMinecraft().playerController.getBlockReachDistance();
+        if (hit.hitVec.squareDistanceTo(client.thePlayer.getPositionEyes(1.0F)) > reach * reach) {
             return false;
         }
 
-        BlockPlaceContext context =
-                new BlockPlaceContext(
-                        new UseOnContext(client.player, InteractionHand.MAIN_HAND, hit));
-        BlockState state = blockItem.getBlock().getStateForPlacement(context);
+        LegacyPlacement.Context context = new LegacyPlacement.Context(client.thePlayer, hit);
+        IBlockState state = LegacyPlacement.state(blockItem.getBlock(), context);
         return state != null
-                && state.canSurvive(client.level, context.getClickedPos())
-                && client.level.isUnobstructed(
-                        state, context.getClickedPos(), CollisionContext.of(client.player));
+                && LegacyPlacement.survives(state, client.theWorld, context.getClickedPos())
+                && LegacyPlacement.unobstructed(
+                        client.theWorld, state, context.getClickedPos(), client.thePlayer);
     }
 
     private static boolean isInteractable(Block block) {
-        if (block instanceof BaseEntityBlock
-                || block instanceof CraftingTableBlock
-                || block instanceof AnvilBlock
-                || block instanceof BedBlock) {
+        if (block instanceof BlockContainer
+                || block instanceof BlockWorkbench
+                || block instanceof BlockAnvil
+                || block instanceof BlockBed) {
             return true;
         }
-        if (block instanceof DoorBlock) {
-            return block != Blocks.IRON_DOOR;
+        if (block instanceof BlockDoor) {
+            return block != Blocks.iron_door;
         }
-        return block instanceof TrapDoorBlock
-                || block instanceof FenceGateBlock
-                || block instanceof FenceBlock
-                || block instanceof ButtonBlock
-                || block instanceof LeverBlock
-                || block instanceof JukeboxBlock;
+        return block instanceof BlockTrapDoor
+                || block instanceof BlockFenceGate
+                || block instanceof BlockFence
+                || block instanceof BlockButton
+                || block instanceof BlockLever
+                || block instanceof BlockJukebox;
     }
 
     public static boolean isEnabled() {

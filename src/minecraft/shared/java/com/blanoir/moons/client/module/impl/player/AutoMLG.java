@@ -60,7 +60,7 @@ public final class AutoMLG {
     public static void init() {
         EventBus.CLIENT_CONTEXT_CHANGED.register("AutoMLG.context", event -> AUTO_MLG.reset(null));
         EventBus.PLAYER_UPDATE.register(
-                "AutoMLG.playerUpdate",
+                "AutoMLG.thePlayerUpdate",
                 event -> {
                     Minecraft client = event.client();
                     if (!ENABLED.get() || !ready(client)) {
@@ -162,7 +162,9 @@ public final class AutoMLG {
 
     private static boolean ready(Minecraft client) {
         if (!ClientReady.gameplay(client)) return false;
-        if (client.player.isCreative() || client.player.isSpectator()) return false;
-        return !client.player.getAbilities().invulnerable && !client.player.getAbilities().flying;
+        if (client.thePlayer.capabilities.isCreativeMode || client.thePlayer.isSpectator())
+            return false;
+        return !client.thePlayer.capabilities.disableDamage
+                && !client.thePlayer.capabilities.isFlying;
     }
 }

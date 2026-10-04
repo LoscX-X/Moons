@@ -5,7 +5,7 @@ import com.blanoir.moons.client.utils.world.placement.FaceScanA;
 import com.blanoir.moons.client.utils.world.placement.PlacementRaycast;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.util.Vec3;
 
 /**
  * J: AntiLava point-selection policy, sharing FaceScanA traversal with Scaffold.
@@ -29,7 +29,7 @@ public final class AimPointsJ {
                         BlockPlacementUtils.facePoint(
                                 client, target.support(), target.face(), u, v),
                 requested -> {
-                    if (eye.distanceToSqr(requested) > range * range) return null;
+                    if (eye.squareDistanceTo(requested) > range * range) return null;
                     return AimSolverD.rotationTo(eye, requested);
                 },
                 rotation ->
@@ -42,7 +42,7 @@ public final class AimPointsJ {
                                 target.support(),
                                 target.face()),
                 sample ->
-                        eye.distanceToSqr(sample.hit().getLocation())
+                        eye.squareDistanceTo(sample.hit().hitVec)
                                 + Math.abs(sample.u() - 0.5D) * 0.02D
                                 + Math.abs(sample.v() - 0.5D) * 0.02D,
                 bestScore);

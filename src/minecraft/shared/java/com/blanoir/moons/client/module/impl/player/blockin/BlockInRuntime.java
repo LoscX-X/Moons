@@ -6,14 +6,14 @@ import com.blanoir.moons.client.management.input.CombatInputController;
 import com.blanoir.moons.client.management.lease.HotbarLease;
 import com.blanoir.moons.client.management.rotation.SilentPacketRotation;
 import com.blanoir.moons.client.utils.client.ClientReady;
+import com.blanoir.moons.client.utils.world.LegacyRay;
 import com.blanoir.moons.client.utils.world.placement.BlockPlacementUtils;
 import com.blanoir.moons.client.utils.world.placement.PlacementCoordinator;
 import com.blanoir.moons.client.utils.world.placement.PlacementRaycast;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.core.BlockPos;
-import net.minecraft.world.level.ClipContext;
-import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.util.BlockPos;
+import net.minecraft.util.MovingObjectPosition;
 
 import java.util.HashMap;
 import java.util.Iterator;
@@ -90,15 +90,14 @@ public final class BlockInRuntime {
             return;
         }
         if (!ClientReady.aliveGameplay(client)
-                || client.player.isPassenger()
-                || client.player.getAbilities().flying
-                || client.player.isFallFlying()) {
+                || client.thePlayer.isRiding()
+                || client.thePlayer.capabilities.isFlying) {
             if (layout != null) stop(client, "Interrupted");
             return;
         }
-        int tick = client.player.tickCount;
+        int tick = client.thePlayer.ticksExisted;
         if (layout == null) {
-            if (!client.player.onGround()) {
+            if (!client.thePlayer.onGround) {
                 status = "Waiting for ground";
                 return;
             }
@@ -109,18 +108,18 @@ public final class BlockInRuntime {
             }
             layout =
                     BlockInPlanner.layout(
-                            client.player.getBoundingBox(),
+                            client.thePlayer.getEntityBoundingBox(),
                             BlockInConfig.floor(),
                             BlockInConfig.roof());
             progressTick = tick;
             jumpTick = tick - 20;
             status = "Building";
         }
-        if (!layout.contains(client.player.getBoundingBox())) {
+        if (!layout.contains(client.thePlayer.getEntityBoundingBox())) {
             stop(client, "Left enclosure");
             return;
         }
-        if (jumping && (!client.player.onGround() || tick - jumpTick >= 3)) releaseJump(client);
+        if (jumping && (!client.thePlayer.onGround || tick - jumpTick >= 3)) releaseJump(client);
         observe(client, tick);
         if (phase != Phase.IDLE) {
             if (tick - phaseTick > ACTION_TIMEOUT) {
@@ -201,7 +200,7 @@ public final class BlockInRuntime {
         boolean accepted =
                 SilentPacketRotation.beginRotation(
                         client,
-                        plan.hit().getLocation(),
+                        plan.hit().hitVec,
                         1,
                         SilentPacketRotation.Mode.INSTANT,
                         () -> {
@@ -216,16 +215,16 @@ public final class BlockInRuntime {
 
     private static void advance(Minecraft client) {
         if (phase == Phase.READY) {
-            BlockHitResult actual =
+            MovingObjectPosition actual =
                     RAYS.traceOutline(
                             client,
-                            client.player.getEyePosition(),
+                            client.thePlayer.getPositionEyes(1.0F),
                             SilentPacketRotation.getInteractionLookVector(client),
-                            client.player.blockInteractionRange(),
-                            ClipContext.Fluid.NONE,
+                            Minecraft.getMinecraft().playerController.getBlockReachDistance(),
+                            LegacyRay.Fluid.NONE,
                             plan.hit().getBlockPos());
             if (!HOTBAR.active()
-                    || HOTBAR.leasedSlot() != client.player.getInventory().getSelectedSlot()
+                    || HOTBAR.leasedSlot() != client.thePlayer.inventory.currentItem
                     || !BlockPlacementUtils.matchesFace(actual, plan.hit())
                     || !BlockInPlanner.validate(client, plan, actual)) {
                 attempts.merge(plan.position(), 1, Integer::sum);
@@ -235,10 +234,11 @@ public final class BlockInRuntime {
             if (RAYS.invokeUseInPlayerUpdate(client, actual, false)) {
                 attempts.merge(plan.position(), 1, Integer::sum);
                 pending.put(
-                        plan.position(), new Pending(client.player.tickCount, settleTicks(client)));
+                        plan.position(),
+                        new Pending(client.thePlayer.ticksExisted, settleTicks(client)));
                 nextPlaceAt = System.nanoTime() + BlockInConfig.nextDelayMs() * 1_000_000L;
                 phase = Phase.USING;
-                phaseTick = client.player.tickCount;
+                phaseTick = client.thePlayer.ticksExisted;
             }
         }
         if (phase == Phase.USING && SilentPacketRotation.isUseDone()) finishAction(client);
@@ -264,9 +264,12 @@ public final class BlockInRuntime {
     }
 
     private static int settleTicks(Minecraft client) {
-        var connection = client.getConnection();
-        var info = connection == null ? null : connection.getPlayerInfo(client.player.getUUID());
-        int latency = info == null ? 0 : Math.max(0, info.getLatency());
+        var connection = client.getNetHandler();
+        var info =
+                connection == null
+                        ? null
+                        : connection.getPlayerInfo(client.thePlayer.getUniqueID());
+        int latency = info == null ? 0 : Math.max(0, info.getResponseTime());
         return Math.clamp((int) Math.ceil(latency / 50.0) + 3, 8, ACTION_TIMEOUT);
     }
 

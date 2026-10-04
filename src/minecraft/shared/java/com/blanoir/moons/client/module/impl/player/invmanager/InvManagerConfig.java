@@ -87,7 +87,7 @@ public final class InvManagerConfig {
                                 })
                         .withDefault("")
                         .visibleWhen(() -> false));
-        for (int i = 0; i < 10; i++) {
+        for (int i = 0; i < 9; i++) {
             final String key = "invmanager.rule.slot." + i;
             result.add(
                     ModuleRegistry.text(
@@ -164,7 +164,7 @@ public final class InvManagerConfig {
                     ROLES.get(i)
                             .describe(
                                     "slot_" + (i + 1),
-                                    i == 9 ? "Offhand" : "Slot " + (i + 1),
+                                    "Slot " + (i + 1),
                                     (client, value) -> {
                                         if (!ROLES.get(index).tryDeserialize(value))
                                             throw new IllegalArgumentException("Unknown slot role");
@@ -184,8 +184,7 @@ public final class InvManagerConfig {
             InventoryRole.FREE,
             InventoryRole.PEARL,
             InventoryRole.BOW,
-            InventoryRole.FOOD,
-            InventoryRole.LOCKED
+            InventoryRole.FOOD
         };
         var roles = new ArrayList<ModeSetting<InventoryRole>>();
         for (int i = 0; i < defaults.length; i++) {

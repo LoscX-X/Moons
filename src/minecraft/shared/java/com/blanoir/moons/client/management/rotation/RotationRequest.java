@@ -3,7 +3,7 @@ package com.blanoir.moons.client.management.rotation;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 import com.blanoir.moons.client.utils.rotation.aim.AimSolverD;
 
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.util.Vec3;
 
 import java.util.Objects;
 

@@ -8,11 +8,11 @@ import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.module.impl.render.NicknameShuffle;
 import com.blanoir.moons.client.service.profile.MojangProfileClient;
 
-import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.multiplayer.PlayerInfo;
-import net.minecraft.network.chat.Component;
-import net.minecraft.world.entity.player.Player;
+import net.minecraft.client.network.NetworkPlayerInfo;
+import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.util.EnumChatFormatting;
+import net.minecraft.util.IChatComponent;
 
 import java.util.Map;
 import java.util.Set;
@@ -40,7 +40,7 @@ public final class AntiNick {
     }
 
     private static void tick(Minecraft client) {
-        var connection = client == null ? null : client.getConnection();
+        var connection = client == null ? null : client.getNetHandler();
         if (!ENABLED.get()
                 || !RESOLVE_NAMES.get()
                 || NicknameShuffle.isEnabled()
@@ -49,9 +49,9 @@ public final class AntiNick {
         long now = System.currentTimeMillis();
         if (now < nextRefreshAt) return;
         nextRefreshAt = now + REFRESH_MS.get();
-        for (PlayerInfo info : connection.getListedOnlinePlayers()) {
-            UUID uuid = info.getProfile().id();
-            String visibleName = info.getProfile().name();
+        for (NetworkPlayerInfo info : connection.getPlayerInfoMap()) {
+            UUID uuid = info.getGameProfile().getId();
+            String visibleName = info.getGameProfile().getName();
             if (uuid == null
                     || ignored(client, uuid)
                     || visibleName == null
@@ -62,13 +62,13 @@ public final class AntiNick {
             MOJANG.lookupByUuidAsync(uuid)
                     .whenComplete(
                             (profile, failure) ->
-                                    client.execute(
+                                    client.addScheduledTask(
                                             () -> {
                                                 inFlight.remove(uuid);
                                                 if (!ENABLED.get()
                                                         || ignored(client, uuid)
                                                         || NicknameShuffle.isEnabled()
-                                                        || client.getConnection() != connection)
+                                                        || client.getNetHandler() != connection)
                                                     return;
                                                 if (failure != null) {
                                                     retryAt.put(
@@ -97,26 +97,27 @@ public final class AntiNick {
         }
     }
 
-    public static Component applyPlayerName(Player player, Component original) {
+    public static IChatComponent applyPlayerName(EntityPlayer player, IChatComponent original) {
         return player == null
                 ? original
-                : decorate(player.getUUID(), player.getGameProfile().name(), original);
+                : decorate(player.getUniqueID(), player.getGameProfile().getName(), original);
     }
 
-    public static Component applyTabName(PlayerInfo info, Component original) {
+    public static IChatComponent applyTabName(NetworkPlayerInfo info, IChatComponent original) {
         return info == null
                 ? original
-                : decorate(info.getProfile().id(), info.getProfile().name(), original);
+                : decorate(
+                        info.getGameProfile().getId(), info.getGameProfile().getName(), original);
     }
 
-    private static Component decorate(UUID uuid, String visibleName, Component original) {
+    private static IChatComponent decorate(UUID uuid, String visibleName, IChatComponent original) {
         if (!ENABLED.get()
                 || uuid == null
                 || original == null
                 || NicknameShuffle.isEnabled()
-                || ignored(Minecraft.getInstance(), uuid)) return original;
-        String plain = original.getString();
-        Component result = original.copy();
+                || ignored(Minecraft.getMinecraft(), uuid)) return original;
+        String plain = original.getUnformattedText();
+        IChatComponent result = original.createCopy();
         String resolved = resolvedNames.get(uuid);
         if (RESOLVE_NAMES.get()
                 && resolved != null
@@ -124,26 +125,41 @@ public final class AntiNick {
                 && !resolved.equalsIgnoreCase(visibleName)
                 && !plain.toLowerCase().contains(resolved.toLowerCase())) {
             result =
-                    result.copy()
-                            .append(Component.literal(" (").withStyle(ChatFormatting.WHITE))
-                            .append(Component.literal(resolved).withStyle(ChatFormatting.AQUA))
-                            .append(Component.literal(")").withStyle(ChatFormatting.WHITE));
+                    result.createCopy()
+                            .appendSibling(
+                                    new net.minecraft.util.ChatComponentText(" (")
+                                            .setChatStyle(
+                                                    new net.minecraft.util.ChatStyle()
+                                                            .setColor(EnumChatFormatting.WHITE)))
+                            .appendSibling(
+                                    new net.minecraft.util.ChatComponentText(resolved)
+                                            .setChatStyle(
+                                                    new net.minecraft.util.ChatStyle()
+                                                            .setColor(EnumChatFormatting.AQUA)))
+                            .appendSibling(
+                                    new net.minecraft.util.ChatComponentText(")")
+                                            .setChatStyle(
+                                                    new net.minecraft.util.ChatStyle()
+                                                            .setColor(EnumChatFormatting.WHITE)));
         }
         if (MARK_NICK_UUID.get() && uuid.version() == 1 && !plain.contains(SUFFIX.get())) {
             result =
-                    result.copy()
-                            .append(
-                                    Component.literal(" " + SUFFIX.get())
-                                            .withStyle(ChatFormatting.YELLOW, ChatFormatting.BOLD));
+                    result.createCopy()
+                            .appendSibling(
+                                    new net.minecraft.util.ChatComponentText(" " + SUFFIX.get())
+                                            .setChatStyle(
+                                                    new net.minecraft.util.ChatStyle()
+                                                            .setColor(EnumChatFormatting.YELLOW)
+                                                            .setBold(true)));
         }
         return result;
     }
 
     private static boolean ignored(Minecraft client, UUID uuid) {
         if (!IGNORE_SELF.get() || client == null || uuid == null) return false;
-        if (client.player != null && uuid.equals(client.player.getUUID())) return true;
-        var connection = client.getConnection();
-        return connection != null && uuid.equals(connection.getLocalGameProfile().id());
+        if (client.thePlayer != null && uuid.equals(client.thePlayer.getUniqueID())) return true;
+        var connection = client.getNetHandler();
+        return connection != null && uuid.equals(client.getSession().getProfile().getId());
     }
 
     public static int setIgnoreSelf(Minecraft ignoredClient, boolean value) {

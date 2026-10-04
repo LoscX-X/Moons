@@ -2,13 +2,10 @@ package com.blanoir.moons.client.utils.text;
 
 import com.blanoir.moons.client.utils.render.ArgbColors;
 
-import net.minecraft.ChatFormatting;
-import net.minecraft.network.chat.Component;
-import net.minecraft.network.chat.FontDescription;
-import net.minecraft.network.chat.MutableComponent;
-import net.minecraft.network.chat.Style;
-import net.minecraft.network.chat.TextColor;
-import net.minecraft.resources.Identifier;
+import net.minecraft.util.ChatComponentText;
+import net.minecraft.util.ChatStyle;
+import net.minecraft.util.EnumChatFormatting;
+import net.minecraft.util.IChatComponent;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -19,18 +16,18 @@ import java.util.Locale;
 public final class DynamicMiniMessage {
     private DynamicMiniMessage() {}
 
-    public static Component parse(String input) {
+    public static IChatComponent parse(String input) {
         return parse(input, System.currentTimeMillis());
     }
 
-    public static Component parse(String input, long animationTimeMillis) {
+    public static IChatComponent parse(String input, long animationTimeMillis) {
         if (input == null || input.isEmpty()) {
-            return Component.empty();
+            return new ChatComponentText("");
         }
 
         List<Glyph> glyphs = new ArrayList<>();
         ArrayDeque<Frame> frames = new ArrayDeque<>();
-        Style style = Style.EMPTY;
+        ChatStyle style = new ChatStyle();
 
         for (int offset = 0; offset < input.length(); ) {
             char current = input.charAt(offset);
@@ -74,7 +71,7 @@ public final class DynamicMiniMessage {
             String raw,
             List<Glyph> glyphs,
             ArrayDeque<Frame> frames,
-            Style current,
+            ChatStyle current,
             long animationTimeMillis) {
         String tag = raw.trim().toLowerCase(Locale.ROOT);
         if (tag.isEmpty()) {
@@ -82,7 +79,7 @@ public final class DynamicMiniMessage {
         }
         if ("reset".equals(tag)) {
             frames.clear();
-            return TagResult.handled(Style.EMPTY);
+            return TagResult.handled(new ChatStyle());
         }
 
         if (tag.startsWith("/")) {
@@ -114,13 +111,13 @@ public final class DynamicMiniMessage {
             return TagResult.handled(current);
         }
 
-        Style fontStyle = applyFont(tag, current);
+        ChatStyle fontStyle = applyFont(tag, current);
         if (fontStyle != null) {
             frames.push(new Frame("font", current, glyphs.size(), null, null));
             return TagResult.handled(fontStyle);
         }
 
-        Style decorated = applyDecoration(tag, current);
+        ChatStyle decorated = applyDecoration(tag, current);
         if (decorated != null) {
             frames.push(new Frame(canonicalTag(tag), current, glyphs.size(), null, null));
             return TagResult.handled(decorated);
@@ -129,28 +126,28 @@ public final class DynamicMiniMessage {
         TextColor color = parseColorTag(tag);
         if (color != null) {
             frames.push(new Frame(colorFrameName(tag), current, glyphs.size(), null, null));
-            return TagResult.handled(current.withColor(color));
+            return TagResult.handled(withColor(current, color.getValue()));
         }
         return TagResult.unhandled(current);
     }
 
-    private static Style applyDecoration(String tag, Style style) {
+    private static ChatStyle applyDecoration(String tag, ChatStyle style) {
         return switch (canonicalTag(tag)) {
-            case "bold" -> style.withBold(true);
-            case "italic" -> style.withItalic(true);
-            case "underlined" -> style.withUnderlined(true);
-            case "strikethrough" -> style.withStrikethrough(true);
-            case "obfuscated" -> style.withObfuscated(true);
+            case "bold" -> style.createShallowCopy().setBold(true);
+            case "italic" -> style.createShallowCopy().setItalic(true);
+            case "underlined" -> style.createShallowCopy().setUnderlined(true);
+            case "strikethrough" -> style.createShallowCopy().setStrikethrough(true);
+            case "obfuscated" -> style.createShallowCopy().setObfuscated(true);
             default -> null;
         };
     }
 
-    private static Style applyFont(String tag, Style style) {
+    private static ChatStyle applyFont(String tag, ChatStyle style) {
         if (!tag.startsWith("font:")) {
             return null;
         }
-        Identifier id = Identifier.tryParse(tag.substring("font:".length()).trim());
-        return id == null ? null : style.withFont(new FontDescription.Resource(id));
+        // 1.8 has one resource-pack font atlas; consume the tag while preserving its text.
+        return style.createShallowCopy();
     }
 
     private static String canonicalTag(String tag) {
@@ -195,8 +192,9 @@ public final class DynamicMiniMessage {
 
         String named = value.replace("grey", "gray");
         try {
-            ChatFormatting formatting = ChatFormatting.valueOf(named.toUpperCase(Locale.ROOT));
-            return formatting.ordinal() <= ChatFormatting.WHITE.ordinal()
+            EnumChatFormatting formatting =
+                    EnumChatFormatting.valueOf(named.toUpperCase(Locale.ROOT));
+            return formatting.ordinal() <= EnumChatFormatting.WHITE.ordinal()
                     ? TextColor.fromLegacyFormat(formatting)
                     : null;
         } catch (IllegalArgumentException ignored) {
@@ -342,7 +340,8 @@ public final class DynamicMiniMessage {
                         }
                     };
             Glyph glyph = glyphs.get(start + index);
-            glyphs.set(start + index, new Glyph(glyph.codePoint(), glyph.style().withColor(color)));
+            glyphs.set(
+                    start + index, new Glyph(glyph.codePoint(), withColor(glyph.style(), color)));
         }
     }
 
@@ -360,36 +359,55 @@ public final class DynamicMiniMessage {
             double position = count == 1 ? 0.0D : (double) index / (count - 1);
             int color = ArgbColors.interpolateRgb(gradient.colors(), position);
             Glyph glyph = glyphs.get(start + index);
-            glyphs.set(start + index, new Glyph(glyph.codePoint(), glyph.style().withColor(color)));
+            glyphs.set(
+                    start + index, new Glyph(glyph.codePoint(), withColor(glyph.style(), color)));
         }
     }
 
-    private static Component build(List<Glyph> glyphs) {
-        MutableComponent result = Component.empty();
+    private static IChatComponent build(List<Glyph> glyphs) {
+        IChatComponent result = new ChatComponentText("");
         if (glyphs.isEmpty()) {
             return result;
         }
         StringBuilder text = new StringBuilder();
-        Style style = glyphs.getFirst().style();
+        ChatStyle style = glyphs.getFirst().style();
         for (Glyph glyph : glyphs) {
             if (!glyph.style().equals(style)) {
-                result.append(Component.literal(text.toString()).setStyle(style));
+                result.appendSibling(new ChatComponentText(text.toString()).setChatStyle(style));
                 text.setLength(0);
                 style = glyph.style();
             }
             text.appendCodePoint(glyph.codePoint());
         }
         if (!text.isEmpty()) {
-            result.append(Component.literal(text.toString()).setStyle(style));
+            result.appendSibling(new ChatComponentText(text.toString()).setChatStyle(style));
         }
         return result;
     }
 
-    private record Glyph(int codePoint, Style style) {}
+    private static ChatStyle withColor(ChatStyle style, int rgb) {
+        return RgbChatStyle.from(style, rgb);
+    }
+
+    private record TextColor(int value) {
+        int getValue() {
+            return value;
+        }
+
+        static TextColor fromRgb(int value) {
+            return new TextColor(value & 0xffffff);
+        }
+
+        static TextColor fromLegacyFormat(EnumChatFormatting formatting) {
+            return new TextColor(RgbChatStyle.palette(formatting.getColorIndex()));
+        }
+    }
+
+    private record Glyph(int codePoint, ChatStyle style) {}
 
     private record Frame(
             String name,
-            Style previousStyle,
+            ChatStyle previousStyle,
             int startIndex,
             Gradient gradient,
             Animation animation) {}
@@ -432,12 +450,12 @@ public final class DynamicMiniMessage {
         }
     }
 
-    private record TagResult(boolean handled, Style style) {
-        static TagResult handled(Style style) {
+    private record TagResult(boolean handled, ChatStyle style) {
+        static TagResult handled(ChatStyle style) {
             return new TagResult(true, style);
         }
 
-        static TagResult unhandled(Style style) {
+        static TagResult unhandled(ChatStyle style) {
             return new TagResult(false, style);
         }
     }

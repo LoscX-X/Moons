@@ -1,10 +1,13 @@
 package com.blanoir.moons.client.management.network;
 
-import net.minecraft.client.multiplayer.ClientLevel;
-import net.minecraft.network.protocol.Packet;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.Vec3;
+import com.blanoir.moons.client.compat.math.VecMath;
+import com.blanoir.moons.client.utils.world.LegacyWorld;
+
+import net.minecraft.client.multiplayer.WorldClient;
+import net.minecraft.entity.Entity;
+import net.minecraft.network.Packet;
+import net.minecraft.util.AxisAlignedBB;
+import net.minecraft.util.Vec3;
 
 import java.util.List;
 import java.util.UUID;
@@ -30,7 +33,7 @@ public final class EntityLag {
     private volatile long interpolationStartedNanos;
     private volatile long interpolationDurationNanos = DEFAULT_INTERPOLATION_NANOS;
     private volatile long lastServerPacketNanos;
-    private AABB laggedBox;
+    private AxisAlignedBB laggedBox;
     private Vec3 laggedPosition;
 
     public EntityLag(int packetCapacity) {
@@ -44,13 +47,13 @@ public final class EntityLag {
         }
         synchronized (lock) {
             packets.clear();
-            targetId = target.getId();
-            targetUuid = target.getUUID();
-            laggedBox = target.getBoundingBox();
-            laggedPosition = target.position();
+            targetId = target.getEntityId();
+            targetUuid = target.getUniqueID();
+            laggedBox = target.getEntityBoundingBox();
+            laggedPosition = VecMath.position(target);
             realPosition.setBaseFrom(target);
-            interpolationStartPosition = target.position();
-            serverPosition = target.position();
+            interpolationStartPosition = VecMath.position(target);
+            serverPosition = VecMath.position(target);
             interpolationStartedNanos = System.nanoTime();
             interpolationDurationNanos = 1L;
             lastServerPacketNanos = 0L;
@@ -58,7 +61,7 @@ public final class EntityLag {
     }
 
     /** Returns true when this exact target movement packet was captured. */
-    public boolean capture(Packet<?> packet, ClientLevel level, Entity target) {
+    public boolean capture(Packet<?> packet, WorldClient level, Entity target) {
         if (packet == null || level == null || target == null || !matches(target)) {
             return false;
         }
@@ -96,20 +99,20 @@ public final class EntityLag {
         return targetId;
     }
 
-    public Entity target(ClientLevel level) {
+    public Entity target(WorldClient level) {
         if (level == null || targetId == -1) {
             return null;
         }
-        Entity entity = level.getEntity(targetId);
+        Entity entity = level.getEntityByID(targetId);
         return matches(entity) ? entity : null;
     }
 
     public boolean matches(Entity entity) {
         UUID uuid = targetUuid;
         return entity != null
-                && entity.getId() == targetId
+                && entity.getEntityId() == targetId
                 && uuid != null
-                && uuid.equals(entity.getUUID());
+                && uuid.equals(entity.getUniqueID());
     }
 
     public Vec3 serverPosition() {
@@ -140,21 +143,21 @@ public final class EntityLag {
                 Math.max(
                         0.0D,
                         Math.min(1.0D, (double) (now - interpolationStartedNanos) / duration));
-        return previous.lerp(current, alpha);
+        return VecMath.lerp(previous, current, alpha);
     }
 
-    public AABB laggedBox() {
+    public AxisAlignedBB laggedBox() {
         synchronized (lock) {
             return laggedBox;
         }
     }
 
-    public AABB realBox() {
+    public AxisAlignedBB realBox() {
         synchronized (lock) {
             if (laggedBox == null || laggedPosition == null || serverPosition == null) {
                 return null;
             }
-            return laggedBox.move(serverPosition.subtract(laggedPosition));
+            return LegacyWorld.move(laggedBox, serverPosition.subtract(laggedPosition));
         }
     }
 
@@ -170,7 +173,7 @@ public final class EntityLag {
             lastServerPacketNanos = 0L;
             laggedBox = null;
             laggedPosition = null;
-            realPosition.base(Vec3.ZERO);
+            realPosition.base(VecMath.ZERO);
             return packets.drain();
         }
     }
@@ -187,7 +190,7 @@ public final class EntityLag {
             lastServerPacketNanos = 0L;
             laggedBox = null;
             laggedPosition = null;
-            realPosition.base(Vec3.ZERO);
+            realPosition.base(VecMath.ZERO);
             packets.clear();
         }
     }

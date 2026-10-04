@@ -1,11 +1,10 @@
 package com.blanoir.moons.client.module.impl.combat.silentaura;
 
-import com.blanoir.moons.client.module.impl.combat.silentaura.latest.LatestBlock;
 import com.blanoir.moons.client.module.impl.combat.silentaura.legacy.LegacyBlock;
 
 import net.minecraft.client.Minecraft;
 
-/** Stable animation/settings facade; each combat mode owns its blocking behavior. */
+/** Animation/settings facade for the Legacy blocking lifecycle. */
 public final class SilentAuraBlock {
     private SilentAuraBlock() {}
 
@@ -18,13 +17,11 @@ public final class SilentAuraBlock {
     }
 
     public static boolean shouldRenderBlock(Minecraft client) {
-        return SilentAuraConfig.legacyCombat()
-                ? LegacyBlock.shouldRenderBlock(client)
-                : LatestBlock.shouldRender(client);
+        return LegacyBlock.shouldRenderBlock(client);
     }
 
     public static boolean attackAnimationOnly() {
-        return SilentAuraConfig.legacyCombat() && LegacyBlock.attackAnimationOnly();
+        return LegacyBlock.attackAnimationOnly();
     }
 
     public static double animationProgress() {

@@ -4,15 +4,12 @@ import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.module.impl.network.backtrack.BacktrackConfig;
 import com.blanoir.moons.client.module.impl.network.backtrack.BacktrackRuntime;
-import com.mojang.blaze3d.vertex.PoseStack;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.SubmitNodeCollector;
-import net.minecraft.client.renderer.state.level.LevelRenderState;
-import net.minecraft.network.PacketListener;
-import net.minecraft.network.protocol.Packet;
-import net.minecraft.network.protocol.game.ServerboundAttackPacket;
-import net.minecraft.world.entity.Entity;
+import net.minecraft.entity.Entity;
+import net.minecraft.network.INetHandler;
+import net.minecraft.network.Packet;
+import net.minecraft.network.play.client.C02PacketUseEntity;
 
 import java.util.List;
 
@@ -44,17 +41,19 @@ public final class Backtrack {
         EventBus.PACKET_SEND_POST.register(
                 "Backtrack.attackSent",
                 event -> {
-                    if (isEnabled() && event.packet() instanceof ServerboundAttackPacket attack) {
-                        Minecraft client = Minecraft.getInstance();
-                        var connection = client.getConnection();
-                        var level = client.level;
-                        client.execute(
+                    if (isEnabled()
+                            && event.packet() instanceof C02PacketUseEntity attack
+                            && attack.getAction() == C02PacketUseEntity.Action.ATTACK) {
+                        Minecraft client = Minecraft.getMinecraft();
+                        var connection = client.getNetHandler();
+                        var level = client.theWorld;
+                        client.addScheduledTask(
                                 () -> {
                                     if (connection != null
-                                            && connection == client.getConnection()
+                                            && connection == client.getNetHandler()
                                             && level != null
-                                            && level == client.level) {
-                                        onAttack(level.getEntity(attack.entityId()));
+                                            && level == client.theWorld) {
+                                        onAttack(attack.getEntityFromWorld(level));
                                     }
                                 });
                     }
@@ -68,13 +67,13 @@ public final class Backtrack {
         return CONFIG.enabled();
     }
 
-    public static boolean handleIncomingPacket(Packet<?> packet, PacketListener listener) {
+    public static boolean handleIncomingPacket(Packet<?> packet, INetHandler listener) {
         return RUNTIME.handleIncomingPacket(packet, listener);
     }
 
     /** Called after vanilla dispatches either a manual or an automatic attack. */
     public static void onAttack(Entity entity) {
-        RUNTIME.attack(Minecraft.getInstance(), entity);
+        RUNTIME.attack(Minecraft.getMinecraft(), entity);
     }
 
     public static boolean isLagging() {
@@ -85,9 +84,8 @@ public final class Backtrack {
         return RUNTIME.hudStats();
     }
 
-    public static void renderModel(
-            PoseStack poses, LevelRenderState state, SubmitNodeCollector collector) {
-        RUNTIME.renderModel(poses, state, collector);
+    public static void renderModel(float partialTicks) {
+        RUNTIME.renderModel(partialTicks);
     }
 
     public static int setEnabled(Minecraft client, boolean enabled) {

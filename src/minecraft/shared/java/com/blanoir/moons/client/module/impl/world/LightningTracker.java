@@ -1,12 +1,11 @@
 package com.blanoir.moons.client.module.impl.world;
 
-import com.blanoir.moons.client.access.MinecraftClientAccess;
 import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.event.EventBus;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.network.protocol.game.ClientboundAddEntityPacket;
+import net.minecraft.network.play.server.S2CPacketSpawnGlobalEntity;
 
 public final class LightningTracker {
     private static final BooleanSetting ENABLED =
@@ -23,7 +22,7 @@ public final class LightningTracker {
         EventBus.PACKET_RECEIVE_APPLY.register(
                 "LightningTracker.entityAdded",
                 event -> {
-                    if (event.packet() instanceof ClientboundAddEntityPacket packet) {
+                    if (event.packet() instanceof S2CPacketSpawnGlobalEntity packet) {
                         handlePacket(packet);
                     }
                 });
@@ -48,25 +47,25 @@ public final class LightningTracker {
         return 1;
     }
 
-    public static void handlePacket(ClientboundAddEntityPacket packet) {
+    public static void handlePacket(S2CPacketSpawnGlobalEntity packet) {
         if (!ENABLED.get()) {
             return;
         }
 
-        Minecraft client = Minecraft.getInstance();
-        var currentPlayer = client == null ? null : client.player;
-        if (client == null || currentPlayer == null || client.level == null) {
+        Minecraft client = Minecraft.getMinecraft();
+        var currentPlayer = client == null ? null : client.thePlayer;
+        if (client == null || currentPlayer == null || client.theWorld == null) {
             return;
         }
 
-        if (!MinecraftClientAccess.isLightning(packet.getType())) {
+        if (packet.func_149053_g() != 1) {
             return;
         }
 
-        double x = packet.getX();
-        double y = packet.getY();
-        double z = packet.getZ();
-        double distance = Math.sqrt(currentPlayer.distanceToSqr(x, y, z));
+        double x = packet.func_149051_d() / 32.0;
+        double y = packet.func_149050_e() / 32.0;
+        double z = packet.func_149049_f() / 32.0;
+        double distance = Math.sqrt(currentPlayer.getDistanceSq(x, y, z));
 
         count++;
 

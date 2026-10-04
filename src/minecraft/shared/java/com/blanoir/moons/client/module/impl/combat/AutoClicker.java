@@ -10,8 +10,9 @@ import com.blanoir.moons.client.utils.client.ClientReady;
 import com.blanoir.moons.client.utils.math.RandomMath;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.tags.ItemTags;
-import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.client.settings.KeyBinding;
+import net.minecraft.item.ItemSword;
+import net.minecraft.util.MovingObjectPosition;
 
 /** Automatic clicks routed through the shared input controller. */
 public final class AutoClicker {
@@ -38,19 +39,25 @@ public final class AutoClicker {
     private static void tick(Minecraft client) {
         if (!ClientReady.gameplay(client)
                 || !ENABLED.get()
-                || !CombatInputController.isPhysicallyDown(client, client.options.keyAttack)) {
+                || !CombatInputController.isPhysicallyDown(
+                        client, client.gameSettings.keyBindAttack)) {
             resetCycle(client);
             return;
         }
-        if (BREAK_BLOCKS.get() && client.hitResult instanceof BlockHitResult) {
+        if (BREAK_BLOCKS.get()
+                && client.objectMouseOver != null
+                && client.objectMouseOver.typeOfHit
+                        == MovingObjectPosition.MovingObjectType.BLOCK) {
             resetSag(client);
             return;
         }
 
         boolean sagging =
                 SAG.get()
-                        && client.player.getMainHandItem().is(ItemTags.SWORDS)
-                        && CombatInputController.isPhysicallyDown(client, client.options.keyUse);
+                        && (client.thePlayer.getHeldItem() != null
+                                && client.thePlayer.getHeldItem().getItem() instanceof ItemSword)
+                        && CombatInputController.isPhysicallyDown(
+                                client, client.gameSettings.keyBindUseItem);
         if (sagging) {
             tickSag(client);
             return;
@@ -59,26 +66,26 @@ public final class AutoClicker {
 
         long now = System.nanoTime();
         if (now < nextClickAtNanos) return;
-        CombatInputController.click(client, client.options.keyAttack);
+        CombatInputController.click(client, client.gameSettings.keyBindAttack);
         scheduleNext(now);
     }
 
     private static void tickSag(Minecraft client) {
         if (sagBlockTicks > 0) {
             sagBlockTicks--;
-            client.options.keyUse.setDown(true);
+            KeyBinding.setKeyBindState(client.gameSettings.keyBindUseItem.getKeyCode(), true);
             return;
         }
         if (sagUnblockTicks > 0) {
             sagUnblockTicks--;
-            client.options.keyUse.setDown(false);
+            KeyBinding.setKeyBindState(client.gameSettings.keyBindUseItem.getKeyCode(), false);
             return;
         }
-        client.options.keyUse.setDown(false);
-        CombatInputController.click(client, client.options.keyAttack);
+        KeyBinding.setKeyBindState(client.gameSettings.keyBindUseItem.getKeyCode(), false);
+        CombatInputController.click(client, client.gameSettings.keyBindAttack);
         sagBlockTicks = SAG_BLOCK_TICKS.get();
         sagUnblockTicks = SAG_UNBLOCK_TICKS.get();
-        client.options.keyUse.setDown(true);
+        KeyBinding.setKeyBindState(client.gameSettings.keyBindUseItem.getKeyCode(), true);
     }
 
     private static void scheduleNext(long now) {
@@ -96,9 +103,11 @@ public final class AutoClicker {
     private static void resetSag(Minecraft client) {
         sagBlockTicks = 0;
         sagUnblockTicks = 0;
-        if (client != null && client.options != null) {
-            client.options.keyUse.setDown(
-                    CombatInputController.isPhysicallyDown(client, client.options.keyUse));
+        if (client != null && client.gameSettings != null) {
+            KeyBinding.setKeyBindState(
+                    client.gameSettings.keyBindUseItem.getKeyCode(),
+                    CombatInputController.isPhysicallyDown(
+                            client, client.gameSettings.keyBindUseItem));
         }
     }
 

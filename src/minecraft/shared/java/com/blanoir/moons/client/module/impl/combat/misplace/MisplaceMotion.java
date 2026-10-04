@@ -1,14 +1,16 @@
 package com.blanoir.moons.client.module.impl.combat.misplace;
 
-import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.Vec3;
+import com.blanoir.moons.client.compat.math.VecMath;
+
+import net.minecraft.util.AxisAlignedBB;
+import net.minecraft.util.Vec3;
 
 import java.util.ArrayDeque;
 
 /** Packet observations and presentation smoothing around the causal latency model. */
 public final class MisplaceMotion {
     private Vec3 position;
-    private Vec3 velocity = Vec3.ZERO;
+    private Vec3 velocity = VecMath.ZERO;
     private double velocityError;
     private int samples;
     private long receivedAt, settleUntil;
@@ -25,7 +27,7 @@ public final class MisplaceMotion {
 
     public void reset(Vec3 at, long now) {
         position = MisplaceLatencyModel.finite(at) ? at : null;
-        velocity = Vec3.ZERO;
+        velocity = VecMath.ZERO;
         velocityError = 0;
         samples = 0;
         receivedAt = now;
@@ -50,7 +52,7 @@ public final class MisplaceMotion {
             reset(at, now);
             return;
         }
-        if (at.distanceToSqr(position) > 9) {
+        if (at.squareDistanceTo(position) > 9) {
             discontinuity(at, now);
             return;
         }
@@ -60,7 +62,7 @@ public final class MisplaceMotion {
         if (damageAt >= 0 && now >= damageUntil) {
             damageAt = -1;
             samples = 0;
-            velocity = Vec3.ZERO;
+            velocity = VecMath.ZERO;
             history.clear();
             history.add(new Sample(at, now));
             sampleSpan = 0;
@@ -73,8 +75,8 @@ public final class MisplaceMotion {
         Sample first = history.peekFirst();
         sampleSpan = now - first.time();
         if (sampleSpan < 100) return;
-        Vec3 measured = at.subtract(first.position()).scale(1000.0 / sampleSpan);
-        if (measured.lengthSqr() > 400) {
+        Vec3 measured = VecMath.scale(at.subtract(first.position()), 1000.0 / sampleSpan);
+        if (VecMath.lengthSqr(measured) > 400) {
             discontinuity(at, now);
             return;
         }
@@ -83,15 +85,18 @@ public final class MisplaceMotion {
         Sample previous = null;
         for (Sample point : history) {
             Vec3 fitted =
-                    first.position().add(measured.scale((point.time() - first.time()) / 1000.0));
+                    first.position()
+                            .add(VecMath.scale(measured, (point.time() - first.time()) / 1000.0));
             residual = Math.max(residual, fitted.distanceTo(point.position()) * 2000 / sampleSpan);
             if (previous != null && point.time() - previous.time() >= 25) {
                 Vec3 segmentVelocity =
-                        point.position()
-                                .subtract(previous.position())
-                                .scale(1000.0 / (point.time() - previous.time()));
+                        VecMath.scale(
+                                point.position().subtract(previous.position()),
+                                1000.0 / (point.time() - previous.time()));
                 recentSpeedError =
-                        Math.max(recentSpeedError, segmentVelocity.subtract(measured).length());
+                        Math.max(
+                                recentSpeedError,
+                                segmentVelocity.subtract(measured).lengthVector());
             }
             previous = point;
         }
@@ -99,7 +104,8 @@ public final class MisplaceMotion {
                 Math.max(
                         recentSpeedError,
                         Math.max(
-                                residual, samples == 0 ? 0 : measured.subtract(velocity).length()));
+                                residual,
+                                samples == 0 ? 0 : measured.subtract(velocity).lengthVector()));
         velocity = measured;
         samples = history.size() - 1;
     }
@@ -150,8 +156,10 @@ public final class MisplaceMotion {
                                 Math.max(
                                         0,
                                         Math.hypot(
-                                                        query.visiblePosition().x - query.eye().x,
-                                                        query.visiblePosition().z - query.eye().z)
+                                                        query.visiblePosition().xCoord
+                                                                - query.eye().xCoord,
+                                                        query.visiblePosition().zCoord
+                                                                - query.eye().zCoord)
                                                 - .8));
         double elapsed = advancedAt < 0 ? 50 : Math.clamp(query.now() - advancedAt, 0, 100);
         advancedAt = query.now();
@@ -161,15 +169,17 @@ public final class MisplaceMotion {
     }
 
     public static Vec3 toward(Vec3 observer, Vec3 target) {
-        Vec3 delta = new Vec3(target.x - observer.x, 0, target.z - observer.z);
-        return delta.lengthSqr() < 1.0E-9 ? Vec3.ZERO : delta.normalize();
+        Vec3 delta = new Vec3(target.xCoord - observer.xCoord, 0, target.zCoord - observer.zCoord);
+        return VecMath.lengthSqr(delta) < 1.0E-9 ? VecMath.ZERO : delta.normalize();
     }
 
     public static Vec3 offset(Vec3 observer, Vec3 target, double amount) {
-        return toward(observer, target).scale(-amount);
+        return VecMath.scale(toward(observer, target), -amount);
     }
 
-    public static Vec3 intersection(AABB box, Vec3 start, Vec3 end) {
-        return box.contains(start) ? start : box.clip(start, end).orElse(null);
+    public static Vec3 intersection(AxisAlignedBB box, Vec3 start, Vec3 end) {
+        if (box.isVecInside(start)) return start;
+        var hit = box.calculateIntercept(start, end);
+        return hit == null ? null : hit.hitVec;
     }
 }

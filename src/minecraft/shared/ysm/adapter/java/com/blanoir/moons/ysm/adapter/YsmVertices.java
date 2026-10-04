@@ -1,37 +1,49 @@
 package com.blanoir.moons.ysm.adapter;
 
-import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.blaze3d.vertex.VertexConsumer;
-
+import org.joml.Matrix3f;
+import org.joml.Matrix4f;
 import org.joml.Vector3f;
+import org.lwjgl.opengl.GL11;
 
-/** Shared vertex submission for body, first-person arms and model sub-entities. */
+/** Authored flat-shaded quad mesh submitted through the 1.8 fixed pipeline. */
 final class YsmVertices {
-    static void emit(
-            PoseStack.Pose transform,
-            VertexConsumer consumer,
-            float[] vertices,
-            int overlay,
-            int light) {
-        var position = new Vector3f();
-        var normal = new Vector3f();
-        var matrix = transform.pose();
-        // Mesh emits flat-shaded quads: all four vertices share the same transformed normal.
+    @FunctionalInterface
+    interface Sink {
+        void vertex(float x, float y, float z, float u, float v, float nx, float ny, float nz);
+    }
+
+    private static final Sink GL =
+            (x, y, z, u, v, nx, ny, nz) -> {
+                GL11.glNormal3f(nx, ny, nz);
+                GL11.glTexCoord2f(u, v);
+                GL11.glVertex3f(x, y, z);
+            };
+
+    static void emit(Matrix4f matrix, float[] vertices) {
+        GL11.glBegin(GL11.GL_QUADS);
+        try {
+            emit(matrix, vertices, GL);
+        } finally {
+            GL11.glEnd();
+        }
+    }
+
+    static void emit(Matrix4f matrix, float[] vertices, Sink sink) {
+        if (vertices.length % 32 != 0)
+            throw new IllegalArgumentException("YSM mesh must contain complete quads");
+        Vector3f position = new Vector3f(), normal = new Vector3f();
+        Matrix3f normals = matrix.normal(new Matrix3f());
         for (int face = 0; face < vertices.length; face += 32) {
-            transform.transformNormal(
-                    vertices[face + 5], vertices[face + 6], vertices[face + 7], normal);
+            normals.transform(vertices[face + 5], vertices[face + 6], vertices[face + 7], normal)
+                    .normalize();
             for (int i = face; i < face + 32; i += 8) {
                 matrix.transformPosition(vertices[i], vertices[i + 1], vertices[i + 2], position);
-                // BufferBuilder overrides this complete-vertex call with its packed fast path.
-                consumer.addVertex(
+                sink.vertex(
                         position.x,
                         position.y,
                         position.z,
-                        -1,
                         vertices[i + 3],
                         vertices[i + 4],
-                        overlay,
-                        light,
                         normal.x,
                         normal.y,
                         normal.z);

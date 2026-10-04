@@ -1,7 +1,8 @@
 package com.blanoir.moons.client.management.rotation;
 
 import com.blanoir.moons.client.access.GameAccess;
-import com.blanoir.moons.client.access.PacketAccess;
+import com.blanoir.moons.client.compat.math.Mth;
+import com.blanoir.moons.client.compat.math.VecMath;
 import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.event.network.PacketSendEvent;
 import com.blanoir.moons.client.management.lease.RotationLease;
@@ -16,12 +17,10 @@ import com.blanoir.moons.client.utils.rotation.smooth.SmoothG;
 import com.blanoir.moons.client.utils.world.placement.PlacementRaycast;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
-import net.minecraft.network.protocol.game.ServerboundUseItemOnPacket;
-import net.minecraft.network.protocol.game.ServerboundUseItemPacket;
-import net.minecraft.util.Mth;
-import net.minecraft.world.phys.BlockHitResult;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.network.play.client.C03PacketPlayer;
+import net.minecraft.network.play.client.C08PacketPlayerBlockPlacement;
+import net.minecraft.util.MovingObjectPosition;
+import net.minecraft.util.Vec3;
 
 /**
  * Silent rotation shared by modules that must act without moving the local
@@ -57,7 +56,7 @@ public final class SilentPacketRotation {
                     "SilentPacketRotation",
                     RotationLease.PRIORITY_BLOCK_INTERACTION,
                     SilentPacketRotation::shouldApplyRotation,
-                    () -> packetRotation(Minecraft.getInstance()));
+                    () -> packetRotation(Minecraft.getMinecraft()));
     private static final RotationInteractionLock USE_LOCK = new RotationInteractionLock();
 
     private static boolean active;
@@ -77,8 +76,8 @@ public final class SilentPacketRotation {
     private static long lastRotationFrameNanos;
     private static boolean rotationPacketSent;
 
-    private static BlockHitResult simulatedUseHit;
-    private static BlockHitResult simulatedItemRay;
+    private static MovingObjectPosition simulatedUseHit;
+    private static MovingObjectPosition simulatedItemRay;
     private static float simulatedUseYaw;
     private static float simulatedUsePitch;
     private static boolean simulatedUseQueued;
@@ -106,17 +105,11 @@ public final class SilentPacketRotation {
     }
 
     private static void recordSentPacket(PacketSendEvent.Post event) {
-        if (event.packet() instanceof ServerboundUseItemPacket useItemPacket
-                && USE_LOCK.markInteractionPacket(
-                        PacketAccess.useItemYaw(useItemPacket),
-                        PacketAccess.useItemPitch(useItemPacket))) {
-            return;
-        }
-        if (event.packet() instanceof ServerboundUseItemOnPacket
+        if (event.packet() instanceof C08PacketPlayerBlockPlacement
                 && USE_LOCK.markInteractionPacket(simulatedUseYaw, simulatedUsePitch)) {
             return;
         }
-        if (!(event.packet() instanceof ServerboundMovePlayerPacket)) {
+        if (!(event.packet() instanceof C03PacketPlayer)) {
             return;
         }
         RotationManager.Sent sent = RotationManager.latest();
@@ -138,7 +131,7 @@ public final class SilentPacketRotation {
      */
     private static void onPacketSent(PacketSendEvent.Post event) {
         recordSentPacket(event);
-        if (!(event.packet() instanceof ServerboundMovePlayerPacket)
+        if (!(event.packet() instanceof C03PacketPlayer)
                 || !simulatedUseQueued
                 || simulatedUseRunning
                 || !rotationPacketSent
@@ -147,8 +140,8 @@ public final class SilentPacketRotation {
                         != Float.floatToIntBits(simulatedUsePitch)) {
             return;
         }
-        Minecraft client = Minecraft.getInstance();
-        if (client != null && client.player != null) {
+        Minecraft client = Minecraft.getMinecraft();
+        if (client != null && client.thePlayer != null) {
             invokeSimulatedUse(client);
         }
     }
@@ -161,14 +154,14 @@ public final class SilentPacketRotation {
 
     public static boolean beginRotation(
             Minecraft client, Vec3 target, int smoothTicks, Mode mode, Runnable onReached) {
-        var currentPlayer = client == null ? null : client.player;
+        var currentPlayer = client == null ? null : client.thePlayer;
         if (client == null || currentPlayer == null || target == null) {
             if (onReached != null) {
                 onReached.run();
             }
             return false;
         }
-        Rotation desired = AimSolverD.rotationTo(currentPlayer.getEyePosition(), target);
+        Rotation desired = AimSolverD.rotationTo(currentPlayer.getPositionEyes(1F), target);
         if (USE_LOCK.locked()
                 || RotationLease.submission() != null
                 || !ROTATION_LEASE.acquire(
@@ -216,7 +209,7 @@ public final class SilentPacketRotation {
 
     public static void beginReturnToCamera(
             Minecraft client, int smoothTicks, Mode mode, Runnable onReturned) {
-        var currentPlayer = client == null ? null : client.player;
+        var currentPlayer = client == null ? null : client.thePlayer;
         if (client == null || currentPlayer == null) {
             if (onReturned != null) {
                 onReturned.run();
@@ -228,8 +221,8 @@ public final class SilentPacketRotation {
                 || RotationLease.submission() != null
                 || !ROTATION_LEASE.acquire(
                         new RotationRequest(
-                                currentPlayer.getYRot(),
-                                currentPlayer.getXRot(),
+                                currentPlayer.rotationYaw,
+                                currentPlayer.rotationPitch,
                                 smoothTicks,
                                 0.35F,
                                 null))) {
@@ -241,8 +234,8 @@ public final class SilentPacketRotation {
         Rotation start = RotationManager.start(client);
         packetYaw = start.yaw();
         packetPitch = start.pitch();
-        returnYawOffset = Mth.wrapDegrees(packetYaw - currentPlayer.getYRot());
-        returnPitchOffset = packetPitch - currentPlayer.getXRot();
+        returnYawOffset = Mth.wrapDegrees(packetYaw - currentPlayer.rotationYaw);
+        returnPitchOffset = packetPitch - currentPlayer.rotationPitch;
         active = true;
         holdingRotation = true;
         returnToCamera = true;
@@ -256,7 +249,8 @@ public final class SilentPacketRotation {
         pitchVelocity = 0.0F;
         if (mode == Mode.INSTANT) {
             Rotation instant =
-                    InstantA.step(new Rotation(currentPlayer.getYRot(), currentPlayer.getXRot()));
+                    InstantA.step(
+                            new Rotation(currentPlayer.rotationYaw, currentPlayer.rotationPitch));
             packetYaw = instant.yaw();
             packetPitch = instant.pitch();
             returnYawOffset = 0.0F;
@@ -274,7 +268,7 @@ public final class SilentPacketRotation {
 
     /** Frame-rate-independent smoothstep, sampled by the render frame. */
     private static void update(Minecraft client) {
-        var currentPlayer = client == null ? null : client.player;
+        var currentPlayer = client == null ? null : client.thePlayer;
         if (pendingRotation != null) {
             // Fallback only. Normal continuation occurs at the closing motion
             // boundary, so multiple ticks in one frame do not introduce a gap.
@@ -315,7 +309,7 @@ public final class SilentPacketRotation {
                             1.0D);
             Rotation returned =
                     SmoothG.returnOffset(
-                            new Rotation(currentPlayer.getYRot(), currentPlayer.getXRot()),
+                            new Rotation(currentPlayer.rotationYaw, currentPlayer.rotationPitch),
                             returnYawOffset,
                             returnPitchOffset,
                             linear);
@@ -324,8 +318,8 @@ public final class SilentPacketRotation {
             yawVelocity = 0.0F;
             pitchVelocity = 0.0F;
             if (linear >= 1.0D) {
-                packetYaw = currentPlayer.getYRot();
-                packetPitch = currentPlayer.getXRot();
+                packetYaw = currentPlayer.rotationYaw;
+                packetPitch = currentPlayer.rotationPitch;
                 rotationPacketSent = false;
                 Runnable action = reachedAction;
                 reachedAction = null;
@@ -337,7 +331,7 @@ public final class SilentPacketRotation {
             return;
         }
 
-        Rotation target = AimSolverD.rotationTo(currentPlayer.getEyePosition(), rotationTarget);
+        Rotation target = AimSolverD.rotationTo(currentPlayer.getPositionEyes(1F), rotationTarget);
         double response = 4.0D / Math.max(durationSeconds, 0.05D);
         SmoothA.Motion next =
                 SmoothB.approachTarget(
@@ -387,7 +381,7 @@ public final class SilentPacketRotation {
      * exact quantized pair is pinned first; sendPosition publishes it later in
      * the same tick and its SEND_POST then performs the interaction.
      */
-    public static boolean queueUse(Minecraft client, BlockHitResult hit) {
+    public static boolean queueUse(Minecraft client, MovingObjectPosition hit) {
         return prepareUse(client, hit);
     }
 
@@ -396,7 +390,7 @@ public final class SilentPacketRotation {
      * packet has published the requested rotation. This matches Scaffold's
      * accepted packet order: held-item sync -> use -> this tick's movement.
      */
-    public static boolean invokeUseInPlayerUpdate(Minecraft client, BlockHitResult hit) {
+    public static boolean invokeUseInPlayerUpdate(Minecraft client, MovingObjectPosition hit) {
         return invokeUseInPlayerUpdate(client, hit, true);
     }
 
@@ -406,16 +400,16 @@ public final class SilentPacketRotation {
      * existing interaction transaction preserves that pair for sendPosition.
      */
     public static boolean invokeUseInPlayerUpdate(
-            Minecraft client, BlockHitResult hit, boolean requirePreviousRotation) {
+            Minecraft client, MovingObjectPosition hit, boolean requirePreviousRotation) {
         return invokeUseInPlayerUpdate(client, hit, requirePreviousRotation, null);
     }
 
     /** Retain this use's bucket ray if an input hook delays the actual invocation. */
     public static boolean invokeUseInPlayerUpdate(
             Minecraft client,
-            BlockHitResult hit,
+            MovingObjectPosition hit,
             boolean requirePreviousRotation,
-            BlockHitResult itemRay) {
+            MovingObjectPosition itemRay) {
         if ((requirePreviousRotation && !rotationPacketSent) || !prepareUse(client, hit)) {
             return false;
         }
@@ -440,9 +434,9 @@ public final class SilentPacketRotation {
         return invokingSimulatedUse;
     }
 
-    private static boolean prepareUse(Minecraft client, BlockHitResult hit) {
+    private static boolean prepareUse(Minecraft client, MovingObjectPosition hit) {
         if (client == null
-                || client.player == null
+                || client.thePlayer == null
                 || hit == null
                 || !ROTATION_LEASE.active()
                 || simulatedUseQueued
@@ -475,12 +469,12 @@ public final class SilentPacketRotation {
 
     /** Camera-aligned fast path; only actual matching history can mark it ready. */
     public static void markCurrentAsSent(Minecraft client) {
-        var currentPlayer = client == null ? null : client.player;
+        var currentPlayer = client == null ? null : client.thePlayer;
         if (client == null || currentPlayer == null) {
             return;
         }
-        packetYaw = currentPlayer.getYRot();
-        packetPitch = currentPlayer.getXRot();
+        packetYaw = currentPlayer.rotationYaw;
+        packetPitch = currentPlayer.rotationPitch;
         if (!ROTATION_LEASE.acquire(new RotationRequest(packetYaw, packetPitch, 1, 0.35F, null)))
             return;
         RotationManager.Sent sent = RotationManager.latest();
@@ -556,7 +550,8 @@ public final class SilentPacketRotation {
     }
 
     public static Vec3 getInteractionLookVector(Minecraft client) {
-        return Vec3.directionFromRotation(getInteractionPitch(client), getInteractionYaw(client));
+        return VecMath.directionFromRotation(
+                getInteractionPitch(client), getInteractionYaw(client));
     }
 
     private static double mouseSensitivityGcd() {
@@ -591,7 +586,7 @@ public final class SilentPacketRotation {
     }
 
     public static float getMovementYaw() {
-        return packetRotation(Minecraft.getInstance()).yaw();
+        return packetRotation(Minecraft.getMinecraft()).yaw();
     }
 
     /** Called by the startUseItem hook for one queued vanilla right-click. */
@@ -600,7 +595,7 @@ public final class SilentPacketRotation {
                 || !simulatedUseQueued
                 || simulatedUseRunning
                 || client == null
-                || client.player == null
+                || client.thePlayer == null
                 || simulatedUseHit == null) {
             return false;
         }
@@ -609,7 +604,7 @@ public final class SilentPacketRotation {
         return true;
     }
 
-    public static BlockHitResult getSimulatedUseHit() {
+    public static MovingObjectPosition getSimulatedUseHit() {
         return simulatedUseHit;
     }
 

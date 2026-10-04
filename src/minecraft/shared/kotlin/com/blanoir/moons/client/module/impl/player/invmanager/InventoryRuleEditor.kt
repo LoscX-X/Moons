@@ -1,4 +1,5 @@
 package com.blanoir.moons.client.module.impl.player.invmanager
+import com.blanoir.moons.client.utils.render.isEmpty
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.OutlinedTextField
@@ -264,16 +265,16 @@ private fun RuleContents(rule: InventoryRules.Rule, changed: () -> Unit) {
                 horizontalArrangement = Arrangement.spacedBy(7.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                ItemIcon(stack, stack.hoverName.string, Modifier.size(24.dp))
+                ItemIcon(stack, stack.displayName, Modifier.size(24.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(stack.hoverName.string, fontSize = 11.sp)
+                    Text(stack.displayName, fontSize = 11.sp)
                     Text(rule.reason(stack), color = PanelStyle.muted, fontSize = 10.sp)
                 }
                 EditorButton("Add") {
                     runCatching {
                             val entry = InventoryRules.entry(stack, sample)
                             if (!entries.contains(entry)) updateEntries(entries + entry)
-                            message = "Added ${stack.hoverName.string}"
+                            message = "Added ${stack.displayName}"
                         }
                         .onFailure { message = it.message ?: "Could not capture this item" }
                 }

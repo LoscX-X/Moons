@@ -4,7 +4,6 @@ import com.blanoir.moons.client.access.MinecraftClientAccess;
 import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.DoubleSetting;
-import com.blanoir.moons.client.config.settings.IntSetting;
 import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.management.input.CombatInputController;
 import com.blanoir.moons.client.management.targeting.Targeting;
@@ -15,8 +14,7 @@ import com.blanoir.moons.client.utils.combat.CombatModuleCoordinator;
 import com.blanoir.moons.client.utils.combat.CombatReach;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.EntitySelector;
+import net.minecraft.entity.Entity;
 
 /**
  * Delays an attack only when the vanilla critical predicate is expected to
@@ -47,31 +45,12 @@ public final class Predict {
                     .defaultValue(true)
                     .build();
 
-    private static final BooleanSetting SYNC_ENABLED =
-            new BooleanSetting.Builder().name("predictcritical.sync").defaultValue(true).build();
-
-    private static final IntSetting MAX_OVERCHARGE_TICKS =
-            new IntSetting.Builder()
-                    .name("predictcritical.overcharge")
-                    .defaultValue(2)
-                    .range(0, 6)
-                    .build();
-
-    private static final IntSetting SYNC_CYCLES =
-            new IntSetting.Builder()
-                    .name("predictcritical.cycles")
-                    .defaultValue(2)
-                    .range(1, 3)
-                    .build();
-
     private static int targetId = -1;
     private static int remainingTicks;
     private static int earliestAttackTicks;
     private static boolean queuedManualIntent;
     private static boolean queuedThroughBlock;
     private static long lastAttackNanos;
-    private static boolean cooldownWasFull;
-    private static int currentOverchargeTicks;
 
     /** Old TriggerBot contract represented as absolute ticks in the gate-based pipeline. */
     private static int automaticPlanTargetId = -1;
@@ -88,13 +67,12 @@ public final class Predict {
                 "Predict.tick",
                 event -> {
                     Minecraft client = event.client();
-                    updateCooldownPhase(client);
                     tick(client);
                 });
     }
 
     private static void tick(Minecraft client) {
-        var currentLevel = client == null ? null : client.level;
+        var currentLevel = client == null ? null : client.theWorld;
         if (client == null || unavailable(client)) {
             clear(client);
             return;
@@ -106,7 +84,7 @@ public final class Predict {
         }
 
         if (currentLevel != null) {
-            Entity target = currentLevel.getEntity(targetId);
+            Entity target = currentLevel.getEntityByID(targetId);
             if (!Targeting.isEnemyPlayer(client, target)) {
                 clear(client);
                 return;
@@ -117,7 +95,7 @@ public final class Predict {
             }
 
             Entity cameraTarget = crosshairEnemy(client, queuedThroughBlock);
-            if (cameraTarget != null && client.options.keyAttack.consumeClick()) {
+            if (cameraTarget != null && client.gameSettings.keyBindAttack.isPressed()) {
                 if (cameraTarget != target) {
                     clear(client);
                     beginIntent(client, cameraTarget, true, 0, false);
@@ -209,7 +187,7 @@ public final class Predict {
             return;
         }
         Entity target = crosshairEnemy(client, false);
-        if (target == null || !client.options.keyAttack.consumeClick()) {
+        if (target == null || !client.gameSettings.keyBindAttack.isPressed()) {
             return;
         }
 
@@ -301,7 +279,8 @@ public final class Predict {
             return Critical.AttackDecision.NONE;
         }
         if (targetId != -1
-                || (CombatInputController.isPhysicallyDown(client, client.options.keyAttack))
+                || (CombatInputController.isPhysicallyDown(
+                        client, client.gameSettings.keyBindAttack))
                 || System.nanoTime() - lastAttackNanos < SAME_TICK_GUARD_NANOS) {
             return Critical.AttackDecision.DEFERRED;
         }
@@ -338,11 +317,11 @@ public final class Predict {
             return Critical.AutomaticAttackGate.WAIT;
         }
 
-        if (automaticPlanTargetId != -1 && automaticPlanTargetId != target.getId()) {
+        if (automaticPlanTargetId != -1 && automaticPlanTargetId != target.getEntityId()) {
             clearAutomaticPlan();
             releasePredictionMovement(client);
         }
-        if (automaticPlanTargetId == target.getId()) {
+        if (automaticPlanTargetId == target.getEntityId()) {
             return advanceAutomaticPlan(client, target);
         }
 
@@ -377,9 +356,9 @@ public final class Predict {
             return Critical.AutomaticAttackGate.ATTACK;
         }
         if (decision.shouldWait() && decision.ticksAhead() <= horizon) {
-            int now = client.player.tickCount;
+            int now = client.thePlayer.ticksExisted;
             int intentHorizon = Math.max(horizon, decision.ticksAhead() + 1);
-            automaticPlanTargetId = target.getId();
+            automaticPlanTargetId = target.getEntityId();
             automaticPlanDeadlineTick =
                     now + Math.max(1, Math.min(intentHorizon, MAX_TRIGGER_WAIT_TICKS));
             automaticPlanEarliestTick = now + earliest;
@@ -401,7 +380,7 @@ public final class Predict {
      */
     private static Critical.AutomaticAttackGate advanceAutomaticPlan(
             Minecraft client, Entity target) {
-        int now = client.player.tickCount;
+        int now = client.thePlayer.ticksExisted;
         int remaining = automaticPlanDeadlineTick - now;
         int earliest = Math.max(0, automaticPlanEarliestTick - now);
         if (remaining < 0) {
@@ -471,7 +450,7 @@ public final class Predict {
             boolean throughBlock,
             int horizon,
             int earliestAttackTick) {
-        targetId = target.getId();
+        targetId = target.getEntityId();
         remainingTicks = Math.max(1, horizon);
         earliestAttackTicks = Math.max(0, earliestAttackTick);
         queuedManualIntent = manualIntent;
@@ -481,7 +460,7 @@ public final class Predict {
 
     private static void prepareMovementForPlan(
             Minecraft client, CombatDecisionEngine.Decision decision) {
-        var currentPlayer = client == null ? null : client.player;
+        var currentPlayer = client == null ? null : client.thePlayer;
         boolean stopSprintNow =
                 STOP_SPRINT.get()
                         && decision.attackKind() == CombatDecisionEngine.AttackKind.CRITICAL
@@ -516,10 +495,16 @@ public final class Predict {
         Entity target =
                 CombatGeometry.findTargetOnRay(
                         client,
-                        client.player.getEyePosition(),
-                        client.player.getViewVector(1.0F),
-                        CombatReach.vanillaEntityInteractionRange(client.player),
-                        EntitySelector.CAN_BE_PICKED,
+                        client.thePlayer.getPositionEyes(1.0F),
+                        client.thePlayer.getLook(1.0F),
+                        CombatReach.vanillaEntityInteractionRange(client.thePlayer),
+                        entity ->
+                                entity.canBeCollidedWith()
+                                        && !(entity
+                                                        instanceof
+                                                        net.minecraft.entity.player.EntityPlayer
+                                                                spectator
+                                                && spectator.isSpectator()),
                         throughBlock);
         return Targeting.isEnemyPlayer(client, target) ? target : null;
     }
@@ -547,8 +532,6 @@ public final class Predict {
             boolean throughBlock,
             boolean manualIntent) {
         lastAttackNanos = System.nanoTime();
-        cooldownWasFull = false;
-        currentOverchargeTicks = 0;
         CombatInputController.releaseAll(client, CombatInputController.Owner.PREDICT_CRITICAL);
         CombatInputController.attackTarget(client, target, throughBlock);
         resetState();
@@ -558,9 +541,9 @@ public final class Predict {
         return !Critical.predictMode()
                 || !ENABLED.get()
                 || client == null
-                || client.player == null
-                || client.level == null
-                || client.gameMode == null
+                || client.thePlayer == null
+                || client.theWorld == null
+                || client.playerController == null
                 || MinecraftClientAccess.screen(client) != null;
     }
 
@@ -568,32 +551,8 @@ public final class Predict {
         return Math.clamp((int) Math.ceil(WINDOW.get() * 20.0D), 1, MAX_HORIZON_TICKS);
     }
 
-    private static void updateCooldownPhase(Minecraft client) {
-        var currentPlayer = client == null ? null : client.player;
-        if (!ENABLED.get() || client == null || currentPlayer == null || client.level == null) {
-            cooldownWasFull = false;
-            currentOverchargeTicks = 0;
-            return;
-        }
-
-        boolean full = currentPlayer.getAttackStrengthScale(0.5F) >= 0.999F;
-        if (!full) {
-            cooldownWasFull = false;
-            currentOverchargeTicks = 0;
-        } else if (cooldownWasFull) {
-            currentOverchargeTicks = Math.min(100, currentOverchargeTicks + 1);
-        } else {
-            cooldownWasFull = true;
-            currentOverchargeTicks = 0;
-        }
-    }
-
     private static CombatDecisionEngine.SyncPolicy syncPolicy() {
-        return new CombatDecisionEngine.SyncPolicy(
-                SYNC_ENABLED.get(),
-                currentOverchargeTicks,
-                MAX_OVERCHARGE_TICKS.get(),
-                SYNC_CYCLES.get());
+        return new CombatDecisionEngine.SyncPolicy(false, 0, 0, 1);
     }
 
     private static void clear(Minecraft client) {
@@ -642,13 +601,7 @@ public final class Predict {
                         + configuredHorizonTicks()
                         + "t), stop-sprint: "
                         + (STOP_SPRINT.get() ? "enabled" : "disabled")
-                        + ", sync: "
-                        + (SYNC_ENABLED.get() ? "enabled" : "disabled")
-                        + ", overcharge: "
-                        + MAX_OVERCHARGE_TICKS.get()
-                        + "t, cycles: "
-                        + SYNC_CYCLES.get()
-                        + ". Usage: .moons critical <enable|disable|window 0.05-0.6|stopsprint enable|disable|sync enable|disable|overcharge 0-6|cycles 1-3>.");
+                        + ". Usage: .moons critical <enable|disable|window 0.05-0.6|stopsprint enable|disable>. ");
         return 1;
     }
 
@@ -666,24 +619,6 @@ public final class Predict {
 
     public static int setStopSprint(Minecraft client, boolean value) {
         STOP_SPRINT.set(value);
-        clear(client);
-        return showStatus(client);
-    }
-
-    public static int setSyncEnabled(Minecraft client, boolean value) {
-        SYNC_ENABLED.set(value);
-        clear(client);
-        return showStatus(client);
-    }
-
-    public static int setMaxOverchargeTicks(Minecraft client, int value) {
-        MAX_OVERCHARGE_TICKS.set(value);
-        clear(client);
-        return showStatus(client);
-    }
-
-    public static int setSyncCycles(Minecraft client, int value) {
-        SYNC_CYCLES.set(value);
         clear(client);
         return showStatus(client);
     }

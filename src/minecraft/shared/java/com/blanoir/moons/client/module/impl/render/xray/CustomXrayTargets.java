@@ -3,10 +3,8 @@ package com.blanoir.moons.client.module.impl.render.xray;
 import com.blanoir.moons.client.config.Settings;
 import com.blanoir.moons.client.utils.registry.RegistryLists;
 
-import net.minecraft.IdentifierException;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.Identifier;
-import net.minecraft.world.level.block.Block;
+import net.minecraft.block.Block;
+import net.minecraft.util.ResourceLocation;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -18,12 +16,12 @@ import java.util.stream.Collectors;
 
 public final class CustomXrayTargets {
     private static final String CONFIG_TARGETS = "xray.custom.targets";
-    private static final Map<Identifier, CustomTarget> TARGETS = loadTargets();
+    private static final Map<ResourceLocation, CustomTarget> TARGETS = loadTargets();
 
     private CustomXrayTargets() {}
 
     public static synchronized AddResult add(String blockName, ColorValue color) {
-        Identifier id = normalizeBlockId(blockName);
+        ResourceLocation id = normalizeBlockId(blockName);
 
         if (id == null) {
             return invalidBlock();
@@ -42,7 +40,7 @@ public final class CustomXrayTargets {
     }
 
     public static synchronized boolean remove(String blockName) {
-        Identifier id = normalizeBlockId(blockName);
+        ResourceLocation id = normalizeBlockId(blockName);
 
         if (id == null) {
             return false;
@@ -59,7 +57,7 @@ public final class CustomXrayTargets {
     }
 
     public static synchronized AddResult setColor(String blockName, ColorValue color) {
-        Identifier id = normalizeBlockId(blockName);
+        ResourceLocation id = normalizeBlockId(blockName);
 
         if (id == null) {
             return invalidBlock();
@@ -114,11 +112,11 @@ public final class CustomXrayTargets {
             net.minecraft.client.Minecraft client, com.google.gson.JsonElement value) {
         if (!RegistryLists.valid("block_list", value))
             throw new IllegalArgumentException("Invalid block list");
-        Map<Identifier, CustomTarget> next = new LinkedHashMap<>();
+        Map<ResourceLocation, CustomTarget> next = new LinkedHashMap<>();
         boolean changed = false;
         for (var element : value.getAsJsonArray()) {
             var entry = element.getAsJsonObject();
-            Identifier id = Identifier.parse(entry.get("id").getAsString());
+            ResourceLocation id = new ResourceLocation(entry.get("id").getAsString());
             int color = Integer.parseInt(entry.get("color").getAsString().substring(1), 16);
             CustomTarget target = TARGETS.get(id);
             changed |= target == null || target.isEnabled() != entry.get("enabled").getAsBoolean();
@@ -135,7 +133,7 @@ public final class CustomXrayTargets {
         TARGETS.clear();
         TARGETS.putAll(next);
         saveTargets();
-        if (changed && client != null && client.level != null) {
+        if (changed && client != null && client.theWorld != null) {
             OreCache.removeInvalidPositions(client);
             OreScanner.requestFullRescan(client);
         }
@@ -149,8 +147,8 @@ public final class CustomXrayTargets {
         saveTargets();
     }
 
-    private static Map<Identifier, CustomTarget> loadTargets() {
-        Map<Identifier, CustomTarget> targets = new LinkedHashMap<>();
+    private static Map<ResourceLocation, CustomTarget> loadTargets() {
+        Map<ResourceLocation, CustomTarget> targets = new LinkedHashMap<>();
         String raw = Settings.getString(CONFIG_TARGETS, "");
 
         Arrays.stream(raw.split(";"))
@@ -161,13 +159,13 @@ public final class CustomXrayTargets {
         return targets;
     }
 
-    private static void loadTarget(String entry, Map<Identifier, CustomTarget> targets) {
+    private static void loadTarget(String entry, Map<ResourceLocation, CustomTarget> targets) {
         String[] parts = entry.split(",", 5);
         if (parts.length != 5) {
             return;
         }
 
-        Identifier id = normalizeBlockId(parts[0]);
+        ResourceLocation id = normalizeBlockId(parts[0]);
         Block block = id == null ? null : blockById(id);
         if (id == null || block == null) {
             return;
@@ -201,7 +199,7 @@ public final class CustomXrayTargets {
                         .collect(Collectors.joining(";")));
     }
 
-    private static Identifier normalizeBlockId(String blockName) {
+    private static ResourceLocation normalizeBlockId(String blockName) {
         String normalized = blockName.trim().toLowerCase(Locale.ROOT);
 
         if (!normalized.contains(":")) {
@@ -209,14 +207,14 @@ public final class CustomXrayTargets {
         }
 
         try {
-            return Identifier.parse(normalized);
-        } catch (IdentifierException exception) {
+            return new ResourceLocation(normalized);
+        } catch (IllegalArgumentException exception) {
             return null;
         }
     }
 
-    private static Block blockById(Identifier id) {
-        return BuiltInRegistries.BLOCK.getOptional(id).orElse(null);
+    private static Block blockById(ResourceLocation id) {
+        return Block.blockRegistry.containsKey(id) ? Block.blockRegistry.getObject(id) : null;
     }
 
     private static int clamp(int value) {
@@ -226,7 +224,7 @@ public final class CustomXrayTargets {
     public record ColorValue(int red, int green, int blue) {}
 
     public record AddResult(
-            boolean success, Identifier id, CustomTarget target, boolean invalidBlock) {}
+            boolean success, ResourceLocation id, CustomTarget target, boolean invalidBlock) {}
 
     private static AddResult added(CustomTarget target) {
         return new AddResult(true, target.id(), target, false);
@@ -236,12 +234,12 @@ public final class CustomXrayTargets {
         return new AddResult(false, null, null, true);
     }
 
-    private static AddResult unknownBlock(Identifier id) {
+    private static AddResult unknownBlock(ResourceLocation id) {
         return new AddResult(false, id, null, false);
     }
 
     public static final class CustomTarget implements XrayTarget {
-        private final Identifier id;
+        private final ResourceLocation id;
         private final Block block;
         private boolean enabled;
         private int red;
@@ -249,7 +247,7 @@ public final class CustomXrayTargets {
         private int blue;
 
         private CustomTarget(
-                Identifier id, Block block, boolean enabled, int red, int green, int blue) {
+                ResourceLocation id, Block block, boolean enabled, int red, int green, int blue) {
             this.id = id;
             this.block = block;
             this.enabled = enabled;
@@ -258,7 +256,7 @@ public final class CustomXrayTargets {
             this.blue = blue;
         }
 
-        public Identifier id() {
+        public ResourceLocation id() {
             return id;
         }
 

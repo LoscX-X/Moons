@@ -7,7 +7,7 @@ using Moons.Shared;
 
 namespace Moons.WindowsLauncher
 {
-    /// <summary>Installs one shared runtime and all adapters from moon-install.exe.</summary>
+    /// <summary>Installs one shared runtime and all adapters from Moons-install.exe.</summary>
     internal static class YsmPackage
     {
         internal static readonly string[] Files = DependencyRuntime.YsmPackageNames;

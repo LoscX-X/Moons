@@ -1,25 +1,27 @@
 package com.blanoir.moons.client.module.impl.player.invmanager;
 
-import net.minecraft.world.entity.player.Inventory;
-import net.minecraft.world.inventory.AbstractContainerMenu;
-import net.minecraft.world.item.ItemStack;
+import com.blanoir.moons.client.utils.inventory.LegacyItems;
+
+import net.minecraft.entity.player.InventoryPlayer;
+import net.minecraft.inventory.Container;
+import net.minecraft.item.ItemStack;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-/** Inventory indices and menu indices are different; derive the mapping from actual slots. */
+/** InventoryPlayer indices and menu indices are different; derive the mapping from actual slots. */
 public record InventorySnapshot(List<ItemStack> items, int[] menuSlots) {
-    public static InventorySnapshot capture(AbstractContainerMenu menu, Inventory inventory) {
-        var items = new ArrayList<ItemStack>(41);
-        for (int i = 0; i < 41; i++) items.add(ItemStack.EMPTY);
-        int[] slots = new int[41];
+    public static InventorySnapshot capture(Container menu, InventoryPlayer inventory) {
+        var items = new ArrayList<ItemStack>(40);
+        for (int i = 0; i < 40; i++) items.add(LegacyItems.EMPTY);
+        int[] slots = new int[40];
         Arrays.fill(slots, -1);
-        for (int i = 0; i < menu.slots.size(); i++) {
-            var slot = menu.slots.get(i);
-            int index = slot.getContainerSlot();
-            if (slot.container == inventory && index >= 0 && index < 41) {
-                items.set(index, slot.getItem().copy());
+        for (int i = 0; i < menu.inventorySlots.size(); i++) {
+            var slot = menu.inventorySlots.get(i);
+            int index = LegacyItems.slotIndex(slot);
+            if (slot.inventory == inventory && index >= 0 && index < 40) {
+                items.set(index, LegacyItems.copy(slot.getStack()));
                 slots[index] = i;
             }
         }

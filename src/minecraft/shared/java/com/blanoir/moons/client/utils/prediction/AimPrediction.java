@@ -1,5 +1,7 @@
 package com.blanoir.moons.client.utils.prediction;
 
+import com.blanoir.moons.client.compat.math.Mth;
+import com.blanoir.moons.client.compat.math.VecMath;
 import com.blanoir.moons.client.utils.math.MathUtils;
 import com.blanoir.moons.client.utils.raytrace.RaytraceUtils;
 import com.blanoir.moons.client.utils.rotation.Rotation;
@@ -10,11 +12,9 @@ import com.blanoir.moons.client.utils.rotation.aim.AimPointsF;
 import com.blanoir.moons.client.utils.rotation.aim.AimSolverD;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.util.Mth;
-import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.EntityHitResult;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.util.AxisAlignedBB;
+import net.minecraft.util.Vec3;
 
 /** Aim alignment, bounded lead and crossing forecasts with caller-supplied settings. */
 public final class AimPrediction {
@@ -23,7 +23,7 @@ public final class AimPrediction {
 
     private AimPrediction() {}
 
-    public static Vec3 clampedLead(Vec3 point, Vec3 travel, AABB bounds) {
+    public static Vec3 clampedLead(Vec3 point, Vec3 travel, AxisAlignedBB bounds) {
         return MathUtils.closestPoint(point.add(travel), bounds);
     }
 
@@ -42,16 +42,17 @@ public final class AimPrediction {
 
     /** Signed bearing velocity in degrees/tick; relative velocity is target minus observer. */
     public static double yawRateDegrees(Vec3 eye, Vec3 point, Vec3 relativeVelocity) {
-        double x = point.x - eye.x;
-        double z = point.z - eye.z;
+        double x = point.xCoord - eye.xCoord;
+        double z = point.zCoord - eye.zCoord;
         double distanceSquared = x * x + z * z;
         if (distanceSquared < 1.0E-6D) return 0.0D;
-        return Math.toDegrees((x * relativeVelocity.z - z * relativeVelocity.x) / distanceSquared);
+        return Math.toDegrees(
+                (x * relativeVelocity.zCoord - z * relativeVelocity.xCoord) / distanceSquared);
     }
 
     public static AimForecast forecastAttack(
             Minecraft client,
-            LivingEntity target,
+            EntityLivingBase target,
             int ticksAhead,
             Vec3 futureEye,
             boolean enabled,
@@ -60,18 +61,17 @@ public final class AimPrediction {
             double inputMultiplier,
             double minimumAngle,
             AimGeometry.Mode pointMode) {
-        var currentPlayer = client.player;
+        var currentPlayer = client.thePlayer;
         int ticks = Math.max(0, ticksAhead);
 
-        Vec3 targetMotion = target.getDeltaMovement();
+        Vec3 targetMotion = VecMath.motion(target);
 
-        AABB futureBox =
-                TrajectoryPrediction.linearBox(target.getBoundingBox(), targetMotion, ticks);
+        AxisAlignedBB futureBox =
+                TrajectoryPrediction.linearBox(target.getEntityBoundingBox(), targetMotion, ticks);
 
         Vec3 futureAimPoint =
                 pointMode == null
-                        ? AimPointsF.closest(
-                                futureBox, futureEye, currentPlayer.getLookAngle(), range)
+                        ? AimPointsF.closest(futureBox, futureEye, currentPlayer.getLook(1F), range)
                         : pointMode == AimGeometry.Mode.CENTER
                                 ? AimPointsA.centerTrackingPoint(futureEye, futureBox)
                                 : AimPointsB.closestTrackingPoint(futureEye, futureBox);
@@ -79,7 +79,7 @@ public final class AimPrediction {
         boolean visible = RaytraceUtils.canRayTraceTo(client, futureEye, futureAimPoint);
 
         if (!visible) {
-            Vec3 center = futureBox.getCenter();
+            Vec3 center = VecMath.center(futureBox);
 
             if (RaytraceUtils.canRayTraceTo(client, futureEye, center)) {
                 futureAimPoint = center;
@@ -89,14 +89,14 @@ public final class AimPrediction {
 
         Rotation rotation = AimSolverD.rotationTo(futureEye, futureAimPoint);
 
-        double yawError = Math.abs(Mth.wrapDegrees(rotation.yaw() - currentPlayer.getYRot()));
+        double yawError = Math.abs(Mth.wrapDegrees(rotation.yaw() - currentPlayer.rotationYaw));
 
-        double pitchError = Math.abs(rotation.pitch() - currentPlayer.getXRot());
+        double pitchError = Math.abs(rotation.pitch() - currentPlayer.rotationPitch);
 
         double angularError = Math.hypot(yawError, pitchError);
 
         boolean currentlyOnTarget =
-                client.hitResult instanceof EntityHitResult hit && hit.getEntity() == target;
+                client.objectMouseOver != null && client.objectMouseOver.entityHit == target;
 
         int ticksUntilAligned;
 
@@ -108,7 +108,7 @@ public final class AimPrediction {
             ticksUntilAligned = currentlyOnTarget && ticks == 0 ? 0 : Integer.MAX_VALUE;
         }
 
-        double targetSpeed = targetMotion.length();
+        double targetSpeed = targetMotion.lengthVector();
 
         double motionUncertainty = Mth.clamp(targetSpeed * ticks * 0.18D, 0.0D, 0.75D);
 
@@ -179,15 +179,19 @@ public final class AimPrediction {
      * far landing leaves almost the complete 180-degree turn for later ticks.
      */
     public static double crossingLookaheadTicks(
-            Vec3 localVelocity, Vec3 targetVelocity, Vec3 eye, AABB box, double exitMargin) {
-        double relativeX = localVelocity.x - targetVelocity.x;
-        double relativeZ = localVelocity.z - targetVelocity.z;
+            Vec3 localVelocity,
+            Vec3 targetVelocity,
+            Vec3 eye,
+            AxisAlignedBB box,
+            double exitMargin) {
+        double relativeX = localVelocity.xCoord - targetVelocity.xCoord;
+        double relativeZ = localVelocity.zCoord - targetVelocity.zCoord;
         if (relativeX * relativeX + relativeZ * relativeZ < CROSSING_MIN_RELATIVE_SPEED_SQUARED)
             return 0.0D;
 
-        AABB corridor = box.inflate(exitMargin);
-        double exitX = axisExitTicks(eye.x, relativeX, corridor.minX, corridor.maxX);
-        double exitZ = axisExitTicks(eye.z, relativeZ, corridor.minZ, corridor.maxZ);
+        AxisAlignedBB corridor = box.expand(exitMargin, exitMargin, exitMargin);
+        double exitX = axisExitTicks(eye.xCoord, relativeX, corridor.minX, corridor.maxX);
+        double exitZ = axisExitTicks(eye.zCoord, relativeZ, corridor.minZ, corridor.maxZ);
         double exitTicks = Math.min(exitX, exitZ);
         if (!Double.isFinite(exitTicks) || exitTicks < 0.0D) return 0.0D;
         return Mth.clamp(exitTicks + 0.65D, 0.75D, CROSSING_EXIT_LOOKAHEAD_TICKS);

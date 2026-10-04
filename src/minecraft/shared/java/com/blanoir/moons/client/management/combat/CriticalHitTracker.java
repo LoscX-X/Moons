@@ -4,10 +4,11 @@ import com.blanoir.moons.client.config.Settings;
 import com.blanoir.moons.client.event.EventBus;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.network.protocol.game.ClientboundDamageEventPacket;
-import net.minecraft.network.protocol.game.ServerboundAttackPacket;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.network.play.client.C02PacketUseEntity;
+import net.minecraft.network.play.server.S19PacketEntityStatus;
+import net.minecraft.potion.Potion;
 
 import java.util.ArrayDeque;
 import java.util.IdentityHashMap;
@@ -15,14 +16,12 @@ import java.util.Iterator;
 import java.util.Map;
 
 /**
- * Confirms charged melee attempts against server damage feedback before they
+ * Correlates melee attempts with legacy server hurt status before they
  * enter the player's recorded critical-hit rate.
  */
 public final class CriticalHitTracker {
     private static final String SAMPLE_KEY = "hitestimate.recordedSamples";
     private static final String CRITICAL_KEY = "hitestimate.recordedCriticals";
-    private static final float MIN_RECORDED_CHARGE = 0.85F;
-    private static final float VANILLA_CRITICAL_CHARGE = 0.90F;
     private static final long FEEDBACK_TIMEOUT_NANOS = 5_000_000_000L;
     private static final long PREPARE_TIMEOUT_NANOS = 30_000_000_000L;
     private static final int MAX_WEIGHTED_SAMPLES = 1_000;
@@ -38,57 +37,67 @@ public final class CriticalHitTracker {
         EventBus.PACKET_SEND_PRE.register(
                 "CriticalHitTracker.attackSending",
                 event -> {
-                    if (event.packet() instanceof ServerboundAttackPacket attack) {
-                        recordAttackSendPre(event.packet(), attack.entityId());
+                    if (event.packet() instanceof C02PacketUseEntity attack
+                            && attack.getAction() == C02PacketUseEntity.Action.ATTACK) {
+                        var world = Minecraft.getMinecraft().theWorld;
+                        if (world == null) return;
+                        Entity target = attack.getEntityFromWorld(world);
+                        if (target == null) return;
+                        recordAttackSendPre(event.packet(), target.getEntityId());
                     }
                 });
         EventBus.PACKET_SEND_POST.register(
                 "CriticalHitTracker.attackSent",
                 event -> {
-                    if (event.packet() instanceof ServerboundAttackPacket attack) {
-                        recordAttackSendPost(event.packet(), attack.entityId());
+                    if (event.packet() instanceof C02PacketUseEntity attack
+                            && attack.getAction() == C02PacketUseEntity.Action.ATTACK) {
+                        var world = Minecraft.getMinecraft().theWorld;
+                        if (world == null) return;
+                        Entity target = attack.getEntityFromWorld(world);
+                        if (target == null) return;
+                        recordAttackSendPost(event.packet(), target.getEntityId());
                     }
                 });
         EventBus.PACKET_RECEIVE_APPLY.register(
                 "CriticalHitTracker.damageApplied",
                 event -> {
-                    if (event.packet() instanceof ClientboundDamageEventPacket damage) {
-                        confirmDamageApplied(damage.entityId(), damage.sourceCauseId());
+                    if (event.packet() instanceof S19PacketEntityStatus damage
+                            && damage.getOpCode() == 2) {
+                        var world = Minecraft.getMinecraft().theWorld;
+                        if (world == null) return;
+                        Entity target = damage.getEntity(world);
+                        if (target == null) return;
+                        confirmDamageApplied(target.getEntityId(), -1);
                     }
                 });
     }
 
-    /** Snapshots charge/critical state before lag modules may queue the packet. */
+    /** Snapshots critical movement state before lag modules may queue the packet. */
     public static synchronized void recordAttackSendPre(Object packet, int targetId) {
         if (packet == null) return;
         long now = System.nanoTime();
         expire(now);
         if (PREPARED.containsKey(packet)) return;
-        Minecraft client = Minecraft.getInstance();
-        var currentPlayer = client == null ? null : client.player;
-        var currentLevel = client == null ? null : client.level;
+        Minecraft client = Minecraft.getMinecraft();
+        var currentPlayer = client == null ? null : client.thePlayer;
+        var currentLevel = client == null ? null : client.theWorld;
         if (client == null || currentPlayer == null || currentLevel == null) return;
 
-        Entity target = currentLevel.getEntity(targetId);
-        if (!(target instanceof LivingEntity living) || !living.isAlive()) return;
-        float charge = currentPlayer.getAttackStrengthScale(0.5F);
+        Entity target = currentLevel.getEntityByID(targetId);
+        if (!(target instanceof EntityLivingBase living) || !living.isEntityAlive()) return;
 
-        // Exact Player.canCriticalAttack movement predicate. Do not route this
+        // Exact EntityPlayer.attackTargetEntityWithCurrentItem movement predicate. Do not route
+        // this
         // through combat target filtering: recorded statistics also include a
         // valid hit on a neutral/friendly LivingEntity.
         boolean critical =
-                charge > VANILLA_CRITICAL_CHARGE
-                        && currentPlayer.fallDistance > 0.0F
-                        && !currentPlayer.onGround()
-                        && !currentPlayer.onClimbable()
+                currentPlayer.fallDistance > 0.0F
+                        && !currentPlayer.onGround
+                        && !currentPlayer.isOnLadder()
                         && !currentPlayer.isInWater()
-                        && !currentPlayer.isMobilityRestricted()
-                        && !currentPlayer.isPassenger()
-                        && !currentPlayer.isSprinting();
-        PREPARED.put(
-                packet,
-                new PreparedAttack(
-                        targetId, charge + 1.0E-4F >= MIN_RECORDED_CHARGE, critical, now));
+                        && !currentPlayer.isPotionActive(Potion.blindness)
+                        && !currentPlayer.isRiding();
+        PREPARED.put(packet, new PreparedAttack(targetId, critical, now));
     }
 
     /** Called after the exact ATTACK packet has actually left the connection. */
@@ -100,20 +109,20 @@ public final class CriticalHitTracker {
             recordAttackSendPre(packet, targetId);
             prepared = PREPARED.remove(packet);
         }
-        if (prepared == null || !prepared.chargeQualified()) return;
+        if (prepared == null) return;
         PENDING.addLast(new PendingAttack(prepared.targetId(), prepared.critical(), now));
     }
 
     /**
-     * Called only for an applied server damage packet. sourceCauseId must be
-     * the local player, so unrelated damage to the same target cannot confirm
-     * one of our attempts.
+     * Legacy hurt status has no source id. This records target/time-correlated
+     * attack estimates; simultaneous damage from another player cannot be distinguished.
      */
     public static synchronized void confirmDamageApplied(int targetId, int sourceCauseId) {
-        Minecraft client = Minecraft.getInstance();
-        var currentPlayer = client == null ? null : client.player;
-        if (client == null || currentPlayer == null || sourceCauseId != currentPlayer.getId())
-            return;
+        Minecraft client = Minecraft.getMinecraft();
+        var currentPlayer = client == null ? null : client.thePlayer;
+        if (client == null
+                || currentPlayer == null
+                || sourceCauseId != -1 && sourceCauseId != currentPlayer.getEntityId()) return;
         long now = System.nanoTime();
         expire(now);
 
@@ -166,6 +175,5 @@ public final class CriticalHitTracker {
 
     private record PendingAttack(int targetId, boolean critical, long sentNanos) {}
 
-    private record PreparedAttack(
-            int targetId, boolean chargeQualified, boolean critical, long createdNanos) {}
+    private record PreparedAttack(int targetId, boolean critical, long createdNanos) {}
 }

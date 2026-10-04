@@ -7,10 +7,9 @@ import com.blanoir.moons.client.event.EventPriority;
 import com.blanoir.moons.client.module.framework.ModuleKeybinds;
 import com.blanoir.moons.client.utils.client.ClientReady;
 
-import net.minecraft.client.CameraType;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.multiplayer.ClientLevel;
-import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.entity.EntityPlayerSP;
+import net.minecraft.client.multiplayer.WorldClient;
 
 /** Third-person orbit without changing player rotation, movement, or outgoing aim. */
 public final class FreeLook {
@@ -19,9 +18,9 @@ public final class FreeLook {
     private static final BooleanSetting HOLD =
             new BooleanSetting.Builder().name("freelook.hold").defaultValue(true).build();
     private static final FreeLookAngles ANGLES = new FreeLookAngles();
-    private static LocalPlayer player;
-    private static ClientLevel level;
-    private static CameraType previousPerspective;
+    private static EntityPlayerSP player;
+    private static WorldClient level;
+    private static Integer previousPerspective;
 
     private FreeLook() {}
 
@@ -33,10 +32,10 @@ public final class FreeLook {
 
     private static boolean ready(Minecraft client) {
         return ClientReady.aliveGameplay(client)
-                && client.isWindowActive()
-                && !client.isPaused()
-                && !client.player.isSleeping()
-                && client.getCameraEntity() == client.player;
+                && org.lwjgl.opengl.Display.isActive()
+                && !client.isGamePaused()
+                && !client.thePlayer.isPlayerSleeping()
+                && client.getRenderViewEntity() == client.thePlayer;
     }
 
     private static void update(Minecraft client) {
@@ -57,23 +56,22 @@ public final class FreeLook {
             return;
         }
         if (player != null) {
-            if (player != client.player
-                    || level != client.level
-                    || client.options.getCameraType() != CameraType.THIRD_PERSON_BACK)
-                reset(client);
+            if (player != client.thePlayer
+                    || level != client.theWorld
+                    || client.gameSettings.thirdPersonView != 1) reset(client);
             return;
         }
-        player = client.player;
-        level = client.level;
-        previousPerspective = client.options.getCameraType();
-        ANGLES.begin(player.getYRot(), player.getXRot());
-        client.options.setCameraType(CameraType.THIRD_PERSON_BACK);
+        player = client.thePlayer;
+        level = client.theWorld;
+        previousPerspective = client.gameSettings.thirdPersonView;
+        ANGLES.begin(player.rotationYaw, player.rotationPitch);
+        client.gameSettings.thirdPersonView = 1;
     }
 
     /** Entity.turn hook: cancel only the local player's vanilla turn while orbiting. */
     public static boolean turn(Object entity, double horizontal, double vertical) {
-        Minecraft client = Minecraft.getInstance();
-        if (entity != client.player || !client.isSameThread()) return false;
+        Minecraft client = Minecraft.getMinecraft();
+        if (entity != client.thePlayer || !client.isCallingFromMinecraftThread()) return false;
         update(client);
         if (entity != player || player == null || !ready(client)) return false;
         ANGLES.turn(horizontal, vertical);
@@ -82,21 +80,20 @@ public final class FreeLook {
 
     /** Rewrites Camera.setRotation before vanilla calculates offset and collision distance. */
     public static float cameraAngle(Object camera, float index, float original) {
-        Minecraft client = Minecraft.getInstance();
+        Minecraft client = Minecraft.getMinecraft();
         if (player == null
                 || !ENABLED.get()
                 || !ready(client)
-                || camera != MinecraftClientAccess.camera(client)
-                || client.options.getCameraType() != CameraType.THIRD_PERSON_BACK) return original;
+                || client.gameSettings.thirdPersonView != 1) return original;
         return index == 0 ? ANGLES.yaw() : ANGLES.pitch();
     }
 
     private static void restore(Minecraft client) {
         if (previousPerspective != null
                 && client != null
-                && client.options != null
-                && client.options.getCameraType() == CameraType.THIRD_PERSON_BACK) {
-            client.options.setCameraType(previousPerspective);
+                && client.gameSettings != null
+                && client.gameSettings.thirdPersonView == 1) {
+            client.gameSettings.thirdPersonView = previousPerspective;
         }
         player = null;
         level = null;

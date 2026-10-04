@@ -1,7 +1,7 @@
 package com.blanoir.moons.client.management.input;
 
+import com.blanoir.moons.client.compat.input.InputConstants;
 import com.blanoir.moons.client.module.framework.ModuleKeybinds;
-import com.mojang.blaze3d.platform.InputConstants;
 
 import java.util.LinkedHashMap;
 import java.util.Map;

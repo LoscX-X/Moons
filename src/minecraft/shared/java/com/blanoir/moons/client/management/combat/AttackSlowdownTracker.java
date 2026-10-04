@@ -1,7 +1,9 @@
 package com.blanoir.moons.client.management.combat;
 
-import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.phys.Vec3;
+import com.blanoir.moons.client.compat.math.VecMath;
+
+import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.util.Vec3;
 
 import java.util.Collections;
 import java.util.Map;
@@ -9,32 +11,34 @@ import java.util.WeakHashMap;
 
 /** Captures only the local horizontal motion affected by vanilla attack slowdown. */
 public final class AttackSlowdownTracker {
-    private static final Map<Player, Snapshot> SNAPSHOTS =
+    private static final Map<EntityPlayer, Snapshot> SNAPSHOTS =
             Collections.synchronizedMap(new WeakHashMap<>());
 
     private AttackSlowdownTracker() {}
 
-    public static void capture(Player player) {
+    public static void capture(EntityPlayer player) {
         if (player != null) {
-            SNAPSHOTS.put(player, new Snapshot(player.getDeltaMovement(), player.isSprinting()));
+            SNAPSHOTS.put(player, new Snapshot(VecMath.motion(player), player.isSprinting()));
         }
     }
 
-    public static boolean replaceVanillaSlowdown(Player player, double horizontalMultiplier) {
+    public static boolean replaceVanillaSlowdown(EntityPlayer player, double horizontalMultiplier) {
         if (player == null) return false;
         Snapshot snapshot = SNAPSHOTS.remove(player);
         if (snapshot == null || !snapshot.sprinting()) return false;
-        Vec3 current = player.getDeltaMovement();
+        Vec3 current = VecMath.motion(player);
         // causeExtraKnockback only applies attack slowdown on the branch that
         // multiplies X/Z by vanilla's 0.6. A zero-knockback call must be left alone.
-        if (approximately(current.x, snapshot.velocity().x * 0.6D)
-                || approximately(current.z, snapshot.velocity().z * 0.6D)) {
+        if (approximately(current.xCoord, snapshot.velocity().xCoord * 0.6D)
+                || approximately(current.zCoord, snapshot.velocity().zCoord * 0.6D)) {
             return false;
         }
-        player.setDeltaMovement(
-                snapshot.velocity().x * horizontalMultiplier,
-                current.y,
-                snapshot.velocity().z * horizontalMultiplier);
+        VecMath.motion(
+                player,
+                new Vec3(
+                        snapshot.velocity().xCoord * horizontalMultiplier,
+                        current.yCoord,
+                        snapshot.velocity().zCoord * horizontalMultiplier));
         player.setSprinting(true);
         return true;
     }
@@ -44,7 +48,7 @@ public final class AttackSlowdownTracker {
         return !(Math.abs(first - second) <= 1.0E-9D * scale);
     }
 
-    public static void discard(Player player) {
+    public static void discard(EntityPlayer player) {
         if (player != null) SNAPSHOTS.remove(player);
     }
 

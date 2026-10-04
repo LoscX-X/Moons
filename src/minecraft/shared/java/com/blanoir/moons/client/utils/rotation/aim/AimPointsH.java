@@ -1,14 +1,15 @@
 package com.blanoir.moons.client.utils.rotation.aim;
 
+import com.blanoir.moons.client.compat.math.VecMath;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 import com.blanoir.moons.client.utils.rotation.quantize.QuantizerA;
 import com.blanoir.moons.client.utils.world.placement.BlockPlacementUtils;
 import com.blanoir.moons.client.utils.world.placement.PlacementRaycast;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.core.Direction;
-import net.minecraft.world.phys.BlockHitResult;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.util.EnumFacing;
+import net.minecraft.util.MovingObjectPosition;
+import net.minecraft.util.Vec3;
 
 import java.util.function.Function;
 import java.util.function.UnaryOperator;
@@ -54,7 +55,7 @@ public final class AimPointsH {
                                                 target.face()),
                                         target));
         if (rotation == null) return null;
-        BlockHitResult hit =
+        MovingObjectPosition hit =
                 rays.traceFace(
                         client,
                         eye,
@@ -67,40 +68,47 @@ public final class AimPointsH {
     }
 
     /** A perfect diagonal can hit the shared edge of two faces; choose a small interior margin. */
-    public static boolean insideFace(BlockHitResult hit, BlockTarget target) {
+    public static boolean insideFace(MovingObjectPosition hit, BlockTarget target) {
         if (hit == null) return false;
         double side =
-                target.face().getAxis() == Direction.Axis.X
-                        ? hit.getLocation().z - target.support().getZ()
-                        : hit.getLocation().x - target.support().getX();
+                target.face().getAxis() == EnumFacing.Axis.X
+                        ? hit.hitVec.zCoord - target.support().getZ()
+                        : hit.hitVec.xCoord - target.support().getX();
         return side >= .015 && side <= .985;
     }
 
     private static Rotation sideAim(
             Vec3 eye,
             Rotation preferred,
-            Direction face,
+            EnumFacing face,
             Function<Double, Vec3> facePoint,
             UnaryOperator<Rotation> quantize,
             java.util.function.Predicate<Rotation> reachable) {
-        if (face.getAxis() == Direction.Axis.Y) return null;
+        if (face.getAxis() == EnumFacing.Axis.Y) return null;
         Rotation fixed = quantize.apply(preferred);
         if (reachable.test(fixed)) return fixed;
         Vec3 center = facePoint.apply(.5);
         for (float offset : YAW_OFFSETS) {
             float yaw =
                     quantize.apply(new Rotation(preferred.yaw() + offset, preferred.pitch())).yaw();
-            Vec3 direction = Vec3.directionFromRotation(0, yaw);
-            double component = face.getAxis() == Direction.Axis.X ? direction.x : direction.z;
-            double normal = face.getAxis() == Direction.Axis.X ? face.getStepX() : face.getStepZ();
+            Vec3 direction = VecMath.directionFromRotation(0, yaw);
+            double component =
+                    face.getAxis() == EnumFacing.Axis.X ? direction.xCoord : direction.zCoord;
+            double normal =
+                    face.getAxis() == EnumFacing.Axis.X
+                            ? face.getFrontOffsetX()
+                            : face.getFrontOffsetZ();
             if (component * normal >= -1.0E-6) continue;
             double distance =
-                    (face.getAxis() == Direction.Axis.X ? center.x - eye.x : center.z - eye.z)
+                    (face.getAxis() == EnumFacing.Axis.X
+                                    ? center.xCoord - eye.xCoord
+                                    : center.zCoord - eye.zCoord)
                             / component;
             if (distance <= 1.0E-5) continue;
             for (double height : HEIGHTS) {
                 Vec3 point = facePoint.apply(height);
-                float pitch = (float) Math.toDegrees(Math.atan2(eye.y - point.y, distance));
+                float pitch =
+                        (float) Math.toDegrees(Math.atan2(eye.yCoord - point.yCoord, distance));
                 if (pitch <= 0 || pitch >= 90) continue;
                 Rotation candidate = quantize.apply(new Rotation(yaw, pitch));
                 if (reachable.test(candidate)) return candidate;

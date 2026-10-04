@@ -7,8 +7,8 @@ import com.blanoir.moons.client.management.lease.RotationLease;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.network.protocol.Packet;
-import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
+import net.minecraft.network.Packet;
+import net.minecraft.network.play.client.C03PacketPlayer;
 
 import java.util.Map;
 import java.util.WeakHashMap;
@@ -60,45 +60,45 @@ public final class RotationManager {
     }
 
     public static Rotation start(Minecraft client) {
-        var currentPlayer = client == null ? null : client.player;
+        var currentPlayer = client == null ? null : client.thePlayer;
         synchronizeContext(client);
         return start(
                 client == null || currentPlayer == null
                         ? new Rotation(0, 0)
-                        : new Rotation(currentPlayer.getYRot(), currentPlayer.getXRot()));
+                        : new Rotation(currentPlayer.rotationYaw, currentPlayer.rotationPitch));
     }
 
     static synchronized void capture(PacketSendEvent.Pre event) {
-        if (!(event.packet() instanceof ServerboundMovePlayerPacket)) return;
+        if (!(event.packet() instanceof C03PacketPlayer)) return;
         RotationLease.Submission submission = RotationLease.submission();
         // Preserve the original owner when a cancelled packet is queued and replayed.
         pending.putIfAbsent(event.packet(), new Pending(submission));
     }
 
     private static void record(PacketSendEvent.Post event) {
-        if (!(event.packet() instanceof ServerboundMovePlayerPacket movement)) return;
-        Minecraft client = Minecraft.getInstance();
-        var currentPlayer = client == null ? null : client.player;
+        if (!(event.packet() instanceof C03PacketPlayer movement)) return;
+        Minecraft client = Minecraft.getMinecraft();
+        var currentPlayer = client == null ? null : client.thePlayer;
         if (client == null
                 || currentPlayer == null
-                || event.connection() != currentPlayer.connection.getConnection()) return;
+                || event.connection() != currentPlayer.sendQueue.getNetworkManager()) return;
         synchronized (RotationManager.class) {
             synchronizeContext(client);
-            record(movement, currentPlayer.tickCount);
+            record(movement, currentPlayer.ticksExisted);
         }
     }
 
-    static synchronized void record(ServerboundMovePlayerPacket movement, int tick) {
+    static synchronized void record(C03PacketPlayer movement, int tick) {
         lastPacket = movement;
         Pending original = pending.remove(movement);
         lastSubmission = original == null ? null : original.submission();
         // Position-only packets carry the existing direction, not the camera's current direction.
-        if (!movement.hasRotation() && !latest.valid()) return;
+        if (!movement.getRotating() && !latest.valid()) return;
         latest =
                 new Sent(
                         true,
-                        movement.getYRot(latest.yaw()),
-                        movement.getXRot(latest.pitch()),
+                        movement.getRotating() ? movement.getYaw() : latest.yaw(),
+                        movement.getRotating() ? movement.getPitch() : latest.pitch(),
                         tick,
                         latest.sequence() + 1);
         RotationLease.confirmManual(latest.rotation());
@@ -122,13 +122,13 @@ public final class RotationManager {
 
     private static synchronized void synchronizeContext(Minecraft client) {
         if (client == null) return;
-        Object current = client.getConnection();
+        Object current = client.getNetHandler();
         if ((context != null || player != null || level != null)
-                && (context != current || player != client.player || level != client.level))
+                && (context != current || player != client.thePlayer || level != client.theWorld))
             reset();
         context = current;
-        player = client.player;
-        level = client.level;
+        player = client.thePlayer;
+        level = client.theWorld;
     }
 
     public static boolean same(Rotation first, Rotation second) {

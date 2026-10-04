@@ -12,7 +12,7 @@ import net.minecraft.client.Minecraft
 object ComposeRenderBridge {
     @JvmStatic
     fun renderCurrentScreen() {
-        val screen = MinecraftScreenAccess.current(Minecraft.getInstance()) as? MoonsComposeScreen
+        val screen = MinecraftScreenAccess.current(Minecraft.getMinecraft()) as? MoonsComposeScreen
         TextGuiSkiaOverlay.renderFrame(screen?.isHudLayoutEditing() == true)
         screen?.renderComposeFrame()
     }

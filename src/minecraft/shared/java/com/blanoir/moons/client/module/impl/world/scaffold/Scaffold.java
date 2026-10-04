@@ -1,15 +1,16 @@
 package com.blanoir.moons.client.module.impl.world.scaffold;
 
+import com.blanoir.moons.client.compat.input.InputSnapshot;
+
 import net.minecraft.client.Minecraft;
-import net.minecraft.world.entity.player.Input;
-import net.minecraft.world.item.ItemStack;
+import net.minecraft.item.ItemStack;
 
 import java.util.List;
 
 public final class Scaffold {
     private Scaffold() {}
 
-    public static Input filterMovementInput(Minecraft client, Input input) {
+    public static InputSnapshot filterMovementInput(Minecraft client, InputSnapshot input) {
         return ScaffoldManager.filterMovementInput(client, input);
     }
 

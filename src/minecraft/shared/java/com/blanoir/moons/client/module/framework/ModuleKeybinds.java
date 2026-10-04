@@ -1,10 +1,9 @@
 package com.blanoir.moons.client.module.framework;
 
+import com.blanoir.moons.client.compat.input.InputConstants;
+import com.blanoir.moons.client.compat.input.KeyEvent;
 import com.blanoir.moons.client.config.Settings;
 import com.blanoir.moons.client.module.framework.ModuleRegistry.Module;
-import com.mojang.blaze3d.platform.InputConstants;
-
-import net.minecraft.client.input.KeyEvent;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -74,6 +73,10 @@ public final class ModuleKeybinds {
     }
 
     /** Converts a keyboard callback to a validated binding key. */
+    public static InputConstants.Key fromKeyCode(int code) {
+        return validOrUnknown(InputConstants.fromKeyCode(code));
+    }
+
     public static InputConstants.Key fromEvent(KeyEvent event) {
         if (event == null) {
             return InputConstants.UNKNOWN;

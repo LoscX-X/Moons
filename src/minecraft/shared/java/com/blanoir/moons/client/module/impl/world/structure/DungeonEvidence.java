@@ -1,7 +1,10 @@
 package com.blanoir.moons.client.module.impl.world.structure;
 
-import net.minecraft.core.BlockPos;
-import net.minecraft.world.phys.AABB;
+import com.blanoir.moons.client.compat.math.VecMath;
+import com.blanoir.moons.client.utils.world.LegacyWorld;
+
+import net.minecraft.util.AxisAlignedBB;
+import net.minecraft.util.BlockPos;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -48,7 +51,7 @@ final class DungeonEvidence {
                 for (int dx = -2; dx <= 2; dx++)
                     for (int dz = -2; dz <= 2; dz++) {
                         if (dx == 0 && dz == 0) continue;
-                        BlockPos next = pos.offset(dx, 0, dz);
+                        BlockPos next = pos.add(dx, 0, dz);
                         if (moss.remove(next)) queue.addLast(next);
                     }
             }
@@ -61,15 +64,14 @@ final class DungeonEvidence {
                     || depth > 9
                     || count < width * depth * .3) continue;
             int floorY = seed.getY();
-            AABB bounds = new AABB(minX, floorY, minZ, maxX + 1, floorY + 5, maxZ + 1);
+            AxisAlignedBB bounds =
+                    LegacyWorld.box(minX, floorY, minZ, maxX + 1, floorY + 5, maxZ + 1);
             boolean confirmed =
                     spawners.stream()
                             .anyMatch(
                                     p ->
-                                            bounds.inflate(1)
-                                                    .contains(
-                                                            net.minecraft.world.phys.Vec3
-                                                                    .atCenterOf(p)));
+                                            LegacyWorld.inflate(bounds, 1)
+                                                    .isVecInside(VecMath.atCenterOf(p)));
             if (confirmed) continue; // A visible cage already gets its exact one-block marker.
             int wallBlocks = 0, levels = 0;
             // Require some raised masonry, not a complete shell: mine/cave intersections can remove

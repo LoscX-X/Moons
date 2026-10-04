@@ -1,21 +1,15 @@
 package com.blanoir.moons.client.render;
 
 import com.blanoir.moons.client.access.MinecraftClientAccess;
-import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.blaze3d.vertex.VertexConsumer;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.network.chat.Component;
-import net.minecraft.network.chat.Style;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.util.IChatComponent;
+import net.minecraft.util.Vec3;
 
 import org.joml.Matrix4f;
-import org.joml.Quaternionf;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 
 /** Shared billboard layout. Minecraft supplies camera/depth, never fonts or text submissions. */
 public final class WorldLabelRenderer {
@@ -35,41 +29,38 @@ public final class WorldLabelRenderer {
 
     private WorldLabelRenderer() {}
 
-    public static List<Span> spans(Component component) {
+    public static List<Span> spans(IChatComponent component) {
         List<Span> spans = new ArrayList<>();
-        component.visit(
-                (style, text) -> {
-                    if (!text.isEmpty())
-                        spans.add(
-                                new Span(
-                                        text,
-                                        0xFF000000
-                                                | (style.getColor() == null
-                                                        ? 0xFFFFFF
-                                                        : style.getColor().getValue())));
-                    return Optional.empty();
-                },
-                Style.EMPTY);
+        for (IChatComponent part : component) {
+            String text = part.getUnformattedTextForChat();
+            var style = part.getChatStyle();
+            int rgb =
+                    style instanceof com.blanoir.moons.client.utils.text.RgbChatStyle exact
+                            ? exact.rgb()
+                            : style.getColor() == null
+                                    ? 0xffffff
+                                    : com.blanoir.moons.client.utils.text.RgbChatStyle.palette(
+                                            style.getColor().getColorIndex());
+            if (!text.isEmpty()) spans.add(new Span(text, 0xff000000 | rgb));
+        }
         return List.copyOf(spans);
     }
 
-    public static void render(Minecraft client, PoseStack matrices, List<Label> labels) {
+    public static void render(Minecraft client, LegacyPoseStack matrices, List<Label> labels) {
         render(client, matrices, labels, WorldLabelFont.SMOOTH);
     }
 
     public static void render(
-            Minecraft client, PoseStack matrices, List<Label> labels, WorldLabelFont font) {
-        if (labels.isEmpty() || VisualRenderTargets.worldTarget(client) == null) return;
-        Object currentDevice = RenderSystem.getDevice();
-        if (device != null && device != currentDevice) close();
-        device = currentDevice;
+            Minecraft client, LegacyPoseStack matrices, List<Label> labels, WorldLabelFont font) {
+        if (labels.isEmpty() || client.theWorld == null) return;
         List<String> strings = new ArrayList<>();
         for (Label label : labels) for (Span span : label.text()) strings.add(span.text());
         WorldLabelAtlas.prepare(strings, font);
         List<Prepared> prepared = new ArrayList<>();
-        var camera = MinecraftClientAccess.camera(client);
+        var camera = LegacyRenderContext.capture(MinecraftClientAccess.framePartialTick(client));
+        var billboard = new LegacyCamera(camera.partialTick()).rotation();
         for (Label label : labels) {
-            Vec3 relative = label.position().subtract(camera.position());
+            Vec3 relative = label.position().subtract(camera.cameraPosition());
             float scale =
                     (float)
                             (.025
@@ -78,8 +69,11 @@ public final class WorldLabelRenderer {
             if (!Float.isFinite(scale) || scale <= 0) continue;
             Matrix4f pose =
                     new Matrix4f(matrices.last().pose())
-                            .translate((float) relative.x, (float) relative.y, (float) relative.z)
-                            .rotate(new Quaternionf(camera.rotation()).rotateY((float) Math.PI))
+                            .translate(
+                                    (float) relative.xCoord,
+                                    (float) relative.yCoord,
+                                    (float) relative.zCoord)
+                            .rotate(billboard)
                             .scale(-scale, -scale, scale);
             float width = 0;
             for (Span span : label.text()) {
@@ -101,7 +95,7 @@ public final class WorldLabelRenderer {
         }
     }
 
-    private static void draw(VertexConsumer out, List<Prepared> values, WorldLabelFont font) {
+    private static void draw(LegacyVertexConsumer out, List<Prepared> values, WorldLabelFont font) {
         for (Prepared label : values) {
             float x = -label.width() / 2;
             if (label.background() >>> 24 != 0) {
@@ -166,7 +160,7 @@ public final class WorldLabelRenderer {
     }
 
     private static void quad(
-            VertexConsumer out,
+            LegacyVertexConsumer out,
             Matrix4f pose,
             float x,
             float y,

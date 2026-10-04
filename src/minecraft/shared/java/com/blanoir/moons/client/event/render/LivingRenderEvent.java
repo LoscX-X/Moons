@@ -1,12 +1,12 @@
 package com.blanoir.moons.client.event.render;
 
-import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
+import net.minecraft.entity.EntityLivingBase;
 
 /** Living-entity submit boundaries on the render thread. */
 public final class LivingRenderEvent {
     private LivingRenderEvent() {}
 
-    public record Pre(LivingEntityRenderState state) {}
+    public record Pre(EntityLivingBase state) {}
 
-    public record Post(LivingEntityRenderState state) {}
+    public record Post(EntityLivingBase state) {}
 }

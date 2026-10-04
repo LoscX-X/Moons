@@ -1,78 +1,62 @@
 package com.blanoir.moons.ysm.adapter;
 
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.core.registries.Registries;
-import net.minecraft.resources.Identifier;
-import net.minecraft.tags.TagKey;
-import net.minecraft.world.entity.EquipmentSlot;
-import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.item.*;
+import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.item.*;
 
-import java.util.Arrays;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
+import java.util.*;
 
-/** Immutable query names are shared; stack contents and registry tags are always sampled live. */
+/** Reads the five real equipment slots. The offhand query is explicitly empty in 1.8.9. */
 final class YsmEquipmentObservations {
-    private record SlotKeys(
-            EquipmentSlot slot, String has, String item, String category, String use, String tags) {
-        SlotKeys(EquipmentSlot slot) {
-            this(
-                    slot,
-                    "has_" + slot.getName(),
-                    slot.getName() + "_item",
-                    slot.getName() + "_category",
-                    slot.getName() + "_use",
-                    slot.getName() + "_tags");
-        }
+    static final List<String> SLOTS =
+            List.of("mainhand", "offhand", "head", "chest", "legs", "feet");
+
+    static boolean validSlot(String slot) {
+        return SLOTS.contains(slot.toLowerCase(Locale.ROOT));
     }
 
-    private record Category(String name, TagKey<Item> tag) {
-        Category(String name) {
-            this(name, TagKey.create(Registries.ITEM, Identifier.withDefaultNamespace(name + "s")));
-        }
+    static ItemStack equipment(EntityLivingBase entity, String slot) {
+        return switch (slot.toLowerCase(Locale.ROOT)) {
+            case "mainhand" -> entity.getHeldItem();
+            case "feet" -> entity.getCurrentArmor(0);
+            case "legs" -> entity.getCurrentArmor(1);
+            case "chest" -> entity.getCurrentArmor(2);
+            case "head" -> entity.getCurrentArmor(3);
+            default -> null;
+        };
     }
 
-    private static final SlotKeys[] SLOTS =
-            Arrays.stream(EquipmentSlot.values()).map(SlotKeys::new).toArray(SlotKeys[]::new);
-    private static final List<Category> CATEGORIES =
-            List.of(
-                    new Category("sword"),
-                    new Category("axe"),
-                    new Category("pickaxe"),
-                    new Category("shovel"),
-                    new Category("hoe"));
-
-    static int sample(Map<String, Object> observations, LivingEntity entity) {
+    static int sample(Map<String, Object> observations, EntityLivingBase entity) {
         int equipped = 0;
-        for (SlotKeys keys : SLOTS) {
-            ItemStack stack = entity.getItemBySlot(keys.slot);
-            observations.put(keys.has, !stack.isEmpty());
-            observations.put(keys.item, BuiltInRegistries.ITEM.getKey(stack.getItem()).toString());
-            observations.put(keys.category, category(stack));
-            observations.put(keys.use, stack.getUseAnimation().name().toLowerCase(Locale.ROOT));
+        for (String slot : SLOTS) {
+            ItemStack stack = equipment(entity, slot);
+            boolean has = stack != null && stack.stackSize > 0;
+            observations.put("has_" + slot, has);
             observations.put(
-                    keys.tags,
-                    BuiltInRegistries.ITEM
-                            .wrapAsHolder(stack.getItem())
-                            .tags()
-                            .map(tag -> tag.location().toString())
-                            .toList());
-            if (keys.slot.isArmor() && !stack.isEmpty()) equipped++;
+                    slot + "_item",
+                    has
+                            ? Item.itemRegistry.getNameForObject(stack.getItem()).toString()
+                            : "minecraft:air");
+            observations.put(slot + "_category", category(stack));
+            observations.put(
+                    slot + "_use",
+                    has ? stack.getItemUseAction().name().toLowerCase(Locale.ROOT) : "none");
+            observations.put(
+                    slot + "_tags", List.of()); // Vanilla 1.8 has no data-pack registry tags.
+            if (has && !slot.endsWith("hand")) equipped++;
         }
         return equipped;
     }
 
     static String category(ItemStack stack) {
-        if (stack.isEmpty()) return "empty";
-        if (stack.is(Items.CROSSBOW))
-            return CrossbowItem.isCharged(stack) ? "charged_crossbow" : "crossbow";
-        if (stack.is(Items.TRIDENT)) return "trident";
-        if (stack.getUseAnimation() == ItemUseAnimation.SPEAR) return "lance";
-        if (stack.is(Items.SPLASH_POTION) || stack.is(Items.LINGERING_POTION))
+        if (stack == null || stack.stackSize <= 0) return "empty";
+        Item item = stack.getItem();
+        if (item instanceof ItemPotion && ItemPotion.isSplash(stack.getMetadata()))
             return "throwable_potion";
-        for (Category category : CATEGORIES) if (stack.is(category.tag)) return category.name;
-        return BuiltInRegistries.ITEM.getKey(stack.getItem()).getPath();
+        if (item instanceof ItemSword) return "sword";
+        if (item instanceof ItemAxe) return "axe";
+        if (item instanceof ItemPickaxe) return "pickaxe";
+        if (item instanceof ItemSpade) return "shovel";
+        if (item instanceof ItemHoe) return "hoe";
+        return Item.itemRegistry.getNameForObject(item).getResourcePath();
     }
 }

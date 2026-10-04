@@ -1,7 +1,7 @@
 package com.blanoir.moons.client.module.impl.combat;
 
-import com.blanoir.moons.client.access.GameAccess;
 import com.blanoir.moons.client.chat.ClientChat;
+import com.blanoir.moons.client.compat.math.VecMath;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.DoubleSetting;
 import com.blanoir.moons.client.config.settings.IntSetting;
@@ -23,15 +23,14 @@ import com.blanoir.moons.client.utils.math.MathUtils;
 import com.blanoir.moons.client.utils.render.AnimationPulse;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 import com.blanoir.moons.client.utils.world.placement.PlacementCoordinator;
-import com.mojang.blaze3d.platform.InputConstants;
 
-import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
-import net.minecraft.network.protocol.game.ServerboundAttackPacket;
-import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
-import net.minecraft.tags.ItemTags;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.client.settings.KeyBinding;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.item.ItemSword;
+import net.minecraft.network.play.client.C02PacketUseEntity;
+import net.minecraft.network.play.client.C07PacketPlayerDigging;
 
 /** Legacy blocking with a bounded replay of manual attack input. */
 public final class AutoBlock {
@@ -82,7 +81,7 @@ public final class AutoBlock {
     private static int tickId;
     private static boolean pendingManualAttack;
     private static boolean suppressingAttack;
-    private static InputConstants.Key pendingAttackKey;
+    private static Integer pendingAttackKey;
     private static int pendingAttackSlot = -1;
 
     private AutoBlock() {}
@@ -104,13 +103,13 @@ public final class AutoBlock {
         EventBus.ATTACK_ENTITY_PRE.register(
                 "AutoBlock.captureAttack",
                 event -> {
-                    Minecraft client = Minecraft.getInstance();
+                    Minecraft client = Minecraft.getMinecraft();
                     // Capture eligibility before damage so a killing attack can finish its
                     // animation.
                     pendingAnimationTarget =
-                            event.attacker() == client.player
+                            event.attacker() == client.thePlayer
                                             && target(client) != null
-                                            && event.target() instanceof LivingEntity
+                                            && event.target() instanceof EntityLivingBase
                                             && CombatReach.within(
                                                     client, event.target(), RANGE.get())
                                     ? event.target()
@@ -119,10 +118,10 @@ public final class AutoBlock {
         EventBus.ATTACK_ENTITY_POST.register(
                 "AutoBlock.afterAttack",
                 event -> {
-                    Minecraft client = Minecraft.getInstance();
+                    Minecraft client = Minecraft.getMinecraft();
                     boolean completed = event.target() == pendingAnimationTarget;
                     pendingAnimationTarget = null;
-                    if (completed && event.attacker() == client.player && canRun(client)) {
+                    if (completed && event.attacker() == client.thePlayer && canRun(client)) {
 
                         if (VISUAL.get()) BLOCK_HIT.start();
                         phase = Phase.REBLOCKING;
@@ -151,27 +150,25 @@ public final class AutoBlock {
         EventBus.PACKET_SEND_POST.register(
                 "AutoBlock.actionBoundary",
                 event -> {
-                    Minecraft client = Minecraft.getInstance();
+                    Minecraft client = Minecraft.getMinecraft();
                     if (!ENABLED.get()
                             || event.thread() != PacketThread.CLIENT
                             || !ClientReady.world(client)
-                            || client.getConnection() == null
-                            || event.connection() != client.getConnection().getConnection()) return;
+                            || client.getNetHandler() == null
+                            || event.connection() != client.getNetHandler().getNetworkManager())
+                        return;
                     // Include native/manual actions as well as requests issued by this module.
-                    if (event.packet() instanceof ServerboundPlayerActionPacket action
-                            && action.getAction()
-                                    == ServerboundPlayerActionPacket.Action.RELEASE_USE_ITEM)
+                    if (event.packet() instanceof C07PacketPlayerDigging action
+                            && action.getStatus() == C07PacketPlayerDigging.Action.RELEASE_USE_ITEM)
                         releasedTick = tickId;
-                    else if (event.packet() instanceof ServerboundAttackPacket)
-                        attackedTick = tickId;
+                    else if (event.packet() instanceof C02PacketUseEntity) attackedTick = tickId;
                 });
     }
 
     private static void tick(Minecraft client) {
         tickId++;
         if (!refresh(client)) return;
-        if (pendingManualAttack
-                && pendingAttackSlot != client.player.getInventory().getSelectedSlot())
+        if (pendingManualAttack && pendingAttackSlot != client.thePlayer.inventory.currentItem)
             clearPendingAttack(client);
         if (USE.owned() || phase != Phase.IDLE) captureAttackInput(client);
         if (!pendingManualAttack) return;
@@ -180,22 +177,21 @@ public final class AutoBlock {
             CombatInputController.suppressAttack(client, CombatInputController.Owner.AUTO_BLOCK);
             return;
         }
-        InputConstants.Key key = pendingAttackKey;
+        Integer key = pendingAttackKey;
         clearPendingAttack(client);
         // Re-submit only the input that was withheld. Vanilla chooses the current crosshair
         // target and dispatches it in handleKeybinds; no stored target or direct attack packet.
-        if (key != null
-                && key != InputConstants.UNKNOWN
-                && key.equals(GameAccess.boundKey(client.options.keyAttack))) KeyMapping.click(key);
+        if (key != null && key != 0 && key.equals(client.gameSettings.keyBindAttack.getKeyCode()))
+            KeyBinding.onTick(key);
     }
 
     private static void captureAttackInput(Minecraft client) {
         boolean clicked = false;
-        while (client.options.keyAttack.consumeClick()) clicked = true;
+        while (client.gameSettings.keyBindAttack.isPressed()) clicked = true;
         if (clicked) {
             pendingManualAttack = true;
-            pendingAttackKey = GameAccess.boundKey(client.options.keyAttack);
-            pendingAttackSlot = client.player.getInventory().getSelectedSlot();
+            pendingAttackKey = client.gameSettings.keyBindAttack.getKeyCode();
+            pendingAttackSlot = client.thePlayer.inventory.currentItem;
         }
     }
 
@@ -212,26 +208,27 @@ public final class AutoBlock {
     private static boolean canRun(Minecraft client) {
         return ENABLED.get()
                 && ClientReady.aliveGameplay(client)
-                && client.player.getMainHandItem().is(ItemTags.SWORDS)
+                && (client.thePlayer.getHeldItem() != null
+                        && client.thePlayer.getHeldItem().getItem() instanceof ItemSword)
                 && (!REQUIRE_RIGHT_CLICK.get()
-                        || CombatInputController.isPhysicallyDown(client, client.options.keyUse))
+                        || CombatInputController.isPhysicallyDown(
+                                client, client.gameSettings.keyBindUseItem))
                 && !SilentAura.isActivationHeld(client);
     }
 
-    private static LivingEntity target(Minecraft client) {
+    private static EntityLivingBase target(Minecraft client) {
         if (!canRun(client)) return null;
-        LivingEntity closest = null;
+        EntityLivingBase closest = null;
         double distance = RANGE.get() * RANGE.get();
-        for (var player : client.level.players()) {
+        for (var player : client.theWorld.playerEntities) {
             if (!Targeting.isValidTargetPlayer(client, player)
-                    || !client.player.hasLineOfSight(player)) continue;
+                    || !client.thePlayer.canEntityBeSeen(player)) continue;
             double candidate = EntityDistance.squaredToEntity(client, player);
             double angle =
                     MathUtils.angleBetween(
-                            client.player.getViewVector(1),
-                            player.getBoundingBox()
-                                    .getCenter()
-                                    .subtract(client.player.getEyePosition()));
+                            client.thePlayer.getLook(1),
+                            VecMath.center(player.getEntityBoundingBox())
+                                    .subtract(client.thePlayer.getPositionEyes(1.0F)));
             if (candidate <= distance && MathUtils.withinFov(angle, FOV.get())) {
                 closest = player;
                 distance = candidate;
@@ -248,7 +245,7 @@ public final class AutoBlock {
             clearPendingAttack(client);
         }
         if (!canRun(client)
-                || client.player.isUsingItem() && !USE.ownsNativeUse(client)
+                || client.thePlayer.isUsingItem() && !USE.ownsNativeUse(client)
                 || SilentPacketRotation.isBusy()
                 || PlacementCoordinator.busy()
                 || RotationLease.hasSilentRotation()) {
@@ -272,8 +269,8 @@ public final class AutoBlock {
             event.cancel();
             if (active && !CombatInputController.isInvokingTargetAttack()) {
                 pendingManualAttack = true;
-                pendingAttackKey = GameAccess.boundKey(client.options.keyAttack);
-                pendingAttackSlot = client.player.getInventory().getSelectedSlot();
+                pendingAttackKey = client.gameSettings.keyBindAttack.getKeyCode();
+                pendingAttackSlot = client.thePlayer.inventory.currentItem;
             }
         }
     }
@@ -290,7 +287,7 @@ public final class AutoBlock {
             return false;
         }
         return ClientReady.world(client)
-                && !client.player.isUsingItem()
+                && !client.thePlayer.isUsingItem()
                 && (phase != Phase.UNBLOCKING || tick >= readyTick);
     }
 
@@ -306,7 +303,8 @@ public final class AutoBlock {
         Rotation rotation =
                 decision != null
                         ? decision.rotation()
-                        : new Rotation(client.player.getYRot(), client.player.getXRot());
+                        : new Rotation(
+                                client.thePlayer.rotationYaw, client.thePlayer.rotationPitch);
         if (!RotationLease.holdManual(rotation)) return;
         if (USE.start(client, rotation)) {
             phase = Phase.BLOCKING;
@@ -356,10 +354,10 @@ public final class AutoBlock {
     }
 
     public static String hudTag() {
-        Minecraft client = Minecraft.getInstance();
+        Minecraft client = Minecraft.getMinecraft();
         if (ClientReady.world(client) && !BlockingUse.supportsSwordBlock(client))
-            return "Legacy (Experiment) / Unsupported";
-        return "Legacy (Experiment) / " + (USE.ownsNativeUse(client) ? "Blocking" : "Ready");
+            return "Legacy / Unsupported";
+        return "Legacy / " + (USE.ownsNativeUse(client) ? "Blocking" : "Ready");
     }
 
     public static int setEnabled(Minecraft client, boolean value) {

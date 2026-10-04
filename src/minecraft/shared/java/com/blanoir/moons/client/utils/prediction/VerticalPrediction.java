@@ -1,7 +1,7 @@
 package com.blanoir.moons.client.utils.prediction;
 
-import net.minecraft.world.effect.MobEffects;
-import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.potion.Potion;
 
 /** Jump-cycle and descent forecasts. Callers supply input intent and measured ground distance. */
 public final class VerticalPrediction {
@@ -24,20 +24,20 @@ public final class VerticalPrediction {
             boolean slowFalling) {}
 
     public static VerticalState[] forecast(
-            LivingEntity player,
+            EntityLivingBase player,
             int count,
             double groundDistance,
             boolean physicalJumpHeld,
             boolean effectiveJumpHeld) {
-        var levitation = player.getEffect(MobEffects.LEVITATION);
+        var jump = player.getActivePotionEffect(Potion.jump);
         return forecast(
                 new Snapshot(
-                        player.getDeltaMovement().y,
+                        player.motionY,
                         player.fallDistance,
-                        player.onGround(),
-                        LivingEntity.BASE_JUMP_POWER + player.getJumpBoostPower(),
-                        levitation == null ? null : levitation.getAmplifier(),
-                        player.hasEffect(MobEffects.SLOW_FALLING)),
+                        player.onGround,
+                        0.42D + (jump == null ? 0D : (jump.getAmplifier() + 1) * 0.1D),
+                        null,
+                        false),
                 count,
                 groundDistance,
                 physicalJumpHeld,
@@ -54,7 +54,7 @@ public final class VerticalPrediction {
         double velocityY = snapshot.velocityY();
         double fallDistance = snapshot.fallDistance();
         double yOffset = 0.0D;
-        boolean onGround = snapshot.onGround();
+        boolean onGround = snapshot.onGround;
         double groundYOffset = -groundDistance;
         int jumpCycle = onGround ? 0 : 1;
 

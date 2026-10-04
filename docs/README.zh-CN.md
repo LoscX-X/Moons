@@ -2,7 +2,11 @@
 
 <p align="center">简体中文 · <a href="../readme.md">English</a></p>
 
-Moons 是面向 Minecraft Java Edition 的客户端，提供功能模块、本地配置和 YSM 模型支持。
+Moons 是面向 Minecraft Java Edition 的客户端，提供功能模块、本地配置和 YSM 模型支持。[官网](https://moons.cendreal.com/)。
+
+`legacy/1.8.9` 分支基于完整框架适配原版 1.8.9，保留 64 个适用模块、完整设置界面、配置和 YSM。SilentAura 仅保留 Legacy 及 47 项适用设置；不提供原版没有对应机制的 AutoMace、AutoSpear、AutoTotem。
+
+本分支仅保存开发快照，等待用户实测，尚未合入 `main` 或发布正式版；已有检查仅覆盖部分功能。
 
 > [!WARNING]
 > **本项目发布目的仅为学习、研究和技术交流。**
@@ -15,15 +19,7 @@ Moons 是面向 Minecraft Java Edition 的客户端，提供功能模块、本�
 >
 > **本项目按现状提供，使用风险由使用者在法律允许的范围内自行承担。** 使用前请阅读 [完整免责声明](DISCLAIMER.zh-CN.md)。依法不得排除的责任及法定权利不受影响。
 
-支持 **26.1.2**、**26.2**、**26.3** 和 **26.4-snapshot-1**。
-
-## 版本支持
-
-Moons 维护上面列出的正式版及 26.4 预览版。
-
-快照、预发布版和候选发布版等开发版本，仅支持即将推出的最新 Minecraft 版本。
-
-较早的预览构建和已停止支持的 Minecraft 版本可能仍可通过历史 Releases 或 CI 产物获取，但不再获得修复或兼容性更新。
+支持 **Java 25 x64 下运行的原版 Minecraft 1.8.9**。现代版本请使用主分支；改写核心类的第三方客户端尚未纳入本分支验证。
 
 ## 风险与责任声明
 
@@ -63,7 +59,7 @@ Moons 维护上面列出的正式版及 26.4 预览版。
 .\gradlew.bat moonsPackages
 ```
 
-产物为 `build/dist/moon-install.exe`、`build/dist/moon.exe` 和 `build/dist/dependencies/moons-ui-runtime.jar`。使用 IDE 时，以 JDK 25 导入 Gradle 项目并执行同名任务。
+产物为 `build/dist/Moons-install.exe`、`build/dist/Moons.exe` 和 `build/dist/dependencies/moons-ui-runtime.jar`。使用 IDE 时，以 JDK 25 导入 Gradle 项目并执行同名任务。
 
 ## 如何参与开发
 

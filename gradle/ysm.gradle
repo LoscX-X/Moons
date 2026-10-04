@@ -26,7 +26,7 @@ dependencies {
     // Ordinary Java libraries only. The game already supplies these at runtime.
     ysmCoreImplementation 'com.google.code.gson:gson:2.13.2'
     ysmCoreImplementation 'org.joml:joml:1.10.8'
-    ysmCoreImplementation 'io.netty:netty-buffer:4.2.7.Final'
+    ysmCoreImplementation files(layout.buildDirectory.file('minecraft189/libraries/netty-all-4.0.23.Final.jar')).builtBy('prepareMinecraft189Inputs')
     ysmCoreImplementation 'it.unimi.dsi:fastutil:8.5.18'
     ysmCoreImplementation 'org.apache.commons:commons-lang3:3.20.0'
     ysmCoreCompileOnly 'org.jetbrains:annotations:26.0.2'
@@ -118,13 +118,20 @@ tasks.register('verifyYsmQueries', JavaExec) {
     workingDir layout.buildDirectory.get().asFile
 }
 
-tasks.register('ysmJar', Jar) {
+def ysmNamedJar = tasks.register('ysmNamedJar', Jar) {
     group = 'build'
     description = "Builds the independent Fabric-free YSM module for Minecraft ${ysmVersion}."
     dependsOn tasks.named('ysmClasses')
     archiveFileName = "moons-ysm-${ysmVersion}.jar"
-    destinationDirectory = layout.buildDirectory.dir("dist/modules/${ysmDirectory}")
+    destinationDirectory = layout.buildDirectory.dir("named/modules/${ysmDirectory}")
     from sourceSets.ysm.output
+}
+def remapYsm = registerMinecraft189Remap('remapYsm189', ysmNamedJar, 'remapped/moons-ysm-1.8.9.jar')
+tasks.register('ysmJar', Jar) {
+    dependsOn remapYsm
+    archiveFileName = 'moons-ysm-1.8.9.jar'
+    destinationDirectory = layout.buildDirectory.dir('dist/modules/1_8')
+    from({ zipTree(layout.buildDirectory.file('remapped/moons-ysm-1.8.9.jar').get().asFile) })
 }
 
 tasks.register('ysmBundle', Zip) {

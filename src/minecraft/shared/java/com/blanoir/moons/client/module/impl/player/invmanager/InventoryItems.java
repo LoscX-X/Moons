@@ -1,147 +1,105 @@
 package com.blanoir.moons.client.module.impl.player.invmanager;
 
-import net.minecraft.core.component.DataComponents;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceKey;
-import net.minecraft.tags.ItemTags;
-import net.minecraft.world.entity.EquipmentSlot;
-import net.minecraft.world.entity.ai.attributes.Attributes;
-import net.minecraft.world.item.BlockItem;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
-import net.minecraft.world.item.component.ItemAttributeModifiers;
-import net.minecraft.world.item.enchantment.Enchantment;
-import net.minecraft.world.item.enchantment.Enchantments;
+import com.blanoir.moons.client.utils.inventory.LegacyItems;
 
-import java.util.Objects;
+import net.minecraft.enchantment.Enchantment;
+import net.minecraft.enchantment.EnchantmentHelper;
+import net.minecraft.init.Blocks;
+import net.minecraft.init.Items;
+import net.minecraft.item.*;
 
-/** Conservative client-visible classification. No unknown item is considered disposable. */
+/** Conservative classification of the actual item and NBT sent by a 1.8.9 server. */
 public final class InventoryItems {
     private InventoryItems() {}
 
     public static String protection(ItemStack stack) {
-        if (stack.isEmpty()) return "";
-        if (stack.has(DataComponents.CUSTOM_NAME)) return "Named item";
-        var lore = stack.get(DataComponents.LORE);
-        if (lore != null && !lore.lines().isEmpty()) return "Item with lore";
-        var data = stack.get(DataComponents.CUSTOM_DATA);
-        if (data != null && !data.isEmpty()) return "Custom item data";
-        if (stack.has(DataComponents.CUSTOM_MODEL_DATA)) return "Custom model";
-        if (!Objects.equals(
-                stack.get(DataComponents.ITEM_MODEL),
-                stack.getItem().components().get(DataComponents.ITEM_MODEL)))
-            return "Custom item model";
-        if (!Objects.equals(
-                stack.get(DataComponents.ATTRIBUTE_MODIFIERS),
-                stack.getItem().components().get(DataComponents.ATTRIBUTE_MODIFIERS)))
-            return "Custom attributes";
-        if (stack.has(DataComponents.CONTAINER) || stack.has(DataComponents.BUNDLE_CONTENTS))
-            return "Container item";
+        if (LegacyItems.empty(stack)) return "";
+        if (stack.hasDisplayName()) return "Named item";
+        if (!stack.hasTagCompound()) return "";
+        var tag = stack.getTagCompound();
+        if (tag.getCompoundTag("display").hasKey("Lore", 9)) return "Item with lore";
+        if (tag.hasKey("AttributeModifiers", 9)) return "Custom attributes";
+        for (String key : tag.getKeySet())
+            if (!key.equals("ench") && !key.equals("RepairCost") && !key.equals("display"))
+                return "Custom item data";
         return "";
     }
 
     public static boolean matches(InventoryRole role, ItemStack stack) {
-        if (stack.isEmpty()) return false;
+        if (LegacyItems.empty(stack)) return false;
+        Item item = stack.getItem();
         return switch (role) {
             case FREE, LOCKED, CUSTOM -> false;
-            case SWORD -> stack.is(ItemTags.SWORDS) || vanillaTool(stack, "sword");
-            // Specialized pickaxes have their own roles and are never silently replaced by a
-            // plain pickaxe or each other.
+            case SWORD -> item instanceof ItemSword;
             case PICKAXE ->
-                    (stack.is(ItemTags.PICKAXES) || vanillaTool(stack, "pickaxe"))
-                            && enchant(stack, Enchantments.SILK_TOUCH) == 0
-                            && enchant(stack, Enchantments.FORTUNE) == 0;
+                    item instanceof ItemPickaxe
+                            && enchant(stack, Enchantment.silkTouch) == 0
+                            && enchant(stack, Enchantment.fortune) == 0;
             case SILK_PICKAXE ->
-                    (stack.is(ItemTags.PICKAXES) || vanillaTool(stack, "pickaxe"))
-                            && enchant(stack, Enchantments.SILK_TOUCH) > 0;
+                    item instanceof ItemPickaxe && enchant(stack, Enchantment.silkTouch) > 0;
             case FORTUNE_PICKAXE ->
-                    (stack.is(ItemTags.PICKAXES) || vanillaTool(stack, "pickaxe"))
-                            && enchant(stack, Enchantments.FORTUNE) > 0;
-            case AXE -> stack.is(ItemTags.AXES) || vanillaTool(stack, "axe");
-            case SHOVEL -> stack.is(ItemTags.SHOVELS) || vanillaTool(stack, "shovel");
-            case BOW -> stack.is(Items.BOW);
-            case CROSSBOW -> stack.is(Items.CROSSBOW);
-            case BLOCK -> buildingBlock(stack);
+                    item instanceof ItemPickaxe && enchant(stack, Enchantment.fortune) > 0;
+            case AXE -> item instanceof ItemAxe;
+            case SHOVEL -> item instanceof ItemSpade;
+            case BOW -> item == Items.bow;
+            case BLOCK -> item instanceof ItemBlock;
             case FOOD ->
-                    stack.has(DataComponents.FOOD)
-                            && !stack.is(Items.GOLDEN_APPLE)
-                            && !stack.is(Items.ENCHANTED_GOLDEN_APPLE)
-                            && !stack.is(Items.ROTTEN_FLESH)
-                            && !stack.is(Items.POISONOUS_POTATO)
-                            && !stack.is(Items.SPIDER_EYE)
-                            && !stack.is(Items.PUFFERFISH)
-                            && !stack.is(Items.CHICKEN)
-                            && !stack.is(Items.SUSPICIOUS_STEW)
-                            && !stack.is(Items.CHORUS_FRUIT);
-            case GOLDEN_APPLE ->
-                    stack.is(Items.GOLDEN_APPLE) || stack.is(Items.ENCHANTED_GOLDEN_APPLE);
-            case PEARL -> stack.is(Items.ENDER_PEARL);
-            case THROWABLE -> stack.is(Items.EGG) || stack.is(Items.SNOWBALL);
-            case WATER -> stack.is(Items.WATER_BUCKET);
-            case LAVA -> stack.is(Items.LAVA_BUCKET);
-            case SHIELD -> stack.is(Items.SHIELD);
-            case TOTEM -> stack.is(Items.TOTEM_OF_UNDYING);
+                    item instanceof ItemFood
+                            && item != Items.golden_apple
+                            && item != Items.rotten_flesh
+                            && item != Items.poisonous_potato
+                            && item != Items.spider_eye
+                            && item != Items.chicken
+                            && !(item == Items.fish && stack.getMetadata() == 3);
+            case GOLDEN_APPLE -> item == Items.golden_apple;
+            case PEARL -> item == Items.ender_pearl;
+            case THROWABLE -> item == Items.egg || item == Items.snowball;
+            case WATER -> item == Items.water_bucket;
+            case LAVA -> item == Items.lava_bucket;
         };
     }
 
-    private static boolean buildingBlock(ItemStack stack) {
-        return stack.getItem() instanceof BlockItem;
-    }
-
-    /** Some protocol bridges omit vanilla item tags. Never classify by the display name. */
-    private static boolean vanillaTool(ItemStack stack, String kind) {
-        var id = BuiltInRegistries.ITEM.getKey(stack.getItem());
-        if (!id.getNamespace().equals("minecraft")) return false;
-        String path = id.getPath();
-        for (String material :
-                new String[] {
-                    "wooden", "stone", "copper", "iron", "golden", "diamond", "netherite"
-                }) if (path.equals(material + "_" + kind)) return true;
-        return false;
-    }
-
-    /** Quality excludes stack size. A partly used stack already in place should stay there. */
     public static double quality(InventoryRole role, ItemStack stack) {
+        if (LegacyItems.empty(stack)) return 0;
         return switch (role) {
             case SWORD ->
-                    stack.getOrDefault(
-                                            DataComponents.ATTRIBUTE_MODIFIERS,
-                                            ItemAttributeModifiers.EMPTY)
-                                    .compute(Attributes.ATTACK_DAMAGE, 1, EquipmentSlot.MAINHAND)
-                            + enchant(stack, Enchantments.SHARPNESS) * .5
-                            + enchant(stack, Enchantments.FIRE_ASPECT) * .1;
+                    attackDamage(stack)
+                            + enchant(stack, Enchantment.sharpness) * 1.25
+                            + enchant(stack, Enchantment.fireAspect) * .1;
             case PICKAXE, SILK_PICKAXE, FORTUNE_PICKAXE, AXE, SHOVEL ->
-                    toolSpeed(stack) + enchant(stack, Enchantments.EFFICIENCY) * 1.5;
+                    toolSpeed(stack) + enchant(stack, Enchantment.efficiency) * 1.5;
             case BOW ->
-                    enchant(stack, Enchantments.POWER) * 2
-                            + enchant(stack, Enchantments.INFINITY)
-                            + enchant(stack, Enchantments.FLAME) * .5;
-            case CROSSBOW ->
-                    enchant(stack, Enchantments.QUICK_CHARGE) * 2
-                            + enchant(stack, Enchantments.MULTISHOT)
-                            + enchant(stack, Enchantments.PIERCING) * .5;
-            case FOOD -> stack.get(DataComponents.FOOD).nutrition();
+                    enchant(stack, Enchantment.power) * 2
+                            + enchant(stack, Enchantment.infinity)
+                            + enchant(stack, Enchantment.flame) * .5;
+            case FOOD -> stack.getItem() instanceof ItemFood food ? food.getHealAmount(stack) : 0;
             default -> 0;
         };
     }
 
+    public static double attackDamage(ItemStack stack) {
+        double value = 1;
+        for (var modifier : stack.getAttributeModifiers().get("generic.attackDamage"))
+            if (modifier.getOperation() == 0) value += modifier.getAmount();
+        return value;
+    }
+
     public static boolean nearlyBroken(ItemStack stack) {
-        return stack.isDamageableItem()
-                && stack.getMaxDamage() - stack.getDamageValue()
+        return !LegacyItems.empty(stack)
+                && stack.isItemStackDamageable()
+                && stack.getMaxDamage() - stack.getItemDamage()
                         <= Math.max(5, stack.getMaxDamage() / 20);
     }
 
     private static double toolSpeed(ItemStack stack) {
-        var tool = stack.get(DataComponents.TOOL);
-        if (tool == null) return 0;
-        double speed = tool.defaultMiningSpeed();
-        for (var rule : tool.rules()) speed = Math.max(speed, rule.speed().orElse(0f));
-        return speed;
+        return Math.max(
+                stack.getStrVsBlock(Blocks.stone),
+                Math.max(stack.getStrVsBlock(Blocks.log), stack.getStrVsBlock(Blocks.dirt)));
     }
 
-    public static int enchant(ItemStack stack, ResourceKey<Enchantment> enchantment) {
-        for (var entry : stack.getEnchantments().entrySet())
-            if (entry.getKey().is(enchantment)) return entry.getIntValue();
-        return 0;
+    public static int enchant(ItemStack stack, Enchantment enchantment) {
+        return LegacyItems.empty(stack)
+                ? 0
+                : EnchantmentHelper.getEnchantmentLevel(enchantment.effectId, stack);
     }
 }

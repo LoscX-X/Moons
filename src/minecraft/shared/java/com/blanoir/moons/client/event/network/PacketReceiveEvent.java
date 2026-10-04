@@ -2,8 +2,8 @@ package com.blanoir.moons.client.event.network;
 
 import com.blanoir.moons.client.event.Cancellable;
 
-import net.minecraft.network.PacketListener;
-import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.INetHandler;
+import net.minecraft.network.Packet;
 
 public final class PacketReceiveEvent {
     private PacketReceiveEvent() {}
@@ -26,12 +26,12 @@ public final class PacketReceiveEvent {
 
     public static final class Pre implements Cancellable {
         private final Packet<?> packet;
-        private final PacketListener listener;
+        private final INetHandler listener;
         private final PacketThread thread;
         private boolean cancelled;
         private boolean bundleExpansionRequested;
 
-        public Pre(Packet<?> packet, PacketListener listener, PacketThread thread) {
+        public Pre(Packet<?> packet, INetHandler listener, PacketThread thread) {
             this.packet = packet;
             this.listener = listener;
             this.thread = thread;
@@ -41,7 +41,7 @@ public final class PacketReceiveEvent {
             return packet;
         }
 
-        public PacketListener listener() {
+        public INetHandler listener() {
             return listener;
         }
 
@@ -69,5 +69,5 @@ public final class PacketReceiveEvent {
     }
 
     /** Client-thread boundary immediately after vanilla's thread handoff check. */
-    public record Apply(Packet<?> packet, PacketListener listener) {}
+    public record Apply(Packet<?> packet, INetHandler listener) {}
 }

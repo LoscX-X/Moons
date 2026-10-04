@@ -14,52 +14,31 @@ import com.blanoir.moons.client.utils.combat.CombatGeometry;
 import com.blanoir.moons.client.utils.combat.CombatModuleCoordinator;
 import com.blanoir.moons.client.utils.combat.CombatReach;
 import com.blanoir.moons.client.utils.math.RandomMath;
-import com.blanoir.moons.client.utils.prediction.CooldownPrediction;
 import com.blanoir.moons.client.utils.raytrace.RaytraceUtils;
 import com.blanoir.moons.client.utils.registry.RegistryLists;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.resources.Identifier;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.EntitySelector;
+import net.minecraft.entity.Entity;
+import net.minecraft.util.ResourceLocation;
 
 import java.util.Locale;
 import java.util.Set;
 
 public final class TriggerBot {
-    private static final double DEFAULT_MAX_CHARGE = 1.0D;
     private static final double NANOS_PER_SECOND = 1_000_000_000.0D;
 
     private static final StringSetting TARGET_ENTITIES =
             new StringSetting.Builder().name("triggerbot.target.entities").defaultValue("").build();
 
-    private static double nextAttackCharge = DEFAULT_MAX_CHARGE;
-    private static int fullChargeTicks = 0;
-    private static int sampledChargeTick = Integer.MIN_VALUE;
-    private static double sampledAttackCharge;
     private static boolean missedCrosshair = true;
     private static long missDelayDeadlineNanos = 0L;
-    private static final Set<Identifier> targetEntityTypes =
+    private static final Set<ResourceLocation> targetEntityTypes =
             Targeting.parseEntityTypeIds(TARGET_ENTITIES.get());
 
     private static final BooleanSetting ENABLED =
             new BooleanSetting.Builder().name("triggerbot.enabled").defaultValue(false).build();
-
-    private static final DoubleSetting MIN_CHARGE =
-            new DoubleSetting.Builder()
-                    .name("triggerbot.minCharge")
-                    .defaultValue(0.7D)
-                    .range(0.7D, 1.3D)
-                    .build();
-
-    private static final DoubleSetting MAX_CHARGE =
-            new DoubleSetting.Builder()
-                    .name("triggerbot.maxCharge")
-                    .defaultValue(1.0D)
-                    .range(0.7D, 1.3D)
-                    .build();
 
     private static final DoubleSetting MIN_MISS_DELAY =
             new DoubleSetting.Builder()
@@ -83,13 +62,13 @@ public final class TriggerBot {
 
     private static final BooleanSetting TARGET_PLAYERS =
             new BooleanSetting.Builder()
-                    .name("triggerbot.target.player")
+                    .name("triggerbot.target.thePlayer")
                     .defaultValue(true)
                     .build();
 
     private TriggerBot() {}
 
-    /** Result of the camera ray -> cooldown -> Critical -> vanilla-click pipeline. */
+    /** Result of the camera ray -> Critical -> vanilla-click pipeline. */
     private record AutomaticAttackResult(boolean attacked, String gate) {}
 
     public static void init() {
@@ -97,12 +76,12 @@ public final class TriggerBot {
                 "TriggerBot.playerUpdate", event -> playerUpdate(event.client()));
     }
 
-    /** Samples the current view ray and submits before LocalPlayer movement. */
+    /** Samples the current view ray and submits before EntityPlayerSP movement. */
     private static void playerUpdate(Minecraft client) {
         if (client == null
-                || client.player == null
-                || client.level == null
-                || client.gameMode == null
+                || client.thePlayer == null
+                || client.theWorld == null
+                || client.playerController == null
                 || MinecraftClientAccess.screen(client) != null) {
             return;
         }
@@ -119,11 +98,6 @@ public final class TriggerBot {
             rejectCameraRay(client);
             return;
         }
-
-        // Cooldown/overcharge is a property of the held weapon, not of target
-        // visibility. Advancing it only after acquiring a ray made a fully
-        // charged player wait again after jumping into melee range.
-        attackCharge(client);
 
         Entity target = getAttackableCrosshairTarget(client);
         if (target == null || CombatGeometry.outsideVanillaRange(client, target)) {
@@ -158,12 +132,8 @@ public final class TriggerBot {
     }
 
     private static void resetAttackState() {
-        fullChargeTicks = 0;
-        sampledChargeTick = Integer.MIN_VALUE;
-        sampledAttackCharge = 0.0D;
         missedCrosshair = false;
         missDelayDeadlineNanos = 0L;
-        nextAttackCharge = randomChargeThreshold();
     }
 
     public static boolean isEnabled() {
@@ -217,79 +187,37 @@ public final class TriggerBot {
         return RandomMath.between(MIN_MISS_DELAY.get(), MAX_MISS_DELAY.get());
     }
 
-    private static double attackCharge(Minecraft client) {
-        int tick = client.player.tickCount;
-        if (sampledChargeTick == tick) {
-            return sampledAttackCharge;
-        }
-        float cooldownProgress = client.player.getAttackStrengthScale(0.0F);
-        if (cooldownProgress < 1.0F) {
-            fullChargeTicks = 0;
-            sampledAttackCharge = cooldownProgress;
-        } else {
-            fullChargeTicks++;
-            sampledAttackCharge =
-                    cooldownProgress
-                            + fullChargeTicks / client.player.getCurrentItemAttackStrengthDelay();
-        }
-        sampledChargeTick = tick;
-        return sampledAttackCharge;
-    }
-
     /**
-     * The camera-ray entry owns cooldown, Critical
+     * The camera-ray entry owns Critical
      * state and dispatch after validating the current view ray.
      */
     private static AutomaticAttackResult attackRayTarget(Minecraft client, Entity target) {
         if (client == null
-                || client.player == null
-                || client.level == null
-                || client.gameMode == null
+                || client.thePlayer == null
+                || client.theWorld == null
+                || client.playerController == null
                 || target == null
-                || !target.isAlive()) {
+                || !target.isEntityAlive()) {
             return new AutomaticAttackResult(false, "invalid");
         }
         if (!Targeting.isHoldingTriggerWeapon(client)) {
             return new AutomaticAttackResult(false, "weapon");
         }
 
-        double charge = attackCharge(client);
-        boolean criticalAttack = false;
-        {
-            // Preserve the original TriggerBot + Predict contract: Critical
-            // sees how many ticks remain before the sampled charge threshold,
-            // so it can align that cooldown with the current jump instead of
-            // starting its forecast only after the threshold has elapsed.
-            int ticksUntilReady =
-                    CooldownPrediction.ticksUntilThreshold(
-                            charge,
-                            nextAttackCharge,
-                            client.player.getCurrentItemAttackStrengthDelay());
-            Critical.AutomaticAttackGate criticalGate =
-                    Critical.gateAutomaticAttack(client, target, ticksUntilReady);
-            if (criticalGate != Critical.AutomaticAttackGate.ALLOW
-                    && criticalGate != Critical.AutomaticAttackGate.ATTACK) {
-                return new AutomaticAttackResult(
-                        false, "critical " + criticalGate.name().toLowerCase(Locale.ROOT));
-            }
-            criticalAttack = criticalGate == Critical.AutomaticAttackGate.ATTACK;
-        }
-
-        // ATTACK is the current-structure equivalent of old Predict ATTACKED:
-        // the reservation already counted down its cooldown lead, so sampling
-        // TriggerBot's threshold a second time here would weaken old behavior.
-        if (!criticalAttack && charge + 1.0E-4D < nextAttackCharge) {
+        // 1.8.9 has no weapon charge. Preserve Critical's airborne timing gate.
+        Critical.AutomaticAttackGate criticalGate = Critical.gateAutomaticAttack(client, target, 0);
+        if (criticalGate != Critical.AutomaticAttackGate.ALLOW
+                && criticalGate != Critical.AutomaticAttackGate.ATTACK) {
             return new AutomaticAttackResult(
-                    false,
-                    String.format(Locale.ROOT, "charge %.2f/%.2f", charge, nextAttackCharge));
+                    false, "critical " + criticalGate.name().toLowerCase(Locale.ROOT));
         }
 
         var hit =
                 CombatGeometry.attackHit(
                         client,
                         target,
-                        client.player.getEyePosition(),
-                        client.player.getViewVector(1.0F),
+                        client.thePlayer.getPositionEyes(1.0F),
+                        client.thePlayer.getLook(1.0F),
                         safeInteractionRange(client));
         if (hit == null) return new AutomaticAttackResult(false, "target moved");
         boolean attacked =
@@ -304,23 +232,34 @@ public final class TriggerBot {
     }
 
     private static boolean isPlayerPhysicallyAttacking(Minecraft client) {
-        return CombatInputController.isPhysicallyDown(client, client.options.keyAttack);
+        return CombatInputController.isPhysicallyDown(client, client.gameSettings.keyBindAttack);
     }
 
     private static Entity getAttackableCrosshairTarget(Minecraft client) {
-        if (client == null || client.player == null || client.level == null) return null;
-        var eye = client.player.getEyePosition();
-        var look = client.player.getViewVector(1.0F);
+        if (client == null || client.thePlayer == null || client.theWorld == null) return null;
+        var eye = client.thePlayer.getPositionEyes(1.0F);
+        var look = client.thePlayer.getLook(1.0F);
         double range = safeInteractionRange(client);
         boolean throughBlocks = THROUGH_BLOCK_ENABLED.get();
         // The shared camera hit can be stale or extended by Reach. Pick afresh,
         // retaining non-target entities as occluders instead of looking through them.
         Entity target =
                 CombatGeometry.findTargetOnRay(
-                        client, eye, look, range, EntitySelector.CAN_BE_PICKED, throughBlocks);
+                        client,
+                        eye,
+                        look,
+                        range,
+                        entity ->
+                                entity.canBeCollidedWith()
+                                        && !(entity
+                                                        instanceof
+                                                        net.minecraft.entity.player.EntityPlayer
+                                                                spectator
+                                                && spectator.isSpectator()),
+                        throughBlocks);
         if (!Targeting.isConfiguredTarget(
                         client, target, TARGET_PLAYERS.get(), false, targetEntityTypes)
-                || client.level.getEntity(target.getId()) != target) return null;
+                || client.theWorld.getEntityByID(target.getEntityId()) != target) return null;
         // A nearby corner is insufficient: the actual view ray must enter the
         // unexpanded hitbox before its vanilla-range endpoint.
         return CombatGeometry.traceEntity(client, eye, look, range, target, throughBlocks)
@@ -330,7 +269,7 @@ public final class TriggerBot {
     }
 
     private static double safeInteractionRange(Minecraft client) {
-        return Math.max(0.0D, CombatReach.vanillaEntityInteractionRange(client.player));
+        return Math.max(0.0D, CombatReach.vanillaEntityInteractionRange(client.thePlayer));
     }
 
     public static int setEnabled(Minecraft client, boolean newEnabled) {
@@ -338,39 +277,17 @@ public final class TriggerBot {
             CombatModuleCoordinator.beforeEnable(client, CombatModuleCoordinator.Role.TRIGGER_BOT);
         }
         ENABLED.set(newEnabled);
-        fullChargeTicks = 0;
-        sampledChargeTick = Integer.MIN_VALUE;
-        sampledAttackCharge = 0.0D;
         missedCrosshair = true;
         missDelayDeadlineNanos = 0L;
-        nextAttackCharge = randomChargeThreshold();
         ClientChat.send(
                 client,
                 "TriggerBot "
                         + statusText()
-                        + ". Charge range: "
-                        + formatChargeRange()
-                        + ", miss delay: "
+                        + ". Miss delay: "
                         + formatMissDelayRange()
                         + "s, through block: "
                         + (THROUGH_BLOCK_ENABLED.get() ? "enabled" : "disabled")
                         + ".");
-        return 1;
-    }
-
-    public static int setChargeRange(Minecraft client, String rawRange) {
-        ChargeRange parsedRange = parseChargeRange(rawRange);
-        if (parsedRange == null) {
-            ClientChat.send(
-                    client,
-                    "Invalid TriggerBot range. Use .moons Triggerbot x-x, where each x is between 0.7 and 1.3, for example .moons triggerbot 0.7-1.3.");
-            return 0;
-        }
-        MIN_CHARGE.set(parsedRange.min());
-        MAX_CHARGE.set(parsedRange.max());
-        sampledChargeTick = Integer.MIN_VALUE;
-        nextAttackCharge = randomChargeThreshold();
-        ClientChat.send(client, "TriggerBot charge range set to " + formatChargeRange() + ".");
         return 1;
     }
 
@@ -423,10 +340,6 @@ public final class TriggerBot {
         return showTargetStatus(client);
     }
 
-    private static ChargeRange parseChargeRange(String rawRange) {
-        return parseRange(rawRange, MIN_CHARGE.getMin(), MAX_CHARGE.getMax());
-    }
-
     private static ChargeRange parseRange(
             String rawRange, double minSupported, double maxSupported) {
         String normalizedRange = rawRange.trim().toLowerCase(Locale.ROOT);
@@ -459,16 +372,8 @@ public final class TriggerBot {
         }
     }
 
-    private static double randomChargeThreshold() {
-        return RandomMath.between(MIN_CHARGE.get(), MAX_CHARGE.get());
-    }
-
     private static String statusText() {
         return ENABLED.get() ? "enabled" : "disabled";
-    }
-
-    private static String formatChargeRange() {
-        return formatDouble(MIN_CHARGE.get()) + "-" + formatDouble(MAX_CHARGE.get());
     }
 
     private static String formatMissDelayRange() {

@@ -6,9 +6,9 @@ import com.blanoir.moons.client.utils.math.RandomMath;
 import com.blanoir.moons.client.utils.raytrace.RaytraceUtils;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.util.AxisAlignedBB;
+import net.minecraft.util.Vec3;
 
 /**
  * B: Nearest-to-eye geometry and target-local held anchors. Used by AimAssist and SilentAura.
@@ -38,9 +38,9 @@ public final class AimPointsB {
     public static Vec3 resolve(
             State state,
             Minecraft client,
-            LivingEntity target,
+            EntityLivingBase target,
             Vec3 eye,
-            AABB box,
+            AxisAlignedBB box,
             double trackingRange,
             int wanderTicks) {
         return resolve(state, client, target, eye, box, trackingRange, wanderTicks, false);
@@ -49,14 +49,14 @@ public final class AimPointsB {
     public static Vec3 resolve(
             State state,
             Minecraft client,
-            LivingEntity target,
+            EntityLivingBase target,
             Vec3 eye,
-            AABB box,
+            AxisAlignedBB box,
             double trackingRange,
             int wanderTicks,
             boolean throughBlocks) {
 
-        int tick = client.player.tickCount;
+        int tick = client.thePlayer.ticksExisted;
         Vec3 held =
                 AimGeometry.localPoint(
                         box,
@@ -64,15 +64,15 @@ public final class AimPointsB {
                         state.closestFractionY,
                         state.closestFractionZ);
         boolean usableHeld =
-                state.closestAnchorTargetId == target.getId()
-                        && eye.distanceToSqr(held) <= trackingRange * trackingRange
+                state.closestAnchorTargetId == target.getEntityId()
+                        && eye.squareDistanceTo(held) <= trackingRange * trackingRange
                         && RaytraceUtils.canRayTraceTo(client, eye, held, throughBlocks);
         if (!usableHeld || tick >= state.nextClosestAnchorTick) {
             Vec3 closest = AimPointsB.closestTrackingPoint(eye, box);
-            state.closestAnchorTargetId = target.getId();
-            state.closestFractionX = AimGeometry.fraction(closest.x, box.minX, box.maxX);
-            state.closestFractionY = AimGeometry.fraction(closest.y, box.minY, box.maxY);
-            state.closestFractionZ = AimGeometry.fraction(closest.z, box.minZ, box.maxZ);
+            state.closestAnchorTargetId = target.getEntityId();
+            state.closestFractionX = AimGeometry.fraction(closest.xCoord, box.minX, box.maxX);
+            state.closestFractionY = AimGeometry.fraction(closest.yCoord, box.minY, box.maxY);
+            state.closestFractionZ = AimGeometry.fraction(closest.zCoord, box.minZ, box.maxZ);
             int minimumHold = Math.max(3, wanderTicks / 2);
             int maximumHold = Math.max(minimumHold + 1, wanderTicks);
             state.nextClosestAnchorTick =
@@ -82,7 +82,7 @@ public final class AimPointsB {
         return held;
     }
 
-    public static Vec3 closestTrackingPoint(Vec3 eye, AABB box) {
+    public static Vec3 closestTrackingPoint(Vec3 eye, AxisAlignedBB box) {
         return EntityDistance.closestPoint(eye, MathUtils.inset(box, 0.055D, 0.18D));
     }
 }

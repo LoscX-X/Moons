@@ -1,13 +1,12 @@
 package com.blanoir.moons.client.module.impl.combat.silentaura;
 
+import com.blanoir.moons.client.compat.math.Mth;
 import com.blanoir.moons.client.utils.math.MathUtils;
 import com.blanoir.moons.client.utils.math.RandomMath;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 import com.blanoir.moons.client.utils.rotation.aim.AimSamplingA;
 import com.blanoir.moons.client.utils.rotation.smooth.SmoothF;
 import com.blanoir.moons.client.utils.rotation.smooth.SmoothJ;
-
-import net.minecraft.util.Mth;
 
 import java.util.function.DoubleBinaryOperator;
 

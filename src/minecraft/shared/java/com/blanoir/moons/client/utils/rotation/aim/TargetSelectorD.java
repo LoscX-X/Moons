@@ -1,16 +1,17 @@
 package com.blanoir.moons.client.utils.rotation.aim;
 
+import com.blanoir.moons.client.compat.math.Mth;
+import com.blanoir.moons.client.compat.math.VecMath;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 import com.blanoir.moons.client.utils.rotation.quantize.QuantizerA;
 import com.blanoir.moons.client.utils.world.placement.PlacementRaycast;
 
+import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.Minecraft;
-import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
-import net.minecraft.util.Mth;
-import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.util.AxisAlignedBB;
+import net.minecraft.util.BlockPos;
+import net.minecraft.util.EnumFacing;
+import net.minecraft.util.Vec3;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -25,11 +26,11 @@ import java.util.function.Predicate;
 public final class TargetSelectorD {
     private TargetSelectorD() {}
 
-    public static List<BlockPos> cells(AABB feet, Vec3 velocity, int row) {
-        double dx = Mth.clamp(velocity.x, -.5, .5);
-        double dz = Mth.clamp(velocity.z, -.5, .5);
-        AABB predicted = feet.move(dx, 0, dz);
-        AABB sweep = feet.expandTowards(dx, 0, dz);
+    public static List<BlockPos> cells(AxisAlignedBB feet, Vec3 velocity, int row) {
+        double dx = Mth.clamp(velocity.xCoord, -.5, .5);
+        double dz = Mth.clamp(velocity.zCoord, -.5, .5);
+        AxisAlignedBB predicted = VecMath.move(feet, dx, 0, dz);
+        AxisAlignedBB sweep = feet.addCoord(dx, 0, dz);
         List<BlockPos> cells = new ArrayList<>();
         for (int x = Mth.floor(sweep.minX); x <= Mth.floor(Math.nextDown(sweep.maxX)); x++) {
             for (int z = Mth.floor(sweep.minZ); z <= Mth.floor(Math.nextDown(sweep.maxZ)); z++) {
@@ -46,13 +47,18 @@ public final class TargetSelectorD {
         cells.sort(
                 Comparator.<BlockPos>comparingDouble(cell -> overlap(predicted, cell))
                         .reversed()
-                        .thenComparingDouble(cell -> Vec3.atCenterOf(cell).distanceToSqr(center)));
+                        .thenComparingDouble(
+                                cell -> VecMath.atCenterOf(cell).squareDistanceTo(center)));
         return cells;
     }
 
-    private static double overlap(AABB feet, BlockPos cell) {
-        double x = Math.max(0, Math.min(feet.maxX, cell.getX() + 1) - Math.max(feet.minX, cell.getX()));
-        double z = Math.max(0, Math.min(feet.maxZ, cell.getZ() + 1) - Math.max(feet.minZ, cell.getZ()));
+    private static double overlap(AxisAlignedBB feet, BlockPos cell) {
+        double x =
+                Math.max(
+                        0, Math.min(feet.maxX, cell.getX() + 1) - Math.max(feet.minX, cell.getX()));
+        double z =
+                Math.max(
+                        0, Math.min(feet.maxZ, cell.getZ() + 1) - Math.max(feet.minZ, cell.getZ()));
         return x * z;
     }
 
@@ -64,17 +70,21 @@ public final class TargetSelectorD {
             Rotation preferred,
             double range,
             Predicate<BlockPos> covered,
-            Predicate<BlockState> interactable,
+            Predicate<IBlockState> interactable,
             QuantizerA.Adapter quantizer) {
         for (BlockPos cell :
-                cells(client.player.getBoundingBox(), client.player.getDeltaMovement(), row)) {
+                cells(
+                        client.thePlayer.getEntityBoundingBox(),
+                        VecMath.motion(client.thePlayer),
+                        row)) {
             if (covered.test(cell)) continue;
-            for (Direction face : Direction.Plane.HORIZONTAL) {
-                BlockPos support = cell.relative(face.getOpposite());
-                BlockState state = client.level.getBlockState(support);
-                if (state.canBeReplaced()
+            for (EnumFacing face : EnumFacing.Plane.HORIZONTAL) {
+                BlockPos support = cell.offset(face.getOpposite());
+                IBlockState state = client.theWorld.getBlockState(support);
+                if (state.getBlock().isReplaceable(client.theWorld, support)
                         || interactable.test(state)
-                        || state.getCollisionShape(client.level, support).isEmpty()) continue;
+                        || state.getBlock().getCollisionBoundingBox(client.theWorld, support, state)
+                                == null) continue;
                 BlockAim aim =
                         AimPointsH.resolve(
                                 rays,

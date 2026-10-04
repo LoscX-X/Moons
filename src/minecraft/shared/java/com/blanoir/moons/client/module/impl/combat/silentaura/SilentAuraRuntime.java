@@ -1,6 +1,6 @@
 package com.blanoir.moons.client.module.impl.combat.silentaura;
 
-import com.blanoir.moons.client.access.PacketAccess;
+import com.blanoir.moons.client.compat.math.VecMath;
 import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.event.network.PacketSendEvent;
 import com.blanoir.moons.client.management.input.CombatInputController;
@@ -13,10 +13,10 @@ import com.blanoir.moons.client.utils.client.ClientReady;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
-import net.minecraft.network.protocol.game.ServerboundUseItemPacket;
-import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.network.play.client.C03PacketPlayer;
+import net.minecraft.network.play.client.C08PacketPlayerBlockPlacement;
+import net.minecraft.util.Vec3;
 
 /** Coordinates independent selector, rotation and attack components. */
 public final class SilentAuraRuntime {
@@ -84,8 +84,8 @@ public final class SilentAuraRuntime {
         Vec3 referenceLook =
                 MODES.rotation().active() && !MODES.rotation().returning()
                         ? MODES.rotation().lookVector()
-                        : client.player.getViewVector(1.0F);
-        LivingEntity target = MODES.targets().select(client, referenceLook);
+                        : client.thePlayer.getLook(1.0F);
+        EntityLivingBase target = MODES.targets().select(client, referenceLook);
         if (target == null) {
             MODES.learned().reset();
             sent = SentRotation.invalid();
@@ -94,14 +94,16 @@ public final class SilentAuraRuntime {
             syncLease();
             return;
         }
-        if (MODES.rotation().targetId() != target.getId()) {
+        if (MODES.rotation().targetId() != target.getEntityId()) {
             sent = SentRotation.invalid();
         }
         // Lock is judged against the packet-domain ray, not the faster visual
         // head rotation.  Feed the last confirmed look back into point
         // selection so recovery chooses the smallest real server-visible turn.
         Vec3 aimReferenceLook =
-                SilentAuraConfig.lockMode() && sent.valid() && sent.targetId() == target.getId()
+                SilentAuraConfig.lockMode()
+                                && sent.valid()
+                                && sent.targetId() == target.getEntityId()
                         ? sent.look()
                         : referenceLook;
         Vec3 point = MODES.targets().aimPoint(client, target, aimReferenceLook);
@@ -115,7 +117,8 @@ public final class SilentAuraRuntime {
             return;
         }
         if (!ROTATION_LEASE.active()) {
-            Rotation camera = new Rotation(client.player.getYRot(), client.player.getXRot());
+            Rotation camera =
+                    new Rotation(client.thePlayer.rotationYaw, client.thePlayer.rotationPitch);
             if (!ROTATION_LEASE.acquire(
                     new RotationRequest(camera.yaw(), camera.pitch(), 1, 0.35F, null),
                     camera,
@@ -131,14 +134,19 @@ public final class SilentAuraRuntime {
         syncLease();
     }
 
-    private static void observeLearned(Minecraft client, LivingEntity target, Vec3 point) {
-        Vec3 eye = client.player.getEyePosition();
+    private static void observeLearned(Minecraft client, EntityLivingBase target, Vec3 point) {
+        Vec3 eye = client.thePlayer.getPositionEyes(1.0F);
         MODES.learned()
                 .observe(
-                        client.level,
+                        client.theWorld,
                         target,
                         new LearnedPacketRotation.Geometry(
-                                eye.x, eye.y, eye.z, point.x, point.y, point.z));
+                                eye.xCoord,
+                                eye.yCoord,
+                                eye.zCoord,
+                                point.xCoord,
+                                point.yCoord,
+                                point.zCoord));
     }
 
     public static void resetLearnedAssist() {
@@ -162,11 +170,12 @@ public final class SilentAuraRuntime {
         return baseCanRun(client)
                 && Targeting.isHoldingTriggerWeapon(client)
                 && (!SilentAuraConfig.requireLeftClick()
-                        || CombatInputController.isPhysicallyDown(client, client.options.keyAttack));
+                        || CombatInputController.isPhysicallyDown(
+                                client, client.gameSettings.keyBindAttack));
     }
 
     public static boolean shouldApplyRotation() {
-        Minecraft client = Minecraft.getInstance();
+        Minecraft client = Minecraft.getMinecraft();
         return client != null
                 && ClientReady.world(client)
                 && ROTATION_LEASE.active()
@@ -181,7 +190,7 @@ public final class SilentAuraRuntime {
     }
 
     public static boolean shouldSuppressBlockBreaking() {
-        return activationHeld(Minecraft.getInstance());
+        return activationHeld(Minecraft.getMinecraft());
     }
 
     /** Keeps manual USE_ITEM yaw/pitch in the same tick domain as movement. */
@@ -194,30 +203,30 @@ public final class SilentAuraRuntime {
         // A release may follow this tick's movement. Discard mismatched input;
         // never interrupt the return trajectory or replay a blocked click later.
         return previous.valid()
-                && previous.tick() == client.player.tickCount
-                && (!sameAngle(previous.yaw(), client.player.getYRot())
-                        || !sameAngle(previous.pitch(), client.player.getXRot()));
+                && previous.tick() == client.thePlayer.ticksExisted
+                && (!sameAngle(previous.yaw(), client.thePlayer.rotationYaw)
+                        || !sameAngle(previous.pitch(), client.thePlayer.rotationPitch));
     }
 
     private static void trackRotationPacket(PacketSendEvent.Post event) {
-        Minecraft client = Minecraft.getInstance();
-        var currentPlayer = client == null ? null : client.player;
+        Minecraft client = Minecraft.getMinecraft();
+        var currentPlayer = client == null ? null : client.thePlayer;
         if (client == null || currentPlayer == null) {
             return;
         }
-        if (event.packet() instanceof ServerboundUseItemPacket use
+        if (event.packet() instanceof C08PacketPlayerBlockPlacement use
                 && SilentAuraConfig.enabled()
                 && !SilentPacketRotation.isUseRotationLocked()
                 && !SilentPacketRotation.shouldApplyRotation()
-                && RotationManager.latest().tick() != currentPlayer.tickCount) {
-            // A vanilla USE_ITEM sent before LocalPlayer.tick must own the
+                && RotationManager.latest().tick() != currentPlayer.ticksExisted) {
+            // A vanilla USE_ITEM sent before EntityPlayerSP.tick must own the
             // exact float pair of the movement packet that closes this tick.
             // Even a sub-display-decimal mouse/GCD change trips BadPacketsJ.
             RotationLease.holdManual(
-                    new Rotation(PacketAccess.useItemYaw(use), PacketAccess.useItemPitch(use)));
+                    new Rotation(currentPlayer.rotationYaw, currentPlayer.rotationPitch));
             return;
         }
-        if (!(event.packet() instanceof ServerboundMovePlayerPacket)) {
+        if (!(event.packet() instanceof C03PacketPlayer)) {
             return;
         }
         if (!RotationManager.observed(event.packet())) return;
@@ -274,12 +283,12 @@ public final class SilentAuraRuntime {
     }
 
     private static void confirmOutgoingRotation(float yaw, float pitch) {
-        Minecraft client = Minecraft.getInstance();
-        var currentPlayer = client == null ? null : client.player;
+        Minecraft client = Minecraft.getMinecraft();
+        var currentPlayer = client == null ? null : client.thePlayer;
         if (!shouldApplyRotation() || client == null || currentPlayer == null) return;
         MODES.packets().confirm(yaw, pitch);
         if (SilentAuraConfig.learnedAssist() && !MODES.rotation().returning()) {
-            MODES.learned().confirm(currentPlayer.tickCount, System.nanoTime(), yaw, pitch);
+            MODES.learned().confirm(currentPlayer.ticksExisted, System.nanoTime(), yaw, pitch);
         }
         int targetId = MODES.rotation().returning() ? -1 : MODES.rotation().targetId();
         sent =
@@ -287,8 +296,8 @@ public final class SilentAuraRuntime {
                         targetId >= 0,
                         yaw,
                         pitch,
-                        currentPlayer.getEyePosition(),
-                        Vec3.directionFromRotation(pitch, yaw),
+                        currentPlayer.getPositionEyes(1.0F),
+                        VecMath.directionFromRotation(pitch, yaw),
                         targetId);
         if (MODES.rotation().returnPacketReached(yaw, pitch)) {
             MODES.rotation().completeReturn();
@@ -310,7 +319,7 @@ public final class SilentAuraRuntime {
         RotationLease.Submission existing = RotationLease.submission();
         if (existing != null && existing.lease() == ROTATION_LEASE) return existing.rotation();
         Rotation result = ROTATION_LEASE.commit(packetRotation(), false, true);
-        return result != null ? result : RotationManager.start(Minecraft.getInstance());
+        return result != null ? result : RotationManager.start(Minecraft.getMinecraft());
     }
 
     public static SentRotation sentRotation() {
@@ -325,35 +334,40 @@ public final class SilentAuraRuntime {
      * tick-cached, so the attack and movement hooks consume the same candidate.
      */
     public static AttackRotation attackRotation(Minecraft client) {
-        var currentPlayer = client == null ? null : client.player;
+        var currentPlayer = client == null ? null : client.thePlayer;
         if (client == null
                 || currentPlayer == null
                 || !shouldApplyRotation()
                 || MODES.rotation().returning()) {
             return AttackRotation.invalid();
         }
-        LivingEntity target = MODES.targets().current(client);
-        if (target == null || MODES.rotation().targetId() != target.getId()) {
+        EntityLivingBase target = MODES.targets().current(client);
+        if (target == null || MODES.rotation().targetId() != target.getEntityId()) {
             return AttackRotation.invalid();
         }
         Rotation candidate = committedRotation();
         float yaw = candidate.yaw();
         float pitch = candidate.pitch();
-        Vec3 eye = currentPlayer.getEyePosition();
+        Vec3 eye = currentPlayer.getPositionEyes(1.0F);
         return new AttackRotation(
-                true, yaw, pitch, eye, Vec3.directionFromRotation(pitch, yaw), target.getId());
+                true,
+                yaw,
+                pitch,
+                eye,
+                VecMath.directionFromRotation(pitch, yaw),
+                target.getEntityId());
     }
 
-    public static LivingEntity currentTarget(Minecraft client) {
+    public static EntityLivingBase currentTarget(Minecraft client) {
         return MODES.targets().current(client);
     }
 
-    public static void onSuccessfulAttack(Minecraft client, LivingEntity target) {
+    public static void onSuccessfulAttack(Minecraft client, EntityLivingBase target) {
         MODES.targets().onAttack(client, target);
     }
 
     public static void resetTargeting() {
-        SilentAuraCombat.stop(Minecraft.getInstance());
+        SilentAuraCombat.stop(Minecraft.getMinecraft());
         clearRotation();
     }
 
@@ -400,30 +414,30 @@ public final class SilentAuraRuntime {
     }
 
     private static Rotation packetRotation() {
-        Minecraft client = Minecraft.getInstance();
-        var currentPlayer = client == null ? null : client.player;
+        Minecraft client = Minecraft.getMinecraft();
+        var currentPlayer = client == null ? null : client.thePlayer;
         if (client == null || currentPlayer == null) {
             return new Rotation(MODES.rotation().yaw(), MODES.rotation().pitch());
         }
         boolean assist = SilentAuraConfig.learnedAssist() && !MODES.rotation().returning();
         if (assist) {
-            LivingEntity target = MODES.targets().current(client);
+            EntityLivingBase target = MODES.targets().current(client);
             Vec3 point = MODES.rotation().learnedPoint();
             assist =
                     target != null
                             && point != null
-                            && target.getId() == MODES.rotation().targetId();
+                            && target.getEntityId() == MODES.rotation().targetId();
             if (assist) observeLearned(client, target, point);
         }
         if (!assist) MODES.learned().reset();
         return MODES.samplePacket(
-                currentPlayer.tickCount,
-                currentPlayer.getYRot(),
-                currentPlayer.getXRot(),
+                currentPlayer.ticksExisted,
+                currentPlayer.rotationYaw,
+                currentPlayer.rotationPitch,
                 MODES.rotation().yaw(),
                 MODES.rotation().pitch(),
                 SilentAuraConfig.lockMode(),
-                client.options.sensitivity().get(),
+                client.gameSettings.mouseSensitivity,
                 MODES.rotation().crossingTarget(),
                 SilentAuraConfig.matrixCompatibility(),
                 assist);
@@ -452,7 +466,7 @@ public final class SilentAuraRuntime {
     public record SentRotation(
             boolean valid, float yaw, float pitch, Vec3 eye, Vec3 look, int targetId) {
         private static final SentRotation INVALID =
-                new SentRotation(false, 0.0F, 0.0F, Vec3.ZERO, Vec3.ZERO, -1);
+                new SentRotation(false, 0.0F, 0.0F, VecMath.ZERO, VecMath.ZERO, -1);
 
         static SentRotation invalid() {
             return INVALID;
@@ -462,7 +476,7 @@ public final class SilentAuraRuntime {
     public record AttackRotation(
             boolean valid, float yaw, float pitch, Vec3 eye, Vec3 look, int targetId) {
         private static final AttackRotation INVALID =
-                new AttackRotation(false, 0.0F, 0.0F, Vec3.ZERO, Vec3.ZERO, -1);
+                new AttackRotation(false, 0.0F, 0.0F, VecMath.ZERO, VecMath.ZERO, -1);
 
         static AttackRotation invalid() {
             return INVALID;

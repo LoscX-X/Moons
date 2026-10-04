@@ -1,10 +1,9 @@
 package com.blanoir.moons.client.utils.plugin;
 
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.Identifier;
-import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.block.state.properties.Property;
+import net.minecraft.block.Block;
+import net.minecraft.block.properties.IProperty;
+import net.minecraft.block.state.IBlockState;
+import net.minecraft.util.ResourceLocation;
 
 import java.util.Collections;
 import java.util.Map;
@@ -21,7 +20,7 @@ public final class PluginBlockSelector {
         this.block = block;
         this.properties = Collections.unmodifiableMap(new TreeMap<>(properties));
         this.key =
-                BuiltInRegistries.BLOCK.getKey(block)
+                Block.blockRegistry.getNameForObject(block)
                         + "["
                         + this.properties.entrySet().stream()
                                 .map(entry -> entry.getKey() + "=" + entry.getValue())
@@ -29,9 +28,9 @@ public final class PluginBlockSelector {
                         + "]";
     }
 
-    public static PluginBlockSelector capture(BlockState state) {
+    public static PluginBlockSelector capture(IBlockState state) {
         Map<String, String> values = new TreeMap<>();
-        for (Property<?> property : state.getProperties()) {
+        for (IProperty<?> property : state.getPropertyNames()) {
             values.put(property.getName(), propertyValue(state, property));
         }
         return new PluginBlockSelector(state.getBlock(), values);
@@ -43,11 +42,12 @@ public final class PluginBlockSelector {
         if (bracket <= 0 || !text.endsWith("]")) {
             throw new IllegalArgumentException("Use block[property=value,...] or looking.");
         }
-        Identifier id = Identifier.tryParse(text.substring(0, bracket));
-        Block block = id == null ? null : BuiltInRegistries.BLOCK.getOptional(id).orElse(null);
+        ResourceLocation id = new ResourceLocation(text.substring(0, bracket));
+        Block block =
+                Block.blockRegistry.containsKey(id) ? Block.blockRegistry.getObject(id) : null;
         if (block == null)
             throw new IllegalArgumentException("Unknown block: " + text.substring(0, bracket));
-        if (block.defaultBlockState().isAir())
+        if (block.getMaterial() == net.minecraft.block.material.Material.air)
             throw new IllegalArgumentException("Air cannot be a plugin target.");
         Map<String, String> values = new TreeMap<>();
         String body = text.substring(bracket + 1, text.length() - 1).trim();
@@ -58,8 +58,8 @@ public final class PluginBlockSelector {
                     throw new IllegalArgumentException("Invalid property: " + part);
                 String name = pair[0].trim();
                 String value = pair[1].trim();
-                Property<?> property = block.getStateDefinition().getProperty(name);
-                if (property == null || property.getValue(value).isEmpty()) {
+                IProperty<?> property = property(block, name);
+                if (property == null || !validValue(property, value)) {
                     throw new IllegalArgumentException("Invalid property or value: " + part);
                 }
                 if (values.putIfAbsent(name, value) != null) {
@@ -67,20 +67,33 @@ public final class PluginBlockSelector {
                 }
             }
         }
-        if (values.isEmpty() && !block.getStateDefinition().getProperties().isEmpty()) {
+        if (values.isEmpty() && !block.getBlockState().getProperties().isEmpty()) {
             throw new IllegalArgumentException(
                     "Specify at least one state property, or use looking.");
         }
         return new PluginBlockSelector(block, values);
     }
 
-    public boolean matches(BlockState state) {
+    public boolean matches(IBlockState state) {
         if (state.getBlock() != block) return false;
         for (var entry : properties.entrySet()) {
-            Property<?> property = block.getStateDefinition().getProperty(entry.getKey());
+            IProperty<?> property = property(block, entry.getKey());
             if (!entry.getValue().equals(propertyValue(state, property))) return false;
         }
         return true;
+    }
+
+    private static IProperty<?> property(Block block, String name) {
+        return block.getBlockState().getProperties().stream()
+                .filter(p -> p.getName().equals(name))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private static <T extends Comparable<T>> boolean validValue(
+            IProperty<T> property, String value) {
+        return property.getAllowedValues().stream()
+                .anyMatch(v -> property.getName(v).equals(value));
     }
 
     public Block block() {
@@ -96,7 +109,7 @@ public final class PluginBlockSelector {
     }
 
     private static <T extends Comparable<T>> String propertyValue(
-            BlockState state, Property<T> property) {
+            IBlockState state, IProperty<T> property) {
         return property.getName(state.getValue(property));
     }
 }

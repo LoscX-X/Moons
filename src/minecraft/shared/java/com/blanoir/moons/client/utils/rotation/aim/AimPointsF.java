@@ -1,9 +1,10 @@
 package com.blanoir.moons.client.utils.rotation.aim;
 
+import com.blanoir.moons.client.compat.math.VecMath;
 import com.blanoir.moons.client.utils.entity.EntityDistance;
 
-import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.util.AxisAlignedBB;
+import net.minecraft.util.Vec3;
 
 /**
  * F: Point on a box nearest to a bounded view ray. This is an actual point-selection
@@ -13,7 +14,7 @@ import net.minecraft.world.phys.Vec3;
 public final class AimPointsF {
     private AimPointsF() {}
 
-    public static Vec3 closest(AABB box, Vec3 eye, Vec3 look, double maxDistance) {
+    public static Vec3 closest(AxisAlignedBB box, Vec3 eye, Vec3 look, double maxDistance) {
         Vec3 direction = normalizedLook(look);
         double low = 0.0D;
         double high = Math.max(0.0D, maxDistance);
@@ -21,21 +22,21 @@ public final class AimPointsF {
             double first = (low * 2.0D + high) / 3.0D;
             double second = (low + high * 2.0D) / 3.0D;
             double firstDistance =
-                    EntityDistance.squaredToBox(eye.add(direction.scale(first)), box);
+                    EntityDistance.squaredToBox(eye.add(VecMath.scale(direction, first)), box);
             double secondDistance =
-                    EntityDistance.squaredToBox(eye.add(direction.scale(second)), box);
+                    EntityDistance.squaredToBox(eye.add(VecMath.scale(direction, second)), box);
             if (firstDistance <= secondDistance) {
                 high = second;
             } else {
                 low = first;
             }
         }
-        Vec3 rayPoint = eye.add(direction.scale((low + high) * 0.5D));
+        Vec3 rayPoint = eye.add(VecMath.scale(direction, (low + high) * 0.5D));
         return EntityDistance.closestPoint(rayPoint, box);
     }
 
     private static Vec3 normalizedLook(Vec3 look) {
-        return look != null && look.lengthSqr() > 1.0E-9D
+        return look != null && VecMath.lengthSqr(look) > 1.0E-9D
                 ? look.normalize()
                 : new Vec3(0.0D, 0.0D, 1.0D);
     }

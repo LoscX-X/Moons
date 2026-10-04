@@ -5,21 +5,19 @@ import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.event.EventPriority;
 import com.blanoir.moons.client.event.frame.HudRenderEvent;
-import com.blanoir.moons.client.module.impl.combat.critical.Critical;
 import com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraBlock;
 import com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraCombat;
 import com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraConfig;
 import com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraRuntime;
 import com.blanoir.moons.client.module.impl.combat.silentaura.legacy.LegacyCombat;
-import com.blanoir.moons.client.utils.combat.CombatDecisionEngine;
 import com.blanoir.moons.client.utils.combat.CombatModuleCoordinator;
 import com.blanoir.moons.client.utils.combat.CombatReach;
 import com.blanoir.moons.client.utils.math.NumberRange;
 import com.blanoir.moons.client.utils.raytrace.RaytraceUtils;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.util.Vec3;
 
 import java.util.Locale;
 
@@ -44,8 +42,8 @@ public final class SilentAura {
         if (SilentAuraConfig.enabled()
                 && SilentAuraConfig.disableOnDeath()
                 && client != null
-                && client.player != null
-                && client.player.isDeadOrDying()) {
+                && client.thePlayer != null
+                && !client.thePlayer.isEntityAlive()) {
             setEnabled(client, false);
             SilentAuraCombat.stop(client);
             // Death must release the rotation immediately rather than start a camera return.
@@ -121,7 +119,7 @@ public final class SilentAura {
         return SilentAuraRuntime.movementYaw();
     }
 
-    public static LivingEntity currentTarget(Minecraft client) {
+    public static EntityLivingBase currentTarget(Minecraft client) {
         return SilentAuraRuntime.currentTarget(client);
     }
 
@@ -129,11 +127,11 @@ public final class SilentAura {
         return SilentAuraConfig.enabled();
     }
 
-    /** Visual blocking follows target ownership, not the attack cooldown/range gate. */
+    /** Visual blocking follows target ownership, independently of the attack range gate. */
     public static boolean hasLockedTarget(Minecraft client) {
-        if (client == null || client.player == null || client.level == null) return false;
-        LivingEntity target = currentTarget(client);
-        return target != null && target.isAlive();
+        if (client == null || client.thePlayer == null || client.theWorld == null) return false;
+        EntityLivingBase target = currentTarget(client);
+        return target != null && target.isEntityAlive();
     }
 
     public static int setEnabled(Minecraft client, boolean value) {
@@ -145,17 +143,6 @@ public final class SilentAura {
         if (value) SilentAuraRuntime.reset(client);
         else SilentAuraRuntime.stop(client);
         ClientChat.send(client, "SilentAura " + (value ? "enabled" : "disabled") + ".");
-        return 1;
-    }
-
-    public static int setCombatMode(Minecraft client, String value) {
-        if (!"legacy".equalsIgnoreCase(value) && !"latest".equalsIgnoreCase(value)) {
-            ClientChat.send(client, "Combat mode must be legacy or latest.");
-            return 0;
-        }
-        SilentAuraBlock.reset(client);
-        SilentAuraRuntime.reset(client);
-        SilentAuraConfig.combatMode(value);
         return 1;
     }
 
@@ -345,12 +332,6 @@ public final class SilentAura {
         return 1;
     }
 
-    public static int setCriticalIntegration(Minecraft client, boolean value) {
-        SilentAuraConfig.criticalIntegration(value);
-        if (!value) Critical.cancelAutomaticPrediction(client);
-        return 1;
-    }
-
     public static int setAimMode(Minecraft client, String value) {
         if (!SilentAuraConfig.aimMode(value)) {
             ClientChat.send(client, "Aim mode must be balance, lock, or full_lock.");
@@ -380,21 +361,6 @@ public final class SilentAura {
         return 1;
     }
 
-    public static int setCharge(Minecraft client, String raw) {
-        if (raw == null || raw.isBlank()) return 0;
-        try {
-            String[] parts = raw.trim().split("[-,:]", 2);
-            double min = Double.parseDouble(parts[0].trim());
-            double max = parts.length == 1 ? min : Double.parseDouble(parts[1].trim());
-            SilentAuraConfig.charge(min, max);
-            SilentAuraRuntime.resetTargeting();
-            return 1;
-        } catch (NumberFormatException exception) {
-            ClientChat.send(client, "Attack charge must be a number or min-max.");
-            return 0;
-        }
-    }
-
     public static int showTargetStatus(Minecraft client) {
         ClientChat.send(client, "SilentAura targets: " + SilentAuraConfig.targetStatus() + ".");
         return 1;
@@ -410,9 +376,7 @@ public final class SilentAura {
     }
 
     public static String hudTag() {
-        return SilentAuraConfig.legacyCombat()
-                ? "Legacy " + SilentAuraConfig.minCps() + "-" + SilentAuraConfig.maxCps() + " CPS"
-                : "Latest " + SilentAuraCombat.attackChargePercent(Minecraft.getInstance()) + "%";
+        return "Legacy " + SilentAuraConfig.minCps() + "-" + SilentAuraConfig.maxCps() + " CPS";
     }
 
     // Debug
@@ -422,13 +386,13 @@ public final class SilentAura {
     }
 
     private static void drawDebugger(HudRenderEvent event) {
-        Minecraft client = Minecraft.getInstance();
+        Minecraft client = Minecraft.getMinecraft();
         if (!SilentAuraConfig.debugger()
-                || client.player == null
-                || client.level == null
+                || client.thePlayer == null
+                || client.theWorld == null
                 || MinecraftClientAccess.isHudHidden(client)) return;
 
-        LivingEntity target = SilentAuraRuntime.currentTarget(client);
+        EntityLivingBase target = SilentAuraRuntime.currentTarget(client);
         SilentAuraRuntime.AttackRotation candidate = SilentAuraRuntime.attackRotation(client);
         SilentAuraRuntime.SentRotation sent = SilentAuraRuntime.sentRotation();
         double reach = CombatReach.entityInteractionRange(client, SilentAuraConfig.aimRange());
@@ -450,9 +414,7 @@ public final class SilentAura {
                         sent.look(),
                         sent.targetId(),
                         reach);
-        CombatDecisionEngine.Decision decision = Critical.getPlannedDecision();
-        String targetText =
-                target == null ? "-" : target.getName().getString() + "#" + target.getId();
+        String targetText = target == null ? "-" : target.getName() + "#" + target.getEntityId();
         String gate = SilentAuraCombat.gate();
         String[] lines = {
             "SilentAura debugger",
@@ -464,7 +426,9 @@ public final class SilentAura {
                     + (SilentAuraConfig.fullLockMode()
                             ? "full-lock"
                             : SilentAuraConfig.matrixCompatibility() ? "optimize" : "generic")
-                    + (SilentAuraConfig.learnedAssist() ? " assist=" + SilentAuraRuntime.learnedStatus() : ""),
+                    + (SilentAuraConfig.learnedAssist()
+                            ? " assist=" + SilentAuraRuntime.learnedStatus()
+                            : ""),
             "candidate="
                     + candidateRay
                     + " sent="
@@ -472,38 +436,18 @@ public final class SilentAura {
                     + " crossing="
                     + SilentAuraRuntime.crossingTarget(),
             "gate=" + gate,
-            "critical="
-                    + Critical.modeName()
-                    + " enabled="
-                    + Critical.isEnabled()
-                    + " linked="
-                    + SilentAuraConfig.criticalIntegration()
-                    + " aimingWindow="
-                    + Critical.isAimingWindowActive(),
-            "decision="
-                    + decision.attackKind().name().toLowerCase(Locale.ROOT)
-                    + "+"
-                    + decision.ticksAhead()
-                    + " "
-                    + decision.reason()
+            hudTag()
         };
         int x = 6;
         int y = Math.max(6, event.graphics().guiHeight() / 2 - 42);
         for (int index = 0; index < lines.length; index++) {
-            int color =
-                    index == 0
-                            ? 0xFFBFA3FF
-                            : index == 3
-                                            && (gate.contains("critical wait")
-                                                    || gate.contains("critical block"))
-                                    ? 0xFFFF7777
-                                    : 0xFFEDE9FF;
+            int color = index == 0 ? 0xFFBFA3FF : 0xFFEDE9FF;
             event.graphics()
                     .text(
-                            client.font,
+                            client.fontRendererObj,
                             lines[index],
                             x,
-                            y + index * (client.font.lineHeight + 1),
+                            y + index * (client.fontRendererObj.FONT_HEIGHT + 1),
                             color,
                             true);
         }
@@ -511,14 +455,14 @@ public final class SilentAura {
 
     private static String rayState(
             Minecraft client,
-            LivingEntity target,
+            EntityLivingBase target,
             boolean valid,
             Vec3 eye,
             Vec3 look,
             int targetId,
             double reach) {
         if (target == null) return "no-target";
-        if (!valid || targetId != target.getId()) return "waiting";
+        if (!valid || targetId != target.getEntityId()) return "waiting";
         return RaytraceUtils.traceEntity(
                         client, eye, look, reach, target, SilentAuraConfig.throughBlocks())
                 .name()

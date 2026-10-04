@@ -14,8 +14,8 @@ import com.blanoir.moons.client.utils.client.ClientReady;
 import com.blanoir.moons.client.utils.math.RandomMath;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.network.Connection;
-import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.NetworkManager;
+import net.minecraft.network.Packet;
 
 import java.util.List;
 
@@ -101,7 +101,7 @@ public final class FakeLag {
 
     public static void init() {
         normalizeSettings();
-        applyModeSelection(Minecraft.getInstance());
+        applyModeSelection(Minecraft.getMinecraft());
         EventBus.TICK.register("FakeLag.tick", FakeLag::tick);
     }
 
@@ -131,19 +131,19 @@ public final class FakeLag {
     }
 
     /** @return true when the original send must be cancelled. */
-    public static boolean handleOutgoing(Connection connection, Packet<?> packet) {
+    public static boolean handleOutgoing(NetworkManager connection, Packet<?> packet) {
         if (LagUtils.isReplaying()) {
             return false;
         }
 
         synchronized (LOCK) {
-            PACKETS.observe(connection, Minecraft.getInstance().level);
+            PACKETS.observe(connection, Minecraft.getMinecraft().theWorld);
             if (!constantActive() || !queueing) {
                 return false;
             }
 
             long now = LagUtils.nowMillis();
-            if (!ready(Minecraft.getInstance())
+            if (!ready(Minecraft.getMinecraft())
                     || now - startedAtMs >= durationMs
                     || PACKETS.isFull()
                     || LagPacketPolicy.mustFlushBefore(packet)) {
@@ -160,7 +160,7 @@ public final class FakeLag {
             if (LagPacketPolicy.mustDiscardOnIncoming(packet)) PACKETS.discard();
             if (constantActive()
                     && (queueing || !PACKETS.isEmpty())
-                    && LagPacketPolicy.mustFlushOnIncoming(Minecraft.getInstance(), packet)) {
+                    && LagPacketPolicy.mustFlushOnIncoming(Minecraft.getMinecraft(), packet)) {
                 stopLocked(LagUtils.nowMillis(), true);
             }
         }
@@ -203,11 +203,11 @@ public final class FakeLag {
     }
 
     private static void flushLocked() {
-        PACKETS.flushClient(Minecraft.getInstance());
+        PACKETS.flushClient(Minecraft.getMinecraft());
     }
 
     private static boolean ready(Minecraft client) {
-        return ClientReady.aliveGameplay(client) && !client.player.isInWater();
+        return ClientReady.aliveGameplay(client) && !client.thePlayer.isInWater();
     }
 
     public static int setEnabled(Minecraft client, boolean value) {

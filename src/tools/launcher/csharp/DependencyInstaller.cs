@@ -58,7 +58,7 @@ namespace Moons.WindowsLauncher
                     DependencyRuntime.Verify(home);
                     DependencyRuntime.RecordInstalledVersion(home);
                     CacheMaintenance.Run(home);
-                    if (progress != null) progress(100, "Dependencies are up to date. You can now run moon.exe.");
+                    if (progress != null) progress(100, "Dependencies are up to date. You can now run Moons.exe.");
                 }
                 finally { if (acquired) mutex.ReleaseMutex(); }
             }

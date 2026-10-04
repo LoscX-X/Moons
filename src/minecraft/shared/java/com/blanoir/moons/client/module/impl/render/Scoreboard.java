@@ -1,36 +1,24 @@
 package com.blanoir.moons.client.module.impl.render;
 
-import com.blanoir.moons.client.access.MinecraftClientAccess;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.ModeSetting;
 import com.blanoir.moons.client.config.settings.StringSetting;
 import com.blanoir.moons.client.event.EventBus;
+import com.blanoir.moons.client.ui.render.LegacyGuiGraphics;
 import com.blanoir.moons.client.utils.text.DynamicMiniMessage;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.network.chat.Component;
-import net.minecraft.network.chat.numbers.BlankFormat;
-import net.minecraft.network.chat.numbers.NumberFormat;
-import net.minecraft.network.chat.numbers.StyledFormat;
-import net.minecraft.network.protocol.Packet;
-import net.minecraft.network.protocol.game.ClientboundResetScorePacket;
-import net.minecraft.network.protocol.game.ClientboundSetDisplayObjectivePacket;
-import net.minecraft.network.protocol.game.ClientboundSetObjectivePacket;
-import net.minecraft.network.protocol.game.ClientboundSetPlayerTeamPacket;
-import net.minecraft.network.protocol.game.ClientboundSetScorePacket;
-import net.minecraft.world.scores.DisplaySlot;
-import net.minecraft.world.scores.Objective;
-import net.minecraft.world.scores.PlayerScoreEntry;
-import net.minecraft.world.scores.PlayerTeam;
-import net.minecraft.world.scores.ScoreAccess;
-import net.minecraft.world.scores.ScoreHolder;
+import net.minecraft.client.gui.FontRenderer;
+import net.minecraft.network.Packet;
+import net.minecraft.scoreboard.ScoreObjective;
+import net.minecraft.scoreboard.ScorePlayerTeam;
+import net.minecraft.util.ChatComponentText;
+import net.minecraft.util.IChatComponent;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 
+/** Presentation-only sidebar adapter; server score data remains authoritative. */
 public final class Scoreboard {
     private enum Mode {
         LAST_LINE,
@@ -84,371 +72,89 @@ public final class Scoreboard {
                     .defaultValue(true)
                     .build();
 
-    private static boolean initialized;
-    private static boolean renderedSinceHud;
-    private static Objective dataObjective;
-    private static Component originalTitle;
-    private static boolean titlePatched;
-    private static String lineOwner;
-    private static Component originalLineDisplay;
-    private static PlayerTeam originalLineTeam;
-    private static boolean linePatched;
-    private static final String ADDED_LINE_OWNER = "§0§1§2§3§4§5§r";
-    private static Objective addedLineObjective;
-    private static boolean addedLine;
+    private static boolean initialized, renderedSinceHud;
 
     private Scoreboard() {}
 
     public static void initPacketListeners() {
         EventBus.PACKET_RECEIVE_APPLY.register(
-                "Scoreboard.packetApply", event -> onScoreboardPacketApplied(event.packet()));
+                "Scoreboard.packetApply", e -> onScoreboardPacketApplied(e.packet()));
+    }
+
+    public static void onScoreboardPacketApplied(Packet<?> packet) {
+        // Re-evaluate on the next HUD boundary after vanilla has updated objectives and teams.
+        renderedSinceHud = false;
     }
 
     public static void init() {
         if (initialized) return;
         initialized = true;
         EventBus.HUD_RENDER.register(
-                "Scoreboard.hudRender", event -> renderFallback(event.graphics()));
+                "Scoreboard.hudRender",
+                e -> {
+                    if (!renderedSinceHud && ENABLED.get())
+                        render(e.graphics(), currentObjective());
+                    renderedSinceHud = false;
+                });
     }
 
-    public static boolean render(GuiGraphicsExtractor graphics, Objective objective) {
-        syncClientData();
+    public static boolean render(LegacyGuiGraphics graphics, ScoreObjective objective) {
         if (!ENABLED.get() || graphics == null || objective == null) return false;
-
-        Minecraft client = Minecraft.getInstance();
-        Font font = client.font;
-        long animationTime = System.currentTimeMillis();
-        Component title =
+        long time = System.currentTimeMillis();
+        IChatComponent title =
                 REPLACE_TITLE.get()
-                        ? DynamicMiniMessage.parse(TITLE.get(), animationTime)
-                        : objective.getDisplayName();
-
-        List<Line> lines =
-                MODE.get() == Mode.CUSTOM ? customLines(animationTime) : originalLines(objective);
-
+                        ? DynamicMiniMessage.parse(TITLE.get(), time)
+                        : new ChatComponentText(objective.getDisplayName());
+        List<Line> lines = MODE.get() == Mode.CUSTOM ? customLines(time) : originalLines(objective);
         if (MODE.get() == Mode.LAST_LINE && !lines.isEmpty()) {
             int last = lines.size() - 1;
-            Line original = lines.get(last);
             lines.set(
                     last,
                     new Line(
-                            DynamicMiniMessage.parse(LAST_LINE.get(), animationTime),
-                            original.score()));
-        } else if (MODE.get() == Mode.ADD_LAST_LINE && !addedLine) {
-            // A host-owned sidebar is capped at 15 entries. The direct
-            // renderer can still show the requested appended line when the
-            // server already occupies every native slot.
+                            DynamicMiniMessage.parse(LAST_LINE.get(), time),
+                            lines.get(last).score()));
+        } else if (MODE.get() == Mode.ADD_LAST_LINE) {
             lines.add(
                     new Line(
-                            DynamicMiniMessage.parse(LAST_LINE.get(), animationTime),
-                            Component.empty()));
+                            DynamicMiniMessage.parse(LAST_LINE.get(), time),
+                            new ChatComponentText("")));
         }
-        draw(graphics, font, title, lines);
+        draw(graphics, Minecraft.getMinecraft().fontRendererObj, title, lines);
         renderedSinceHud = true;
         return true;
     }
 
-    private static void renderFallback(GuiGraphicsExtractor graphics) {
-        syncClientData();
-        if (!ENABLED.get()) {
-            renderedSinceHud = false;
-            return;
+    private static ScoreObjective currentObjective() {
+        var client = Minecraft.getMinecraft();
+        if (client.theWorld == null || client.thePlayer == null) return null;
+        var board = client.theWorld.getScoreboard();
+        var team = board.getPlayersTeam(client.thePlayer.getName());
+        if (team != null && team.getChatFormat().getColorIndex() >= 0) {
+            var objective =
+                    board.getObjectiveInDisplaySlot(3 + team.getChatFormat().getColorIndex());
+            if (objective != null) return objective;
         }
-        if (renderedSinceHud) {
-            renderedSinceHud = false;
-            return;
-        }
-        // LastLine and title replacements are already present in the client
-        // Scoreboard. This lets a host-owned HUD render them
-        // without drawing a second sidebar over the top.
-        if (MODE.get() != Mode.CUSTOM) return;
-        Objective objective = currentObjective();
-        if (objective == null) return;
-        graphics.nextStratum();
-        render(graphics, objective);
-        renderedSinceHud = false;
+        return board.getObjectiveInDisplaySlot(1);
     }
 
-    private static Objective currentObjective() {
-        Minecraft client = Minecraft.getInstance();
-        var currentPlayer = client == null ? null : client.player;
-        var currentLevel = client == null ? null : client.level;
-        if (currentLevel == null || currentPlayer == null) return null;
-        net.minecraft.world.scores.Scoreboard scoreboard = currentLevel.getScoreboard();
-        PlayerTeam team = scoreboard.getPlayersTeam(currentPlayer.getScoreboardName());
-        if (team != null) {
-            DisplaySlot teamSlot = MinecraftClientAccess.teamDisplaySlot(team);
-            if (teamSlot != null) {
-                Objective teamObjective = scoreboard.getDisplayObjective(teamSlot);
-                if (teamObjective != null) return teamObjective;
-            }
+    private static List<Line> originalLines(ScoreObjective objective) {
+        var board = objective.getScoreboard();
+        var scores = new ArrayList<>(board.getSortedScores(objective));
+        scores.removeIf(
+                score -> score.getPlayerName() == null || score.getPlayerName().startsWith("#"));
+        var result = new ArrayList<Line>();
+        for (int index = scores.size() - 1; index >= Math.max(0, scores.size() - 15); index--) {
+            var score = scores.get(index);
+            String name =
+                    ScorePlayerTeam.formatPlayerName(
+                            board.getPlayersTeam(score.getPlayerName()), score.getPlayerName());
+            result.add(
+                    new Line(
+                            new ChatComponentText(name),
+                            new ChatComponentText(
+                                    SHOW_SCORES.get() ? "§c" + score.getScorePoints() : "")));
         }
-        return scoreboard.getDisplayObjective(DisplaySlot.SIDEBAR);
-    }
-
-    private static List<Line> originalLines(Objective objective) {
-        net.minecraft.world.scores.Scoreboard scoreboard = objective.getScoreboard();
-        NumberFormat numberFormat = objective.numberFormatOrDefault(StyledFormat.SIDEBAR_DEFAULT);
-        return new ArrayList<>(
-                visibleEntries(objective).stream()
-                        .map(
-                                entry ->
-                                        new Line(
-                                                PlayerTeam.formatNameForTeam(
-                                                        scoreboard.getPlayersTeam(entry.owner()),
-                                                        entry.ownerName()),
-                                                SHOW_SCORES.get()
-                                                        ? entry.formatValue(numberFormat)
-                                                        : Component.empty()))
-                        .toList());
-    }
-
-    private static List<PlayerScoreEntry> visibleEntries(Objective objective) {
-        return objective.getScoreboard().listPlayerScores(objective).stream()
-                .filter(entry -> !entry.isHidden())
-                .sorted(
-                        Comparator.comparingInt(PlayerScoreEntry::value)
-                                .reversed()
-                                .thenComparing(
-                                        PlayerScoreEntry::owner, String.CASE_INSENSITIVE_ORDER))
-                .limit(15)
-                .toList();
-    }
-
-    /**
-     * Runs after vanilla applies scoreboard packets and from the HUD event.
-     * Replacement mode changes only visual Components. AddLastLine creates one
-     * reversible local-only score owner so host-owned sidebar renderers can
-     * see the appended row without altering any server owner or score.
-     */
-    public static void onScoreboardPacketApplied(Packet<?> packet) {
-        boolean scoreboardPacket = false;
-        if (packet instanceof ClientboundSetScorePacket score) {
-            scoreboardPacket = true;
-            if (linePatched
-                    && dataObjective != null
-                    && dataObjective.getName().equals(score.objectiveName())
-                    && lineOwner.equals(score.owner())) {
-                // Vanilla has replaced our display with the new server value.
-                // Keep the owner/team state and refresh the restore snapshot.
-                originalLineDisplay =
-                        findEntry(dataObjective, lineOwner)
-                                .map(PlayerScoreEntry::display)
-                                .orElse(null);
-            }
-        } else if (packet instanceof ClientboundResetScorePacket reset) {
-            scoreboardPacket = true;
-            if (linePatched
-                    && dataObjective != null
-                    && lineOwner.equals(reset.owner())
-                    && (reset.objectiveName() == null
-                            || dataObjective.getName().equals(reset.objectiveName()))) {
-                restoreLineTeam();
-                clearLineState();
-            }
-        } else if (packet instanceof ClientboundSetObjectivePacket objectivePacket) {
-            scoreboardPacket = true;
-            if (dataObjective != null
-                    && dataObjective.getName().equals(objectivePacket.getObjectiveName())) {
-                if (objectivePacket.getMethod() == ClientboundSetObjectivePacket.METHOD_REMOVE) {
-                    clearDataState();
-                } else {
-                    // Vanilla has just installed the authoritative title.
-                    titlePatched = false;
-                    originalTitle = null;
-                }
-            }
-        } else if (packet instanceof ClientboundSetPlayerTeamPacket teamPacket) {
-            scoreboardPacket = true;
-            refreshLineTeamAfterPacket(teamPacket);
-        } else if (packet instanceof ClientboundSetDisplayObjectivePacket) {
-            scoreboardPacket = true;
-        }
-        if (scoreboardPacket) syncClientData();
-    }
-
-    private static void syncClientData() {
-        if (!ENABLED.get()) {
-            if (dataObjective != null || titlePatched || linePatched || addedLine) restoreData();
-            return;
-        }
-        Objective objective = currentObjective();
-        if (objective == null) {
-            restoreData();
-            return;
-        }
-        if (dataObjective != objective) {
-            restoreData();
-            dataObjective = objective;
-        }
-
-        long animationTime = System.currentTimeMillis();
-        if (REPLACE_TITLE.get()) {
-            if (!titlePatched) {
-                originalTitle = objective.getDisplayName();
-                titlePatched = true;
-            }
-            objective.setDisplayName(DynamicMiniMessage.parse(TITLE.get(), animationTime));
-        } else {
-            restoreTitle();
-        }
-
-        if (MODE.get() == Mode.ADD_LAST_LINE) {
-            restoreLine();
-            syncAddedLine(objective, animationTime);
-            return;
-        }
-        restoreAddedLine();
-        if (MODE.get() != Mode.LAST_LINE) {
-            restoreLine();
-            return;
-        }
-        List<PlayerScoreEntry> entries = visibleEntries(objective);
-        if (entries.isEmpty()) {
-            restoreLine();
-            return;
-        }
-        PlayerScoreEntry bottom = entries.get(entries.size() - 1);
-        if (linePatched && !lineOwner.equals(bottom.owner())) restoreLine();
-        if (!linePatched) {
-            lineOwner = bottom.owner();
-            originalLineDisplay = bottom.display();
-            originalLineTeam = objective.getScoreboard().getPlayersTeam(lineOwner);
-            linePatched = true;
-        }
-        detachLineTeam();
-        scoreAccess(objective, lineOwner)
-                .display(DynamicMiniMessage.parse(LAST_LINE.get(), animationTime));
-    }
-
-    private static void syncAddedLine(Objective objective, long animationTime) {
-        List<PlayerScoreEntry> serverEntries =
-                objective.getScoreboard().listPlayerScores(objective).stream()
-                        .filter(entry -> !entry.isHidden())
-                        .filter(entry -> !entry.owner().equals(ADDED_LINE_OWNER))
-                        .sorted(
-                                Comparator.comparingInt(PlayerScoreEntry::value)
-                                        .reversed()
-                                        .thenComparing(
-                                                PlayerScoreEntry::owner,
-                                                String.CASE_INSENSITIVE_ORDER))
-                        .toList();
-        if (serverEntries.size() >= 15) {
-            restoreAddedLine();
-            return;
-        }
-        if (addedLineObjective != objective) {
-            restoreAddedLine();
-            addedLineObjective = objective;
-        }
-        int bottomScore =
-                serverEntries.isEmpty() ? 0 : serverEntries.get(serverEntries.size() - 1).value();
-        int addedScore = bottomScore == Integer.MIN_VALUE ? Integer.MIN_VALUE : bottomScore - 1;
-        ScoreAccess access = scoreAccess(objective, ADDED_LINE_OWNER);
-        if (!addedLine || access.get() != addedScore) access.set(addedScore);
-        access.display(DynamicMiniMessage.parse(LAST_LINE.get(), animationTime));
-        access.numberFormatOverride(BlankFormat.INSTANCE);
-        addedLine = true;
-    }
-
-    private static void restoreAddedLine() {
-        if (addedLine && addedLineObjective != null) {
-            addedLineObjective
-                    .getScoreboard()
-                    .resetSinglePlayerScore(
-                            ScoreHolder.forNameOnly(ADDED_LINE_OWNER), addedLineObjective);
-        }
-        addedLine = false;
-        addedLineObjective = null;
-    }
-
-    private static java.util.Optional<PlayerScoreEntry> findEntry(
-            Objective objective, String owner) {
-        return objective.getScoreboard().listPlayerScores(objective).stream()
-                .filter(entry -> entry.owner().equals(owner))
-                .findFirst();
-    }
-
-    private static void refreshLineTeamAfterPacket(ClientboundSetPlayerTeamPacket packet) {
-        if (!linePatched || dataObjective == null) return;
-        if (packet.getTeamAction() == ClientboundSetPlayerTeamPacket.Action.REMOVE
-                && originalLineTeam != null
-                && originalLineTeam.getName().equals(packet.getName())) {
-            originalLineTeam = null;
-        }
-        if (!packet.getPlayers().contains(lineOwner)) return;
-        if (packet.getPlayerAction() == ClientboundSetPlayerTeamPacket.Action.REMOVE) {
-            originalLineTeam = null;
-        } else if (packet.getPlayerAction() == ClientboundSetPlayerTeamPacket.Action.ADD) {
-            originalLineTeam = dataObjective.getScoreboard().getPlayerTeam(packet.getName());
-        }
-    }
-
-    private static void detachLineTeam() {
-        if (!linePatched || dataObjective == null) return;
-        net.minecraft.world.scores.Scoreboard scoreboard = dataObjective.getScoreboard();
-        PlayerTeam currentTeam = scoreboard.getPlayersTeam(lineOwner);
-        if (currentTeam != null) {
-            originalLineTeam = currentTeam;
-            scoreboard.removePlayerFromTeam(lineOwner, currentTeam);
-        }
-    }
-
-    private static void restoreLineTeam() {
-        if (!linePatched || dataObjective == null || originalLineTeam == null) return;
-        net.minecraft.world.scores.Scoreboard scoreboard = dataObjective.getScoreboard();
-        if (scoreboard.getPlayersTeam(lineOwner) != null) return;
-        PlayerTeam currentTeam = scoreboard.getPlayerTeam(originalLineTeam.getName());
-        if (currentTeam != null) scoreboard.addPlayerToTeam(lineOwner, currentTeam);
-    }
-
-    private static ScoreAccess scoreAccess(Objective objective, String owner) {
-        return objective
-                .getScoreboard()
-                .getOrCreatePlayerScore(ScoreHolder.forNameOnly(owner), objective, true);
-    }
-
-    private static void restoreData() {
-        restoreLine();
-        restoreAddedLine();
-        restoreTitle();
-        dataObjective = null;
-    }
-
-    private static void restoreLine() {
-        if (linePatched && dataObjective != null) {
-            boolean stillExists =
-                    dataObjective.getScoreboard().listPlayerScores(dataObjective).stream()
-                            .anyMatch(entry -> entry.owner().equals(lineOwner));
-            if (stillExists) scoreAccess(dataObjective, lineOwner).display(originalLineDisplay);
-            restoreLineTeam();
-        }
-        clearLineState();
-    }
-
-    private static void restoreTitle() {
-        if (titlePatched && dataObjective != null) dataObjective.setDisplayName(originalTitle);
-        titlePatched = false;
-        originalTitle = null;
-    }
-
-    private static void clearLineState() {
-        linePatched = false;
-        lineOwner = null;
-        originalLineDisplay = null;
-        originalLineTeam = null;
-    }
-
-    private static void clearDataState() {
-        restoreLineTeam();
-        clearLineState();
-        // The objective was already removed by vanilla, so only forget the
-        // local synthetic row; there is no score left to reset.
-        addedLine = false;
-        addedLineObjective = null;
-        titlePatched = false;
-        originalTitle = null;
-        dataObjective = null;
+        return result;
     }
 
     private static List<Line> customLines(long animationTime) {
@@ -458,7 +164,7 @@ public final class Scoreboard {
                 lines.add(
                         new Line(
                                 DynamicMiniMessage.parse(value.trim(), animationTime),
-                                Component.empty()));
+                                new ChatComponentText("")));
             }
             if (lines.size() == 15) break;
         }
@@ -495,13 +201,14 @@ public final class Scoreboard {
     }
 
     private static void draw(
-            GuiGraphicsExtractor graphics, Font font, Component title, List<Line> lines) {
-        int width = font.width(title);
-        int colonWidth = font.width(":");
+            LegacyGuiGraphics graphics, FontRenderer font, IChatComponent title, List<Line> lines) {
+        int width = font.getStringWidth(title.getFormattedText());
+        int colonWidth = font.getStringWidth(":");
         for (Line line : lines) {
-            int scoreWidth = font.width(line.score());
+            int scoreWidth = font.getStringWidth(line.score().getFormattedText());
             int lineWidth =
-                    font.width(line.name()) + (scoreWidth > 0 ? colonWidth + scoreWidth : 0);
+                    font.getStringWidth(line.name().getFormattedText())
+                            + (scoreWidth > 0 ? colonWidth + scoreWidth : 0);
             width = Math.max(width, lineWidth);
         }
 
@@ -511,19 +218,24 @@ public final class Scoreboard {
         int top = bottom - height;
         int left = graphics.guiWidth() - width - 3;
         int right = graphics.guiWidth() - 1;
-        int bodyColor = Minecraft.getInstance().options.getBackgroundColor(0.3F);
-        int titleColor = Minecraft.getInstance().options.getBackgroundColor(0.4F);
+        int bodyColor = 0x4C000000;
+        int titleColor = 0x66000000;
 
         graphics.fill(left - 2, top - 10, right, top - 1, titleColor);
         if (lineCount > 0) graphics.fill(left - 2, top - 1, right, bottom, bodyColor);
         graphics.text(
-                font, title, left + width / 2 - font.width(title) / 2, top - 9, 0xFFFFFFFF, false);
+                font,
+                title,
+                left + width / 2 - font.getStringWidth(title.getFormattedText()) / 2,
+                top - 9,
+                0xFFFFFFFF,
+                false);
 
         for (int index = 0; index < lineCount; index++) {
             Line line = lines.get(index);
             int y = top + index * 9;
             graphics.text(font, line.name(), left, y, 0xFFFFFFFF, false);
-            int scoreWidth = font.width(line.score());
+            int scoreWidth = font.getStringWidth(line.score().getFormattedText());
             if (scoreWidth > 0) {
                 graphics.text(font, line.score(), right - scoreWidth, y, 0xFFFFFFFF, false);
             }
@@ -536,7 +248,7 @@ public final class Scoreboard {
 
     public static int setEnabled(Minecraft ignoredClient, boolean value) {
         ENABLED.set(value);
-        syncClientData();
+        renderedSinceHud = false;
         return 1;
     }
 
@@ -550,7 +262,7 @@ public final class Scoreboard {
 
     public static int setMode(Minecraft ignoredClient, String value) {
         MODE.deserialize(value);
-        syncClientData();
+        renderedSinceHud = false;
         return 1;
     }
 
@@ -560,7 +272,7 @@ public final class Scoreboard {
 
     public static int setLastLine(Minecraft ignoredClient, String value) {
         LAST_LINE.set(sanitize(value, 256));
-        syncClientData();
+        renderedSinceHud = false;
         return 1;
     }
 
@@ -571,13 +283,13 @@ public final class Scoreboard {
 
     public static int setReplaceTitle(Minecraft ignoredClient, boolean value) {
         REPLACE_TITLE.set(value);
-        syncClientData();
+        renderedSinceHud = false;
         return 1;
     }
 
     public static int setTitle(Minecraft ignoredClient, String value) {
         TITLE.set(sanitize(value, 256));
-        syncClientData();
+        renderedSinceHud = false;
         return 1;
     }
 
@@ -593,5 +305,5 @@ public final class Scoreboard {
                 : normalized.substring(0, maximumLength);
     }
 
-    private record Line(Component name, Component score) {}
+    private record Line(IChatComponent name, IChatComponent score) {}
 }

@@ -1,7 +1,5 @@
 package com.blanoir.moons.client.utils.render;
 
-import net.minecraft.util.ARGB;
-
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
@@ -43,7 +41,12 @@ public final class SodiumQuadAlpha {
         try {
             for (int vertex = 0; vertex < 4; vertex++) {
                 int color = (int) methods.getColor().invokeExact(quad, vertex);
-                methods.setColor().invokeExact(quad, vertex, ARGB.multiplyAlpha(color, alpha));
+                methods.setColor()
+                        .invokeExact(
+                                quad,
+                                vertex,
+                                ((Math.round((color >>> 24) * alpha) & 255) << 24)
+                                        | (color & 0xffffff));
             }
         } catch (Throwable failure) {
             throw unableToApply(failure);

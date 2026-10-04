@@ -1,13 +1,12 @@
 package com.blanoir.moons.client.ui.render;
 
-import com.mojang.blaze3d.platform.NativeImage;
-
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.client.gui.Gui;
+import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.texture.DynamicTexture;
-import net.minecraft.resources.Identifier;
+import net.minecraft.util.ResourceLocation;
 
+import java.awt.image.BufferedImage;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -16,7 +15,7 @@ import java.util.Map;
  * Each shape enters the GUI overlap sorter once, regardless of its corner radius.
  */
 public final class SmoothGui {
-    private static final Map<Shape, Identifier> MASKS = new HashMap<>();
+    private static final Map<Shape, ResourceLocation> MASKS = new HashMap<>();
     private static final int MAX_MASKS = 64;
     private static final long MAX_MASK_PIXELS = 1_048_576L;
     private static long maskPixels;
@@ -24,7 +23,7 @@ public final class SmoothGui {
     private SmoothGui() {}
 
     public static void roundedRect(
-            GuiGraphicsExtractor graphics,
+            LegacyGuiGraphics graphics,
             int left,
             int top,
             int right,
@@ -43,20 +42,18 @@ public final class SmoothGui {
             return;
         }
 
-        Identifier mask = mask(width, height, r);
+        ResourceLocation mask = mask(width, height, r);
         if (mask != null) {
-            graphics.blit(
-                    RenderPipelines.GUI_TEXTURED,
-                    mask,
-                    left,
-                    top,
-                    0.0F,
-                    0.0F,
-                    width,
-                    height,
-                    width,
-                    height,
-                    color);
+            Minecraft.getMinecraft().getTextureManager().bindTexture(mask);
+            GlStateManager.color(
+                    (color >> 16 & 255) / 255f,
+                    (color >> 8 & 255) / 255f,
+                    (color & 255) / 255f,
+                    (color >>> 24) / 255f);
+            GlStateManager.enableBlend();
+            GlStateManager.tryBlendFuncSeparate(770, 771, 1, 771);
+            Gui.drawModalRectWithCustomSizedTexture(left, top, 0, 0, width, height, width, height);
+            GlStateManager.color(1, 1, 1, 1);
             return;
         }
 
@@ -66,7 +63,7 @@ public final class SmoothGui {
     }
 
     private static void fillSpans(
-            GuiGraphicsExtractor graphics,
+            LegacyGuiGraphics graphics,
             int left,
             int top,
             int right,
@@ -96,13 +93,13 @@ public final class SmoothGui {
         }
     }
 
-    private static Identifier mask(int width, int height, int radius) {
+    private static ResourceLocation mask(int width, int height, int radius) {
         Shape shape = new Shape(width, height, radius);
-        Identifier cached = MASKS.get(shape);
+        ResourceLocation cached = MASKS.get(shape);
         if (cached != null) return cached;
         long pixels = (long) width * height;
         if (MASKS.size() >= MAX_MASKS || pixels > MAX_MASK_PIXELS - maskPixels) return null;
-        NativeImage image = new NativeImage(width, height, true);
+        BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
         for (int y = 0; y < height; y++) {
             int cornerRow = Math.min(y, height - y - 1);
             double edge = 0.0;
@@ -111,23 +108,23 @@ public final class SmoothGui {
                 edge = radius - Math.sqrt(Math.max(0.0, (double) radius * radius - dy * dy));
             }
             int inset = (int) Math.ceil(edge);
-            for (int x = inset; x < width - inset; x++) image.setPixel(x, y, 0xFFFFFFFF);
+            for (int x = inset; x < width - inset; x++) image.setRGB(x, y, 0xFFFFFFFF);
             if (inset > 0) {
                 int edgeColor = ((int) Math.round(255.0 * (inset - edge)) << 24) | 0xFFFFFF;
-                image.setPixel(inset - 1, y, edgeColor);
-                image.setPixel(width - inset, y, edgeColor);
+                image.setRGB(inset - 1, y, edgeColor);
+                image.setRGB(width - inset, y, edgeColor);
             }
         }
-        Identifier id =
-                Identifier.fromNamespaceAndPath(
+        ResourceLocation id =
+                new ResourceLocation(
                         "moons", "dynamic/gui/rounded_" + width + "_" + height + "_" + radius);
         DynamicTexture texture = null;
         try {
-            texture = new DynamicTexture(() -> "Moons rounded GUI mask", image);
-            Minecraft.getInstance().getTextureManager().register(id, texture);
+            texture = new DynamicTexture(image);
+            Minecraft.getMinecraft().getTextureManager().loadTexture(id, texture);
         } catch (RuntimeException | Error failure) {
-            if (texture == null) image.close();
-            else texture.close();
+
+            if (texture != null) texture.deleteGlTexture();
             throw failure;
         }
         MASKS.put(shape, id);
@@ -136,8 +133,8 @@ public final class SmoothGui {
     }
 
     public static void close() {
-        var textures = Minecraft.getInstance().getTextureManager();
-        for (Identifier id : MASKS.values()) textures.release(id);
+        var textures = Minecraft.getMinecraft().getTextureManager();
+        for (ResourceLocation id : MASKS.values()) textures.deleteTexture(id);
         MASKS.clear();
         maskPixels = 0;
     }
@@ -145,7 +142,7 @@ public final class SmoothGui {
     private record Shape(int width, int height, int radius) {}
 
     public static void roundedOutline(
-            GuiGraphicsExtractor graphics,
+            LegacyGuiGraphics graphics,
             int left,
             int top,
             int right,

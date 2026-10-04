@@ -22,7 +22,10 @@ namespace {
 
 constexpr char kBridgeClass[] =
         "com.blanoir.moons.agent.core.NativeTransformerBridge";
-constexpr char kMinecraftClass[] = "net/minecraft/client/Minecraft";
+// Exact vanilla 1.8.9 client class; the named form supports development runs.
+bool is_minecraft_class(const std::string& name) {
+    return name == "ave" || name == "net/minecraft/client/Minecraft";
+}
 constexpr char kTransformSignature[] =
         "(Ljava/lang/String;Ljava/lang/ClassLoader;[BI)[B";
 constexpr char kStartSignature[] =
@@ -400,7 +403,7 @@ void JNICALL on_class_file_load(
         const unsigned char* class_data,
         jint* new_class_data_length,
         unsigned char** new_class_data) {
-    if (name != nullptr && std::string(name) == kMinecraftClass) {
+    if (name != nullptr && is_minecraft_class(name)) {
         capture_game_loader(env, loader);
     }
     if (!g_ready.load(std::memory_order_acquire)
@@ -560,7 +563,7 @@ std::vector<jclass> collect_loaded_targets(JNIEnv* env) {
     for (jint index = 0; index < class_count; ++index) {
         jclass klass = classes[index];
         const std::string name = internal_name(g_jvmti, klass);
-        if (name == kMinecraftClass) {
+        if (is_minecraft_class(name)) {
             jobject loader = nullptr;
             const jvmtiError loader_error = g_jvmti->GetClassLoader(klass, &loader);
             if (loader_error == JVMTI_ERROR_NONE && loader != nullptr) {
@@ -591,7 +594,7 @@ bool find_loaded_game_loader(JNIEnv* env) {
     bool found = false;
     for (jint index = 0; index < class_count; ++index) {
         jclass klass = classes[index];
-        if (!found && internal_name(g_jvmti, klass) == kMinecraftClass) {
+        if (!found && is_minecraft_class(internal_name(g_jvmti, klass))) {
             jobject loader = nullptr;
             if (g_jvmti->GetClassLoader(klass, &loader) == JVMTI_ERROR_NONE
                     && loader != nullptr) {
@@ -636,6 +639,33 @@ bool initialize_jvmti(JNIEnv* env, const BridgeConfig& config) {
         if (phase_error != JVMTI_ERROR_NONE) log_jvmti_error("GetPhase", phase_error);
         log_line("target JVM is not in Live phase: "
                 + std::to_string(static_cast<int>(phase)));
+        return false;
+    }
+    // JVMTI exposes only a VM-defined subset of system properties. In HotSpot's
+    // Live phase java.specification.version is not in that subset; query Java's
+    // actual runtime feature version through JNI before loading the Java 25 API.
+    if (env->PushLocalFrame(4) != JNI_OK) {
+        describe_and_clear(env, "Java version local frame");
+        return false;
+    }
+    jclass runtime = env->FindClass("java/lang/Runtime");
+    jmethodID version = runtime == nullptr ? nullptr : env->GetStaticMethodID(
+            runtime, "version", "()Ljava/lang/Runtime$Version;");
+    jobject value = version == nullptr ? nullptr : env->CallStaticObjectMethod(runtime, version);
+    jclass version_class = value == nullptr ? nullptr : env->GetObjectClass(value);
+    jmethodID feature = version_class == nullptr ? nullptr
+            : env->GetMethodID(version_class, "feature", "()I");
+    jint java_feature = feature == nullptr ? 0 : env->CallIntMethod(value, feature);
+    const bool version_failed = env->ExceptionCheck() || java_feature == 0;
+    if (version_failed) describe_and_clear(env, "Runtime.version().feature()");
+    env->PopLocalFrame(nullptr);
+    if (version_failed) {
+        log_line("Cannot determine Java runtime version; Minecraft 1.8.9 Moons requires Java 25");
+        return false;
+    }
+    if (java_feature != 25) {
+        log_line("Unsupported Java runtime " + std::to_string(java_feature)
+                + "; launch Minecraft 1.8.9 with Java 25");
         return false;
     }
     const jvmtiError bootstrap_error = moons::add_bootstrap_jar(

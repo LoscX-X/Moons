@@ -4,10 +4,10 @@ import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.config.MoonsConfig;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 
+import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.Minecraft;
-import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
-import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.util.BlockPos;
+import net.minecraft.util.EnumFacing;
 
 public final class XrayCoverMode {
     private static final BooleanSetting ENABLED =
@@ -63,7 +63,7 @@ public final class XrayCoverMode {
             return false;
         }
 
-        BlockPos immutablePos = pos.immutable();
+        BlockPos immutablePos = new BlockPos(pos);
 
         if (!hasDirectAirFace(client, immutablePos)) {
             return false;
@@ -73,8 +73,8 @@ public final class XrayCoverMode {
     }
 
     private static boolean hasDirectAirFace(Minecraft client, BlockPos pos) {
-        for (Direction direction : Direction.values()) {
-            if (client.level.getBlockState(pos.relative(direction)).isAir()) {
+        for (EnumFacing direction : EnumFacing.values()) {
+            if (client.theWorld.isAirBlock(pos.offset(direction))) {
                 return true;
             }
         }
@@ -95,9 +95,9 @@ public final class XrayCoverMode {
                     }
 
                     mutablePos.set(pos.getX() + x, pos.getY() + y, pos.getZ() + z);
-                    BlockState state = client.level.getBlockState(mutablePos);
+                    IBlockState state = client.theWorld.getBlockState(mutablePos);
 
-                    if (state.isAir()) {
+                    if (state.getBlock() == net.minecraft.init.Blocks.air) {
                         airBlocks++;
                     }
                 }

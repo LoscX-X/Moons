@@ -1,4 +1,5 @@
 package com.blanoir.moons.client.module.impl.player.invmanager
+import com.blanoir.moons.client.utils.render.isEmpty
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.VerticalScrollbar
@@ -32,15 +33,15 @@ import com.blanoir.moons.client.ui.clickgui.CompactSetting
 import com.blanoir.moons.client.ui.clickgui.PanelFontFamily
 import com.blanoir.moons.client.ui.clickgui.PanelStyle
 import com.blanoir.moons.client.utils.render.NativeItemIcons
-import com.mojang.blaze3d.platform.InputConstants
+import com.blanoir.moons.client.compat.input.InputConstants
 import kotlinx.coroutines.delay
 import net.minecraft.client.Minecraft
-import net.minecraft.world.item.ItemStack
+import net.minecraft.item.ItemStack
 
 /** Shared, responsive editor. All mutations use the existing InvManager settings/actions. */
 @Composable
 internal fun InventoryConfigurationPage(onMutated: () -> Unit, onBack: () -> Unit) {
-    val client = Minecraft.getInstance()
+    val client = Minecraft.getMinecraft()
     var view by remember { mutableStateOf(InvManager.preview(client)) }
     var selected by remember { mutableIntStateOf(0) }
     var options by remember { mutableStateOf(false) }
@@ -168,10 +169,10 @@ internal fun InventoryConfigurationPage(onMutated: () -> Unit, onBack: () -> Uni
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             EditorButton("Organize once", Modifier.weight(1f)) {
-                                client.execute { InvManager.organizeOnce(client) }
+                                client.addScheduledTask { InvManager.organizeOnce(client) }
                             }
                             val readable =
-                                runCatching { InputConstants.getKey(keyName).displayName.string }
+                                runCatching { InputConstants.getKey(keyName).displayName.unformattedText }
                                     .getOrDefault("None")
                             EditorButton(
                                 if (binding) "Press a key…" else "Once key: $readable",
@@ -218,20 +219,6 @@ private fun HotbarPreview(view: InvManager.View, selected: Int, onSelect: (Int) 
                 }
             }
         }
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            SlotTile(view.slots()[9], selected == 9, Modifier.width(54.dp)) { onSelect(9) }
-            Column {
-                Text("Offhand · ${view.slots()[9].role().label()}")
-                Text(
-                    "Free allows moves. Locked keeps the slot untouched.",
-                    color = PanelStyle.muted,
-                    fontSize = 11.sp,
-                )
-            }
-        }
         Text(
             "Manual edits remain protected until the inventory closes.",
             color = PanelStyle.muted,
@@ -263,7 +250,7 @@ private fun SlotTile(
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Text(
-            if (slot.index() == 9) "Off" else "${slot.index() + 1}",
+            "${slot.index() + 1}",
             fontSize = 11.sp,
             color = PanelStyle.muted,
         )
@@ -275,7 +262,7 @@ private fun SlotTile(
 private fun RoleChooser(slot: InvManager.SlotView, onChoose: (InventoryRole) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
-            "${if (slot.index() == 9) "Offhand" else "Slot ${slot.index() + 1}"} · ${InventoryRules.resolve(slot.index(), slot.role()).name()}",
+            "Slot ${slot.index() + 1} · ${InventoryRules.resolve(slot.index(), slot.role()).name()}",
             fontSize = 17.sp,
             fontWeight = FontWeight.SemiBold,
         )
@@ -286,7 +273,7 @@ private fun RoleChooser(slot: InvManager.SlotView, onChoose: (InventoryRole) -> 
             ItemIcon(slot.item(), "Empty", Modifier.size(32.dp))
             Column(Modifier.weight(1f)) {
                 Text(
-                    if (slot.item().isEmpty) "Currently empty" else slot.item().hoverName.string,
+                    if (slot.item().isEmpty) "Currently empty" else slot.item().displayName,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -371,7 +358,7 @@ private fun BehaviorSettings(onMutated: () -> Unit) {
 }
 
 @Composable
-internal fun ItemIcon(stack: ItemStack, fallback: String, modifier: Modifier) {
+internal fun ItemIcon(stack: ItemStack?, fallback: String, modifier: Modifier) {
     DisposableEffect(stack) { onDispose { NativeItemIcons.cancelPending(stack) } }
     Box(modifier, contentAlignment = Alignment.Center) {
         val image = NativeItemIcons.get(stack)

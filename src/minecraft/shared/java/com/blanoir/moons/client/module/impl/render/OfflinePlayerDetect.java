@@ -4,9 +4,9 @@ import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.core.BlockPos;
-import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.monster.zombie.Zombie;
+import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.entity.monster.EntityZombie;
+import net.minecraft.util.BlockPos;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -23,12 +23,12 @@ public final class OfflinePlayerDetect {
 
     private OfflinePlayerDetect() {}
 
-    public static boolean isOfflinePlayerZombie(LivingEntity entity) {
-        if (!ENABLED.get() || !(entity instanceof Zombie zombie) || !zombie.hasCustomName()) {
+    public static boolean isOfflinePlayerZombie(EntityLivingBase entity) {
+        if (!ENABLED.get() || !(entity instanceof EntityZombie zombie) || !zombie.hasCustomName()) {
             return false;
         }
 
-        String name = zombie.getName().getString().trim();
+        String name = zombie.getName().trim();
         return !name.isEmpty() && !name.equalsIgnoreCase("Zombie") && !name.equals("僵尸");
     }
 
@@ -45,23 +45,23 @@ public final class OfflinePlayerDetect {
         return 1;
     }
 
-    public static void notifyIfNeeded(Minecraft client, LivingEntity entity) {
-        var currentPlayer = client == null ? null : client.player;
+    public static void notifyIfNeeded(Minecraft client, EntityLivingBase entity) {
+        var currentPlayer = client == null ? null : client.thePlayer;
         if (!isOfflinePlayerZombie(entity) || client == null || currentPlayer == null) {
             return;
         }
 
-        if (!PRINTED_ZOMBIES.add(entity.getUUID())) {
+        if (!PRINTED_ZOMBIES.add(entity.getUniqueID())) {
             return;
         }
 
-        BlockPos pos = entity.blockPosition();
-        double distance = Math.sqrt(currentPlayer.distanceToSqr(entity));
+        BlockPos pos = entity.getPosition();
+        double distance = Math.sqrt(currentPlayer.getDistanceSqToEntity(entity));
 
         ClientChat.send(
                 client,
                 "OfflinePlayerDetect: "
-                        + entity.getName().getString()
+                        + entity.getName()
                         + " | Distance: "
                         + Math.round(distance)
                         + " | X: "

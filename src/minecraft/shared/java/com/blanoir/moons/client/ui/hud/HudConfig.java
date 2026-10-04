@@ -340,7 +340,7 @@ final class HudConfig {
     }
 
     static String header(Minecraft client) {
-        return SHOW_FPS.get() ? title() + " [" + client.getFps() + "]" : title();
+        return SHOW_FPS.get() ? title() + " [" + Minecraft.getDebugFPS() + "]" : title();
     }
 
     static String normalizeTitle(String value) {

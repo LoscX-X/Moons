@@ -78,7 +78,7 @@ import com.blanoir.moons.client.utils.ui.RegistryListSetting
 import com.blanoir.moons.client.utils.ui.SettingInput
 import com.google.gson.JsonArray
 import com.google.gson.JsonPrimitive
-import com.mojang.blaze3d.platform.InputConstants
+import com.blanoir.moons.client.compat.input.InputConstants
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -226,7 +226,7 @@ internal fun KeybindSetting(
     val listening = bindingModuleId == module.id()
     val keyName =
         ModuleKeybinds.getBoundKey(module.id()).let {
-            if (it == InputConstants.UNKNOWN) "None" else it.displayName.string
+            if (it == InputConstants.UNKNOWN) "None" else it.displayName.unformattedText
         }
     CompactRow {
         Text(

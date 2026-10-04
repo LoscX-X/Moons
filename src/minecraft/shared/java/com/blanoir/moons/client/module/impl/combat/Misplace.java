@@ -1,8 +1,8 @@
 package com.blanoir.moons.client.module.impl.combat;
 
 import com.blanoir.moons.client.access.MinecraftClientAccess;
-import com.blanoir.moons.client.access.PacketAccess;
 import com.blanoir.moons.client.chat.ClientChat;
+import com.blanoir.moons.client.compat.math.VecMath;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.DoubleSetting;
 import com.blanoir.moons.client.config.settings.IntSetting;
@@ -23,23 +23,18 @@ import com.blanoir.moons.client.utils.combat.CombatReach;
 import com.blanoir.moons.client.utils.raytrace.RaytraceUtils;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.multiplayer.ClientLevel;
-import net.minecraft.network.protocol.game.ClientboundDamageEventPacket;
-import net.minecraft.network.protocol.game.ClientboundEntityPositionSyncPacket;
-import net.minecraft.network.protocol.game.ClientboundMoveEntityPacket;
-import net.minecraft.network.protocol.game.ClientboundPlayerPositionPacket;
-import net.minecraft.network.protocol.game.ClientboundRemoveEntitiesPacket;
-import net.minecraft.network.protocol.game.ClientboundTeleportEntityPacket;
-import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.EntitySelector;
-import net.minecraft.world.entity.PositionMoveRotation;
-import net.minecraft.world.entity.ai.attributes.Attributes;
-import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.EntityHitResult;
-import net.minecraft.world.phys.HitResult;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.client.multiplayer.WorldClient;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.network.play.client.C03PacketPlayer;
+import net.minecraft.network.play.server.S08PacketPlayerPosLook;
+import net.minecraft.network.play.server.S13PacketDestroyEntities;
+import net.minecraft.network.play.server.S14PacketEntity;
+import net.minecraft.network.play.server.S18PacketEntityTeleport;
+import net.minecraft.network.play.server.S19PacketEntityStatus;
+import net.minecraft.util.AxisAlignedBB;
+import net.minecraft.util.MovingObjectPosition;
+import net.minecraft.util.Vec3;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -77,8 +72,8 @@ public final class Misplace {
                     .range(0, 200)
                     .build();
     private static final Map<Integer, Track> TRACKS = new HashMap<>();
-    private static ClientLevel level;
-    private static Player player;
+    private static WorldClient level;
+    private static EntityPlayer player;
     private static Vec3 sentPosition;
     private static long sentAt;
     private static String modelStatus = "Warmup";
@@ -97,11 +92,11 @@ public final class Misplace {
     private static boolean ready(Minecraft client) {
         return ENABLED.get()
                 && ClientReady.aliveGameplay(client)
-                && client.getConnection() != null
-                && !client.player.isSpectator()
-                && !client.player.isPassenger()
-                && !client.isPaused()
-                && client.getCameraEntity() == client.player
+                && client.getNetHandler() != null
+                && !client.thePlayer.isSpectator()
+                && !client.thePlayer.isRiding()
+                && !client.isGamePaused()
+                && client.getRenderViewEntity() == client.thePlayer
                 && !Backtrack.isEnabled()
                 && !FakeLag.isEnabled();
     }
@@ -111,19 +106,19 @@ public final class Misplace {
             reset();
             return false;
         }
-        if (level != client.level || player != client.player) {
+        if (level != client.theWorld || player != client.thePlayer) {
             reset();
-            level = client.level;
-            player = client.player;
+            level = client.theWorld;
+            player = client.thePlayer;
         }
         return true;
     }
 
     private static boolean eligible(Minecraft client, Entity entity) {
-        return entity instanceof Player target
-                && target.distanceToSqr(client.player) <= 144
-                && !target.isPassenger()
-                && !target.isSleeping()
+        return entity instanceof EntityPlayer target
+                && target.getDistanceSqToEntity(client.thePlayer) <= 144
+                && !target.isRiding()
+                && !target.isPlayerSleeping()
                 && Targeting.isEnemyPlayer(client, target);
     }
 
@@ -133,9 +128,9 @@ public final class Misplace {
         TRACKS.values()
                 .removeIf(
                         track ->
-                                level.getEntity(track.entity.getId()) != track.entity
+                                level.getEntityByID(track.entity.getEntityId()) != track.entity
                                         || !eligible(client, track.entity));
-        for (Player target : level.players()) {
+        for (EntityPlayer target : level.playerEntities) {
             if (TRACKS.size() >= 64) break;
             if (eligible(client, target)) track(target, now);
         }
@@ -143,58 +138,63 @@ public final class Misplace {
     }
 
     private static void sent(PacketSendEvent.Post event) {
-        if (!(event.packet() instanceof ServerboundMovePlayerPacket move)) return;
-        Minecraft client = Minecraft.getInstance();
+        if (!(event.packet() instanceof C03PacketPlayer move)) return;
+        Minecraft client = Minecraft.getMinecraft();
         // Normal movement is sent on the client thread. Queued/artificial lag is paused.
-        if (!client.isSameThread()
+        if (!client.isCallingFromMinecraftThread()
                 || !context(client)
-                || event.connection() != client.getConnection().getConnection()) return;
-        if (move.hasPosition()) {
-            sentPosition = new Vec3(move.getX(0), move.getY(0), move.getZ(0));
+                || event.connection() != client.getNetHandler().getNetworkManager()) return;
+        if (move.isMoving()) {
+            sentPosition = new Vec3(move.getPositionX(), move.getPositionY(), move.getPositionZ());
         }
         // Rotation-only packets preserve the last transmitted coordinate.
         if (sentPosition != null) sentAt = LagUtils.nowMillis();
     }
 
-    private static Track track(Player entity, long now) {
-        Track existing = TRACKS.get(entity.getId());
+    private static Track track(EntityPlayer entity, long now) {
+        Track existing = TRACKS.get(entity.getEntityId());
         if (existing != null && existing.entity == entity) return existing;
         if (existing == null && TRACKS.size() >= 64) return null;
         Track created = new Track(entity);
-        created.motion.reset(entity.getPositionCodec().getBase(), now);
-        TRACKS.put(entity.getId(), created);
+        created.motion.reset(
+                new Vec3(
+                        entity.serverPosX / 32.0,
+                        entity.serverPosY / 32.0,
+                        entity.serverPosZ / 32.0),
+                now);
+        TRACKS.put(entity.getEntityId(), created);
         return created;
     }
 
     private static void receive(PacketReceiveEvent.Apply event) {
-        Minecraft client = Minecraft.getInstance();
-        if (!context(client) || event.listener() != client.getConnection()) return;
+        Minecraft client = Minecraft.getMinecraft();
+        if (!context(client) || event.listener() != client.getNetHandler()) return;
         var packet = event.packet();
         long now = LagUtils.nowMillis();
-        if (packet instanceof ClientboundPlayerPositionPacket) {
+        if (packet instanceof S08PacketPlayerPosLook) {
             reset();
             return;
         }
-        if (packet instanceof ClientboundRemoveEntitiesPacket remove) {
-            for (int id : PacketAccess.removedEntityIds(remove)) TRACKS.remove(id);
-        } else if (packet instanceof ClientboundTeleportEntityPacket teleport) {
-            if (level.getEntity(teleport.id()) instanceof Player target
+        if (packet instanceof S13PacketDestroyEntities remove) {
+            for (int id : remove.getEntityIDs()) TRACKS.remove(id);
+        } else if (packet instanceof S18PacketEntityTeleport teleport) {
+            if (level.getEntityByID(teleport.getEntityId()) instanceof EntityPlayer target
                     && eligible(client, target)) {
                 Track track = track(target, now);
                 if (track != null) {
                     Vec3 at =
-                            PositionMoveRotation.calculateAbsolute(
-                                            PositionMoveRotation.of(target),
-                                            teleport.change(),
-                                            teleport.relatives())
-                                    .position();
+                            new Vec3(
+                                    teleport.getX() / 32.0,
+                                    teleport.getY() / 32.0,
+                                    teleport.getZ() / 32.0);
                     track.motion.discontinuity(at, now);
-                    track.offset = Vec3.ZERO;
+                    track.offset = VecMath.ZERO;
                 }
             }
-        } else if (packet instanceof ClientboundDamageEventPacket damage) {
+        } else if (packet instanceof S19PacketEntityStatus damage) {
             if (KNOCKBACK.get()
-                    && level.getEntity(damage.entityId()) instanceof Player target
+                    && damage.getOpCode() == 2
+                    && damage.getEntity(level) instanceof EntityPlayer target
                     && eligible(client, target)) {
                 Track track = track(target, now);
                 if (track != null) track.motion.impact(now, ping(client, target), 50, JITTER.get());
@@ -203,21 +203,24 @@ public final class Misplace {
             Entity entity = null;
             Vec3 position = null;
             boolean discontinuity = false;
-            if (packet instanceof ClientboundMoveEntityPacket move && move.hasPosition()) {
+            if (packet instanceof S14PacketEntity move
+                    && (move instanceof S14PacketEntity.S15PacketEntityRelMove
+                            || move instanceof S14PacketEntity.S17PacketEntityLookMove)) {
                 entity = move.getEntity(level);
+                // APPLY precedes vanilla: deltas are signed bytes in 1/32-block units.
                 if (entity != null)
-                    position = PacketAccess.decodeEntityDelta(move, entity.getPositionCodec());
-            } else if (packet instanceof ClientboundEntityPositionSyncPacket sync) {
-                entity = level.getEntity(sync.id());
-                position = PacketAccess.syncPosition(sync);
-                discontinuity = true;
+                    position =
+                            new Vec3(
+                                    (entity.serverPosX + move.func_149062_c()) / 32.0,
+                                    (entity.serverPosY + move.func_149061_d()) / 32.0,
+                                    (entity.serverPosZ + move.func_149064_e()) / 32.0);
             }
-            if (entity instanceof Player target && eligible(client, target)) {
+            if (entity instanceof EntityPlayer target && eligible(client, target)) {
                 Track track = track(target, now);
                 if (track == null) return;
                 if (discontinuity) {
                     track.motion.discontinuity(position, now);
-                    track.offset = Vec3.ZERO;
+                    track.offset = VecMath.ZERO;
                 } else track.motion.observe(position, now);
             }
         }
@@ -228,11 +231,11 @@ public final class Misplace {
         double nearest = Double.POSITIVE_INFINITY;
         modelStatus = "Warmup";
         for (Track track : TRACKS.values()) {
-            track.offset = Vec3.ZERO;
+            track.offset = VecMath.ZERO;
             if (!eligible(client, track.entity)) continue;
             refreshTrack(client, track);
             var estimate = track.motion.estimate();
-            double distance = track.entity.distanceToSqr(player);
+            double distance = track.entity.getDistanceSqToEntity(player);
             if (estimate != null && distance < nearest) {
                 nearest = distance;
                 modelStatus =
@@ -250,21 +253,24 @@ public final class Misplace {
 
     /** Reuses the exact display translation without changing the entity's packet/physics state. */
     public static CombatGeometry.Shape attackShape(Minecraft client, Entity entity) {
-        var original = new CombatGeometry.Shape(entity.getBoundingBox(), Vec3.ZERO);
+        var original = new CombatGeometry.Shape(entity.getEntityBoundingBox(), VecMath.ZERO);
         if (!context(client) || !eligible(client, entity)) return original;
-        Track track = track((Player) entity, LagUtils.nowMillis());
+        Track track = track((EntityPlayer) entity, LagUtils.nowMillis());
         if (track == null) return original;
         var shifted = refreshTrack(client, track);
         return shifted.shifted() ? shifted : original;
     }
 
     private static CombatGeometry.Shape refreshTrack(Minecraft client, Track track) {
-        float partial = client.getDeltaTracker().getGameTimeDeltaPartialTick(true);
-        Vec3 observer = player.getEyePosition(partial);
-        Vec3 visible = track.entity.getPosition(partial);
-        AABB visibleBox =
-                track.entity.getBoundingBox().move(visible.subtract(track.entity.position()));
-        Vec3 source = sentPosition == null ? null : sentPosition.add(0, player.getEyeHeight(), 0);
+        float partial = MinecraftClientAccess.framePartialTick(client);
+        Vec3 observer = player.getPositionEyes(partial);
+        Vec3 visible = VecMath.position(track.entity, partial);
+        AxisAlignedBB visibleBox =
+                VecMath.move(
+                        track.entity.getEntityBoundingBox(),
+                        visible.subtract(VecMath.position(track.entity)));
+        Vec3 source =
+                sentPosition == null ? null : sentPosition.addVector(0, player.getEyeHeight(), 0);
         var network =
                 new MisplaceLatencyModel.Network(
                         ping(client, player),
@@ -289,27 +295,27 @@ public final class Misplace {
         // Warmup, stale/uncertain motion and disabled pull all produce zero displacement.
         // Collision enumeration cannot change that result and becomes costly in crowds.
         track.offset =
-                offset.lengthSqr() == 0
-                        ? Vec3.ZERO
-                        : level.noCollision(track.entity, visibleBox.move(offset))
+                VecMath.lengthSqr(offset) == 0
+                        ? VecMath.ZERO
+                        : level.getCollidingBoundingBoxes(
+                                                track.entity, VecMath.move(visibleBox, offset))
+                                        .isEmpty()
                                 ? offset
-                                : Vec3.ZERO;
-        return new CombatGeometry.Shape(visibleBox.move(track.offset), track.offset);
+                                : VecMath.ZERO;
+        return new CombatGeometry.Shape(VecMath.move(visibleBox, track.offset), track.offset);
     }
 
     private static void render(EntityRenderStateEvent event) {
-        Minecraft client = Minecraft.getInstance();
-        if (!ready(client) || level != client.level || player != client.player) return;
-        Track track = TRACKS.get(event.entity().getId());
+        Minecraft client = Minecraft.getMinecraft();
+        if (!ready(client) || level != client.theWorld || player != client.thePlayer) return;
+        Track track = TRACKS.get(event.entity().getEntityId());
         if (track == null || track.entity != event.entity() || !eligible(client, event.entity()))
             return;
         var state = event.state();
-        state.x += track.offset.x;
-        state.z += track.offset.z;
+        state.x += track.offset.xCoord;
+        state.z += track.offset.zCoord;
         state.distanceToCameraSq =
-                MinecraftClientAccess.camera(client)
-                        .position()
-                        .distanceToSqr(state.x, state.y, state.z);
+                client.getRenderViewEntity().getDistanceSq(state.x, state.y, state.z);
     }
 
     private static void pick(PickResultEvent event) {
@@ -319,48 +325,72 @@ public final class Misplace {
         // update from FRAME adds collision queries after extraction on newer versions.
         update(client);
         boolean shifted =
-                TRACKS.values().stream().anyMatch(track -> track.offset.lengthSqr() > 1.0E-9);
+                TRACKS.values().stream()
+                        .anyMatch(track -> VecMath.lengthSqr(track.offset) > 1.0E-9);
         if (!shifted) return;
-        float partial = client.getDeltaTracker().getGameTimeDeltaPartialTick(true);
-        Vec3 start = player.getEyePosition(partial);
+        float partial = MinecraftClientAccess.framePartialTick(client);
+        Vec3 start = player.getPositionEyes(partial);
         double range = CombatReach.vanillaEntityInteractionRange(player);
-        Vec3 end = start.add(player.getViewVector(partial).scale(range));
-        HitResult best =
-                player.pick(
-                        player.getAttributeValue(Attributes.BLOCK_INTERACTION_RANGE),
-                        partial,
-                        false);
+        Vec3 end = start.add(VecMath.scale(player.getLook(partial), range));
+        MovingObjectPosition best =
+                player.rayTrace(client.playerController.getBlockReachDistance(), partial);
         double nearest =
                 Math.min(
                         range * range,
-                        best.getType() == HitResult.Type.MISS
+                        best == null || best.typeOfHit == MovingObjectPosition.MovingObjectType.MISS
                                 ? Double.MAX_VALUE
-                                : start.distanceToSqr(best.getLocation()));
-        AABB search = new AABB(start, end).inflate(DISTANCE.get() + 1);
-        for (Entity entity : level.getEntities(player, search, EntitySelector.CAN_BE_PICKED)) {
-            if (entity.getRootVehicle() == player.getRootVehicle()) continue;
-            Track track = TRACKS.get(entity.getId());
-            Vec3 offset = track != null && track.entity == entity ? track.offset : Vec3.ZERO;
-            AABB box =
-                    entity.getBoundingBox()
-                            .inflate(entity.getPickRadius())
-                            .move(entity.getPosition(partial).subtract(entity.position()))
-                            .move(offset);
+                                : start.squareDistanceTo(best.hitVec));
+        AxisAlignedBB search =
+                VecMath.inflate(
+                        new AxisAlignedBB(
+                                Math.min(start.xCoord, end.xCoord),
+                                Math.min(start.yCoord, end.yCoord),
+                                Math.min(start.zCoord, end.zCoord),
+                                Math.max(start.xCoord, end.xCoord),
+                                Math.max(start.yCoord, end.yCoord),
+                                Math.max(start.zCoord, end.zCoord)),
+                        DISTANCE.get() + 1);
+        for (Entity entity :
+                level.getEntitiesInAABBexcluding(
+                        player,
+                        search,
+                        entity ->
+                                entity.canBeCollidedWith()
+                                        && !(entity
+                                                        instanceof
+                                                        net.minecraft.entity.player.EntityPlayer
+                                                                spectator
+                                                && spectator.isSpectator()))) {
+            if (entity == player.ridingEntity || entity.ridingEntity == player) continue;
+            Track track = TRACKS.get(entity.getEntityId());
+            Vec3 offset = track != null && track.entity == entity ? track.offset : VecMath.ZERO;
+            AxisAlignedBB box =
+                    VecMath.move(
+                            VecMath.move(
+                                    VecMath.inflate(
+                                            entity.getEntityBoundingBox(),
+                                            entity.getCollisionBorderSize()),
+                                    VecMath.position(entity, partial)
+                                            .subtract(VecMath.position(entity))),
+                            offset);
             Vec3 hit = MisplaceMotion.intersection(box, start, end);
-            if (hit == null || start.distanceToSqr(hit) >= nearest) continue;
+            if (hit == null || start.squareDistanceTo(hit) >= nearest) continue;
             // Test both the displayed contact and its original position against world cover.
             if (!RaytraceUtils.canRayTraceTo(client, start, hit)
                     || !RaytraceUtils.canRayTraceTo(client, start, hit.subtract(offset))) continue;
-            nearest = start.distanceToSqr(hit);
-            best = new EntityHitResult(entity, hit);
+            nearest = start.squareDistanceTo(hit);
+            best = new MovingObjectPosition(entity, hit);
         }
         event.result(best);
-        client.crosshairPickEntity = best instanceof EntityHitResult hit ? hit.getEntity() : null;
+        client.pointedEntity =
+                best != null && best.typeOfHit == MovingObjectPosition.MovingObjectType.ENTITY
+                        ? best.entityHit
+                        : null;
     }
 
-    private static int ping(Minecraft client, Player entity) {
-        var info = client.getConnection().getPlayerInfo(entity.getUUID());
-        return info == null ? -1 : Math.clamp(info.getLatency(), 0, 2000);
+    private static int ping(Minecraft client, EntityPlayer entity) {
+        var info = client.getNetHandler().getPlayerInfo(entity.getUniqueID());
+        return info == null ? -1 : Math.clamp(info.getResponseTime(), 0, 2000);
     }
 
     private static void reset() {
@@ -424,11 +454,11 @@ public final class Misplace {
     }
 
     private static final class Track {
-        final Player entity;
+        final EntityPlayer entity;
         final MisplaceMotion motion = new MisplaceMotion();
-        Vec3 offset = Vec3.ZERO;
+        Vec3 offset = VecMath.ZERO;
 
-        Track(Player entity) {
+        Track(EntityPlayer entity) {
             this.entity = entity;
         }
     }

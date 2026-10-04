@@ -1,11 +1,12 @@
 package com.blanoir.moons.client.module.impl.render.xray
+import com.blanoir.moons.client.utils.render.isEmpty
 
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import com.blanoir.moons.client.utils.render.NativeItemIconCapture
 import net.minecraft.client.Minecraft
-import net.minecraft.world.level.block.state.BlockState
+import net.minecraft.block.state.IBlockState
 import org.jetbrains.skia.ColorAlphaType
 import org.jetbrains.skia.ColorType
 import org.jetbrains.skia.Image
@@ -14,15 +15,15 @@ import org.jetbrains.skia.ImageInfo
 /** Visible rows only; separate from Xray's world-position cache. */
 internal object PluginBlockPreviews {
     private val revision = mutableIntStateOf(0)
-    private val images = linkedMapOf<BlockState, Image>()
-    private val pending = linkedSetOf<BlockState>()
-    private val failed = mutableSetOf<BlockState>()
+    private val images = linkedMapOf<IBlockState, Image>()
+    private val pending = linkedSetOf<IBlockState>()
+    private val failed = mutableSetOf<IBlockState>()
     private var generation = 0
     private var busy = false
     private var models: Any? = null
     private var scope = ""
 
-    fun get(state: BlockState?): ImageBitmap? {
+    fun get(state: IBlockState?): ImageBitmap? {
         revision.intValue
         if (state == null) return null
         val image = images[state]
@@ -31,8 +32,8 @@ internal object PluginBlockPreviews {
     }
 
     fun prepareFrame() {
-        val client = Minecraft.getInstance()
-        val currentModels = client.modelManager.blockStateModelSet
+        val client = Minecraft.getMinecraft()
+        val currentModels = client.blockRendererDispatcher.blockModelShapes
         val currentScope = PluginXrayTargets.scope()
         if (models !== currentModels || scope != currentScope) {
             clear()
@@ -45,22 +46,15 @@ internal object PluginBlockPreviews {
         busy = true
         val started = generation
         try {
-            val model = PluginBlockPreviewModel.create(request)
-            if (model.isEmpty) {
-                busy = false
-                failed.add(request)
-                revision.intValue++
-                return
-            }
-            NativeItemIconCapture.capture(model) { pixels ->
-                client.execute {
+            PluginBlockPreviewModel.capture(request) { pixels ->
+                client.addScheduledTask {
                     if (started == generation) {
                         busy = false
                         pending.remove(request)
                         if (pixels == null) {
                             failed.add(request)
                             revision.intValue++
-                            return@execute
+                            return@addScheduledTask
                         }
                         val size = NativeItemIconCapture.SIZE
                         images[request] =
@@ -81,11 +75,11 @@ internal object PluginBlockPreviews {
         }
     }
 
-    fun cancelPending(state: BlockState?) {
+    fun cancelPending(state: IBlockState?) {
         pending.remove(state)
     }
 
-    fun unavailable(state: BlockState?): Boolean {
+    fun unavailable(state: IBlockState?): Boolean {
         revision.intValue
         return state == null || state in failed
     }

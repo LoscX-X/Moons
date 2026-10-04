@@ -118,11 +118,11 @@ jobs:
           }
           New-Item -ItemType Directory -Path build/ci/packages -Force | Out-Null
           $files = @()
-          if ($env:PACKAGE_KIND -in @('all', 'loader')) { $files += @{ Prefix = 'moon'; Role = 'loader' } }
-          if ($env:PACKAGE_KIND -in @('all', 'install')) { $files += @{ Prefix = 'moon-install'; Role = 'installer' } }
+          if ($env:PACKAGE_KIND -in @('all', 'loader')) { $files += @{ Prefix = 'moon'; Source = 'Moons'; Role = 'loader' } }
+          if ($env:PACKAGE_KIND -in @('all', 'install')) { $files += @{ Prefix = 'moon-install'; Source = 'Moons-install'; Role = 'installer' } }
           foreach ($entry in $files) {
             $name = '{0}-{1}-{2}.exe' -f $entry.Prefix, $env:CLIENT_VERSION, $env:SHORT_SHA
-            Copy-Item -LiteralPath ('build/dist/{0}.exe' -f $entry.Prefix) -Destination (Join-Path build/ci/packages $name) -Force
+            Copy-Item -LiteralPath ('build/dist/{0}.exe' -f $entry.Source) -Destination (Join-Path build/ci/packages $name) -Force
             ('{0}_name={1}' -f $entry.Role, $name) >> $env:GITHUB_OUTPUT
             ('| {0} file | `{1}` |' -f $entry.Role, $name) >> build/ci/build-info.md
             Write-Output "Release file: $name"
@@ -171,7 +171,7 @@ jobs:
           name: moons-ysm
           retention-days: 7
           overwrite: true
-          path: build/dist/moons-ysm-all.zip
+          path: build/dist/moons-ysm-1.8.9.zip
           if-no-files-found: error
           compression-level: 0
       - name: Upload dependency installer
@@ -234,7 +234,7 @@ jobs:
           - `moon-<version>-<commit>.exe`: validates installed dependencies and loads Moons into Minecraft.
           - If the dependency version is unchanged and the installed files are intact, updating only the loader is enough. The installer skips files whose content is unchanged.
           - The installer contains the runtime; no separate JAR or dependency download is required.
-          - `moons-ysm-all.zip`: standalone YSM bundle with one shared library set and all supported adapters.
+          - `moons-ysm-1.8.9.zip`: standalone YSM libraries and the Minecraft 1.8.9 adapter.
 
           Only assets selected for this run are included. The loader supports Minecraft 26.1.2, 26.2, 26.3, 26.4-snapshot-1.
           NOTES

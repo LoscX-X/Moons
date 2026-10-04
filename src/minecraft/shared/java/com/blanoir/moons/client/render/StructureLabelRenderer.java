@@ -1,10 +1,9 @@
 package com.blanoir.moons.client.render;
 
 import com.blanoir.moons.client.access.MinecraftClientAccess;
-import com.mojang.blaze3d.vertex.PoseStack;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.util.Vec3;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -17,7 +16,7 @@ public final class StructureLabelRenderer {
 
     public static void render(
             Minecraft client,
-            PoseStack matrices,
+            LegacyPoseStack matrices,
             List<Label> labels,
             double scale,
             int backgroundAlpha) {

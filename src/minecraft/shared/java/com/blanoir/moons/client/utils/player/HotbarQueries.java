@@ -1,9 +1,9 @@
 package com.blanoir.moons.client.utils.player;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.world.entity.player.Inventory;
-import net.minecraft.world.item.Item;
-import net.minecraft.world.item.ItemStack;
+import net.minecraft.entity.player.InventoryPlayer;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
 
 import java.util.function.IntPredicate;
 import java.util.function.Predicate;
@@ -12,16 +12,18 @@ import java.util.function.Predicate;
 public final class HotbarQueries {
     private HotbarQueries() {}
 
-    public static int firstItem(Inventory inventory, Item item) {
-        return firstMatch(inventory, stack -> stack.is(item));
+    public static int firstItem(InventoryPlayer inventory, Item item) {
+        return firstMatch(
+                inventory,
+                stack -> stack != null && stack.stackSize > 0 && stack.getItem() == item);
     }
 
     public static int firstItem(Minecraft client, Item item) {
-        return firstItem(client.player.getInventory(), item);
+        return firstItem(client.thePlayer.inventory, item);
     }
 
-    public static int firstMatch(Inventory inventory, Predicate<ItemStack> matches) {
-        return firstSlot(slot -> matches.test(inventory.getItem(slot)));
+    public static int firstMatch(InventoryPlayer inventory, Predicate<ItemStack> matches) {
+        return firstSlot(slot -> matches.test(inventory.getStackInSlot(slot)));
     }
 
     /** Visits slots 0 through 8 in order, stopping at the first match. */

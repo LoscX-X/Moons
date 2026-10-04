@@ -1,15 +1,16 @@
 package com.blanoir.moons.client.utils.rotation.aim;
 
+import com.blanoir.moons.client.compat.math.Mth;
+import com.blanoir.moons.client.compat.math.VecMath;
 import com.blanoir.moons.client.utils.client.ClientReady;
 import com.blanoir.moons.client.utils.combat.CombatGeometry;
 import com.blanoir.moons.client.utils.combat.CombatReach;
 import com.blanoir.moons.client.utils.raytrace.RaytraceUtils;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.util.Mth;
-import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.util.AxisAlignedBB;
+import net.minecraft.util.Vec3;
 
 /**
  * D: SilentAura tracking-point composition, shared by Latest/Legacy Lock, Balance and FullLock.
@@ -38,9 +39,9 @@ public final class AimPointsD {
             Parameters parameters, AimPointsA.State center, AimPointsB.State closest) {}
 
     public static Vec3 trackingAimPoint(
-            Context context, Minecraft client, LivingEntity target, Vec3 look) {
-        Vec3 eye = client.player.getEyePosition();
-        AABB box = CombatGeometry.box(client, target);
+            Context context, Minecraft client, EntityLivingBase target, Vec3 look) {
+        Vec3 eye = client.thePlayer.getPositionEyes(1F);
+        AxisAlignedBB box = CombatGeometry.box(client, target);
         double trackingRange =
                 inAttackRange(context, client, target)
                         ? attackRange(context, client)
@@ -54,7 +55,7 @@ public final class AimPointsD {
                             && CombatGeometry.distanceSquared(client, target)
                                     <= attackRange * attackRange;
             double activeRange = attackReach ? attackRange : trackingRange;
-            if (eye.distanceToSqr(preferred) <= activeRange * activeRange
+            if (eye.squareDistanceTo(preferred) <= activeRange * activeRange
                     && RaytraceUtils.canRayTraceTo(
                             client, eye, preferred, context.parameters().throughBlocks())) {
                 return preferred;
@@ -105,7 +106,7 @@ public final class AimPointsD {
                             !context.parameters().lockMode(),
                             context.parameters().throughBlocks());
         }
-        if (eye.distanceToSqr(preferred) <= trackingRange * trackingRange
+        if (eye.squareDistanceTo(preferred) <= trackingRange * trackingRange
                 && RaytraceUtils.canRayTraceTo(
                         client, eye, preferred, context.parameters().throughBlocks())) {
             return preferred;
@@ -117,9 +118,9 @@ public final class AimPointsD {
     }
 
     public static Vec3 visibleAimPoint(
-            Context context, Minecraft client, LivingEntity target, Vec3 look, double range) {
+            Context context, Minecraft client, EntityLivingBase target, Vec3 look, double range) {
         if (!ClientReady.world(client) || target == null || range <= 0.0D) return null;
-        AABB aimBox = CombatGeometry.box(client, target);
+        AxisAlignedBB aimBox = CombatGeometry.box(client, target);
         return AimPointsC.findBestVisibleSurfacePoint(
                 client,
                 aimBox,
@@ -133,12 +134,13 @@ public final class AimPointsD {
     public static Vec3 lockRayRetentionPoint(
             Context context,
             Minecraft client,
-            LivingEntity target,
+            EntityLivingBase target,
             Vec3 eye,
-            AABB box,
+            AxisAlignedBB box,
             Vec3 look,
             double trackingRange) {
-        if (look == null || look.lengthSqr() <= 1.0E-9D || box.contains(eye)) return null;
+        if (look == null || VecMath.lengthSqr(look) <= 1.0E-9D || VecMath.contains(box, eye))
+            return null;
         double attackRange = attackRange(context, client);
         if (attackRange <= 0.0D
                 || CombatGeometry.distanceSquared(client, target) > attackRange * attackRange) {
@@ -168,9 +170,10 @@ public final class AimPointsD {
                         : AimPointsA.centerTrackingPoint(eye, box);
 
         if (state == RaytraceUtils.EntityRayState.HIT) {
-            var intersection = box.clip(eye, eye.add(direction.scale(attackRange)));
+            var intersection =
+                    VecMath.clip(box, eye, eye.add(VecMath.scale(direction, attackRange)));
             if (intersection.isEmpty()) return null;
-            Vec3 retained = intersection.get().lerp(policyPoint, 0.20D);
+            Vec3 retained = VecMath.lerp(intersection.get(), policyPoint, 0.20D);
             return RaytraceUtils.canRayTraceTo(
                             client, eye, retained, context.parameters().throughBlocks())
                     ? retained
@@ -184,25 +187,27 @@ public final class AimPointsD {
         if (angularRecovery == null) return null;
         // Keep Center's eye-height Y (or Closest's configured Y) while taking
         // only the angularly-nearest surface X/Z from the recovery sampler.
-        Vec3 policyRecovery = new Vec3(angularRecovery.x, policyPoint.y, angularRecovery.z);
-        return eye.distanceToSqr(policyRecovery) <= attackRange * attackRange
+        Vec3 policyRecovery =
+                new Vec3(angularRecovery.xCoord, policyPoint.yCoord, angularRecovery.zCoord);
+        return eye.squareDistanceTo(policyRecovery) <= attackRange * attackRange
                         && RaytraceUtils.canRayTraceTo(
                                 client, eye, policyRecovery, context.parameters().throughBlocks())
                 ? policyRecovery
                 : angularRecovery;
     }
 
-    public static Vec3 fullLockAimPoint(Context context, Vec3 eye, AABB box) {
+    public static Vec3 fullLockAimPoint(Context context, Vec3 eye, AxisAlignedBB box) {
         double height = box.maxY - box.minY;
         double minimumY = box.minY + height * 0.05D;
         double maximumY = box.minY + height * 0.75D;
         return new Vec3(
                 (box.minX + box.maxX) * 0.5D,
-                Mth.clamp(eye.y, minimumY, maximumY),
+                Mth.clamp(eye.yCoord, minimumY, maximumY),
                 (box.minZ + box.maxZ) * 0.5D);
     }
 
-    private static boolean inAttackRange(Context context, Minecraft client, LivingEntity target) {
+    private static boolean inAttackRange(
+            Context context, Minecraft client, EntityLivingBase target) {
         if (!ClientReady.world(client) || target == null) return false;
         double range = attackRange(context, client);
         return range > 0.0D && CombatGeometry.distanceSquared(client, target) <= range * range;

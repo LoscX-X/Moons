@@ -1,6 +1,7 @@
 package com.blanoir.moons.client.module.impl.network;
 
 import com.blanoir.moons.client.chat.ClientChat;
+import com.blanoir.moons.client.compat.math.VecMath;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.DoubleSetting;
 import com.blanoir.moons.client.config.settings.IntSetting;
@@ -14,10 +15,10 @@ import com.blanoir.moons.client.utils.client.ClientReady;
 import com.blanoir.moons.client.utils.math.RandomMath;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.network.Connection;
-import net.minecraft.network.protocol.Packet;
-import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.network.NetworkManager;
+import net.minecraft.network.Packet;
+import net.minecraft.util.Vec3;
 
 /**
  * One-shot FakeLag rolled at the beginning of a genuine head-on sprint.
@@ -118,15 +119,17 @@ public final class RandomFakeLag {
             }
 
             if (queueing) {
-                Player target =
-                        client.level.getEntity(targetId) instanceof Player player ? player : null;
+                EntityPlayer target =
+                        client.theWorld.getEntityByID(targetId) instanceof EntityPlayer player
+                                ? player
+                                : null;
                 if (now - startedAtMs >= durationMs || !isHeadOnSprint(client, target)) {
                     finishLocked(now, true);
                 }
                 return;
             }
 
-            Player target = findHeadOnTarget(client);
+            EntityPlayer target = findHeadOnTarget(client);
             boolean headOnNow = target != null;
             if (headOnNow && !encounterActive) {
                 encounterActive = true;
@@ -144,18 +147,18 @@ public final class RandomFakeLag {
     }
 
     /** @return true when the original send must be cancelled. */
-    public static boolean handleOutgoing(Connection connection, Packet<?> packet) {
+    public static boolean handleOutgoing(NetworkManager connection, Packet<?> packet) {
         if (LagUtils.isReplaying()) {
             return false;
         }
 
         synchronized (LOCK) {
-            PACKETS.observe(connection, Minecraft.getInstance().level);
+            PACKETS.observe(connection, Minecraft.getMinecraft().theWorld);
             if (!ENABLED.get() || !queueing) {
                 return false;
             }
 
-            Minecraft client = Minecraft.getInstance();
+            Minecraft client = Minecraft.getMinecraft();
             long now = LagUtils.nowMillis();
             if (!ClientReady.aliveGameplay(client)
                     || now - startedAtMs >= durationMs
@@ -178,7 +181,7 @@ public final class RandomFakeLag {
             if (!ENABLED.get() || (!queueing && PACKETS.isEmpty())) {
                 return;
             }
-            if (LagPacketPolicy.mustFlushOnIncoming(Minecraft.getInstance(), packet)) {
+            if (LagPacketPolicy.mustFlushOnIncoming(Minecraft.getMinecraft(), packet)) {
                 finishLocked(LagUtils.nowMillis(), true);
             }
         }
@@ -201,9 +204,9 @@ public final class RandomFakeLag {
         }
     }
 
-    private static void startLocked(Player target, long now) {
+    private static void startLocked(EntityPlayer target, long now) {
         queueing = true;
-        targetId = target.getId();
+        targetId = target.getEntityId();
         startedAtMs = now;
         durationMs = randomDelayMs();
     }
@@ -228,17 +231,17 @@ public final class RandomFakeLag {
     }
 
     private static void flushQueueLocked() {
-        PACKETS.flushClient(Minecraft.getInstance());
+        PACKETS.flushClient(Minecraft.getMinecraft());
     }
 
-    private static Player findHeadOnTarget(Minecraft client) {
-        Player best = null;
+    private static EntityPlayer findHeadOnTarget(Minecraft client) {
+        EntityPlayer best = null;
         double bestDistance = Double.MAX_VALUE;
-        for (Player target : client.level.players()) {
+        for (EntityPlayer target : client.theWorld.playerEntities) {
             if (!isHeadOnSprint(client, target)) {
                 continue;
             }
-            double distance = client.player.distanceTo(target);
+            double distance = client.thePlayer.getDistanceToEntity(target);
             if (distance < bestDistance) {
                 bestDistance = distance;
                 best = target;
@@ -247,15 +250,15 @@ public final class RandomFakeLag {
         return best;
     }
 
-    private static boolean isHeadOnSprint(Minecraft client, Player target) {
+    private static boolean isHeadOnSprint(Minecraft client, EntityPlayer target) {
         if (!Targeting.isValidTargetPlayer(client, target)
-                || !client.player.isSprinting()
-                || !client.player.hasLineOfSight(target)) {
+                || !client.thePlayer.isSprinting()
+                || !client.thePlayer.canEntityBeSeen(target)) {
             return false;
         }
 
-        Vec3 offset = target.position().subtract(client.player.position());
-        if (Math.abs(offset.y) > 1.8D) {
+        Vec3 offset = VecMath.position(target).subtract(VecMath.position(client.thePlayer));
+        if (Math.abs(offset.yCoord) > 1.8D) {
             return false;
         }
         Vec3 direction = horizontalUnit(offset);
@@ -263,17 +266,17 @@ public final class RandomFakeLag {
             return false;
         }
 
-        double distance = Math.sqrt(offset.x * offset.x + offset.z * offset.z);
+        double distance = Math.sqrt(offset.xCoord * offset.xCoord + offset.zCoord * offset.zCoord);
         if (distance < RANGE_MIN.get() || distance > RANGE_MAX.get()) {
             return false;
         }
 
-        Vec3 playerLook = horizontalUnit(client.player.getLookAngle());
-        Vec3 targetLook = horizontalUnit(target.getLookAngle());
+        Vec3 playerLook = horizontalUnit(client.thePlayer.getLookVec());
+        Vec3 targetLook = horizontalUnit(target.getLookVec());
         if (playerLook == null
                 || targetLook == null
-                || playerLook.dot(direction) < MIN_FACING_DOT
-                || targetLook.dot(direction.scale(-1.0D)) < MIN_FACING_DOT) {
+                || playerLook.dotProduct(direction) < MIN_FACING_DOT
+                || targetLook.dotProduct(VecMath.scale(direction, -1.0D)) < MIN_FACING_DOT) {
             return false;
         }
 
@@ -281,13 +284,13 @@ public final class RandomFakeLag {
     }
 
     private static Vec3 horizontal(Vec3 value) {
-        return new Vec3(value.x, 0.0D, value.z);
+        return new Vec3(value.xCoord, 0.0D, value.zCoord);
     }
 
     private static Vec3 horizontalUnit(Vec3 value) {
         Vec3 horizontal = horizontal(value);
-        double length = horizontal.length();
-        return length < 1.0E-5D ? null : horizontal.scale(1.0D / length);
+        double length = horizontal.lengthVector();
+        return length < 1.0E-5D ? null : VecMath.scale(horizontal, 1.0D / length);
     }
 
     private static long randomDelayMs() {

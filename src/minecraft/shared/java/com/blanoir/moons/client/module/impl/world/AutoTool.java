@@ -7,6 +7,7 @@
 package com.blanoir.moons.client.module.impl.world;
 
 import com.blanoir.moons.client.chat.ClientChat;
+import com.blanoir.moons.client.compat.math.VecMath;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.IntSetting;
 import com.blanoir.moons.client.config.settings.ModeSetting;
@@ -14,33 +15,29 @@ import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.management.lease.HotbarLease;
 import com.blanoir.moons.client.management.targeting.Targeting;
 import com.blanoir.moons.client.utils.client.ClientReady;
+import com.blanoir.moons.client.utils.inventory.LegacyItems;
+import com.blanoir.moons.client.utils.world.LegacyWorld;
 import com.blanoir.moons.client.utils.world.placement.PlacementCoordinator;
 
+import net.minecraft.block.Block;
+import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.Minecraft;
-import net.minecraft.core.Holder;
-import net.minecraft.core.registries.Registries;
-import net.minecraft.resources.ResourceKey;
-import net.minecraft.tags.ItemTags;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.player.Inventory;
-import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
-import net.minecraft.world.item.enchantment.Enchantment;
-import net.minecraft.world.item.enchantment.Enchantments;
-import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.phys.BlockHitResult;
-import net.minecraft.world.phys.EntityHitResult;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.enchantment.Enchantment;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.entity.player.InventoryPlayer;
+import net.minecraft.init.Blocks;
+import net.minecraft.init.Items;
+import net.minecraft.item.ItemStack;
+import net.minecraft.util.MovingObjectPosition;
+import net.minecraft.util.Vec3;
 
 import java.util.List;
 import java.util.Set;
 
 public final class AutoTool {
     private static final Set<Block> SILK_TOUCH_BLOCKS =
-            Set.of(Blocks.ENDER_CHEST, Blocks.GLOWSTONE, Blocks.SEA_LANTERN, Blocks.TURTLE_EGG);
+            Set.of(Blocks.ender_chest, Blocks.glowstone, Blocks.sea_lantern);
 
     private static final BooleanSetting ENABLED =
             new BooleanSetting.Builder().name("autotool.enabled").defaultValue(false).build();
@@ -110,8 +107,7 @@ public final class AutoTool {
             return;
         }
 
-        if (HOTBAR.active()
-                && client.player.getInventory().getSelectedSlot() != HOTBAR.leasedSlot()) {
+        if (HOTBAR.active() && client.thePlayer.inventory.currentItem != HOTBAR.leasedSlot()) {
             HOTBAR.abandon();
             manualOverride = true;
         }
@@ -123,11 +119,11 @@ public final class AutoTool {
             return;
         }
 
-        BlockState state = miningBlockState(client);
+        IBlockState state = miningBlockState(client);
         if (state != null) {
             if (manualOverride) return;
             int best = findBestToolSlot(client, state);
-            if (best == -1 || best == client.player.getInventory().getSelectedSlot()) {
+            if (best == -1 || best == client.thePlayer.inventory.currentItem) {
                 return;
             }
 
@@ -138,58 +134,61 @@ public final class AutoTool {
         }
     }
 
-    private static BlockState miningBlockState(Minecraft client) {
-        if (!(client.hitResult instanceof BlockHitResult hit)
-                || !client.options.keyAttack.isDown()) {
+    private static IBlockState miningBlockState(Minecraft client) {
+        MovingObjectPosition hit = client.objectMouseOver;
+        if (hit == null
+                || hit.typeOfHit != MovingObjectPosition.MovingObjectType.BLOCK
+                || !client.gameSettings.keyBindAttack.isKeyDown()) {
             return null;
         }
 
-        if (REQUIRE_SNEAKING.get() && !client.player.isShiftKeyDown()) {
+        if (REQUIRE_SNEAKING.get() && !client.thePlayer.isSneaking()) {
             return null;
         }
 
-        BlockState state = client.level.getBlockState(hit.getBlockPos());
-        if (state.isAir() || state.getDestroySpeed(client.level, hit.getBlockPos()) < 0.0F) {
+        IBlockState state = client.theWorld.getBlockState(hit.getBlockPos());
+        if (LegacyWorld.air(state)
+                || state.getBlock().getBlockHardness(client.theWorld, hit.getBlockPos()) < 0.0F) {
             return null;
         }
 
-        double range = client.player.blockInteractionRange();
-        return hit.getLocation().distanceToSqr(client.player.getEyePosition()) <= range * range
+        double range = Minecraft.getMinecraft().playerController.getBlockReachDistance();
+        return hit.hitVec.squareDistanceTo(client.thePlayer.getPositionEyes(1.0F)) <= range * range
                 ? state
                 : null;
     }
 
-    private static int findBestToolSlot(Minecraft client, BlockState state) {
+    private static int findBestToolSlot(Minecraft client, IBlockState state) {
         if (MODE.get() == Mode.STATIC) {
             int slot = STATIC_SLOT.get();
-            return client.player.getInventory().getItem(slot).isEmpty() ? -1 : slot;
+            return LegacyItems.empty(client.thePlayer.inventory.getStackInSlot(slot)) ? -1 : slot;
         }
 
-        if (client.player.getAbilities().instabuild) {
+        if (client.thePlayer.capabilities.isCreativeMode) {
             return -1;
         }
 
-        Inventory inventory = client.player.getInventory();
-        int selected = inventory.getSelectedSlot();
+        InventoryPlayer inventory = client.thePlayer.inventory;
+        int selected = inventory.currentItem;
         boolean silkRequired = SILK_TOUCH.get() && SILK_TOUCH_BLOCKS.contains(state.getBlock());
-        boolean cobweb = state.is(Blocks.COBWEB);
+        boolean cobweb = (state.getBlock() == Blocks.web);
         int best = -1;
         int bestCobwebPriority = Integer.MIN_VALUE;
         float bestSpeed = -1.0F;
 
         for (int slot = 0; slot < 9; slot++) {
-            ItemStack stack = inventory.getItem(slot);
-            if (stack.isEmpty()) {
+            ItemStack stack = inventory.getStackInSlot(slot);
+            if (LegacyItems.empty(stack)) {
                 continue;
             }
 
             if (!IGNORE_DURABILITY.get()
                     && stack.getMaxDamage() > 0
-                    && stack.getMaxDamage() - stack.getDamageValue() <= 2) {
+                    && stack.getMaxDamage() - stack.getItemDamage() <= 2) {
                 continue;
             }
 
-            if (silkRequired && enchantmentLevel(client, stack, Enchantments.SILK_TOUCH) == 0) {
+            if (silkRequired && enchantmentLevel(client, stack, Enchantment.silkTouch) == 0) {
                 continue;
             }
 
@@ -216,19 +215,19 @@ public final class AutoTool {
     }
 
     private static int cobwebPriority(ItemStack stack) {
-        if (stack.is(Items.SHEARS)) {
+        if (LegacyItems.is(stack, Items.shears)) {
             return 2;
         }
-        if (stack.is(ItemTags.SWORDS)) {
+        if (stack.getItem() instanceof net.minecraft.item.ItemSword) {
             return 1;
         }
         return 0;
     }
 
     private static float destroySpeedWithEnchantment(
-            Minecraft client, ItemStack stack, BlockState state) {
-        float speed = stack.getDestroySpeed(state);
-        int efficiency = enchantmentLevel(client, stack, Enchantments.EFFICIENCY);
+            Minecraft client, ItemStack stack, IBlockState state) {
+        float speed = stack.getStrVsBlock(state.getBlock());
+        int efficiency = enchantmentLevel(client, stack, Enchantment.efficiency);
 
         if (speed > 1.0F && efficiency > 0) {
             speed += Math.min(1024.0F, efficiency * efficiency + 1.0F);
@@ -238,19 +237,9 @@ public final class AutoTool {
     }
 
     private static int enchantmentLevel(
-            Minecraft client, ItemStack stack, ResourceKey<Enchantment> enchantment) {
-        var currentLevel = client == null ? null : client.level;
-        if (currentLevel == null) {
-            return 0;
-        }
-
-        Holder<Enchantment> holder =
-                currentLevel
-                        .registryAccess()
-                        .lookupOrThrow(Registries.ENCHANTMENT)
-                        .get(enchantment)
-                        .orElse(null);
-        return holder == null ? 0 : stack.getEnchantments().getLevel(holder);
+            Minecraft client, ItemStack stack, Enchantment enchantment) {
+        return net.minecraft.enchantment.EnchantmentHelper.getEnchantmentLevel(
+                enchantment.effectId, stack);
     }
 
     private static int hotbarDistance(int slot, int selected) {
@@ -262,11 +251,11 @@ public final class AutoTool {
             combatLockTicks--;
         }
 
-        int hurtTime = client.player.hurtTime;
+        int hurtTime = client.thePlayer.hurtTime;
         boolean newlyHurt = hurtTime > lastPlayerHurtTime;
         lastPlayerHurtTime = hurtTime;
         if (newlyHurt
-                && client.player.getLastHurtByMob() instanceof Player attacker
+                && client.thePlayer.getAITarget() instanceof EntityPlayer attacker
                 && Targeting.isValidTargetPlayer(client, attacker)) {
             lockCombat();
         }
@@ -277,47 +266,52 @@ public final class AutoTool {
     }
 
     private static boolean hasImmediateThreat(Minecraft client) {
-        if (client.hitResult instanceof EntityHitResult hit
-                && Targeting.isEnemyPlayer(client, hit.getEntity())
-                && Targeting.isWithinInteractionRange(client, hit.getEntity())) {
+        MovingObjectPosition hit = client.objectMouseOver;
+        if (hit != null
+                && hit.typeOfHit == MovingObjectPosition.MovingObjectType.ENTITY
+                && Targeting.isEnemyPlayer(client, hit.entityHit)
+                && Targeting.isWithinInteractionRange(client, hit.entityHit)) {
             return true;
         }
 
-        for (Player target : client.level.players()) {
+        for (EntityPlayer target : client.theWorld.playerEntities) {
             if (!Targeting.isValidTargetPlayerWithinRange(client, target, 5.5D)
-                    || !client.player.hasLineOfSight(target)) {
+                    || !client.thePlayer.canEntityBeSeen(target)) {
                 continue;
             }
 
-            double distance = client.player.distanceTo(target);
+            double distance = client.thePlayer.getDistanceToEntity(target);
             if (distance <= 3.4D) {
                 return true;
             }
 
-            Vec3 towardPlayer = client.player.position().subtract(target.position());
-            Vec3 horizontalDirection = new Vec3(towardPlayer.x, 0.0D, towardPlayer.z);
-            double directionLength = horizontalDirection.length();
+            Vec3 towardPlayer =
+                    VecMath.position(client.thePlayer).subtract(VecMath.position(target));
+            Vec3 horizontalDirection = new Vec3(towardPlayer.xCoord, 0.0D, towardPlayer.zCoord);
+            double directionLength = horizontalDirection.lengthVector();
             if (directionLength < 1.0E-5D) {
                 return true;
             }
-            horizontalDirection = horizontalDirection.scale(1.0D / directionLength);
+            horizontalDirection = VecMath.scale(horizontalDirection, 1.0D / directionLength);
 
-            Vec3 look = target.getLookAngle();
-            Vec3 horizontalLook = new Vec3(look.x, 0.0D, look.z);
-            double lookLength = horizontalLook.length();
+            Vec3 look = target.getLookVec();
+            Vec3 horizontalLook = new Vec3(look.xCoord, 0.0D, look.zCoord);
+            double lookLength = horizontalLook.lengthVector();
             if (lookLength < 1.0E-5D
-                    || horizontalLook.scale(1.0D / lookLength).dot(horizontalDirection) < 0.35D) {
+                    || VecMath.scale(horizontalLook, 1.0D / lookLength)
+                                    .dotProduct(horizontalDirection)
+                            < 0.35D) {
                 continue;
             }
 
-            Vec3 targetVelocity = target.getDeltaMovement();
-            Vec3 playerVelocity = client.player.getDeltaMovement();
+            Vec3 targetVelocity = VecMath.motion(target);
+            Vec3 playerVelocity = VecMath.motion(client.thePlayer);
             Vec3 relativeVelocity =
                     new Vec3(
-                            targetVelocity.x - playerVelocity.x,
+                            targetVelocity.xCoord - playerVelocity.xCoord,
                             0.0D,
-                            targetVelocity.z - playerVelocity.z);
-            if (relativeVelocity.dot(horizontalDirection) >= 0.025D) {
+                            targetVelocity.zCoord - playerVelocity.zCoord);
+            if (relativeVelocity.dotProduct(horizontalDirection) >= 0.025D) {
                 return true;
             }
         }
@@ -325,7 +319,7 @@ public final class AutoTool {
     }
 
     public static void onAttack(Entity target) {
-        Minecraft client = Minecraft.getInstance();
+        Minecraft client = Minecraft.getMinecraft();
         if (ENABLED.get() && NOT_DURING_COMBAT.get() && Targeting.isEnemyPlayer(client, target)) {
             lockCombat();
         }

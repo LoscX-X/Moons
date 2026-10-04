@@ -15,10 +15,10 @@ import com.blanoir.moons.client.utils.rotation.Rotation;
 import com.blanoir.moons.client.utils.world.placement.PlacementCoordinator;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.network.protocol.game.ClientboundDamageEventPacket;
-import net.minecraft.network.protocol.game.ServerboundAttackPacket;
-import net.minecraft.tags.ItemTags;
-import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.item.ItemSword;
+import net.minecraft.network.play.client.C02PacketUseEntity;
+import net.minecraft.network.play.server.S19PacketEntityStatus;
 
 /** Legacy use/release/attack/reblock lifecycle; damage feedback owns only the visual swings. */
 public final class LegacyBlock {
@@ -29,7 +29,6 @@ public final class LegacyBlock {
     private static int blockedTick = Integer.MIN_VALUE;
     private static int attackReadyTick = Integer.MIN_VALUE;
     private static int reblockTick = Integer.MIN_VALUE;
-    private static boolean lastLegacy;
 
     private LegacyBlock() {}
 
@@ -54,31 +53,32 @@ public final class LegacyBlock {
         EventBus.PACKET_SEND_POST.register(
                 "LegacyBlock.attackSent",
                 event -> {
-                    if (!(event.packet() instanceof ServerboundAttackPacket attack)) return;
-                    Minecraft client = Minecraft.getInstance();
-                    if (!legacy() || !SilentAuraConfig.blockVisual() || target(client) == null)
-                        return;
-                    var attacked = client.level.getEntity(attack.entityId());
-                    if (attacked instanceof LivingEntity
+                    if (!(event.packet() instanceof C02PacketUseEntity attack)
+                            || attack.getAction() != C02PacketUseEntity.Action.ATTACK) return;
+                    Minecraft client = Minecraft.getMinecraft();
+                    if (!SilentAuraConfig.blockVisual() || target(client) == null) return;
+                    var attacked = attack.getEntityFromWorld(client.theWorld);
+                    if (attacked instanceof EntityLivingBase
                             && CombatReach.within(
                                     client, attacked, SilentAuraConfig.blockRange())) {
-                        HITS.sent(attack.entityId(), System.nanoTime());
+                        HITS.sent(attacked.getEntityId(), System.nanoTime());
                     }
                 });
         EventBus.PACKET_RECEIVE_APPLY.register(
                 "LegacyBlock.damage",
                 event -> {
-                    if (!(event.packet() instanceof ClientboundDamageEventPacket damage)) return;
-                    Minecraft client = Minecraft.getInstance();
-                    if (legacy()
-                            && SilentAuraConfig.blockVisual()
+                    if (!(event.packet() instanceof S19PacketEntityStatus damage)
+                            || damage.getOpCode() != 2) return;
+                    Minecraft client = Minecraft.getMinecraft();
+                    if (SilentAuraConfig.blockVisual()
                             && canRun(client)
-                            && event.listener() == client.getConnection()
+                            && event.listener() == client.getNetHandler()
+                            && damage.getEntity(client.theWorld) != null
                             && HITS.confirm(
-                                    damage.entityId(),
-                                    damage.sourceCauseId(),
-                                    damage.sourceDirectId(),
-                                    client.player.getId(),
+                                    damage.getEntity(client.theWorld).getEntityId(),
+                                    -1,
+                                    -1,
+                                    client.thePlayer.getEntityId(),
                                     System.nanoTime())) {
                         BLOCK_HIT.enqueue();
                     }
@@ -101,23 +101,20 @@ public final class LegacyBlock {
                 });
     }
 
-    private static boolean legacy() {
-        return SilentAuraConfig.legacyCombat();
-    }
-
     private static boolean canRun(Minecraft client) {
         return isEnabled()
                 && ClientReady.aliveGameplay(client)
-                && client.player.getMainHandItem().is(ItemTags.SWORDS)
+                && (client.thePlayer.getHeldItem() != null
+                        && client.thePlayer.getHeldItem().getItem() instanceof ItemSword)
                 && controls(client);
     }
 
-    private static LivingEntity target(Minecraft client) {
+    private static EntityLivingBase target(Minecraft client) {
         if (!canRun(client)) return null;
-        LivingEntity target = SilentAuraRuntime.currentTarget(client);
+        EntityLivingBase target = SilentAuraRuntime.currentTarget(client);
         return target != null
-                        && target.isAlive()
-                        && client.level.getEntity(target.getId()) == target
+                        && target.isEntityAlive()
+                        && client.theWorld.getEntityByID(target.getEntityId()) == target
                         && CombatReach.within(client, target, SilentAuraConfig.blockRange())
                 ? target
                 : null;
@@ -129,16 +126,12 @@ public final class LegacyBlock {
     }
 
     private static boolean refresh(Minecraft client) {
-        boolean legacy = legacy();
-        if (lastLegacy != legacy) reset(client);
-        lastLegacy = legacy;
-        if (!legacy) return false;
         if (USE.refresh(client)) {
             releasedTick = SilentAuraCombat.tickId();
             blockedTick = attackReadyTick = reblockTick = Integer.MIN_VALUE;
         }
         if (!canRun(client)
-                || client.player.isUsingItem() && !USE.ownsNativeUse(client)
+                || client.thePlayer.isUsingItem() && !USE.ownsNativeUse(client)
                 || SilentPacketRotation.isBusy()
                 || PlacementCoordinator.busy()) {
             reset(client);
@@ -193,7 +186,7 @@ public final class LegacyBlock {
     public static boolean shouldRenderBlock(Minecraft client) {
         // Let confirmed killing blows finish even after the selector loses the dead target.
         return SilentAuraConfig.blockVisual()
-                && (target(client) != null || legacy() && canRun(client) && BLOCK_HIT.active());
+                && (target(client) != null || canRun(client) && BLOCK_HIT.active());
     }
 
     public static boolean attackAnimationOnly() {
@@ -224,6 +217,6 @@ public final class LegacyBlock {
     }
 
     public static boolean isEnabled() {
-        return legacy() && SilentAuraConfig.enabled() && SilentAuraConfig.block();
+        return SilentAuraConfig.enabled() && SilentAuraConfig.block();
     }
 }

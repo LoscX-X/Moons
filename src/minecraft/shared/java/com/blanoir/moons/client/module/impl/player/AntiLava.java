@@ -2,6 +2,8 @@ package com.blanoir.moons.client.module.impl.player;
 
 import com.blanoir.moons.client.access.MinecraftClientAccess;
 import com.blanoir.moons.client.chat.ClientChat;
+import com.blanoir.moons.client.compat.math.Mth;
+import com.blanoir.moons.client.compat.math.VecMath;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.DoubleSetting;
 import com.blanoir.moons.client.config.settings.IntSetting;
@@ -11,34 +13,32 @@ import com.blanoir.moons.client.management.input.CombatInputController;
 import com.blanoir.moons.client.management.rotation.SilentPacketRotation;
 import com.blanoir.moons.client.management.targeting.Targeting;
 import com.blanoir.moons.client.utils.client.ClientReady;
+import com.blanoir.moons.client.utils.inventory.LegacyItems;
 import com.blanoir.moons.client.utils.math.MathUtils;
 import com.blanoir.moons.client.utils.math.RandomMath;
 import com.blanoir.moons.client.utils.rotation.aim.TargetSelectorF;
 import com.blanoir.moons.client.utils.world.FluidQueries;
+import com.blanoir.moons.client.utils.world.LegacyWorld;
 import com.blanoir.moons.client.utils.world.placement.BlockPlacementUtils;
+import com.blanoir.moons.client.utils.world.placement.LegacyPlacement;
 import com.blanoir.moons.client.utils.world.placement.PlacementCoordinator;
 import com.blanoir.moons.client.utils.world.placement.PlacementRaycast;
 
+import net.minecraft.block.BlockFalling;
+import net.minecraft.block.material.Material;
+import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.Minecraft;
-import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
-import net.minecraft.tags.FluidTags;
-import net.minecraft.util.Mth;
-import net.minecraft.world.InteractionHand;
-import net.minecraft.world.InteractionResult;
-import net.minecraft.world.entity.player.Inventory;
-import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.item.BlockItem;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.context.BlockPlaceContext;
-import net.minecraft.world.item.context.UseOnContext;
-import net.minecraft.world.level.block.FallingBlock;
-import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.BlockHitResult;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.entity.player.InventoryPlayer;
+import net.minecraft.item.ItemBlock;
+import net.minecraft.item.ItemStack;
+import net.minecraft.util.AxisAlignedBB;
+import net.minecraft.util.BlockPos;
+import net.minecraft.util.EnumFacing;
+import net.minecraft.util.MovingObjectPosition;
+import net.minecraft.util.Vec3;
 
-/** Covers a newly placed hostile lava source with a hotbar/offhand block. */
+/** Covers a newly placed hostile lava source with a hotbar block. */
 public final class AntiLava {
     private static final PlacementRaycast RAYS = new PlacementRaycast("antilava");
     private static final double ENEMY_PLACE_REACH = 5.0D;
@@ -48,13 +48,13 @@ public final class AntiLava {
     private static final long EVENT_LIFETIME_MS = 2000L;
     private static final long SAME_SOURCE_DEBOUNCE_MS = 500L;
     private static final double[] FACE_SAMPLES = {0.22D, 0.5D, 0.78D};
-    private static final Direction[] SUPPORT_FACES = {
-        Direction.UP,
-        Direction.NORTH,
-        Direction.SOUTH,
-        Direction.WEST,
-        Direction.EAST,
-        Direction.DOWN
+    private static final EnumFacing[] SUPPORT_FACES = {
+        EnumFacing.UP,
+        EnumFacing.NORTH,
+        EnumFacing.SOUTH,
+        EnumFacing.WEST,
+        EnumFacing.EAST,
+        EnumFacing.DOWN
     };
 
     private static final BooleanSetting ENABLED =
@@ -93,7 +93,6 @@ public final class AntiLava {
     private static BlockPos lastSource;
     private static long lastSourceAtMs;
     private static PlacementPlan activePlan;
-    private static InteractionHand activeHand;
     private static int activeHotbarSlot = -1;
     private static int originalHotbarSlot = -1;
     private static PlacementPhase placementPhase = PlacementPhase.IDLE;
@@ -105,16 +104,16 @@ public final class AntiLava {
         normalizeDelay();
         EventBus.CLIENT_CONTEXT_CHANGED.register("AntiLava.context", event -> shutdown(null));
         PlacementCoordinator.register(PlacementCoordinator.Owner.ANTI_LAVA, AntiLava::isBusy);
-        EventBus.PLAYER_UPDATE.register("AntiLava.playerUpdate", AntiLava::tick);
+        EventBus.PLAYER_UPDATE.register("AntiLava.thePlayerUpdate", AntiLava::tick);
     }
 
     /** Called from ClientLevel block-update hooks; state is only acted on next tick. */
-    public static void onBlockUpdate(BlockPos pos, BlockState state) {
+    public static void onBlockUpdate(BlockPos pos, IBlockState state) {
         if (!ENABLED.get()
                 || pos == null
                 || state == null
-                || !state.getFluidState().is(FluidTags.LAVA)
-                || !state.getFluidState().isSource()) {
+                || !LegacyWorld.fluid(state).is(Material.lava)
+                || !LegacyWorld.fluid(state).isSource()) {
             return;
         }
 
@@ -122,9 +121,9 @@ public final class AntiLava {
         if (pos.equals(lastSource) && now - lastSourceAtMs < SAME_SOURCE_DEBOUNCE_MS) {
             return;
         }
-        pendingSource = pos.immutable();
+        pendingSource = new BlockPos(pos);
         pendingDetectedAtMs = now;
-        lastSource = pos.immutable();
+        lastSource = new BlockPos(pos);
         lastSourceAtMs = now;
     }
 
@@ -162,13 +161,13 @@ public final class AntiLava {
                 || !isLavaSource(client, source)
                 || isUnderPlayerFeet(client, source)
                 || !withinPlayerRange(client, source)
-                || !withinFov(client, Vec3.atCenterOf(source))
+                || !withinFov(client, VecMath.atCenterOf(source))
                 || responsibleEnemy(client, source) == null) {
             return;
         }
 
         PlacementMaterial material = findPlacementMaterial(client);
-        BlockHitResult hit = findSupportHit(client, source);
+        MovingObjectPosition hit = findSupportHit(client, source);
         if (material == null || hit == null) {
             return;
         }
@@ -180,11 +179,10 @@ public final class AntiLava {
             Minecraft client, PlacementPlan plan, PlacementMaterial material) {
         PlacementCoordinator.yieldTo(PlacementCoordinator.Owner.ANTI_LAVA, client);
         activePlan = plan;
-        activeHand = material.hand();
         activeHotbarSlot = material.hotbarSlot();
-        originalHotbarSlot = client.player.getInventory().getSelectedSlot();
-        if (activeHand == InteractionHand.MAIN_HAND && activeHotbarSlot != originalHotbarSlot) {
-            client.player.getInventory().setSelectedSlot(activeHotbarSlot);
+        originalHotbarSlot = client.thePlayer.inventory.currentItem;
+        if (activeHotbarSlot != originalHotbarSlot) {
+            client.thePlayer.inventory.currentItem = activeHotbarSlot;
         }
 
         CombatInputController.suppressAttack(client, CombatInputController.Owner.ANTI_LAVA);
@@ -200,7 +198,7 @@ public final class AntiLava {
             placementPhase = PlacementPhase.TURNING_TO_PLACE;
             SilentPacketRotation.beginRotation(
                     client,
-                    activePlan.hit().getLocation(),
+                    activePlan.hit().hitVec,
                     ROTATION_SMOOTH_TICKS,
                     SilentPacketRotation.Mode.INSTANT,
                     () -> placementPhase = PlacementPhase.WAITING_FOR_PLACE_ROTATION);
@@ -216,8 +214,8 @@ public final class AntiLava {
                 return;
             }
             if (MathUtils.withinRotationTolerance(
-                    client.player.getYRot() - SilentPacketRotation.getSentYaw(),
-                    client.player.getXRot() - SilentPacketRotation.getSentPitch(),
+                    client.thePlayer.rotationYaw - SilentPacketRotation.getSentYaw(),
+                    client.thePlayer.rotationPitch - SilentPacketRotation.getSentPitch(),
                     0.35F)) {
                 restoreMaterial(client);
             } else {
@@ -244,17 +242,16 @@ public final class AntiLava {
                 || !isLavaSource(client, plan.source())
                 || isUnderPlayerFeet(client, plan.source())
                 || !withinPlayerRange(client, plan.source())
-                || (activeHand == InteractionHand.MAIN_HAND
-                        && client.player.getInventory().getSelectedSlot() != activeHotbarSlot)) {
+                || (client.thePlayer.inventory.currentItem != activeHotbarSlot)) {
             beginReturnRotation(client);
             return;
         }
 
-        BlockHitResult currentHit = findSupportHit(client, plan.source());
-        if (currentHit != null && canPlace(client, activeHand, activeHotbarSlot, currentHit)) {
-            InteractionResult result = useOnSilently(client, activeHand, currentHit);
-            if (result.consumesAction()) {
-                MinecraftClientAccess.animatePlacement(client.player, activeHand, true);
+        MovingObjectPosition currentHit = findSupportHit(client, plan.source());
+        if (currentHit != null && canPlace(client, activeHotbarSlot, currentHit)) {
+            boolean result = useOnSilently(client, currentHit);
+            if (result) {
+                MinecraftClientAccess.animatePlacement(client.thePlayer, true);
             }
         }
         placementPhase = PlacementPhase.WAITING_FOR_PLACE_PACKET;
@@ -268,20 +265,21 @@ public final class AntiLava {
                 () -> placementPhase = PlacementPhase.WAITING_FOR_RETURN_ROTATION);
     }
 
-    private static Player responsibleEnemy(Minecraft client, BlockPos source) {
-        Vec3 center = Vec3.atCenterOf(source);
-        Player best = null;
+    private static EntityPlayer responsibleEnemy(Minecraft client, BlockPos source) {
+        Vec3 center = VecMath.atCenterOf(source);
+        EntityPlayer best = null;
         double bestScore = Double.MAX_VALUE;
-        for (Player target : client.level.players()) {
+        for (EntityPlayer target : client.theWorld.playerEntities) {
             if (!Targeting.isValidTargetPlayer(client, target)) {
                 continue;
             }
-            Vec3 toSource = center.subtract(target.getEyePosition());
-            double distance = toSource.length();
+            Vec3 toSource = center.subtract(target.getPositionEyes(1.0F));
+            double distance = toSource.lengthVector();
             if (distance > ENEMY_PLACE_REACH || distance < 1.0E-5D) {
                 continue;
             }
-            double lookDot = target.getLookAngle().dot(toSource.scale(1.0D / distance));
+            double lookDot =
+                    target.getLookVec().dotProduct(VecMath.scale(toSource, 1.0D / distance));
             if (distance > 2.5D && lookDot < ENEMY_LOOK_DOT) {
                 continue;
             }
@@ -295,98 +293,95 @@ public final class AntiLava {
     }
 
     private static PlacementMaterial findPlacementMaterial(Minecraft client) {
-        // Offhand is intentionally first: no hotbar swap is needed.
-        if (isValidBlock(client, client.player.getOffhandItem())) {
-            return new PlacementMaterial(InteractionHand.OFF_HAND, -1);
-        }
-
-        Inventory inventory = client.player.getInventory();
-        int selected = inventory.getSelectedSlot();
-        if (isValidBlock(client, inventory.getItem(selected))) {
-            return new PlacementMaterial(InteractionHand.MAIN_HAND, selected);
+        InventoryPlayer inventory = client.thePlayer.inventory;
+        int selected = inventory.currentItem;
+        if (isValidBlock(client, inventory.getStackInSlot(selected))) {
+            return new PlacementMaterial(selected);
         }
 
         int bestSlot = -1;
         int bestCount = -1;
         for (int slot = 0; slot < 9; slot++) {
-            ItemStack stack = inventory.getItem(slot);
-            if (isValidBlock(client, stack) && stack.getCount() > bestCount) {
+            ItemStack stack = inventory.getStackInSlot(slot);
+            if (isValidBlock(client, stack) && stack.stackSize > bestCount) {
                 bestSlot = slot;
-                bestCount = stack.getCount();
+                bestCount = stack.stackSize;
             }
         }
-        return bestSlot == -1 ? null : new PlacementMaterial(InteractionHand.MAIN_HAND, bestSlot);
+        return bestSlot == -1 ? null : new PlacementMaterial(bestSlot);
     }
 
     private static boolean isValidBlock(Minecraft client, ItemStack stack) {
-        if (stack.isEmpty()
-                || !(stack.getItem() instanceof BlockItem blockItem)
-                || blockItem.getBlock() instanceof FallingBlock) {
+        if (LegacyItems.empty(stack)
+                || !(stack.getItem() instanceof ItemBlock blockItem)
+                || blockItem.getBlock() instanceof BlockFalling) {
             return false;
         }
-        BlockState state = blockItem.getBlock().defaultBlockState();
-        return BlockPlacementUtils.hasSolidPlacementShape(client.level, state);
+        IBlockState state = blockItem.getBlock().getDefaultState();
+        return BlockPlacementUtils.hasSolidPlacementShape(client.theWorld, state);
     }
 
-    private static boolean canPlace(
-            Minecraft client, InteractionHand hand, int hotbarSlot, BlockHitResult hit) {
+    private static boolean canPlace(Minecraft client, int hotbarSlot, MovingObjectPosition hit) {
         ItemStack stack =
-                hand == InteractionHand.OFF_HAND
-                        ? client.player.getOffhandItem()
-                        : hotbarSlot >= 0
-                                ? client.player.getInventory().getItem(hotbarSlot)
-                                : ItemStack.EMPTY;
-        if (!isValidBlock(client, stack) || !(stack.getItem() instanceof BlockItem blockItem)) {
+                hotbarSlot >= 0
+                        ? client.thePlayer.inventory.getStackInSlot(hotbarSlot)
+                        : LegacyItems.EMPTY;
+        if (!isValidBlock(client, stack) || !(stack.getItem() instanceof ItemBlock blockItem)) {
             return false;
         }
-        UseOnContext use = new UseOnContext(client.player, hand, hit);
-        return blockItem.getBlock().getStateForPlacement(new BlockPlaceContext(use)) != null;
+        LegacyPlacement.Context use = new LegacyPlacement.Context(client.thePlayer, stack, hit);
+        return LegacyPlacement.state(blockItem.getBlock(), use) != null;
     }
 
-    private static InteractionResult useOnSilently(
-            Minecraft client, InteractionHand hand, BlockHitResult hit) {
-        if (!RAYS.canUse(client, hit)) return InteractionResult.PASS;
-        float cameraYaw = client.player.getYRot();
-        float cameraPitch = client.player.getXRot();
-        client.player.setYRot(SilentPacketRotation.getInteractionYaw(client));
-        client.player.setXRot(SilentPacketRotation.getInteractionPitch(client));
+    private static boolean useOnSilently(Minecraft client, MovingObjectPosition hit) {
+        if (!RAYS.canUse(client, hit)) return false;
+        float cameraYaw = client.thePlayer.rotationYaw;
+        float cameraPitch = client.thePlayer.rotationPitch;
+        client.thePlayer.rotationYaw = SilentPacketRotation.getInteractionYaw(client);
+        client.thePlayer.rotationPitch = SilentPacketRotation.getInteractionPitch(client);
         try {
-            return client.gameMode.useItemOn(client.player, hand, hit);
+            return client.playerController.onPlayerRightClick(
+                    client.thePlayer,
+                    client.theWorld,
+                    client.thePlayer.getHeldItem(),
+                    hit.getBlockPos(),
+                    hit.sideHit,
+                    hit.hitVec);
         } finally {
-            client.player.setYRot(cameraYaw);
-            client.player.setXRot(cameraPitch);
+            client.thePlayer.rotationYaw = cameraYaw;
+            client.thePlayer.rotationPitch = cameraPitch;
         }
     }
 
-    private static BlockHitResult findSupportHit(Minecraft client, BlockPos source) {
+    private static MovingObjectPosition findSupportHit(Minecraft client, BlockPos source) {
         if (!isLavaSource(client, source)) return null;
         return TargetSelectorF.select(
                 RAYS,
                 client,
                 source,
-                client.player.getEyePosition(),
+                client.thePlayer.getPositionEyes(1.0F),
                 effectiveRange(client),
                 SUPPORT_FACES,
                 FACE_SAMPLES);
     }
 
     private static boolean isLavaSource(Minecraft client, BlockPos source) {
-        BlockState state = client.level.getBlockState(source);
-        return FluidQueries.isSource(state.getFluidState(), FluidTags.LAVA);
+        IBlockState state = client.theWorld.getBlockState(source);
+        return FluidQueries.isSource(LegacyWorld.fluid(state), Material.lava);
     }
 
     private static boolean withinPlayerRange(Minecraft client, BlockPos source) {
-        return client.player.getEyePosition().distanceToSqr(Vec3.atCenterOf(source))
+        return client.thePlayer.getPositionEyes(1.0F).squareDistanceTo(VecMath.atCenterOf(source))
                 <= effectiveRange(client) * effectiveRange(client);
     }
 
     /**
      * Ignores lava occupying the player's feet cell or the block immediately
-     * below their footprint. Horizontal AABB overlap also handles standing on
+     * below their footprint. Horizontal AxisAlignedBB overlap also handles standing on
      * a block edge instead of relying only on the player's center position.
      */
     private static boolean isUnderPlayerFeet(Minecraft client, BlockPos source) {
-        AABB playerBox = client.player.getBoundingBox();
+        AxisAlignedBB playerBox = client.thePlayer.getEntityBoundingBox();
         boolean overlapsFootprint =
                 playerBox.maxX > source.getX() + 1.0E-4D
                         && playerBox.minX < source.getX() + 1.0D - 1.0E-4D
@@ -402,13 +397,16 @@ public final class AntiLava {
     }
 
     private static double effectiveRange(Minecraft client) {
-        return Math.min(RANGE.get(), client.player.blockInteractionRange());
+        return Math.min(
+                RANGE.get(), Minecraft.getMinecraft().playerController.getBlockReachDistance());
     }
 
     private static boolean withinFov(Minecraft client, Vec3 point) {
         return MathUtils.withinFov(
                 MathUtils.viewAngle(
-                        client.player.getEyePosition(), client.player.getLookAngle(), point),
+                        client.thePlayer.getPositionEyes(1.0F),
+                        client.thePlayer.getLookVec(),
+                        point),
                 FOV.get());
     }
 
@@ -417,19 +415,17 @@ public final class AntiLava {
     }
 
     private static void restoreMaterial(Minecraft client) {
-        var currentPlayer = client == null ? null : client.player;
+        var currentPlayer = client == null ? null : client.thePlayer;
         boolean ownedRotation = activePlan != null;
         if (client != null
                 && currentPlayer != null
-                && activeHand == InteractionHand.MAIN_HAND
                 && activeHotbarSlot >= 0
                 && originalHotbarSlot >= 0
-                && currentPlayer.getInventory().getSelectedSlot() == activeHotbarSlot) {
-            currentPlayer.getInventory().setSelectedSlot(originalHotbarSlot);
+                && currentPlayer.inventory.currentItem == activeHotbarSlot) {
+            currentPlayer.inventory.currentItem = originalHotbarSlot;
         }
         CombatInputController.releaseAttack(client, CombatInputController.Owner.ANTI_LAVA);
         activePlan = null;
-        activeHand = null;
         activeHotbarSlot = -1;
         originalHotbarSlot = -1;
         placementPhase = PlacementPhase.IDLE;
@@ -465,7 +461,7 @@ public final class AntiLava {
                         + ", fov: "
                         + format(FOV.get())
                         + " degrees"
-                        + ", material: offhand first."
+                        + ", material: hotbar."
                         + " Usage: .moons antilava <enable|disable|delay 1-20 [1-20]|range 1-6|fov 1-360>.");
         return 1;
     }
@@ -508,9 +504,9 @@ public final class AntiLava {
         return value == (long) value ? Long.toString((long) value) : Double.toString(value);
     }
 
-    private record PlacementPlan(BlockPos source, BlockHitResult hit) {}
+    private record PlacementPlan(BlockPos source, MovingObjectPosition hit) {}
 
-    private record PlacementMaterial(InteractionHand hand, int hotbarSlot) {}
+    private record PlacementMaterial(int hotbarSlot) {}
 
     private enum PlacementPhase {
         IDLE,

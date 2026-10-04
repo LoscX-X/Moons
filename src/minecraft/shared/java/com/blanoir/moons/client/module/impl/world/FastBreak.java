@@ -6,9 +6,9 @@ import com.blanoir.moons.client.config.settings.ModeSetting;
 import com.blanoir.moons.client.event.EventBus;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.network.protocol.Packet;
-import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
-import net.minecraft.world.item.ItemStack;
+import net.minecraft.item.ItemStack;
+import net.minecraft.network.Packet;
+import net.minecraft.network.play.client.C07PacketPlayerDigging;
 
 import java.util.List;
 
@@ -66,35 +66,33 @@ public final class FastBreak {
     }
 
     public static void handleOutgoingPacket(Packet<?> packet) {
-        Minecraft client = Minecraft.getInstance();
-        var currentPlayer = client == null ? null : client.player;
+        Minecraft client = Minecraft.getMinecraft();
+        var currentPlayer = client == null ? null : client.thePlayer;
         if (!ENABLED.get()
                 || MODE.get() == Mode.OFF
                 || client == null
                 || currentPlayer == null
-                || client.level == null) {
+                || client.theWorld == null) {
             return;
         }
 
-        if (ONLY_TOOL.get() && !isMiningTool(currentPlayer.getMainHandItem())) {
+        if (ONLY_TOOL.get() && !isMiningTool(currentPlayer.getHeldItem())) {
             return;
         }
 
-        if (currentPlayer.connection == null) {
+        if (currentPlayer.sendQueue == null) {
             return;
         }
 
         if (MODE.get() == Mode.ABORT_ANOTHER
-                && packet instanceof ServerboundPlayerActionPacket actionPacket
-                && actionPacket.getAction()
-                        == ServerboundPlayerActionPacket.Action.STOP_DESTROY_BLOCK) {
+                && packet instanceof C07PacketPlayerDigging actionPacket
+                && actionPacket.getStatus() == C07PacketPlayerDigging.Action.STOP_DESTROY_BLOCK) {
 
-            currentPlayer.connection.send(
-                    new ServerboundPlayerActionPacket(
-                            ServerboundPlayerActionPacket.Action.ABORT_DESTROY_BLOCK,
-                            actionPacket.getPos().above(),
-                            actionPacket.getDirection(),
-                            actionPacket.getSequence()));
+            currentPlayer.sendQueue.addToSendQueue(
+                    new C07PacketPlayerDigging(
+                            C07PacketPlayerDigging.Action.ABORT_DESTROY_BLOCK,
+                            actionPacket.getPosition().up(),
+                            actionPacket.getFacing()));
         }
     }
 
@@ -107,15 +105,10 @@ public final class FastBreak {
     }
 
     private static boolean isMiningTool(ItemStack stack) {
-        return stack.isCorrectToolForDrops(
-                        Minecraft.getInstance()
-                                .level
-                                .getBlockState(
-                                        Minecraft.getInstance().player.blockPosition().below()))
-                || stack.getItem().toString().contains("pickaxe")
-                || stack.getItem().toString().contains("axe")
-                || stack.getItem().toString().contains("shovel")
-                || stack.getItem().toString().contains("hoe");
+        return stack != null
+                && (stack.getItem() instanceof net.minecraft.item.ItemTool
+                        || stack.getItem() instanceof net.minecraft.item.ItemHoe
+                        || stack.getItem() instanceof net.minecraft.item.ItemShears);
     }
 
     private static String toggleText(boolean value) {

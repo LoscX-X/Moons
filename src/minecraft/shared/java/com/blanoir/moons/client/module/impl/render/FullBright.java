@@ -7,8 +7,8 @@ import com.blanoir.moons.client.config.settings.ModeSetting;
 import com.blanoir.moons.client.event.EventBus;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.world.effect.MobEffectInstance;
-import net.minecraft.world.effect.MobEffects;
+import net.minecraft.potion.Potion;
+import net.minecraft.potion.PotionEffect;
 
 import java.util.List;
 
@@ -57,17 +57,17 @@ public final class FullBright {
     }
 
     private static void tick(Minecraft client) {
-        var currentPlayer = client == null ? null : client.player;
+        var currentPlayer = client == null ? null : client.thePlayer;
         if (!ENABLED.get() || client == null || currentPlayer == null) {
             return;
         }
 
         if (isNightVisionMode()) {
-            currentPlayer.addEffect(
-                    new MobEffectInstance(MobEffects.NIGHT_VISION, NIGHT_VISION_DURATION));
+            currentPlayer.addPotionEffect(
+                    new PotionEffect(Potion.nightVision.id, NIGHT_VISION_DURATION));
         } else if (gamma < BRIGHTNESS.get()) {
             if (gamma == 0.0F) {
-                gamma = client.options.gamma().get().floatValue();
+                gamma = client.gameSettings.gammaSetting;
             }
             gamma = Math.min(gamma + GAMMA_STEP, BRIGHTNESS.get());
         }
@@ -119,21 +119,21 @@ public final class FullBright {
     }
 
     public static int setEnabled(Minecraft client, boolean newEnabled) {
-        var currentPlayer = client == null ? null : client.player;
+        var currentPlayer = client == null ? null : client.thePlayer;
         ENABLED.set(newEnabled);
 
         if (ENABLED.get()) {
             if (isNightVisionMode()) {
                 if (currentPlayer != null) {
-                    currentPlayer.addEffect(
-                            new MobEffectInstance(MobEffects.NIGHT_VISION, NIGHT_VISION_DURATION));
+                    currentPlayer.addPotionEffect(
+                            new PotionEffect(Potion.nightVision.id, NIGHT_VISION_DURATION));
                 }
             } else {
-                gamma = client == null ? 0.0F : client.options.gamma().get().floatValue();
+                gamma = client == null ? 0.0F : client.gameSettings.gammaSetting;
             }
         } else {
             if (isNightVisionMode() && currentPlayer != null) {
-                currentPlayer.removeEffect(MobEffects.NIGHT_VISION);
+                currentPlayer.removePotionEffect(Potion.nightVision.id);
             }
             gamma = 0.0F;
         }
@@ -142,21 +142,21 @@ public final class FullBright {
     }
 
     public static int setMode(Minecraft client, String newMode) {
-        var currentPlayer = client == null ? null : client.player;
+        var currentPlayer = client == null ? null : client.thePlayer;
         MODE.deserialize(newMode);
         boolean nightVision = isNightVisionMode();
 
         if (ENABLED.get()) {
             if (nightVision) {
                 if (currentPlayer != null) {
-                    currentPlayer.addEffect(
-                            new MobEffectInstance(MobEffects.NIGHT_VISION, NIGHT_VISION_DURATION));
+                    currentPlayer.addPotionEffect(
+                            new PotionEffect(Potion.nightVision.id, NIGHT_VISION_DURATION));
                 }
             } else {
                 if (currentPlayer != null) {
-                    currentPlayer.removeEffect(MobEffects.NIGHT_VISION);
+                    currentPlayer.removePotionEffect(Potion.nightVision.id);
                 }
-                gamma = client == null ? 0.0F : client.options.gamma().get().floatValue();
+                gamma = client == null ? 0.0F : client.gameSettings.gammaSetting;
             }
         }
 

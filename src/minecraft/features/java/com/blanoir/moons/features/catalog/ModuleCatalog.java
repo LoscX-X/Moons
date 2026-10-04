@@ -8,8 +8,6 @@ public final class ModuleCatalog {
 
     public static void register() {
         ModuleRegistry.add(Combat.autoClicker());
-        ModuleRegistry.add(Combat.autoSpear());
-        ModuleRegistry.add(Combat.autoMace());
         ModuleRegistry.add(Combat.reach());
         ModuleRegistry.add(Combat.misplace());
         ModuleRegistry.add(Combat.hitSelect());
@@ -34,7 +32,6 @@ public final class ModuleCatalog {
         ModuleRegistry.add(Movement.noJumpDelay());
         ModuleRegistry.add(World.fastPlace());
         ModuleRegistry.add(Player.rightClick());
-        ModuleRegistry.add(Player.autoTotem());
         ModuleRegistry.add(Player.autoArmor());
         ModuleRegistry.add(Player.invManager());
         ModuleRegistry.add(Player.invClear());

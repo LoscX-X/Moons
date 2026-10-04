@@ -2,34 +2,31 @@ package com.blanoir.moons.client.module.impl.network.backtrack;
 
 import com.blanoir.moons.client.access.PacketAccess;
 import com.blanoir.moons.client.chat.ClientChat;
+import com.blanoir.moons.client.compat.math.VecMath;
 import com.blanoir.moons.client.event.frame.FrameEvent;
 import com.blanoir.moons.client.event.frame.WorldRenderEvent;
 import com.blanoir.moons.client.management.network.LagUtils;
 import com.blanoir.moons.client.management.network.TrackedEntityPosition;
 import com.blanoir.moons.client.utils.math.RandomMath;
-import com.mojang.blaze3d.vertex.PoseStack;
+import com.blanoir.moons.client.utils.world.LegacyWorld;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.multiplayer.ClientLevel;
-import net.minecraft.client.multiplayer.ClientPacketListener;
-import net.minecraft.client.renderer.SubmitNodeCollector;
-import net.minecraft.client.renderer.state.level.LevelRenderState;
-import net.minecraft.network.PacketListener;
-import net.minecraft.network.protocol.Packet;
-import net.minecraft.network.protocol.PacketType;
-import net.minecraft.network.protocol.common.ClientboundDisconnectPacket;
-import net.minecraft.network.protocol.game.ClientGamePacketListener;
-import net.minecraft.network.protocol.game.ClientboundEntityPositionSyncPacket;
-import net.minecraft.network.protocol.game.ClientboundLoginPacket;
-import net.minecraft.network.protocol.game.ClientboundMoveEntityPacket;
-import net.minecraft.network.protocol.game.ClientboundPlayerPositionPacket;
-import net.minecraft.network.protocol.game.ClientboundRemoveEntitiesPacket;
-import net.minecraft.network.protocol.game.ClientboundRespawnPacket;
-import net.minecraft.network.protocol.game.ClientboundSetHealthPacket;
-import net.minecraft.network.protocol.game.ClientboundTeleportEntityPacket;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.client.multiplayer.WorldClient;
+import net.minecraft.client.network.NetHandlerPlayClient;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.network.INetHandler;
+import net.minecraft.network.Packet;
+import net.minecraft.network.play.INetHandlerPlayClient;
+import net.minecraft.network.play.server.S01PacketJoinGame;
+import net.minecraft.network.play.server.S06PacketUpdateHealth;
+import net.minecraft.network.play.server.S07PacketRespawn;
+import net.minecraft.network.play.server.S08PacketPlayerPosLook;
+import net.minecraft.network.play.server.S13PacketDestroyEntities;
+import net.minecraft.network.play.server.S14PacketEntity;
+import net.minecraft.network.play.server.S18PacketEntityTeleport;
+import net.minecraft.network.play.server.S40PacketDisconnect;
+import net.minecraft.util.Vec3;
 
 /** Owns the selected target and history for Attack, Range and Intent modes on the client thread. */
 public final class BacktrackRuntime {
@@ -37,7 +34,7 @@ public final class BacktrackRuntime {
     private final TrackedEntityPosition position = new TrackedEntityPosition();
     private final BacktrackPacketQueue<Snapshot> packets = new BacktrackPacketQueue<>(1024);
     private final BacktrackOverlay overlay;
-    private LivingEntity target;
+    private EntityLivingBase target;
     private int tick;
     private long attackedAt = -1;
     private long blockedUntil;
@@ -51,18 +48,21 @@ public final class BacktrackRuntime {
     }
 
     /** Netty entry point. Vanilla's processor preserves spawn/move/remove ordering. */
-    public boolean handleIncomingPacket(Packet<?> packet, PacketListener listener) {
-        if (!config.enabled() || !(listener instanceof ClientGamePacketListener gameListener))
+    public boolean handleIncomingPacket(Packet<?> packet, INetHandler listener) {
+        if (!config.enabled() || !(listener instanceof INetHandlerPlayClient gameListener))
             return false;
-        // Login creates LocalPlayer, which Minecraft.getConnection() depends on.
+        // Login creates LocalPlayer, which Minecraft.getNetHandler() depends on.
         // It must reach vanilla before a replay envelope can validate that connection.
-        if (packet instanceof ClientboundLoginPacket) return false;
+        if (packet instanceof S01PacketJoinGame) return false;
         if (!isMovement(packet)
-                && !(packet instanceof ClientboundRemoveEntitiesPacket)
+                && !(packet instanceof S13PacketDestroyEntities)
                 && !resetsTracking(packet)) return false;
-        Minecraft.getInstance()
-                .packetProcessor()
-                .scheduleIfPossible(gameListener, new TrackingPacket(this, packet));
+        Minecraft client = Minecraft.getMinecraft();
+        client.addScheduledTask(
+                () -> {
+                    if (client.getNetHandler() != gameListener) return;
+                    if (!config.enabled() || !receive(client, packet)) apply(packet, gameListener);
+                });
         return true;
     }
 
@@ -76,10 +76,10 @@ public final class BacktrackRuntime {
         }
         attackedAt = nowMillis();
         if (config.targetMode() != BacktrackConfig.TargetMode.ATTACK) return;
-        select(client, (LivingEntity) entity);
+        select(client, (EntityLivingBase) entity);
     }
 
-    private void select(Minecraft client, LivingEntity entity) {
+    private void select(Minecraft client, EntityLivingBase entity) {
         if (entity == null) {
             packets.drain(nowMillis());
             return;
@@ -92,7 +92,7 @@ public final class BacktrackRuntime {
                         .acceptsAttackAge(
                                 attackedAt < 0 ? -1 : now - attackedAt, config.lastAttackMillis()))
             return;
-        double distance = distanceSquared(client, entity, entity.position());
+        double distance = distanceSquared(client, entity, VecMath.position(entity));
         if (distance < config.minRange() * config.minRange() || distance > maxRangeSquared())
             return;
         if (entity != target) {
@@ -116,33 +116,33 @@ public final class BacktrackRuntime {
 
     private boolean receive(Minecraft client, Packet<?> packet) {
         if (resetsTracking(packet)
-                || (packet instanceof ClientboundRemoveEntitiesPacket remove
+                || (packet instanceof S13PacketDestroyEntities remove
                         && target != null
-                        && PacketAccess.removedEntityIds(remove).contains(target.getId()))) {
+                        && PacketAccess.removedEntityIds(remove).contains(target.getEntityId()))) {
             release();
             return false;
         }
-        if (!validate(client) || !movesTarget(packet, client.level)) return false;
+        if (!validate(client) || !movesTarget(packet, client.theWorld)) return false;
 
         // Relative teleport flags are interpreted by vanilla after prior deltas replay.
-        if (packet instanceof ClientboundTeleportEntityPacket) {
+        if (packet instanceof S18PacketEntityTeleport) {
             release();
             return false;
         }
         long now = nowMillis();
         packets.releaseDue(now, this::replay);
         Vec3 previous = position.base();
-        Vec3 real = position.handlePacket(packet, client.level, target);
+        Vec3 real = position.handlePacket(packet, client.theWorld, target);
         if (real == null) return false;
         // Discontinuous teleports end history. Direction changes never restart its delay.
-        if (previous.distanceToSqr(real) > 25.0) {
+        if (previous.squareDistanceTo(real) > 25.0) {
             release();
             return false;
         }
         if (distanceSquared(client, target, real) > maxRangeSquared()) packets.drain(now);
         if (packets.size() >= config.queueLimit()
                 || !packets.offer(
-                        new Snapshot(packet, client.getConnection(), client.level), now)) {
+                        new Snapshot(packet, client.getNetHandler(), client.theWorld), now)) {
             release();
             return false;
         }
@@ -169,7 +169,7 @@ public final class BacktrackRuntime {
     }
 
     public void frame(FrameEvent event) {
-        if (!config.enabled() || !event.client().isSameThread()) return;
+        if (!config.enabled() || !event.client().isCallingFromMinecraftThread()) return;
         advance(event.client());
         overlay.frame(visibleTarget(), position.base(), event.deltaSeconds());
     }
@@ -188,18 +188,18 @@ public final class BacktrackRuntime {
         }
         if (target == null) return false;
         // Entity identity matters: IDs can be reused after a dimension/context change.
-        if (client.level.getEntity(target.getId()) != target) {
+        if (client.theWorld.getEntityByID(target.getEntityId()) != target) {
             discard();
             return false;
         }
         long now = nowMillis();
-        double visibleDistance = distanceSquared(client, target, target.position());
+        double visibleDistance = distanceSquared(client, target, VecMath.position(target));
         boolean inRange =
                 visibleDistance >= config.minRange() * config.minRange()
                         && visibleDistance <= maxRangeSquared();
         if (inRange) lastInRange = now;
         if (!BacktrackTargets.eligible(client, target)
-                || client.player.tickCount <= 10
+                || client.thePlayer.ticksExisted <= 10
                 || config.delayMillis() == 0
                 || !config.targetMode()
                         .acceptsAttackAge(
@@ -234,7 +234,7 @@ public final class BacktrackRuntime {
 
     private void resetTarget() {
         target = null;
-        position.base(Vec3.ZERO);
+        position.base(VecMath.ZERO);
         overlay.reset();
     }
 
@@ -248,12 +248,12 @@ public final class BacktrackRuntime {
 
     private int sessionDelay(Minecraft client) {
         int maximum = config.delayMillis();
-        if (config.pingRatio() > 0 && client.getConnection() != null) {
-            var info = client.getConnection().getPlayerInfo(client.player.getUUID());
-            if (info != null && info.getLatency() > 0)
+        if (config.pingRatio() > 0 && client.getNetHandler() != null) {
+            var info = client.getNetHandler().getPlayerInfo(client.thePlayer.getUniqueID());
+            if (info != null && info.getResponseTime() > 0)
                 maximum =
                         Math.clamp(
-                                (int) Math.round(info.getLatency() * config.pingRatio()),
+                                (int) Math.round(info.getResponseTime() * config.pingRatio()),
                                 config.minDelayMillis(),
                                 maximum);
         }
@@ -264,56 +264,50 @@ public final class BacktrackRuntime {
         overlay.renderEsp(event, visibleTarget(), position.base());
     }
 
-    public void renderModel(
-            PoseStack poses, LevelRenderState state, SubmitNodeCollector collector) {
-        overlay.renderModel(poses, state, collector, visibleTarget(), position.base());
+    public void renderModel(float partialTicks) {
+        overlay.renderModel(partialTicks, visibleTarget(), position.base());
     }
 
-    private LivingEntity visibleTarget() {
-        return config.enabled() && target != null && target.isAlive() && !packets.isEmpty()
+    private EntityLivingBase visibleTarget() {
+        return config.enabled() && target != null && target.isEntityAlive() && !packets.isEmpty()
                 ? target
                 : null;
     }
 
     private void replay(Snapshot snapshot) {
-        Minecraft client = Minecraft.getInstance();
+        Minecraft client = Minecraft.getMinecraft();
         if (client != null
-                && client.getConnection() == snapshot.listener()
-                && client.level == snapshot.level()) {
+                && client.getNetHandler() == snapshot.listener()
+                && client.theWorld == snapshot.level()) {
             apply(snapshot.packet(), snapshot.listener());
         }
     }
 
     @SuppressWarnings("unchecked")
-    private static void apply(Packet<?> packet, ClientGamePacketListener listener) {
-        ((Packet<ClientGamePacketListener>) packet).handle(listener);
+    private static void apply(Packet<?> packet, INetHandlerPlayClient listener) {
+        ((Packet<INetHandlerPlayClient>) packet).processPacket(listener);
     }
 
-    private boolean movesTarget(Packet<?> packet, ClientLevel level) {
-        if (packet instanceof ClientboundMoveEntityPacket move)
-            return move.getEntity(level) == target;
-        if (packet instanceof ClientboundTeleportEntityPacket teleport)
-            return teleport.id() == target.getId();
-        if (packet instanceof ClientboundEntityPositionSyncPacket sync)
-            return sync.id() == target.getId();
+    private boolean movesTarget(Packet<?> packet, WorldClient level) {
+        if (packet instanceof S14PacketEntity move) return move.getEntity(level) == target;
+        if (packet instanceof S18PacketEntityTeleport teleport)
+            return teleport.getEntityId() == target.getEntityId();
         return false;
     }
 
     private static boolean isMovement(Packet<?> packet) {
-        return packet instanceof ClientboundMoveEntityPacket
-                || packet instanceof ClientboundTeleportEntityPacket
-                || packet instanceof ClientboundEntityPositionSyncPacket;
+        return packet instanceof S14PacketEntity || packet instanceof S18PacketEntityTeleport;
     }
 
     private static boolean resetsTracking(Packet<?> packet) {
-        return packet instanceof ClientboundPlayerPositionPacket
-                || packet instanceof ClientboundDisconnectPacket
-                || packet instanceof ClientboundRespawnPacket
-                || (packet instanceof ClientboundSetHealthPacket health && health.getHealth() <= 0);
+        return packet instanceof S08PacketPlayerPosLook
+                || packet instanceof S40PacketDisconnect
+                || packet instanceof S07PacketRespawn
+                || (packet instanceof S06PacketUpdateHealth health && health.getHealth() <= 0);
     }
 
     private static boolean inGame(Minecraft client) {
-        return client != null && client.player != null && client.level != null;
+        return client != null && client.thePlayer != null && client.theWorld != null;
     }
 
     private double maxRangeSquared() {
@@ -321,43 +315,17 @@ public final class BacktrackRuntime {
     }
 
     private static double distanceSquared(Minecraft client, Entity entity, Vec3 at) {
-        return entity.getBoundingBox()
-                .inflate(entity.getPickRadius())
-                .move(at.subtract(entity.position()))
-                .distanceToSqr(client.player.getEyePosition());
+        return LegacyWorld.distanceSquared(
+                LegacyWorld.move(
+                        LegacyWorld.inflate(
+                                entity.getEntityBoundingBox(), entity.getCollisionBorderSize()),
+                        at.subtract(VecMath.position(entity))),
+                client.thePlayer.getPositionEyes(1.0F));
     }
 
     private static long nowMillis() {
         return LagUtils.nowMillis();
     }
 
-    private record Snapshot(Packet<?> packet, ClientPacketListener listener, ClientLevel level) {}
-
-    /** Local processor envelope; never serialized or sent to the server. */
-    private record TrackingPacket(BacktrackRuntime runtime, Packet<?> original)
-            implements Packet<ClientGamePacketListener> {
-        @Override
-        @SuppressWarnings({"rawtypes", "unchecked"})
-        public PacketType<? extends Packet<ClientGamePacketListener>> type() {
-            return (PacketType) original.type();
-        }
-
-        @Override
-        public void handle(ClientGamePacketListener listener) {
-            Minecraft client = Minecraft.getInstance();
-            if (client.getConnection() != listener) return;
-            if (!runtime.config.enabled() || !runtime.receive(client, original))
-                apply(original, listener);
-        }
-
-        @Override
-        public boolean isSkippable() {
-            return original.isSkippable();
-        }
-
-        @Override
-        public boolean isTerminal() {
-            return original.isTerminal();
-        }
-    }
+    private record Snapshot(Packet<?> packet, NetHandlerPlayClient listener, WorldClient level) {}
 }

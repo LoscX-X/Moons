@@ -325,7 +325,7 @@ public final class ConfigProfiles {
     }
 
     private static void apply(Plan plan) {
-        Minecraft client = Minecraft.getInstance();
+        Minecraft client = Minecraft.getMinecraft();
         ClientChat.withoutNoticesOnCurrentThread(
                 () -> {
                     for (ModuleState state : plan.modules()) {

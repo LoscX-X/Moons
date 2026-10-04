@@ -12,6 +12,8 @@
 package com.blanoir.moons.client.module.impl.player;
 
 import com.blanoir.moons.client.chat.ClientChat;
+import com.blanoir.moons.client.compat.math.Mth;
+import com.blanoir.moons.client.compat.math.VecMath;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.DoubleSetting;
 import com.blanoir.moons.client.config.settings.IntSetting;
@@ -23,30 +25,29 @@ import com.blanoir.moons.client.management.targeting.PostHitLandingWindow;
 import com.blanoir.moons.client.management.targeting.Targeting;
 import com.blanoir.moons.client.module.framework.ModuleRegistry;
 import com.blanoir.moons.client.utils.client.ClientReady;
+import com.blanoir.moons.client.utils.inventory.LegacyItems;
 import com.blanoir.moons.client.utils.math.MathUtils;
 import com.blanoir.moons.client.utils.math.RandomMath;
 import com.blanoir.moons.client.utils.player.HotbarQueries;
 import com.blanoir.moons.client.utils.prediction.TrajectoryPrediction;
 import com.blanoir.moons.client.utils.prediction.TrajectoryPrediction.TrajectoryStep;
+import com.blanoir.moons.client.utils.world.LegacyRay;
+import com.blanoir.moons.client.utils.world.LegacyWorld;
 import com.blanoir.moons.client.utils.world.placement.BlockPlacementUtils;
 import com.blanoir.moons.client.utils.world.placement.PlacementCoordinator;
 import com.blanoir.moons.client.utils.world.placement.PlacementRaycast;
 
+import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.Minecraft;
-import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
-import net.minecraft.util.Mth;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.player.Inventory;
-import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.item.Items;
-import net.minecraft.world.level.ClipContext;
-import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.BlockHitResult;
-import net.minecraft.world.phys.HitResult;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.entity.player.InventoryPlayer;
+import net.minecraft.init.Blocks;
+import net.minecraft.util.AxisAlignedBB;
+import net.minecraft.util.BlockPos;
+import net.minecraft.util.EnumFacing;
+import net.minecraft.util.MovingObjectPosition;
+import net.minecraft.util.Vec3;
 
 public final class AutoWeb {
     private static final PlacementRaycast RAYS = new PlacementRaycast("autoweb");
@@ -55,16 +56,16 @@ public final class AutoWeb {
     private static final int ATTACK_REQUEST_LIFETIME_TICKS = 24;
     private static final int MAX_PLACE_CONFIRM_TICKS = 40;
     private static final int MAX_HOLD_TICKS = 20;
-    private static final Direction[] SUPPORT_DIRECTIONS = {
-        Direction.DOWN,
-        Direction.NORTH,
-        Direction.SOUTH,
-        Direction.WEST,
-        Direction.EAST,
-        Direction.UP
+    private static final EnumFacing[] SUPPORT_DIRECTIONS = {
+        EnumFacing.DOWN,
+        EnumFacing.NORTH,
+        EnumFacing.SOUTH,
+        EnumFacing.WEST,
+        EnumFacing.EAST,
+        EnumFacing.UP
     };
-    private static final Direction[] HORIZONTAL_DIRECTIONS = {
-        Direction.NORTH, Direction.SOUTH, Direction.WEST, Direction.EAST
+    private static final EnumFacing[] HORIZONTAL_DIRECTIONS = {
+        EnumFacing.NORTH, EnumFacing.SOUTH, EnumFacing.WEST, EnumFacing.EAST
     };
     private static final double SELF_SAFETY_MARGIN = 0.28D;
     private static final double DEFAULT_COOLDOWN_SECONDS = 0.5D;
@@ -175,7 +176,7 @@ public final class AutoWeb {
         PlacementCoordinator.register(
                 PlacementCoordinator.Owner.AUTO_WEB, AutoWeb::isBusy, AutoWeb::resetPlan);
         EventBus.PLAYER_UPDATE.register(
-                "AutoWeb.playerUpdate",
+                "AutoWeb.thePlayerUpdate",
                 event -> {
                     Minecraft client = event.client();
                     tick(client);
@@ -189,7 +190,8 @@ public final class AutoWeb {
         }
 
         if (!ClientReady.gameplay(client)) {
-            // A completed single use stays consumed even if a screen/world change interrupts return.
+            // A completed single use stays consumed even if a screen/world change interrupts
+            // return.
             if (disableAfterPlacement) ENABLED.set(false);
             resetAll(client);
 
@@ -201,11 +203,12 @@ public final class AutoWeb {
         }
         if (pendingAttackTicks > 0) {
             pendingAttackTicks--;
-            Player pendingTarget =
-                    client.level.getEntity(pendingAttackTargetId) instanceof Player player
+            EntityPlayer pendingTarget =
+                    client.theWorld.getEntityByID(pendingAttackTargetId)
+                                    instanceof EntityPlayer player
                             ? player
                             : null;
-            GROUND_LANDING_WINDOW.update(pendingTarget, client.player.getDeltaMovement());
+            GROUND_LANDING_WINDOW.update(pendingTarget, VecMath.motion(client.thePlayer));
         } else {
             pendingAttackTargetId = -1;
             pendingWallAttempted = false;
@@ -249,11 +252,11 @@ public final class AutoWeb {
 
     /** Attack trigger: upper-body wall first, then corner/predictive wall and feet. */
     public static void onAttack(Entity target) {
-        Minecraft client = Minecraft.getInstance();
+        Minecraft client = Minecraft.getMinecraft();
         if (!ENABLED.get()
                 || disableAfterPlacement
                 || !ClientReady.gameplay(client)
-                || !(target instanceof Player player)
+                || !(target instanceof EntityPlayer player)
                 || !Targeting.isValidTargetPlayer(client, player)
                 || isTrappedInWeb(client, player)
                 || findWebSlot(client) == -1) {
@@ -262,7 +265,7 @@ public final class AutoWeb {
         // Attack callbacks may run before or after LocalPlayer.tick depending
         // on the host client. Consume the request only from PLAYER_UPDATE so
         // selection, silent rotation, use and sendPosition own one tick.
-        pendingAttackTargetId = player.getId();
+        pendingAttackTargetId = player.getEntityId();
         pendingAttackTicks = ATTACK_REQUEST_LIFETIME_TICKS;
         pendingWallAttempted = false;
 
@@ -278,8 +281,8 @@ public final class AutoWeb {
         if (pendingAttackTargetId == -1) {
             return false;
         }
-        Player target =
-                client.level.getEntity(pendingAttackTargetId) instanceof Player player
+        EntityPlayer target =
+                client.theWorld.getEntityByID(pendingAttackTargetId) instanceof EntityPlayer player
                         ? player
                         : null;
         if (!Targeting.isValidTargetPlayer(client, target)
@@ -295,7 +298,7 @@ public final class AutoWeb {
         return tryStartLandingPlacement(client, target);
     }
 
-    private static boolean tryStartWallPlacement(Minecraft client, Player target) {
+    private static boolean tryStartWallPlacement(Minecraft client, EntityPlayer target) {
         if (pendingWallAttempted || !WALL_ENABLED.get()) {
             return false;
         }
@@ -309,7 +312,7 @@ public final class AutoWeb {
         return consumePlacementAttempt(client, plan);
     }
 
-    private static boolean tryStartLandingPlacement(Minecraft client, Player target) {
+    private static boolean tryStartLandingPlacement(Minecraft client, EntityPlayer target) {
         if (!GROUND_ENABLED.get()) {
             if (!WALL_ENABLED.get()) {
                 clearPendingAttack();
@@ -317,12 +320,12 @@ public final class AutoWeb {
             return false;
         }
         PostHitLandingWindow.Snapshot landing =
-                GROUND_LANDING_WINDOW.update(target, client.player.getDeltaMovement());
+                GROUND_LANDING_WINDOW.update(target, VecMath.motion(client.thePlayer));
         if (landing.expired()) {
             clearPendingAttack();
             return false;
         }
-        if (!target.onGround() || !landing.insideLandingWindow()) {
+        if (!target.onGround || !landing.insideLandingWindow()) {
             return false;
         }
         if (landing.targetHorizontalSpeed() > GROUND_MAX_SPEED.get()
@@ -345,14 +348,14 @@ public final class AutoWeb {
     }
 
     /** Aim at the next feet position, without rewarding cells already being left. */
-    private static PlacementPlan findLandingGroundPlan(Minecraft client, Player target) {
+    private static PlacementPlan findLandingGroundPlan(Minecraft client, EntityPlayer target) {
         Vec3 velocity = TrajectoryPrediction.observedVelocity(target);
         int leadTicks = Math.min(1, PREDICTION_TICKS.get());
         Vec3 travel =
                 TrajectoryPrediction.horizontalCollisionTravel(client, target, velocity, leadTicks);
-        AABB box = target.getBoundingBox().move(travel);
-        Vec3 feet = target.position().add(travel);
-        Vec3 eye = target.getEyePosition().add(travel);
+        AxisAlignedBB box = LegacyWorld.move(target.getEntityBoundingBox(), travel);
+        Vec3 feet = VecMath.position(target).add(travel);
+        Vec3 eye = target.getPositionEyes(1.0F).add(travel);
         // Both samples describe the use-time footprint. Including the old box
         // or swept feet path lets a trailing cell win after knockback.
         return findBestVoxel(
@@ -375,7 +378,7 @@ public final class AutoWeb {
         // successful-placement cooldown.
         if ((phase == WebActionPhase.TURNING_TO_PLACE
                         || phase == WebActionPhase.WAITING_FOR_PLACE_ROTATION)
-                && !withinPlacementRange(client, heldPlan.hit().getLocation())) {
+                && !withinPlacementRange(client, heldPlan.hit().hitVec)) {
             failPlacement(client);
             return;
         }
@@ -393,7 +396,7 @@ public final class AutoWeb {
     }
 
     private static void awaitPlacementRotation(Minecraft client) {
-        BlockHitResult confirmedHit = validatePlan(client, heldPlan);
+        MovingObjectPosition confirmedHit = validatePlan(client, heldPlan);
         if (confirmedHit == null) {
             failPlacement(client);
             return;
@@ -422,7 +425,7 @@ public final class AutoWeb {
             return;
         }
         if (pendingPlaceConfirmationPos == null) {
-            pendingPlaceConfirmationPos = heldPlan.placePos().immutable();
+            pendingPlaceConfirmationPos = new BlockPos(heldPlan.placePos());
             placeConfirmTicks = 0;
         }
         if (!WAIT_CONFIRM_ROTATION.get()) {
@@ -437,13 +440,14 @@ public final class AutoWeb {
             return;
         }
         placeConfirmTicks++;
-        BlockState confirmedState = client.level.getBlockState(pendingPlaceConfirmationPos);
-        if (!confirmedState.is(Blocks.COBWEB)) {
+        IBlockState confirmedState = client.theWorld.getBlockState(pendingPlaceConfirmationPos);
+        if ((confirmedState.getBlock() != Blocks.web)) {
             // isUseDone only means the local invocation and packet order
             // completed. Remote server block updates arrive later, so keep
             // observing in the background instead of keeping slot/rotation
             // ownership merely because the first frame is still air.
-            if (!confirmedState.canBeReplaced() || placeConfirmTicks >= MAX_PLACE_CONFIRM_TICKS) {
+            if (!LegacyWorld.replaceable(confirmedState)
+                    || placeConfirmTicks >= MAX_PLACE_CONFIRM_TICKS) {
                 boolean strictWait =
                         WAIT_CONFIRM_ROTATION.get() && phase == WebActionPhase.CLICKING_TO_PLACE;
                 clearPlacementConfirmation();
@@ -490,8 +494,8 @@ public final class AutoWeb {
             return;
         }
         if (MathUtils.withinRotationTolerance(
-                client.player.getYRot() - SilentPacketRotation.getSentYaw(),
-                client.player.getXRot() - SilentPacketRotation.getSentPitch(),
+                client.thePlayer.rotationYaw - SilentPacketRotation.getSentYaw(),
+                client.thePlayer.rotationPitch - SilentPacketRotation.getSentPitch(),
                 0.35F)) {
             if (postPlaceHoldRemainingTicks <= 0) {
                 restoreHeldSlot(client);
@@ -526,20 +530,20 @@ public final class AutoWeb {
             return;
         }
 
-        Inventory inventory = client.player.getInventory();
+        InventoryPlayer inventory = client.thePlayer.inventory;
         heldPlan = plan;
         postPlaceHoldRemainingTicks = 0;
         postPlaceHoldStarted = false;
         clearPlacementConfirmation();
         heldWebSlot = webSlot;
-        originalSlot = inventory.getSelectedSlot();
-        inventory.setSelectedSlot(webSlot);
+        originalSlot = inventory.currentItem;
+        inventory.currentItem = webSlot;
         CombatInputController.suppressAttack(client, CombatInputController.Owner.AUTO_WEB);
 
         phase = WebActionPhase.TURNING_TO_PLACE;
         SilentPacketRotation.beginRotation(
                 client,
-                plan.hit().getLocation(),
+                plan.hit().hitVec,
                 1,
                 SilentPacketRotation.Mode.INSTANT,
                 () -> phase = WebActionPhase.WAITING_FOR_PLACE_ROTATION);
@@ -564,16 +568,16 @@ public final class AutoWeb {
      */
     private static PlacementPlan findTrajectoryPlan(
             Minecraft client,
-            Player target,
+            EntityPlayer target,
             Vec3 initialVelocity,
             int horizon,
             boolean requireWallCollision,
             boolean upperBodyOnly,
             boolean groundOnly) {
-        Vec3 position = target.position();
+        Vec3 position = VecMath.position(target);
         Vec3 velocity = initialVelocity;
-        boolean grounded = target.onGround();
-        AABB previousBox = target.getBoundingBox();
+        boolean grounded = target.onGround;
+        AxisAlignedBB previousBox = target.getEntityBoundingBox();
         Vec3 previousFeet = position;
         Vec3 previousEye = predictedEyePosition(target, position);
         PlacementPlan best = null;
@@ -588,7 +592,10 @@ public final class AutoWeb {
                 grounded = step.grounded();
             }
 
-            AABB targetBox = target.getBoundingBox().move(position.subtract(target.position()));
+            AxisAlignedBB targetBox =
+                    LegacyWorld.move(
+                            target.getEntityBoundingBox(),
+                            position.subtract(VecMath.position(target)));
             Vec3 predictedEye = predictedEyePosition(target, position);
             PlacementPlan candidate =
                     findBestVoxel(
@@ -618,9 +625,9 @@ public final class AutoWeb {
 
     private static PlacementPlan findBestVoxel(
             Minecraft client,
-            Player target,
-            AABB targetBox,
-            AABB previousBox,
+            EntityPlayer target,
+            AxisAlignedBB targetBox,
+            AxisAlignedBB previousBox,
             Vec3 predictedFeet,
             Vec3 previousFeet,
             Vec3 predictedEye,
@@ -643,20 +650,20 @@ public final class AutoWeb {
             for (int y = minY; y <= maxY; y++) {
                 for (int z = minZ; z <= maxZ; z++) {
                     BlockPos placePos = new BlockPos(x, y, z);
-                    AABB voxel = new AABB(placePos);
+                    AxisAlignedBB voxel = LegacyWorld.box(placePos);
                     double upperBodyCenterY =
                             targetBox.minY + (targetBox.maxY - targetBox.minY) * 0.5D;
                     if (upperBodyOnly && placePos.getY() + 0.5D < upperBodyCenterY) {
                         continue;
                     }
-                    if (groundOnly && placePos.getY() != Mth.floor(predictedFeet.y + 0.05D)) {
+                    if (groundOnly && placePos.getY() != Mth.floor(predictedFeet.yCoord + 0.05D)) {
                         continue;
                     }
                     boolean intersectsFeet =
                             intersectsPointPath(voxel, previousFeet, predictedFeet);
                     boolean intersectsEye = intersectsPointPath(voxel, previousEye, predictedEye);
-                    if ((!voxel.intersects(targetBox)
-                                    && !voxel.intersects(previousBox)
+                    if ((!voxel.intersectsWith(targetBox)
+                                    && !voxel.intersectsWith(previousBox)
                                     && !intersectsFeet
                                     && !intersectsEye)
                             || !isReplaceableForWeb(client, placePos)
@@ -672,11 +679,11 @@ public final class AutoWeb {
                         continue;
                     }
 
-                    BlockHitResult hit =
+                    MovingObjectPosition hit =
                             groundOnly
-                                    ? supportHit(client, placePos, Direction.DOWN)
+                                    ? supportHit(client, placePos, EnumFacing.DOWN)
                                     : findSupportHit(client, placePos, wall.direction());
-                    if (hit == null || !withinPlacementRange(client, hit.getLocation())) {
+                    if (hit == null || !withinPlacementRange(client, hit.hitVec)) {
                         continue;
                     }
 
@@ -691,14 +698,14 @@ public final class AutoWeb {
                     double predictionError = leadError * leadError;
                     double placementDelay = leadError;
                     double eyeDistance =
-                            client.player.getEyePosition().distanceTo(hit.getLocation());
-                    double rotationCost = rotationCost(client, hit.getLocation());
+                            client.thePlayer.getPositionEyes(1.0F).distanceTo(hit.hitVec);
+                    double rotationCost = rotationCost(client, hit.hitVec);
                     double entityOcclusion =
                             requireWallCollision
                                             && rayBlockedByEntity(
                                                     client,
-                                                    client.player.getEyePosition(),
-                                                    hit.getLocation())
+                                                    client.thePlayer.getPositionEyes(1.0F),
+                                                    hit.hitVec)
                                     ? 1.0D
                                     : 0.0D;
 
@@ -726,7 +733,7 @@ public final class AutoWeb {
                                     + eyeDistance * 0.08D;
                     PlacementPlan candidate =
                             new PlacementPlan(
-                                    target.getId(),
+                                    target.getEntityId(),
                                     placePos,
                                     hit,
                                     predictionTick,
@@ -742,12 +749,12 @@ public final class AutoWeb {
     }
 
     /** Attack-only WallWeb + PredictWeb + FaceWeb opportunity search. */
-    private static PlacementPlan findWallPlan(Minecraft client, Player target) {
+    private static PlacementPlan findWallPlan(Minecraft client, EntityPlayer target) {
         return findWallPlan(client, target, false);
     }
 
     private static PlacementPlan findWallPlan(
-            Minecraft client, Player target, boolean upperBodyOnly) {
+            Minecraft client, EntityPlayer target, boolean upperBodyOnly) {
         Vec3 velocity = TrajectoryPrediction.observedVelocity(target);
         int horizon =
                 Mth.clamp(
@@ -757,17 +764,17 @@ public final class AutoWeb {
         return findTrajectoryPlan(client, target, velocity, horizon, true, upperBodyOnly, false);
     }
 
-    private static Vec3 predictedEyePosition(Player target, Vec3 feetPosition) {
-        return feetPosition.add(0.0D, target.getEyeHeight(), 0.0D);
+    private static Vec3 predictedEyePosition(EntityPlayer target, Vec3 feetPosition) {
+        return feetPosition.addVector(0.0D, target.getEyeHeight(), 0.0D);
     }
 
-    private static boolean intersectsPointPath(AABB voxel, Vec3 start, Vec3 end) {
-        return voxel.contains(end.x, end.y, end.z)
-                || voxel.contains(start.x, start.y, start.z)
-                || voxel.clip(start, end).isPresent();
+    private static boolean intersectsPointPath(AxisAlignedBB voxel, Vec3 start, Vec3 end) {
+        return voxel.isVecInside(new Vec3(end.xCoord, end.yCoord, end.zCoord))
+                || voxel.isVecInside(new Vec3(start.xCoord, start.yCoord, start.zCoord))
+                || LegacyWorld.intercept(voxel, start, end).isPresent();
     }
 
-    private static double intersectionRatio(AABB voxel, AABB targetBox) {
+    private static double intersectionRatio(AxisAlignedBB voxel, AxisAlignedBB targetBox) {
         double x =
                 Math.max(
                         0.0D,
@@ -791,9 +798,9 @@ public final class AutoWeb {
     }
 
     private static double coverageScore(
-            AABB voxel,
-            AABB targetBox,
-            AABB previousBox,
+            AxisAlignedBB voxel,
+            AxisAlignedBB targetBox,
+            AxisAlignedBB previousBox,
             boolean intersectsEye,
             boolean intersectsFeet,
             boolean wall) {
@@ -808,7 +815,8 @@ public final class AutoWeb {
                 - (intersectsFeet ? 1.25D : 0.0D);
     }
 
-    private static double horizontalIntersectionRatio(AABB voxel, AABB targetBox) {
+    private static double horizontalIntersectionRatio(
+            AxisAlignedBB voxel, AxisAlignedBB targetBox) {
         double x =
                 Math.max(
                         0.0D,
@@ -824,24 +832,24 @@ public final class AutoWeb {
     }
 
     private static WallGeometry findWallGeometry(
-            Minecraft client, BlockPos placePos, AABB targetBox, Vec3 velocity) {
+            Minecraft client, BlockPos placePos, AxisAlignedBB targetBox, Vec3 velocity) {
         Vec3 expectedTravel = horizontalDirection(velocity);
 
-        Direction bestDirection = null;
+        EnumFacing bestDirection = null;
         double bestAlignment = 0.0D;
         double bestCoverage = 0.0D;
         double bestGap = Double.POSITIVE_INFINITY;
-        for (Direction direction : HORIZONTAL_DIRECTIONS) {
+        for (EnumFacing direction : HORIZONTAL_DIRECTIONS) {
             double alignment =
-                    expectedTravel.x * direction.getStepX()
-                            + expectedTravel.z * direction.getStepZ();
+                    expectedTravel.xCoord * direction.getFrontOffsetX()
+                            + expectedTravel.zCoord * direction.getFrontOffsetZ();
             if (alignment < -RAY_EPSILON) {
                 continue;
             }
             // A narrow wall may touch only one side of the body. Establish
             // contact across the whole footprint, then let the web candidate
             // use any reachable support face in its own (possibly wider) cell.
-            boolean xFace = direction.getAxis() == Direction.Axis.X;
+            boolean xFace = direction.getAxis() == EnumFacing.Axis.X;
             int first = Mth.floor((xFace ? targetBox.minZ : targetBox.minX) + RAY_EPSILON);
             int last = Mth.floor((xFace ? targetBox.maxZ : targetBox.maxX) - RAY_EPSILON);
             for (int lateral = first; lateral <= last; lateral++) {
@@ -893,20 +901,24 @@ public final class AutoWeb {
     }
 
     private static double wallContactCoverage(
-            Minecraft client, AABB targetBox, BlockPos wallPos, Direction direction) {
+            Minecraft client, AxisAlignedBB targetBox, BlockPos wallPos, EnumFacing direction) {
         double best = 0.0D;
-        for (AABB local :
-                client.level
-                        .getBlockState(wallPos)
-                        .getCollisionShape(client.level, wallPos)
+        for (AxisAlignedBB local :
+                LegacyWorld.collision(
+                                client.theWorld.getBlockState(wallPos), client.theWorld, wallPos)
                         .toAabbs()) {
-            best = Math.max(best, wallFaceCoverage(targetBox, local.move(wallPos), direction));
+            best =
+                    Math.max(
+                            best,
+                            wallFaceCoverage(
+                                    targetBox, LegacyWorld.move(local, wallPos), direction));
         }
         return best;
     }
 
-    private static double wallFaceCoverage(AABB targetBox, AABB shape, Direction direction) {
-        boolean xFace = direction.getAxis() == Direction.Axis.X;
+    private static double wallFaceCoverage(
+            AxisAlignedBB targetBox, AxisAlignedBB shape, EnumFacing direction) {
+        boolean xFace = direction.getAxis() == EnumFacing.Axis.X;
         double faceArea =
                 (targetBox.maxY - targetBox.minY)
                         * (xFace
@@ -937,11 +949,13 @@ public final class AutoWeb {
     }
 
     private static double wallGap(
-            Minecraft client, AABB targetBox, BlockPos wallPos, Direction direction) {
-        BlockState wallState = client.level.getBlockState(wallPos);
+            Minecraft client, AxisAlignedBB targetBox, BlockPos wallPos, EnumFacing direction) {
+        IBlockState wallState = client.theWorld.getBlockState(wallPos);
         double bestGap = Double.POSITIVE_INFINITY;
-        for (AABB localShape : wallState.getCollisionShape(client.level, wallPos).toAabbs()) {
-            AABB wallShape = localShape.move(wallPos.getX(), wallPos.getY(), wallPos.getZ());
+        for (AxisAlignedBB localShape :
+                LegacyWorld.collision(wallState, client.theWorld, wallPos).toAabbs()) {
+            AxisAlignedBB wallShape =
+                    LegacyWorld.move(localShape, wallPos.getX(), wallPos.getY(), wallPos.getZ());
             boolean overlapsPerpendicular =
                     switch (direction) {
                         case EAST, WEST ->
@@ -998,25 +1012,28 @@ public final class AutoWeb {
 
     /** Follow measured displacement; stale delta movement can retain old knockback. */
     private static Vec3 horizontalDirection(Vec3 vector) {
-        double length = Math.sqrt(vector.x * vector.x + vector.z * vector.z);
-        return length < 1.0E-8D ? Vec3.ZERO : new Vec3(vector.x / length, 0.0D, vector.z / length);
+        double length = Math.sqrt(vector.xCoord * vector.xCoord + vector.zCoord * vector.zCoord);
+        return length < 1.0E-8D
+                ? VecMath.ZERO
+                : new Vec3(vector.xCoord / length, 0.0D, vector.zCoord / length);
     }
 
-    private static BlockHitResult findSupportHit(
-            Minecraft client, BlockPos placePos, Direction preferredSupportDirection) {
-        BlockHitResult best = null;
+    private static MovingObjectPosition findSupportHit(
+            Minecraft client, BlockPos placePos, EnumFacing preferredSupportDirection) {
+        MovingObjectPosition best = null;
         double bestScore = Double.POSITIVE_INFINITY;
-        for (Direction supportDirection : SUPPORT_DIRECTIONS) {
-            BlockHitResult hit = supportHit(client, placePos, supportDirection);
-            if (hit == null || !withinPlacementRange(client, hit.getLocation())) {
+        for (EnumFacing supportDirection : SUPPORT_DIRECTIONS) {
+            MovingObjectPosition hit = supportHit(client, placePos, supportDirection);
+            if (hit == null || !withinPlacementRange(client, hit.hitVec)) {
                 continue;
             }
             double score =
-                    rotationCost(client, hit.getLocation())
-                            + client.player.getEyePosition().distanceTo(hit.getLocation()) * 0.015D;
+                    rotationCost(client, hit.hitVec)
+                            + client.thePlayer.getPositionEyes(1.0F).distanceTo(hit.hitVec)
+                                    * 0.015D;
             if (supportDirection == preferredSupportDirection) {
                 score -= 1.25D;
-            } else if (supportDirection == Direction.DOWN) {
+            } else if (supportDirection == EnumFacing.DOWN) {
                 score -= 0.08D;
             }
             if (score < bestScore) {
@@ -1027,33 +1044,33 @@ public final class AutoWeb {
         return best;
     }
 
-    private static BlockHitResult supportHit(
-            Minecraft client, BlockPos placePos, Direction supportDirection) {
-        BlockPos supportPos = placePos.relative(supportDirection);
-        BlockState supportState = client.level.getBlockState(supportPos);
-        if (supportState.getCollisionShape(client.level, supportPos).isEmpty()) {
+    private static MovingObjectPosition supportHit(
+            Minecraft client, BlockPos placePos, EnumFacing supportDirection) {
+        BlockPos supportPos = placePos.offset(supportDirection);
+        IBlockState supportState = client.theWorld.getBlockState(supportPos);
+        if (LegacyWorld.collision(supportState, client.theWorld, supportPos).isEmpty()) {
             return null;
         }
 
-        Direction supportFace = supportDirection.getOpposite();
-        BlockHitResult best = null;
+        EnumFacing supportFace = supportDirection.getOpposite();
+        MovingObjectPosition best = null;
         double bestScore = Double.POSITIVE_INFINITY;
         for (double first : FACE_SAMPLES) {
             for (double second : FACE_SAMPLES) {
                 Vec3 requested = pointOnFace(supportPos, supportFace, first, second);
-                BlockHitResult actual =
+                MovingObjectPosition actual =
                         RAYS.visibleFaceHit(
                                 client,
-                                client.player.getEyePosition(),
+                                client.thePlayer.getPositionEyes(1.0F),
                                 supportPos,
                                 supportFace,
                                 requested,
                                 RAY_EPSILON);
-                if (actual == null || !withinPlacementRange(client, actual.getLocation())) {
+                if (actual == null || !withinPlacementRange(client, actual.hitVec)) {
                     continue;
                 }
                 double centerOffset = Math.abs(first - 0.5D) + Math.abs(second - 0.5D);
-                double score = rotationCost(client, actual.getLocation()) + centerOffset * 0.04D;
+                double score = rotationCost(client, actual.hitVec) + centerOffset * 0.04D;
                 if (score < bestScore) {
                     best = actual;
                     bestScore = score;
@@ -1064,19 +1081,21 @@ public final class AutoWeb {
     }
 
     private static Vec3 pointOnFace(
-            BlockPos supportPos, Direction face, double first, double second) {
+            BlockPos supportPos, EnumFacing face, double first, double second) {
         return BlockPlacementUtils.fullBlockFacePoint(supportPos, face, first, second);
     }
 
     private static double rotationCost(Minecraft client, Vec3 point) {
-        Vec3 toward = point.subtract(client.player.getEyePosition()).normalize();
-        Vec3 look = client.player.getLookAngle().normalize();
-        return 1.0D - Mth.clamp(look.dot(toward), -1.0D, 1.0D);
+        Vec3 toward = point.subtract(client.thePlayer.getPositionEyes(1.0F)).normalize();
+        Vec3 look = client.thePlayer.getLookVec().normalize();
+        return 1.0D - Mth.clamp(look.dotProduct(toward), -1.0D, 1.0D);
     }
 
-    private static BlockHitResult validatePlan(Minecraft client, PlacementPlan plan) {
-        Player target =
-                client.level.getEntity(plan.targetId()) instanceof Player player ? player : null;
+    private static MovingObjectPosition validatePlan(Minecraft client, PlacementPlan plan) {
+        EntityPlayer target =
+                client.theWorld.getEntityByID(plan.targetId()) instanceof EntityPlayer player
+                        ? player
+                        : null;
         if (target == null || !Targeting.isValidTargetPlayer(client, target)) {
             return null;
         }
@@ -1088,7 +1107,8 @@ public final class AutoWeb {
             Vec3 velocity = TrajectoryPrediction.observedVelocity(target);
             // Rotation may have waited a tick or longer. Do not click an old
             // feet cell after another knockback, jump or direction change.
-            if (!target.onGround() || Math.hypot(velocity.x, velocity.z) > GROUND_MAX_SPEED.get()) {
+            if (!target.onGround
+                    || Math.hypot(velocity.xCoord, velocity.zCoord) > GROUND_MAX_SPEED.get()) {
                 return null;
             }
             PlacementPlan current = findLandingGroundPlan(client, target);
@@ -1109,61 +1129,67 @@ public final class AutoWeb {
             return null;
         }
 
-        Vec3 eye = client.player.getEyePosition();
-        double reach = Math.min(RANGE.get(), client.player.blockInteractionRange());
-        BlockHitResult actual =
+        Vec3 eye = client.thePlayer.getPositionEyes(1.0F);
+        double reach =
+                Math.min(
+                        RANGE.get(),
+                        Minecraft.getMinecraft().playerController.getBlockReachDistance());
+        MovingObjectPosition actual =
                 RAYS.traceOutline(
                         client,
                         eye,
                         SilentPacketRotation.getInteractionLookVector(client),
                         reach,
-                        ClipContext.Fluid.NONE,
+                        LegacyRay.Fluid.NONE,
                         plan.hit().getBlockPos());
-        if (actual.getType() != HitResult.Type.BLOCK
+        if (actual.typeOfHit != MovingObjectPosition.MovingObjectType.BLOCK
                 || !actual.getBlockPos().equals(plan.hit().getBlockPos())
-                || actual.getDirection() != plan.hit().getDirection()
-                || !withinPlacementRange(client, actual.getLocation())) {
+                || actual.sideHit != plan.hit().sideHit
+                || !withinPlacementRange(client, actual.hitVec)) {
             return null;
         }
 
-        BlockPos resultingPos = actual.getBlockPos().relative(actual.getDirection());
+        BlockPos resultingPos = actual.getBlockPos().offset(actual.sideHit);
         if (!resultingPos.equals(plan.placePos())) {
             return null;
         }
-        return new BlockHitResult(
-                actual.getLocation(), actual.getDirection(),
-                actual.getBlockPos(), actual.isInside());
+        return LegacyWorld.hit(actual.hitVec, actual.sideHit, actual.getBlockPos());
     }
 
     private static boolean isReplaceableForWeb(Minecraft client, BlockPos placePos) {
-        BlockState state = client.level.getBlockState(placePos);
-        return !state.is(Blocks.COBWEB) && state.canBeReplaced();
+        IBlockState state = client.theWorld.getBlockState(placePos);
+        return (state.getBlock() != Blocks.web) && LegacyWorld.replaceable(state);
     }
 
     private static boolean isSafeForPlayer(
             Minecraft client, BlockPos placePos, int predictionTick) {
-        AABB webBox = new AABB(placePos);
-        AABB currentPlayerBox =
-                client.player
-                        .getBoundingBox()
-                        .inflate(SELF_SAFETY_MARGIN, 0.05D, SELF_SAFETY_MARGIN);
-        AABB predictedPlayerBox =
-                TrajectoryPrediction.freeFlightBox(client.player, predictionTick)
-                        .inflate(SELF_SAFETY_MARGIN, 0.05D, SELF_SAFETY_MARGIN);
-        AABB sweptPlayerBox =
-                new AABB(
+        AxisAlignedBB webBox = LegacyWorld.box(placePos);
+        AxisAlignedBB currentPlayerBox =
+                LegacyWorld.inflate(
+                        client.thePlayer.getEntityBoundingBox(),
+                        SELF_SAFETY_MARGIN,
+                        0.05D,
+                        SELF_SAFETY_MARGIN);
+        AxisAlignedBB predictedPlayerBox =
+                LegacyWorld.inflate(
+                        TrajectoryPrediction.freeFlightBox(client.thePlayer, predictionTick),
+                        SELF_SAFETY_MARGIN,
+                        0.05D,
+                        SELF_SAFETY_MARGIN);
+        AxisAlignedBB sweptPlayerBox =
+                LegacyWorld.box(
                         Math.min(currentPlayerBox.minX, predictedPlayerBox.minX),
                         Math.min(currentPlayerBox.minY, predictedPlayerBox.minY),
                         Math.min(currentPlayerBox.minZ, predictedPlayerBox.minZ),
                         Math.max(currentPlayerBox.maxX, predictedPlayerBox.maxX),
                         Math.max(currentPlayerBox.maxY, predictedPlayerBox.maxY),
                         Math.max(currentPlayerBox.maxZ, predictedPlayerBox.maxZ));
-        return !webBox.intersects(sweptPlayerBox);
+        return !webBox.intersectsWith(sweptPlayerBox);
     }
 
     /** CurrentWeb guard: an already-intersecting cobweb means the target is trapped. */
-    private static boolean isTrappedInWeb(Minecraft client, Player target) {
-        AABB box = target.getBoundingBox();
+    private static boolean isTrappedInWeb(Minecraft client, EntityPlayer target) {
+        AxisAlignedBB box = target.getEntityBoundingBox();
         int minX = Mth.floor(box.minX + 1.0E-4D);
         int minY = Mth.floor(box.minY + 1.0E-4D);
         int minZ = Mth.floor(box.minZ + 1.0E-4D);
@@ -1173,7 +1199,8 @@ public final class AutoWeb {
         for (int y = minY; y <= maxY; y++) {
             for (int x = minX; x <= maxX; x++) {
                 for (int z = minZ; z <= maxZ; z++) {
-                    if (client.level.getBlockState(new BlockPos(x, y, z)).is(Blocks.COBWEB)) {
+                    if (client.theWorld.getBlockState(new BlockPos(x, y, z)).getBlock()
+                            == Blocks.web) {
                         return true;
                     }
                 }
@@ -1183,14 +1210,21 @@ public final class AutoWeb {
     }
 
     private static boolean withinPlacementRange(Minecraft client, Vec3 hitLocation) {
-        double reach = Math.min(RANGE.get(), client.player.blockInteractionRange());
-        return BlockPlacementUtils.withinReach(client.player.getEyePosition(), hitLocation, reach);
+        double reach =
+                Math.min(
+                        RANGE.get(),
+                        Minecraft.getMinecraft().playerController.getBlockReachDistance());
+        return BlockPlacementUtils.withinReach(
+                client.thePlayer.getPositionEyes(1.0F), hitLocation, reach);
     }
 
     private static int findWebSlot(Minecraft client) {
         return HotbarQueries.firstMatch(
-                client.player.getInventory(),
-                stack -> !stack.isEmpty() && stack.getItem() == Items.COBWEB);
+                client.thePlayer.inventory,
+                stack ->
+                        !LegacyItems.empty(stack)
+                                && stack.getItem()
+                                        == net.minecraft.item.Item.getItemFromBlock(Blocks.web));
     }
 
     private static void resetPlan(Minecraft client) {
@@ -1224,11 +1258,11 @@ public final class AutoWeb {
     }
 
     private static void restoreWebSlotSelection(Minecraft client) {
-        var currentPlayer = client == null ? null : client.player;
+        var currentPlayer = client == null ? null : client.thePlayer;
         if (client != null && currentPlayer != null && heldWebSlot != -1) {
-            Inventory inventory = currentPlayer.getInventory();
-            if (inventory.getSelectedSlot() == heldWebSlot && originalSlot >= 0) {
-                inventory.setSelectedSlot(originalSlot);
+            InventoryPlayer inventory = currentPlayer.inventory;
+            if (inventory.currentItem == heldWebSlot && originalSlot >= 0) {
+                inventory.currentItem = originalSlot;
             }
         }
         heldWebSlot = -1;
@@ -1262,7 +1296,8 @@ public final class AutoWeb {
 
     public static int setTriggerMode(Minecraft client, String value) {
         if (!TRIGGER_MODE.tryDeserialize(value))
-            throw new IllegalArgumentException("AutoWeb trigger mode must be continuous or single.");
+            throw new IllegalArgumentException(
+                    "AutoWeb trigger mode must be continuous or single.");
         if (TRIGGER_MODE.get().equals("continuous")) disableAfterPlacement = false;
         return 1;
     }
@@ -1409,13 +1444,13 @@ public final class AutoWeb {
     }
 
     private static int requiredServerSettleTicks(Minecraft client) {
-        var currentPlayer = client == null ? null : client.player;
-        var connectionSnapshot = client == null ? null : client.getConnection();
+        var currentPlayer = client == null ? null : client.thePlayer;
+        var connectionSnapshot = client == null ? null : client.getNetHandler();
         int latencyMs = 0;
         if (connectionSnapshot != null && currentPlayer != null) {
-            var info = connectionSnapshot.getPlayerInfo(currentPlayer.getUUID());
+            var info = connectionSnapshot.getPlayerInfo(currentPlayer.getUniqueID());
             if (info != null) {
-                latencyMs = Math.max(0, info.getLatency());
+                latencyMs = Math.max(0, info.getResponseTime());
             }
         }
         return Mth.clamp((int) Math.ceil(latencyMs / 50.0D) + 3, 8, MAX_PLACE_CONFIRM_TICKS);
@@ -1432,7 +1467,7 @@ public final class AutoWeb {
     }
 
     private record WallGeometry(
-            Direction direction,
+            EnumFacing direction,
             double alignment,
             double gap,
             double coverage,
@@ -1444,7 +1479,7 @@ public final class AutoWeb {
     private record PlacementPlan(
             int targetId,
             BlockPos placePos,
-            BlockHitResult hit,
+            MovingObjectPosition hit,
             int predictionTick,
             double score,
             boolean groundOnly) {}

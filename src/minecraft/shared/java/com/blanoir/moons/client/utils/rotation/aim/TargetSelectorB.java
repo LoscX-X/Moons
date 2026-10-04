@@ -1,14 +1,15 @@
 package com.blanoir.moons.client.utils.rotation.aim;
 
+import com.blanoir.moons.client.compat.math.Mth;
+import com.blanoir.moons.client.compat.math.VecMath;
 import com.blanoir.moons.client.management.targeting.Targeting;
 import com.blanoir.moons.client.utils.math.MathUtils;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.util.Mth;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.util.AxisAlignedBB;
+import net.minecraft.util.Vec3;
 
 import java.util.Comparator;
 import java.util.List;
@@ -31,11 +32,11 @@ public final class TargetSelectorB {
             AimGeometry.Mode mode,
             int lockedEntityId,
             Vec3 lockedAimPoint) {
-        AABB searchBox = client.player.getBoundingBox().inflate(range);
+        AxisAlignedBB searchBox = VecMath.inflate(client.thePlayer.getEntityBoundingBox(), range);
 
-        List<LivingEntity> candidates =
-                client.level.getEntitiesOfClass(
-                        LivingEntity.class,
+        List<EntityLivingBase> candidates =
+                client.theWorld.getEntitiesWithinAABB(
+                        EntityLivingBase.class,
                         searchBox,
                         entity -> Targeting.isEnemyPlayer(client, entity));
 
@@ -48,7 +49,7 @@ public final class TargetSelectorB {
                                                 mode,
                                                 client,
                                                 entity,
-                                                lockedEntityId == entity.getId()
+                                                lockedEntityId == entity.getEntityId()
                                                         ? lockedAimPoint
                                                         : null))
                         .filter(
@@ -64,9 +65,9 @@ public final class TargetSelectorB {
             return best;
         }
 
-        Entity lockedEntity = client.level.getEntity(lockedEntityId);
+        Entity lockedEntity = client.theWorld.getEntityByID(lockedEntityId);
 
-        if (lockedEntity instanceof LivingEntity livingLocked
+        if (lockedEntity instanceof EntityLivingBase livingLocked
                 && Targeting.isEnemyPlayer(client, livingLocked)) {
 
             AimSolverA.Result lockedRotation =
@@ -84,7 +85,7 @@ public final class TargetSelectorB {
     }
 
     private static double targetSelectionScore(Minecraft client, AimSolverA.Result target) {
-        LivingEntity entity = target.entity();
+        EntityLivingBase entity = target.entity();
 
         double distance = Math.sqrt(target.distanceSquared());
 
@@ -94,11 +95,12 @@ public final class TargetSelectorB {
 
         double hurtFramePenalty = entity.hurtTime > 0 ? 0.8D : 0.0D;
 
-        Vec3 towardPlayer = client.player.getEyePosition().subtract(entity.getEyePosition());
+        Vec3 towardPlayer =
+                client.thePlayer.getPositionEyes(1F).subtract(entity.getPositionEyes(1F));
 
         double threatBonus =
-                towardPlayer.lengthSqr() > 1.0E-6D
-                                && entity.getLookAngle().dot(towardPlayer.normalize()) > 0.72D
+                VecMath.lengthSqr(towardPlayer) > 1.0E-6D
+                                && entity.getLook(1F).dotProduct(towardPlayer.normalize()) > 0.72D
                         ? -0.65D
                         : 0.0D;
 
@@ -113,7 +115,7 @@ public final class TargetSelectorB {
             double range,
             AimGeometry.Mode mode,
             Minecraft client,
-            LivingEntity entity,
+            EntityLivingBase entity,
             Vec3 preferredAimPoint) {
         Vec3 point = AimPointsE.resolve(range, mode, client, entity, preferredAimPoint);
         return point == null ? null : AimSolverA.solve(client, entity, point);

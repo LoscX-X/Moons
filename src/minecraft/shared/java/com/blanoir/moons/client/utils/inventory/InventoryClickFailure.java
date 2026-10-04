@@ -4,8 +4,8 @@ import com.blanoir.moons.client.config.settings.IntSetting;
 import com.blanoir.moons.client.module.framework.ModuleRegistry;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.world.Container;
-import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.inventory.Container;
+import net.minecraft.inventory.IInventory;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -15,7 +15,7 @@ import java.util.concurrent.ThreadLocalRandom;
 public final class InventoryClickFailure {
     private final IntSetting rate;
     private final Recovery recovery = new Recovery();
-    private AbstractContainerMenu context;
+    private Container context;
 
     public InventoryClickFailure(String module) {
         rate =
@@ -44,24 +44,23 @@ public final class InventoryClickFailure {
     }
 
     /** True consumes this action's turn only; the caller applies its usual delay and replans. */
-    public boolean beforeClick(
-            Minecraft client, AbstractContainerMenu menu, int intendedSlot, Object owner) {
+    public boolean beforeClick(Minecraft client, Container menu, int intendedSlot, Object owner) {
         if (rate.get() == 0) {
             reset();
             return false;
         }
-        if (client.player == null
-                || client.gameMode == null
-                || client.player.containerMenu != menu
-                || !menu.getCarried().isEmpty()
+        if (client.thePlayer == null
+                || client.playerController == null
+                || client.thePlayer.openContainer != menu
+                || !LegacyItems.empty(LegacyItems.carried(menu))
                 || InventoryClicks.busyExcept(owner)
                 || intendedSlot < 0
-                || intendedSlot >= menu.slots.size()) return false;
+                || intendedSlot >= menu.inventorySlots.size()) return false;
         if (context != menu) {
             reset();
             context = menu;
         }
-        var candidates = emptySlots(menu, intendedSlot, client.player.getInventory());
+        var candidates = emptySlots(menu, intendedSlot, client.thePlayer.inventory);
         if (candidates.isEmpty()) return false;
         if (!recovery.miss(rate.get(), ThreadLocalRandom.current().nextInt(100))) return false;
         int slot = candidates.get(ThreadLocalRandom.current().nextInt(candidates.size()));
@@ -72,17 +71,16 @@ public final class InventoryClickFailure {
         return false;
     }
 
-    static List<Integer> emptySlots(
-            AbstractContainerMenu menu, int intendedSlot, Container inventory) {
-        var source = menu.getSlot(intendedSlot).container;
+    static List<Integer> emptySlots(Container menu, int intendedSlot, IInventory inventory) {
+        var source = menu.getSlot(intendedSlot).inventory;
         var result = new ArrayList<Integer>();
-        for (int index = 0; index < menu.slots.size(); index++) {
+        for (int index = 0; index < menu.inventorySlots.size(); index++) {
             var slot = menu.getSlot(index);
             boolean storage =
-                    slot.container == inventory
-                            ? slot.getContainerSlot() >= 0 && slot.getContainerSlot() < 36
-                            : slot.container == source;
-            if (index != intendedSlot && storage && slot.isActive() && !slot.hasItem())
+                    slot.inventory == inventory
+                            ? LegacyItems.slotIndex(slot) >= 0 && LegacyItems.slotIndex(slot) < 36
+                            : slot.inventory == source;
+            if (index != intendedSlot && storage && slot.canBeHovered() && !slot.getHasStack())
                 result.add(index);
         }
         return result;

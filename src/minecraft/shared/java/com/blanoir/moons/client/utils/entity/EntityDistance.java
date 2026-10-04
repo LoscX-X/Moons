@@ -3,9 +3,9 @@ package com.blanoir.moons.client.utils.entity;
 import com.blanoir.moons.client.utils.math.MathUtils;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.entity.Entity;
+import net.minecraft.util.AxisAlignedBB;
+import net.minecraft.util.Vec3;
 
 /**
  * Shared interaction-distance calculations. Entity and block distances are
@@ -16,21 +16,21 @@ public final class EntityDistance {
     private EntityDistance() {}
 
     public static double squaredToEntity(Minecraft client, Entity target) {
-        var currentPlayer = client == null ? null : client.player;
+        var currentPlayer = client == null ? null : client.thePlayer;
         if (client == null || currentPlayer == null || target == null) {
             return Double.MAX_VALUE;
         }
-        return squaredToBox(currentPlayer.getEyePosition(), target.getBoundingBox());
+        return squaredToBox(currentPlayer.getPositionEyes(1F), target.getEntityBoundingBox());
     }
 
-    public static double squaredToBox(Vec3 point, AABB box) {
+    public static double squaredToBox(Vec3 point, AxisAlignedBB box) {
         if (point == null || box == null) {
             return Double.MAX_VALUE;
         }
         return MathUtils.squaredDistanceToBox(point, box);
     }
 
-    public static Vec3 closestPoint(Vec3 point, AABB box) {
+    public static Vec3 closestPoint(Vec3 point, AxisAlignedBB box) {
         return MathUtils.closestPoint(point, box);
     }
 }

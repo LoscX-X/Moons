@@ -1,6 +1,6 @@
 package com.blanoir.moons.client.utils.rotation.smooth;
 
-import net.minecraft.util.Mth;
+import com.blanoir.moons.client.compat.math.Mth;
 
 /**
  * K: Existing one-axis acceleration/braking step. Numeric inputs only; random envelope

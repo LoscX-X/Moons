@@ -1,8 +1,12 @@
 package com.blanoir.moons.features;
 
 import com.blanoir.moons.api.ResourceScope;
-import com.blanoir.moons.client.access.GameAccess;
 import com.blanoir.moons.client.access.MinecraftClientAccess;
+import com.blanoir.moons.client.compat.input.InputConstants;
+import com.blanoir.moons.client.compat.input.KeyEvent;
+import com.blanoir.moons.client.compat.input.MouseButtonInfo;
+import com.blanoir.moons.client.compat.math.Mth;
+import com.blanoir.moons.client.compat.render.EntityRenderState;
 import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.event.action.AttackInputEvent;
 import com.blanoir.moons.client.event.action.UseInputEvent;
@@ -47,36 +51,21 @@ import com.blanoir.moons.client.module.impl.render.xray.OreScanner;
 import com.blanoir.moons.client.module.impl.world.AutoTool;
 import com.blanoir.moons.client.module.impl.world.FastPlace;
 import com.blanoir.moons.client.module.impl.world.scaffold.Scaffold;
+import com.blanoir.moons.client.render.LegacyPoseStack;
 import com.blanoir.moons.client.ui.clickgui.ModuleGui;
 import com.blanoir.moons.client.ui.clickgui.MoonsComposeScreen;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 import com.blanoir.moons.client.utils.time.FrameClock;
 import com.blanoir.moons.runtime.RuntimeEvents;
-import com.mojang.blaze3d.platform.InputConstants;
-import com.mojang.blaze3d.vertex.PoseStack;
 
-import net.minecraft.client.DeltaTracker;
-import net.minecraft.client.KeyboardHandler;
+import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.MouseHandler;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.input.KeyEvent;
-import net.minecraft.client.input.MouseButtonInfo;
-import net.minecraft.client.multiplayer.ClientLevel;
-import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.client.renderer.GameRenderer;
-import net.minecraft.client.renderer.LevelRenderer;
-import net.minecraft.client.renderer.SubmitNodeCollector;
-import net.minecraft.client.renderer.entity.state.AvatarRenderState;
-import net.minecraft.client.renderer.entity.state.EntityRenderState;
-import net.minecraft.client.renderer.state.level.LevelRenderState;
-import net.minecraft.core.BlockPos;
-import net.minecraft.util.Mth;
-import net.minecraft.world.entity.Avatar;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.phys.EntityHitResult;
-import net.minecraft.world.phys.HitResult;
+import net.minecraft.client.entity.EntityPlayerSP;
+import net.minecraft.client.multiplayer.WorldClient;
+import net.minecraft.client.renderer.EntityRenderer;
+import net.minecraft.entity.Entity;
+import net.minecraft.util.BlockPos;
+import net.minecraft.util.MovingObjectPosition;
 
 import java.util.ArrayDeque;
 import java.util.Collections;
@@ -94,10 +83,10 @@ final class RuntimeEventAdapter {
     private final Map<Object, PositionCapture> positionCaptures = weakMap();
     private final Map<Object, ActionCapture> actionCaptures = weakMap();
     private final RenderRotationController renderRotations = new RenderRotationController();
-    private final ThreadLocal<Deque<BlockState>> previousBlocks =
+    private final ThreadLocal<Deque<IBlockState>> previousBlocks =
             ThreadLocal.withInitial(ArrayDeque::new);
     private ClientContextChangedEvent.Snapshot clientContext;
-    private volatile DeltaTracker deltaTracker;
+    private volatile float partialTick = 1.0F;
     private final KeybindInputListener bindingInputs = new KeybindInputListener();
 
     RuntimeEventAdapter(RuntimeEvents runtime) {
@@ -152,9 +141,9 @@ final class RuntimeEventAdapter {
 
     private static ClientContextChangedEvent.Snapshot contextOf(Minecraft client) {
         return new ClientContextChangedEvent.Snapshot(
-                client == null ? null : client.level,
-                client == null ? null : client.player,
-                client == null ? null : client.getConnection());
+                client == null ? null : client.theWorld,
+                client == null ? null : client.thePlayer,
+                client == null ? null : client.getNetHandler());
     }
 
     private static boolean sameContext(
@@ -167,48 +156,56 @@ final class RuntimeEventAdapter {
     private void frame(RuntimeEvents.Frame event) {
         pollBindings();
         WorldRenderDispatch.beginFrame();
-        if (event.deltaTracker() instanceof DeltaTracker tracker) deltaTracker = tracker;
+        if (event.deltaTracker() instanceof Number tracker) partialTick = tracker.floatValue();
         double deltaSeconds = frameClock.nextDeltaSeconds();
-        EventBus.FRAME.post(new FrameEvent(Minecraft.getInstance(), deltaSeconds));
+        EventBus.FRAME.post(new FrameEvent(Minecraft.getMinecraft(), deltaSeconds));
     }
 
     private void pollBindings() {
-        Minecraft client = Minecraft.getInstance();
+        Minecraft client = Minecraft.getMinecraft();
         Object screen = MinecraftClientAccess.screen(client);
         bindingInputs.poll(
                 ModuleKeybinds.boundKeys(),
-                client.isWindowActive(),
+                org.lwjgl.opengl.Display.isActive(),
                 key -> MinecraftClientAccess.isBindingKeyDown(client, key),
                 key -> routeBindingPress(client, key, screen == null));
     }
 
     private void hud(RuntimeEvents.Hud event) {
-        if (event.extractor() instanceof GuiGraphicsExtractor graphics
-                && event.deltaTracker() instanceof DeltaTracker tracker) {
-            EventBus.HUD_RENDER.post(new HudRenderEvent(graphics, tracker));
-        }
+        float delta =
+                event.deltaTracker() instanceof Number number ? number.floatValue() : partialTick;
+        EventBus.HUD_RENDER.post(
+                new HudRenderEvent(
+                        new com.blanoir.moons.client.ui.render.LegacyGuiGraphics(
+                                Minecraft.getMinecraft()),
+                        delta));
     }
 
     private void worldRender(RuntimeEvents.WorldRender event) {
-        if (!(event.poseStack() instanceof PoseStack poseStack)) return;
+        float delta =
+                event.levelRenderState() instanceof Number number
+                        ? number.floatValue()
+                        : partialTick;
+        // 1.8's world pass already has its camera/model-view matrices active.
+        // Overlay geometry composes its own stack with those live GL matrices.
+        LegacyPoseStack pose =
+                event.poseStack() instanceof LegacyPoseStack supplied
+                        ? supplied
+                        : new LegacyPoseStack();
         if (event.stage() == 0) {
-            if (event.renderer() instanceof LevelRenderer renderer
-                    && event.levelRenderState() instanceof LevelRenderState levelRenderState) {
-                SubmitNodeCollector collector = GameAccess.submitNodeCollector(renderer);
-                Backtrack.renderModel(poseStack, levelRenderState, collector);
-            }
+            Backtrack.renderModel(delta);
             return;
         }
-        DeltaTracker tracker = deltaTracker;
-        float partialTick = tracker == null ? 1.0F : tracker.getGameTimeDeltaPartialTick(true);
-        WorldRenderDispatch.post(poseStack, partialTick);
+        Backtrack.renderModel(delta);
+        WorldRenderDispatch.post(pose, delta);
     }
 
     private void key(RuntimeEvents.Key event) {
         if (!(event.event() instanceof KeyEvent keyEvent)) return;
         InputConstants.Key key = ModuleKeybinds.fromEvent(keyEvent);
         if (event.action() == InputConstants.RELEASE) bindingInputs.release(key);
-        if (event.handler() instanceof KeyboardHandler handler) {
+        {
+            Object handler = event.handler();
             KeyInputEvent input =
                     new KeyInputEvent(handler, event.window(), event.action(), keyEvent);
             EventBus.KEY_INPUT.post(input);
@@ -224,12 +221,12 @@ final class RuntimeEventAdapter {
             }
             return;
         }
-        Minecraft client = Minecraft.getInstance();
-        if (client.player != null
-                && client.level != null
+        Minecraft client = Minecraft.getMinecraft();
+        if (client.thePlayer != null
+                && client.theWorld != null
                 && MinecraftClientAccess.screen(client) == null) {
-            for (int slot = 0; slot < client.options.keyHotbarSlots.length; slot++) {
-                if (client.options.keyHotbarSlots[slot].matches(keyEvent)
+            for (int slot = 0; slot < client.gameSettings.keyBindsHotbar.length; slot++) {
+                if (client.gameSettings.keyBindsHotbar[slot].getKeyCode() == keyEvent.key()
                         && Scaffold.handleHotbarSwap(slot, 0)) {
                     bindingInputs.suppress(key);
                     event.control().cancel();
@@ -246,7 +243,8 @@ final class RuntimeEventAdapter {
         if (!(event.button() instanceof MouseButtonInfo button)) return;
         InputConstants.Key key = ModuleKeybinds.fromMouseButton(button.button());
         if (event.action() == InputConstants.RELEASE) bindingInputs.release(key);
-        if (event.handler() instanceof MouseHandler handler) {
+        {
+            Object handler = event.handler();
             MouseButtonEvent input =
                     new MouseButtonEvent(handler, event.window(), button, event.action());
             EventBus.MOUSE_BUTTON.post(input);
@@ -257,7 +255,7 @@ final class RuntimeEventAdapter {
             }
         }
         if (event.action() != InputConstants.PRESS) return;
-        Minecraft client = Minecraft.getInstance();
+        Minecraft client = Minecraft.getMinecraft();
         if (bindingInputs.press(key, pressed -> routeBindingPress(client, pressed, true))) {
             event.control().cancel();
         }
@@ -265,7 +263,9 @@ final class RuntimeEventAdapter {
 
     private boolean routeBindingPress(
             Minecraft client, InputConstants.Key key, boolean allowGameplayBindings) {
-        if (!client.isWindowActive() || client.player == null || client.level == null) return false;
+        if (!org.lwjgl.opengl.Display.isActive()
+                || client.thePlayer == null
+                || client.theWorld == null) return false;
         Object screen = MinecraftClientAccess.screen(client);
         if (screen != null && (!(screen instanceof MoonsComposeScreen gui) || gui.isBindingKey()))
             return false;
@@ -278,7 +278,8 @@ final class RuntimeEventAdapter {
     }
 
     private void mouseScroll(RuntimeEvents.MouseScroll event) {
-        if (event.handler() instanceof MouseHandler handler) {
+        {
+            Object handler = event.handler();
             MouseScrollEvent input =
                     new MouseScrollEvent(handler, event.window(), event.xOffset(), event.yOffset());
             EventBus.MOUSE_SCROLL.post(input);
@@ -287,10 +288,10 @@ final class RuntimeEventAdapter {
                 return;
             }
         }
-        Minecraft client = Minecraft.getInstance();
-        var currentPlayer = client.player;
+        Minecraft client = Minecraft.getMinecraft();
+        var currentPlayer = client.thePlayer;
         if (currentPlayer == null
-                || client.level == null
+                || client.theWorld == null
                 || currentPlayer.isSpectator()
                 || MinecraftClientAccess.screen(client) != null
                 || event.yOffset() == 0.0D) return;
@@ -299,18 +300,19 @@ final class RuntimeEventAdapter {
     }
 
     private void mouseMove(RuntimeEvents.MouseMove event) {
-        Minecraft client = Minecraft.getInstance();
-        LocalPlayer player = client.player;
+        Minecraft client = Minecraft.getMinecraft();
+        EntityPlayerSP player = client.thePlayer;
         if (event.phase() == RuntimeEvents.Phase.START) {
-            if (event.handler() instanceof MouseHandler handler) {
+            {
+                Object handler = event.handler();
                 EventBus.MOUSE_MOTION_PRE.post(new MouseMotionEvent.Pre(handler));
             }
             if (player != null) {
                 MouseCapture capture =
                         mouseCaptures.computeIfAbsent(
                                 event.handler(), ignored -> new MouseCapture());
-                capture.yaw = player.getYRot();
-                capture.pitch = player.getXRot();
+                capture.yaw = player.rotationYaw;
+                capture.pitch = player.rotationPitch;
                 capture.active = true;
             }
             return;
@@ -321,18 +323,19 @@ final class RuntimeEventAdapter {
             if (player != null) {
                 MouseInputTracker.recordFrame(
                         System.nanoTime(),
-                        Mth.wrapDegrees(player.getYRot() - capture.yaw),
-                        player.getXRot() - capture.pitch);
+                        Mth.wrapDegrees(player.rotationYaw - capture.yaw),
+                        player.rotationPitch - capture.pitch);
             }
         }
-        if (event.handler() instanceof MouseHandler handler) {
+        {
+            Object handler = event.handler();
             EventBus.MOUSE_MOTION_POST.post(new MouseMotionEvent.Post(handler));
         }
     }
 
     private void action(RuntimeEvents.Action event) {
         if (!(event.minecraft() instanceof Minecraft client)) return;
-        var player = client.player;
+        var player = client.thePlayer;
         if (event.phase() == RuntimeEvents.Phase.START) {
             boolean automated =
                     event.kind() == RuntimeEvents.Kind.ATTACK
@@ -347,7 +350,8 @@ final class RuntimeEventAdapter {
                     && manualRotation != null
                     && player != null
                     && !RotationManager.same(
-                            manualRotation, new Rotation(player.getYRot(), player.getXRot()))) {
+                            manualRotation,
+                            new Rotation(player.rotationYaw, player.rotationPitch))) {
                 event.control().cancel();
                 return;
             }
@@ -394,14 +398,17 @@ final class RuntimeEventAdapter {
             capture.attackTarget = null;
             capture.autoLavaCriticalEligible = false;
             Animations.onAttack();
-            EntityHitResult replacement = CombatInputController.consumePendingAttackHit(client);
+            MovingObjectPosition replacement =
+                    CombatInputController.consumePendingAttackHit(client);
             if (replacement != null) {
-                capture.attackHit = client.hitResult;
+                capture.attackHit = client.objectMouseOver;
                 capture.attackActive = true;
-                client.hitResult = replacement;
+                client.objectMouseOver = replacement;
             }
-            if (client.hitResult instanceof EntityHitResult hit) {
-                Entity target = hit.getEntity();
+            if (client.objectMouseOver != null
+                    && client.objectMouseOver.typeOfHit
+                            == MovingObjectPosition.MovingObjectType.ENTITY) {
+                Entity target = client.objectMouseOver.entityHit;
                 SprintReset.onAttack(target);
                 AutoTool.onAttack(target);
                 AutoSword.onAttack(target);
@@ -413,23 +420,23 @@ final class RuntimeEventAdapter {
                 Critical.beforeAttack(client, target);
             }
         } else if (SilentPacketRotation.beginSimulatedUse(client)) {
-            LocalPlayer player = client.player;
+            EntityPlayerSP player = client.thePlayer;
             capture.useActive = true;
             capture.usePlayer = player;
-            capture.useHit = client.hitResult;
+            capture.useHit = client.objectMouseOver;
             if (player != null) {
-                capture.useYaw = player.getYRot();
-                capture.usePitch = player.getXRot();
-                player.setYRot(SilentPacketRotation.getSimulatedUseYaw());
-                player.setXRot(SilentPacketRotation.getSimulatedUsePitch());
+                capture.useYaw = player.rotationYaw;
+                capture.usePitch = player.rotationPitch;
+                player.rotationYaw = SilentPacketRotation.getSimulatedUseYaw();
+                player.rotationPitch = SilentPacketRotation.getSimulatedUsePitch();
             }
-            client.hitResult = SilentPacketRotation.getSimulatedUseHit();
+            client.objectMouseOver = SilentPacketRotation.getSimulatedUseHit();
         } else {
             var hit = FastPlace.placementHit(client);
             if (hit != null) {
                 capture.manualUseActive = true;
-                capture.manualUseHit = client.hitResult;
-                client.hitResult = hit;
+                capture.manualUseHit = client.objectMouseOver;
+                client.objectMouseOver = hit;
             }
         }
     }
@@ -441,7 +448,7 @@ final class RuntimeEventAdapter {
             Entity attacked = capture.attackTarget;
             boolean autoLavaCriticalEligible = capture.autoLavaCriticalEligible;
             if (capture.attackActive) {
-                client.hitResult = capture.attackHit;
+                client.objectMouseOver = capture.attackHit;
             }
             capture.attackActive = false;
             capture.attackHit = null;
@@ -452,17 +459,17 @@ final class RuntimeEventAdapter {
                 AutoWeb.onAttack(attacked);
             }
         } else if (kind == RuntimeEvents.Kind.USE && capture.useActive) {
-            client.hitResult = capture.useHit;
+            client.objectMouseOver = capture.useHit;
             if (capture.usePlayer != null) {
-                capture.usePlayer.setYRot(capture.useYaw);
-                capture.usePlayer.setXRot(capture.usePitch);
+                capture.usePlayer.rotationYaw = capture.useYaw;
+                capture.usePlayer.rotationPitch = capture.usePitch;
             }
             capture.useActive = false;
             capture.usePlayer = null;
             capture.useHit = null;
             SilentPacketRotation.finishSimulatedUse();
         } else if (kind == RuntimeEvents.Kind.USE && capture.manualUseActive) {
-            client.hitResult = capture.manualUseHit;
+            client.objectMouseOver = capture.manualUseHit;
             capture.manualUseHit = null;
             capture.manualUseActive = false;
         }
@@ -484,18 +491,18 @@ final class RuntimeEventAdapter {
     }
 
     private void blockUpdate(RuntimeEvents.BlockUpdate event) {
-        if (!(event.level() instanceof ClientLevel level)
+        if (!(event.level() instanceof WorldClient level)
                 || !(event.position() instanceof BlockPos position)
-                || !(event.newState() instanceof BlockState state)) return;
-        Deque<BlockState> stack = previousBlocks.get();
+                || !(event.newState() instanceof IBlockState state)) return;
+        Deque<IBlockState> stack = previousBlocks.get();
         if (event.phase() == RuntimeEvents.Phase.START) {
-            BlockState previous = level.getBlockState(position);
+            IBlockState previous = level.getBlockState(position);
             stack.push(previous);
             EventBus.BLOCK_UPDATE_PRE.post(
                     new BlockUpdateEvent.Pre(level, position, previous, state));
             return;
         }
-        BlockState previous = stack.isEmpty() ? state : stack.pop();
+        IBlockState previous = stack.isEmpty() ? state : stack.pop();
         if (event.applied()) {
             AntiLava.onBlockUpdate(position, state);
             AntiWeb.onBlockUpdate(position, previous, state);
@@ -508,16 +515,16 @@ final class RuntimeEventAdapter {
     }
 
     private void moveInput(RuntimeEvents.MoveInput event) {
-        if (event.player() instanceof LocalPlayer player
-                && Minecraft.getInstance().player == player) {
+        if (event.player() instanceof EntityPlayerSP player
+                && Minecraft.getMinecraft().thePlayer == player) {
             EventBus.MOVE_INPUT.post(new MoveInputEvent());
         }
     }
 
     private void playerUpdate(RuntimeEvents.PlayerUpdate event) {
-        if (event.player() instanceof LocalPlayer player
-                && Minecraft.getInstance().player == player) {
-            PlayerUpdateEvent updateEvent = new PlayerUpdateEvent(Minecraft.getInstance());
+        if (event.player() instanceof EntityPlayerSP player
+                && Minecraft.getMinecraft().thePlayer == player) {
+            PlayerUpdateEvent updateEvent = new PlayerUpdateEvent(Minecraft.getMinecraft());
             // A previous cancelled player update may never have reached sendPosition.
             // Interaction pins survive this ordinary submission cleanup.
             RotationLease.finishMotion();
@@ -527,40 +534,42 @@ final class RuntimeEventAdapter {
     }
 
     private void playerMove(RuntimeEvents.PlayerMove event) {
-        Minecraft client = Minecraft.getInstance();
-        if (!client.isSameThread() || !(event.player() instanceof LocalPlayer entity)
-                || client.player != entity) return;
+        Minecraft client = Minecraft.getMinecraft();
+        if (!client.isCallingFromMinecraftThread()
+                || !(event.player() instanceof EntityPlayerSP entity)
+                || client.thePlayer != entity) return;
         MoveFix.State movementFix = MoveFix.current(client);
         if (!movementFix.active()) return;
         float yaw = movementFix.yaw();
         PositionCapture capture =
                 positionCaptures.computeIfAbsent(entity, ignored -> new PositionCapture());
-        capture.movementYaw = entity.getYRot();
+        capture.movementYaw = entity.rotationYaw;
         capture.movementActive = true;
-        entity.setYRot(yaw);
+        entity.rotationYaw = yaw;
     }
 
     private void playerMoveEnd(RuntimeEvents.PlayerMoveEnd event) {
-        Minecraft client = Minecraft.getInstance();
+        Minecraft client = Minecraft.getMinecraft();
         // Entity.moveRelative is also hooked for integrated-server players and mobs.
         // Their returns must never restore a client player's temporary movement yaw.
-        if (!client.isSameThread() || !(event.player() instanceof LocalPlayer player)
-                || client.player != player) return;
+        if (!client.isCallingFromMinecraftThread()
+                || !(event.player() instanceof EntityPlayerSP player)
+                || client.thePlayer != player) return;
         restoreMovementYaw();
         EventBus.PLAYER_MOVE_END.post(new PlayerMoveEndEvent(player));
     }
 
     private void playerPosition(RuntimeEvents.PlayerPosition event) {
-        if (!(event.player() instanceof LocalPlayer player)) return;
+        if (!(event.player() instanceof EntityPlayerSP player)) return;
         PositionCapture capture =
                 positionCaptures.computeIfAbsent(player, ignored -> new PositionCapture());
         if (event.phase() == RuntimeEvents.Phase.START) {
-            capture.eventCameraYaw = player.getYRot();
-            capture.eventCameraPitch = player.getXRot();
+            capture.eventCameraYaw = player.rotationYaw;
+            capture.eventCameraPitch = player.rotationPitch;
             RotationLease.beginMotion();
             applyPacketRotation(player, capture);
-            capture.eventOutgoingYaw = player.getYRot();
-            capture.eventOutgoingPitch = player.getXRot();
+            capture.eventOutgoingYaw = player.rotationYaw;
+            capture.eventOutgoingPitch = player.rotationPitch;
             capture.eventOverridden =
                     Float.compare(capture.eventCameraYaw, capture.eventOutgoingYaw) != 0
                             || Float.compare(capture.eventCameraPitch, capture.eventOutgoingPitch)
@@ -590,25 +599,25 @@ final class RuntimeEventAdapter {
         }
     }
 
-    private void applyPacketRotation(LocalPlayer player, PositionCapture state) {
+    private void applyPacketRotation(EntityPlayerSP player, PositionCapture state) {
         Rotation rotation;
         RotationManager.Decision decision = RotationManager.resolve();
         if (decision != null) {
             rotation = decision.rotation();
         } else {
             if (!state.continuous) return;
-            Rotation base = RotationManager.start(Minecraft.getInstance());
+            Rotation base = RotationManager.start(Minecraft.getMinecraft());
             // Keep the camera itself in the same whole-turn domain before it is
             // captured for restoration. Correcting just this closing packet
             // would let the next vanilla packet jump from 181 back to -179.
-            float cameraYaw = player.getYRot();
+            float cameraYaw = player.rotationYaw;
             float continuousYaw = RotationQuantizer.continuousYaw(base.yaw(), cameraYaw);
-            player.setYRot(continuousYaw);
-            player.yRotO += continuousYaw - cameraYaw;
+            player.rotationYaw = continuousYaw;
+            player.prevRotationYaw += continuousYaw - cameraYaw;
             rotation =
                     new Rotation(
-                            RotationQuantizer.yaw(base.yaw(), player.getYRot()),
-                            RotationQuantizer.pitch(base.pitch(), player.getXRot()));
+                            RotationQuantizer.yaw(base.yaw(), player.rotationYaw),
+                            RotationQuantizer.pitch(base.pitch(), player.rotationPitch));
             state.continuous = false;
             applyTemporaryRotation(player, state, rotation);
             return;
@@ -618,18 +627,18 @@ final class RuntimeEventAdapter {
     }
 
     private void applyTemporaryRotation(
-            LocalPlayer player, PositionCapture state, Rotation rotation) {
-        state.cameraYaw = player.getYRot();
-        state.cameraPitch = player.getXRot();
+            EntityPlayerSP player, PositionCapture state, Rotation rotation) {
+        state.cameraYaw = player.rotationYaw;
+        state.cameraPitch = player.rotationPitch;
         state.packetActive = true;
-        player.setYRot(rotation.yaw());
-        player.setXRot(rotation.pitch());
+        player.rotationYaw = rotation.yaw();
+        player.rotationPitch = rotation.pitch();
     }
 
-    private void restorePacketRotation(LocalPlayer player, PositionCapture state) {
+    private void restorePacketRotation(EntityPlayerSP player, PositionCapture state) {
         if (state.packetActive) {
-            player.setYRot(state.cameraYaw);
-            player.setXRot(state.cameraPitch);
+            player.rotationYaw = state.cameraYaw;
+            player.rotationPitch = state.cameraPitch;
             state.packetActive = false;
         }
         // A completed method may have emitted no packet, or had its send cancelled.
@@ -637,10 +646,10 @@ final class RuntimeEventAdapter {
     }
 
     private void renderState(RuntimeEvents.RenderState event) {
-        if (event.entity() instanceof Avatar avatar
-                && event.state() instanceof AvatarRenderState state) {
-            renderRotations.apply(avatar, state, event.partialTick());
-            Animations.applyThirdPerson(avatar, state);
+        if (event.entity() instanceof net.minecraft.entity.EntityLivingBase living) {
+            if (Boolean.TRUE.equals(event.state()))
+                renderRotations.begin(living, event.partialTick());
+            else if (Boolean.FALSE.equals(event.state())) renderRotations.end(living);
         }
         if (EventBus.ENTITY_RENDER_STATE.listenerCount() != 0
                 && event.entity() instanceof Entity entity
@@ -651,18 +660,18 @@ final class RuntimeEventAdapter {
     }
 
     private void rendererClose(RuntimeEvents.RendererClose event) {
-        if (event.renderer() instanceof GameRenderer renderer) {
+        if (event.renderer() instanceof EntityRenderer renderer) {
             EventBus.RENDERER_CLOSE.post(new RendererCloseEvent(renderer));
         }
     }
 
     private void restoreMovementYaw() {
-        Minecraft client = Minecraft.getInstance();
-        LocalPlayer player = client.player;
+        Minecraft client = Minecraft.getMinecraft();
+        EntityPlayerSP player = client.thePlayer;
         if (player == null) return;
         PositionCapture capture = positionCaptures.get(player);
         if (capture != null && capture.movementActive) {
-            player.setYRot(capture.movementYaw);
+            player.rotationYaw = capture.movementYaw;
             capture.movementActive = false;
         }
     }
@@ -679,14 +688,14 @@ final class RuntimeEventAdapter {
 
     private static final class ActionCapture {
         boolean attackActive;
-        HitResult attackHit;
+        MovingObjectPosition attackHit;
         Entity attackTarget;
         boolean autoLavaCriticalEligible;
         boolean useActive;
         boolean manualUseActive;
-        HitResult manualUseHit;
-        LocalPlayer usePlayer;
-        HitResult useHit;
+        MovingObjectPosition manualUseHit;
+        EntityPlayerSP usePlayer;
+        MovingObjectPosition useHit;
         float useYaw;
         float usePitch;
     }

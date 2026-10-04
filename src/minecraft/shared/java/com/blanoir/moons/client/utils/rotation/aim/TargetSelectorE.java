@@ -1,12 +1,13 @@
 package com.blanoir.moons.client.utils.rotation.aim;
 
+import com.blanoir.moons.client.compat.math.VecMath;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 import com.blanoir.moons.client.utils.world.placement.PlacementRaycast;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.util.BlockPos;
+import net.minecraft.util.EnumFacing;
+import net.minecraft.util.Vec3;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -27,14 +28,14 @@ public final class TargetSelectorE {
             BlockPos desired,
             List<BlockTarget> candidates,
             float towerYaw) {
-        Vec3 desiredCenter = Vec3.atCenterOf(desired);
+        Vec3 desiredCenter = VecMath.atCenterOf(desired);
         List<BlockTarget> targets = new ArrayList<>(candidates);
         targets.sort(
                 Comparator.comparingDouble(
                                 (BlockTarget target) ->
                                         target.supportDistanceSquared(desiredCenter))
                         .thenComparingDouble(target -> target.placeDistanceSquared(desiredCenter))
-                        .thenComparingInt(target -> target.face() == Direction.UP ? 0 : 1));
+                        .thenComparingInt(target -> target.face() == EnumFacing.UP ? 0 : 1));
         for (BlockTarget target : targets) {
             BlockAim aim =
                     AimPointsI.resolve(
@@ -43,7 +44,7 @@ public final class TargetSelectorE {
                             target,
                             eye,
                             new Rotation(towerYaw, 90.0F),
-                            client.player.blockInteractionRange());
+                            client.playerController.getBlockReachDistance());
             if (aim != null) return aim;
         }
         return null;

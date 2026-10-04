@@ -6,16 +6,16 @@ import com.blanoir.moons.client.utils.combat.CombatReach;
 import com.blanoir.moons.client.utils.raytrace.RaytraceUtils;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.phys.EntityHitResult;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.util.MovingObjectPosition;
 
 import java.util.Locale;
 
-/** Stateless geometry shared by the two independently scheduled combat modes. */
+/** Stateless attack geometry for the Legacy CPS scheduler. */
 public final class SilentAuraAttackRay {
-    public record Result(LivingEntity target, String gate, EntityHitResult hit) {
-        public Result(LivingEntity target, String gate) {
+    public record Result(EntityLivingBase target, String gate, MovingObjectPosition hit) {
+        public Result(EntityLivingBase target, String gate) {
             this(target, gate, null);
         }
     }
@@ -23,10 +23,10 @@ public final class SilentAuraAttackRay {
     private SilentAuraAttackRay() {}
 
     public static Result find(Minecraft client) {
-        LivingEntity intended = SilentAuraRuntime.currentTarget(client);
+        EntityLivingBase intended = SilentAuraRuntime.currentTarget(client);
         if (!configured(client, intended)) return new Result(null, "no target");
         var rotation = SilentAuraRuntime.attackRotation(client);
-        if (!rotation.valid() || rotation.targetId() != intended.getId())
+        if (!rotation.valid() || rotation.targetId() != intended.getEntityId())
             return new Result(null, "waiting rotation");
         double range = CombatReach.entityInteractionRange(client, SilentAuraConfig.aimRange());
         if (range <= 0) return new Result(null, "range");
@@ -37,15 +37,20 @@ public final class SilentAuraAttackRay {
                         rotation.look(),
                         range,
                         entity ->
-                                entity instanceof LivingEntity living
-                                        && living != client.player
-                                        && living.isAlive()
-                                        && living.isAttackable()
-                                        && !living.isSpectator(),
+                                entity instanceof EntityLivingBase living
+                                        && living != client.thePlayer
+                                        && living.isEntityAlive()
+                                        && living.canAttackWithItem()
+                                        && !(living
+                                                        instanceof
+                                                        net.minecraft.entity.player.EntityPlayer
+                                                                spectator
+                                                && spectator.isSpectator()),
                         SilentAuraConfig.throughBlocks());
-        LivingEntity target = intercepted instanceof LivingEntity living ? living : intended;
+        EntityLivingBase target =
+                intercepted instanceof EntityLivingBase living ? living : intended;
         if (!configured(client, target)) return new Result(null, "ray blocked");
-        if (client.level.getEntity(target.getId()) != target)
+        if (client.theWorld.getEntityByID(target.getEntityId()) != target)
             return new Result(null, "target moved");
         var ray =
                 CombatGeometry.traceEntity(

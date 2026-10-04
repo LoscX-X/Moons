@@ -30,7 +30,7 @@ internal fun PluginBlocksSetting(onMutated: () -> Unit) {
     var indexing by remember { mutableStateOf(PluginXrayTargets.isIndexing()) }
     LaunchedEffect(Unit) {
         while (true) {
-            PluginXrayTargets.updateContext(Minecraft.getInstance())
+            PluginXrayTargets.updateContext(Minecraft.getMinecraft())
             revision = PluginXrayTargets.revision()
             indexing = PluginXrayTargets.isIndexing()
             delay(250)
@@ -59,7 +59,7 @@ internal fun PluginBlocksSetting(onMutated: () -> Unit) {
     ) {
         runCatching {
                 PluginXrayTargets.editBlock(
-                    Minecraft.getInstance(),
+                    Minecraft.getMinecraft(),
                     scope,
                     entry.id(),
                     selected,

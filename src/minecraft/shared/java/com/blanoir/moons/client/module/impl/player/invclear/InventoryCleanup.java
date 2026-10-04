@@ -1,11 +1,11 @@
 package com.blanoir.moons.client.module.impl.player.invclear;
 
 import com.blanoir.moons.client.module.impl.player.invmanager.*;
+import com.blanoir.moons.client.utils.inventory.LegacyItems;
 
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.Identifier;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.enchantment.Enchantments;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
+import net.minecraft.util.ResourceLocation;
 
 import java.util.*;
 
@@ -19,8 +19,7 @@ public final class InventoryCleanup {
                     InventoryRole.FORTUNE_PICKAXE,
                     InventoryRole.AXE,
                     InventoryRole.SHOVEL,
-                    InventoryRole.BOW,
-                    InventoryRole.CROSSBOW);
+                    InventoryRole.BOW);
 
     public record Drop(int source, ItemStack item, String reason) {}
 
@@ -30,7 +29,7 @@ public final class InventoryCleanup {
         Set<String> result = new LinkedHashSet<>();
         for (String token : text.split("[,;\\s]+")) {
             if (token.isBlank()) continue;
-            Identifier id = Identifier.tryParse(token);
+            ResourceLocation id = LegacyItems.parseId(token);
             if (id == null) throw new IllegalArgumentException("Invalid item ID: " + token);
             result.add(id.toString());
         }
@@ -49,8 +48,8 @@ public final class InventoryCleanup {
         List<Drop> result = new ArrayList<>();
         for (int index = 0; index < 36; index++) {
             ItemStack item = snapshot.item(index);
-            String id = BuiltInRegistries.ITEM.getKey(item.getItem()).toString();
-            if (item.isEmpty()
+            String id = Item.itemRegistry.getNameForObject(item.getItem()).toString();
+            if (LegacyItems.empty(item)
                     || snapshot.menuSlot(index) < 0
                     || blocked.get(index)
                     || protectHotbar && index < 9
@@ -58,7 +57,7 @@ public final class InventoryCleanup {
                     || keepIds.contains(id)
                     || protectSpecial && !InventoryItems.protection(item).isEmpty()) continue;
             if (dropIds.contains(id)) {
-                result.add(new Drop(index, item.copy(), "Listed junk"));
+                result.add(new Drop(index, LegacyItems.copy(item), "Listed junk"));
                 continue;
             }
             if (!equipment || !id.startsWith("minecraft:")) continue;
@@ -70,16 +69,13 @@ public final class InventoryCleanup {
                             ? 1
                             : Math.max(1, roles.stream().filter(value -> value == role).count());
             int better = 0;
-            for (int other = 0; other < 41; other++) {
+            for (int other = 0; other < 40; other++) {
                 if (other == index || snapshot.menuSlot(other) < 0) continue;
                 ItemStack candidate = snapshot.item(other);
-                if (candidate.isEmpty()
+                if (LegacyItems.empty(candidate)
                         || dropIds.contains(
-                                BuiltInRegistries.ITEM.getKey(candidate.getItem()).toString())
-                        || !InventoryItems.protection(candidate).isEmpty()
-                        || InventoryItems.enchant(candidate, Enchantments.BINDING_CURSE) > 0
-                        || InventoryItems.enchant(candidate, Enchantments.VANISHING_CURSE) > 0)
-                    continue;
+                                Item.itemRegistry.getNameForObject(candidate.getItem()).toString())
+                        || !InventoryItems.protection(candidate).isEmpty()) continue;
                 if (role != null
                         ? equipmentRole(candidate) != role
                         : InventoryArmor.slot(candidate) != armorSlot) continue;
@@ -91,7 +87,8 @@ public final class InventoryCleanup {
                         item,
                         other < index || other == armorSlot)) better++;
             }
-            if (better >= required) result.add(new Drop(index, item.copy(), "Surplus equipment"));
+            if (better >= required)
+                result.add(new Drop(index, LegacyItems.copy(item), "Surplus equipment"));
         }
         return List.copyOf(result);
     }
@@ -109,9 +106,11 @@ public final class InventoryCleanup {
             ItemStack item,
             boolean preferredOnTie) {
         // Preserve distinct enchantment utility, such as Silk Touch, Mending or fire protection.
-        for (var enchantment : item.getEnchantments().entrySet()) {
-            if (candidate.getEnchantments().getLevel(enchantment.getKey())
-                    < enchantment.getIntValue()) return false;
+        for (var enchantment :
+                net.minecraft.enchantment.EnchantmentHelper.getEnchantments(item).entrySet()) {
+            if (net.minecraft.enchantment.EnchantmentHelper.getEnchantmentLevel(
+                            enchantment.getKey(), candidate)
+                    < enchantment.getValue()) return false;
         }
         boolean worn = InventoryItems.nearlyBroken(candidate);
         if (worn && !InventoryItems.nearlyBroken(item)) return false;
@@ -123,8 +122,8 @@ public final class InventoryCleanup {
                                 - InventoryItems.quality(role, item);
         if (quality < -1.0E-6) return false;
         int durability =
-                (candidate.getMaxDamage() - candidate.getDamageValue())
-                        - (item.getMaxDamage() - item.getDamageValue());
+                (candidate.getMaxDamage() - candidate.getItemDamage())
+                        - (item.getMaxDamage() - item.getItemDamage());
         if (durability < 0) return false;
         return quality > 1.0E-6 || durability > 0 || preferredOnTie;
     }

@@ -1,6 +1,6 @@
 package com.blanoir.moons.client.management.network;
 
-import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.Packet;
 
 import java.util.List;
 import java.util.function.Predicate;

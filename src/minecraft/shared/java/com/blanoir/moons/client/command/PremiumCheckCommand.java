@@ -6,11 +6,11 @@ import com.blanoir.moons.client.config.settings.IntSetting;
 import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.service.profile.MojangProfileClient;
 
-import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.multiplayer.PlayerInfo;
-import net.minecraft.network.chat.Component;
-import net.minecraft.world.entity.player.Player;
+import net.minecraft.client.network.NetworkPlayerInfo;
+import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.util.EnumChatFormatting;
+import net.minecraft.util.IChatComponent;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -90,14 +90,15 @@ public final class PremiumCheckCommand {
         return 1;
     }
 
-    public static Component decorate(PlayerInfo info, Component original) {
+    public static IChatComponent decorate(NetworkPlayerInfo info, IChatComponent original) {
         if (!ENABLED.get() || info == null || original == null) return original;
-        return decorate(status(info.getProfile().id(), info.getProfile().name()), original);
+        return decorate(
+                status(info.getGameProfile().getId(), info.getGameProfile().getName()), original);
     }
 
-    public static Component decorate(Player player, Component original) {
+    public static IChatComponent decorate(EntityPlayer player, IChatComponent original) {
         if (!ENABLED.get() || player == null || original == null) return original;
-        return decorate(status(player.getUUID(), player.getGameProfile().name()), original);
+        return decorate(status(player.getUniqueID(), player.getGameProfile().getName()), original);
     }
 
     public static void checkAllTabPlayers(Minecraft client) {
@@ -106,7 +107,7 @@ public final class PremiumCheckCommand {
             return;
         }
 
-        if (client == null || client.getConnection() == null) {
+        if (client == null || client.getNetHandler() == null) {
             ClientChat.send(client, "§cPremiumCheck: 当前没有连接到服务器");
             return;
         }
@@ -126,21 +127,21 @@ public final class PremiumCheckCommand {
     }
 
     private static void beginLookup(Minecraft client, boolean announce) {
-        var connection = client == null ? null : client.getConnection();
+        var connection = client == null ? null : client.getNetHandler();
         if (client == null || connection == null) return;
         long now = System.currentTimeMillis();
         if (lookupRunning || now < nextLookupAtMillis) return;
 
-        Collection<PlayerInfo> entries = connection.getListedOnlinePlayers();
+        Collection<NetworkPlayerInfo> entries = connection.getPlayerInfoMap();
         List<String> names = new ArrayList<>();
         Map<String, UUID> serverUuids = new LinkedHashMap<>();
 
-        for (PlayerInfo entry : entries) {
-            String name = entry.getProfile().name();
+        for (NetworkPlayerInfo entry : entries) {
+            String name = entry.getGameProfile().getName();
 
             if (name != null && !name.isBlank()) {
                 names.add(name);
-                serverUuids.put(name.toLowerCase(Locale.ROOT), entry.getProfile().id());
+                serverUuids.put(name.toLowerCase(Locale.ROOT), entry.getGameProfile().getId());
             }
         }
 
@@ -167,10 +168,10 @@ public final class PremiumCheckCommand {
         LOOKUP.lookupAsyncBatched(lookupNames)
                 .thenAccept(
                         result ->
-                                client.execute(
+                                client.addScheduledTask(
                                         () -> {
                                             lookupRunning = false;
-                                            if (client.getConnection() == connection)
+                                            if (client.getNetHandler() == connection)
                                                 showAllResults(
                                                         client,
                                                         names,
@@ -180,7 +181,7 @@ public final class PremiumCheckCommand {
                                         }))
                 .exceptionally(
                         ex -> {
-                            client.execute(
+                            client.addScheduledTask(
                                     () -> {
                                         lookupRunning = false;
                                         if (announce)
@@ -245,7 +246,7 @@ public final class PremiumCheckCommand {
     }
 
     private static void tick(Minecraft client) {
-        Object connection = client == null ? null : client.getConnection();
+        Object connection = client == null ? null : client.getNetHandler();
         if (connection != observedConnection) {
             observedConnection = connection;
             STATUS_BY_UUID.clear();
@@ -272,28 +273,31 @@ public final class PremiumCheckCommand {
                 : STATUS_BY_NAME.get(name.toLowerCase(Locale.ROOT));
     }
 
-    private static Component decorate(PremiumStatus status, Component original) {
+    private static IChatComponent decorate(PremiumStatus status, IChatComponent original) {
         if (status == null) return original;
-        String text = original.getString();
+        String text = original.getUnformattedText();
         for (PremiumStatus known : PremiumStatus.values()) {
             if (text.startsWith(known.label + " ") || text.equals(known.label)) return original;
         }
-        return Component.empty()
-                .append(Component.literal(status.label).withStyle(status.color))
-                .append(Component.literal(" "))
-                .append(original);
+        return new net.minecraft.util.ChatComponentText("")
+                .appendSibling(
+                        new net.minecraft.util.ChatComponentText(status.label)
+                                .setChatStyle(
+                                        new net.minecraft.util.ChatStyle().setColor(status.color)))
+                .appendSibling(new net.minecraft.util.ChatComponentText(" "))
+                .appendSibling(original);
     }
 
     private enum PremiumStatus {
-        PREMIUM("[正版]", ChatFormatting.GREEN),
-        OFFLINE("[离线]", ChatFormatting.YELLOW),
-        MISMATCH("[UUID异常]", ChatFormatting.RED),
-        INVALID("[非法名字]", ChatFormatting.DARK_RED);
+        PREMIUM("[正版]", EnumChatFormatting.GREEN),
+        OFFLINE("[离线]", EnumChatFormatting.YELLOW),
+        MISMATCH("[UUID异常]", EnumChatFormatting.RED),
+        INVALID("[非法名字]", EnumChatFormatting.DARK_RED);
 
         private final String label;
-        private final ChatFormatting color;
+        private final EnumChatFormatting color;
 
-        PremiumStatus(String label, ChatFormatting color) {
+        PremiumStatus(String label, EnumChatFormatting color) {
             this.label = label;
             this.color = color;
         }

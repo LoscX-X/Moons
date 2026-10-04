@@ -10,7 +10,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.resources.Identifier;
+import net.minecraft.util.ResourceLocation;
 
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
@@ -113,9 +113,9 @@ public final class BlockInConfig {
         return new JsonArray();
     }
 
-    static List<Identifier> priorities() {
+    static List<ResourceLocation> priorities() {
         return blocks().asList().stream()
-                .map(entry -> Identifier.parse(entry.getAsJsonObject().get("id").getAsString()))
+                .map(entry -> new ResourceLocation(entry.getAsJsonObject().get("id").getAsString()))
                 .toList();
     }
 

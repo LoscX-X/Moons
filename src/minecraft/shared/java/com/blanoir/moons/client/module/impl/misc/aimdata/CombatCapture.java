@@ -6,7 +6,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
 
-/** Five-second bounded pre-roll; only confirmed combat promotes snapshots to the disk queue. */
+/** Five-second bounded pre-roll; combat evidence opens a window and promotes snapshots to the disk queue. */
 final class CombatCapture {
     static final long PRE_ROLL_NANOS = 5_000_000_000L;
     private final ArrayDeque<AimGeometry.Sample> history = new ArrayDeque<>();

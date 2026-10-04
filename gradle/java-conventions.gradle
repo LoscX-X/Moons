@@ -59,8 +59,11 @@ base {
     archivesName = project.archives_base_name
 }
 
-loom {
-    splitEnvironmentSourceSets()
+if (selectedMinecraftVersion == '1.8.9') {
+    sourceSets.create('client')
+    configurations.create('minecraftNatives')
+} else {
+    loom { splitEnvironmentSourceSets() }
 }
 
 configurations.named("clientImplementation") {
@@ -102,7 +105,7 @@ tasks.named("compileClientKotlin", moonsPluginTypes.kotlinCompile) {
 }
 
 dependencies {
-    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    if (selectedMinecraftVersion != '1.8.9') minecraft "com.mojang:minecraft:${project.minecraft_version}"
 
     // Compose renders as an independent final-frame overlay in the GLFW framebuffer.
     // These artifacts are shaded into the hot-loaded feature payload below.

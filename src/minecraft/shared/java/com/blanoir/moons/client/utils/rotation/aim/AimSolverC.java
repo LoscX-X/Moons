@@ -1,15 +1,15 @@
 package com.blanoir.moons.client.utils.rotation.aim;
 
+import com.blanoir.moons.client.compat.math.Mth;
 import com.blanoir.moons.client.utils.math.MathUtils;
 import com.blanoir.moons.client.utils.prediction.AimPrediction;
 import com.blanoir.moons.client.utils.raytrace.RaytraceUtils;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.util.Mth;
-import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.util.AxisAlignedBB;
+import net.minecraft.util.Vec3;
 
 /**
  * C: Existing FullLock horizontal lead constrained to the live hitbox.
@@ -24,14 +24,14 @@ public final class AimSolverC {
             AimState state,
             AimParameters parameters,
             Minecraft client,
-            LivingEntity target,
+            EntityLivingBase target,
             Vec3 point,
             double rawDelta) {
         double delta = Mth.clamp(rawDelta, 1.0D / 1000.0D, 1.0D / 20.0D);
         float previousYaw = state.yaw;
         float previousPitch = state.pitch;
         Vec3 leadPoint = fullLockLeadPoint(state, parameters, client, target, point, delta);
-        Rotation desired = AimSolverD.rotationTo(client.player.getEyePosition(), leadPoint);
+        Rotation desired = AimSolverD.rotationTo(client.thePlayer.getPositionEyes(1F), leadPoint);
         state.yaw += MathUtils.wrappedAngleDifference(state.yaw, desired.yaw());
         state.pitch = Mth.clamp(desired.pitch(), -90.0F, 90.0F);
         state.yawVelocity =
@@ -46,29 +46,29 @@ public final class AimSolverC {
             AimState state,
             AimParameters parameters,
             Minecraft client,
-            LivingEntity target,
+            EntityLivingBase target,
             Vec3 point,
             double deltaSeconds) {
         double leadTicks = parameters.fullLockPrediction();
         if (leadTicks <= 0.0D) return point;
         Vec3 travel = state.prediction.displacement(leadTicks);
 
-        AABB box = target.getBoundingBox();
+        AxisAlignedBB box = target.getEntityBoundingBox();
         // Preserve angular room for quantization at the outer edge of reach.
-        double insetX = Math.min(box.getXsize() * 0.22D, 0.11D);
-        double insetZ = Math.min(box.getZsize() * 0.22D, 0.11D);
+        double insetX = Math.min((box.maxX - box.minX) * 0.22D, 0.11D);
+        double insetZ = Math.min((box.maxZ - box.minZ) * 0.22D, 0.11D);
         Vec3 predicted =
                 AimPrediction.clampedLead(
                         point,
-                        new Vec3(travel.x, 0.0D, travel.z),
-                        new AABB(
+                        new Vec3(travel.xCoord, 0.0D, travel.zCoord),
+                        new AxisAlignedBB(
                                 box.minX + insetX,
-                                point.y,
+                                point.yCoord,
                                 box.minZ + insetZ,
                                 box.maxX - insetX,
-                                point.y,
+                                point.yCoord,
                                 box.maxZ - insetZ));
-        Vec3 eye = client.player.getEyePosition();
+        Vec3 eye = client.thePlayer.getPositionEyes(1F);
         return RaytraceUtils.canRayTraceTo(client, eye, predicted, parameters.throughBlocks())
                 ? predicted
                 : point;

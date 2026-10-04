@@ -1,15 +1,17 @@
 package com.blanoir.moons.client.module.impl.network.backtrack;
 
+import com.blanoir.moons.client.compat.math.VecMath;
 import com.blanoir.moons.client.management.targeting.Targeting;
+import com.blanoir.moons.client.utils.world.LegacyWorld;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.NeutralMob;
-import net.minecraft.world.entity.animal.fish.WaterAnimal;
-import net.minecraft.world.entity.monster.Enemy;
-import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.entity.monster.IMob;
+import net.minecraft.entity.passive.EntityAnimal;
+import net.minecraft.entity.passive.EntityWaterMob;
+import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.util.Vec3;
 
 /** Original Range nearest-target and Intent crosshair selection, shared across versions. */
 final class BacktrackTargets {
@@ -17,47 +19,58 @@ final class BacktrackTargets {
 
     static boolean eligible(Minecraft client, Entity entity) {
         if (entity == null
-                || client.player == null
-                || entity == client.player
-                || entity.hasPassenger(client.player)
-                || !(entity instanceof LivingEntity living)
-                || !living.isAlive()) return false;
-        if (living instanceof Player player)
-            return !player.isSleeping() && Targeting.isEnemyPlayer(client, player);
-        return living instanceof WaterAnimal
-                || living instanceof Enemy
-                || living instanceof NeutralMob;
+                || client.thePlayer == null
+                || entity == client.thePlayer
+                || entity.riddenByEntity == client.thePlayer
+                || !(entity instanceof EntityLivingBase living)
+                || !living.isEntityAlive()) return false;
+        if (living instanceof EntityPlayer player)
+            return !player.isPlayerSleeping() && Targeting.isEnemyPlayer(client, player);
+        return living instanceof EntityWaterMob
+                || living instanceof IMob
+                || living instanceof EntityAnimal;
     }
 
-    static LivingEntity find(Minecraft client, BacktrackConfig config) {
-        Vec3 eye = client.player.getEyePosition();
-        Vec3 end = eye.add(client.player.getViewVector(1).scale(config.maxRange()));
-        LivingEntity best = null;
+    static EntityLivingBase find(Minecraft client, BacktrackConfig config) {
+        Vec3 eye = client.thePlayer.getPositionEyes(1.0F);
+        Vec3 end = eye.add(VecMath.scale(client.thePlayer.getLook(1), config.maxRange()));
+        EntityLivingBase best = null;
         double nearest = Double.POSITIVE_INFINITY;
-        for (Entity entity : client.level.entitiesForRendering()) {
+        for (Entity entity : client.theWorld.loadedEntityList) {
             if (!eligible(client, entity)) continue;
-            var box = entity.getBoundingBox().inflate(entity.getPickRadius());
-            double distance = box.distanceToSqr(eye);
+            var box =
+                    LegacyWorld.inflate(
+                            entity.getEntityBoundingBox(), entity.getCollisionBorderSize());
+            double distance = LegacyWorld.distanceSquared(box, eye);
             if (distance < config.minRange() * config.minRange()
                     || distance > config.maxRange() * config.maxRange()) continue;
             if (config.targetMode() == BacktrackConfig.TargetMode.INTENT) {
-                var aimBox = box.inflate(.15);
-                Vec3 hit = aimBox.contains(eye) ? eye : aimBox.clip(eye, end).orElse(null);
+                var aimBox = LegacyWorld.inflate(box, .15);
+                Vec3 hit =
+                        aimBox.isVecInside(eye)
+                                ? eye
+                                : LegacyWorld.intercept(aimBox, eye, end).orElse(null);
                 if (hit == null) continue;
-                distance = hit.distanceToSqr(eye);
+                distance = hit.squareDistanceTo(eye);
             }
             if (distance < nearest) {
                 nearest = distance;
-                best = (LivingEntity) entity;
+                best = (EntityLivingBase) entity;
             }
         }
         return best;
     }
 
-    static boolean intended(Minecraft client, LivingEntity target, double range) {
-        Vec3 eye = client.player.getEyePosition();
-        var box = target.getBoundingBox().inflate(target.getPickRadius() + .15);
-        return box.contains(eye)
-                || box.clip(eye, eye.add(client.player.getViewVector(1).scale(range))).isPresent();
+    static boolean intended(Minecraft client, EntityLivingBase target, double range) {
+        Vec3 eye = client.thePlayer.getPositionEyes(1.0F);
+        var box =
+                LegacyWorld.inflate(
+                        target.getEntityBoundingBox(), target.getCollisionBorderSize() + .15);
+        return box.isVecInside(eye)
+                || LegacyWorld.intercept(
+                                box,
+                                eye,
+                                eye.add(VecMath.scale(client.thePlayer.getLook(1), range)))
+                        .isPresent();
     }
 }

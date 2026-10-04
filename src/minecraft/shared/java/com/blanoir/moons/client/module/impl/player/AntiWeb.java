@@ -1,6 +1,8 @@
 package com.blanoir.moons.client.module.impl.player;
 
 import com.blanoir.moons.client.chat.ClientChat;
+import com.blanoir.moons.client.compat.math.Mth;
+import com.blanoir.moons.client.compat.math.VecMath;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.DoubleSetting;
 import com.blanoir.moons.client.config.settings.IntSetting;
@@ -10,27 +12,27 @@ import com.blanoir.moons.client.management.input.CombatInputController;
 import com.blanoir.moons.client.management.rotation.SilentPacketRotation;
 import com.blanoir.moons.client.management.targeting.Targeting;
 import com.blanoir.moons.client.utils.client.ClientReady;
+import com.blanoir.moons.client.utils.inventory.LegacyItems;
 import com.blanoir.moons.client.utils.math.MathUtils;
 import com.blanoir.moons.client.utils.player.HotbarQueries;
+import com.blanoir.moons.client.utils.world.LegacyRay;
+import com.blanoir.moons.client.utils.world.LegacyWorld;
 import com.blanoir.moons.client.utils.world.placement.BlockPlacementUtils;
 import com.blanoir.moons.client.utils.world.placement.PlacementCoordinator;
 import com.blanoir.moons.client.utils.world.placement.PlacementRaycast;
 
+import net.minecraft.block.material.Material;
+import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.Minecraft;
-import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
-import net.minecraft.tags.FluidTags;
-import net.minecraft.util.Mth;
-import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
-import net.minecraft.world.level.ClipContext;
-import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.BlockHitResult;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.init.Blocks;
+import net.minecraft.init.Items;
+import net.minecraft.item.ItemStack;
+import net.minecraft.util.AxisAlignedBB;
+import net.minecraft.util.BlockPos;
+import net.minecraft.util.EnumFacing;
+import net.minecraft.util.MovingObjectPosition;
+import net.minecraft.util.Vec3;
 
 /**
  * Clears a cobweb around the local player with a hotbar water bucket. Its
@@ -52,8 +54,8 @@ public final class AntiWeb {
     private static final double BOX_EPSILON = 1.0E-4D;
     private static final double FACE_INSET = 0.08D;
     private static final double[] FACE_SAMPLES = {-0.38D, -0.19D, 0.0D, 0.19D, 0.38D};
-    private static final Direction[] WEB_PLACEMENT_FACES = {
-        Direction.UP, Direction.NORTH, Direction.SOUTH, Direction.WEST, Direction.EAST
+    private static final EnumFacing[] WEB_PLACEMENT_FACES = {
+        EnumFacing.UP, EnumFacing.NORTH, EnumFacing.SOUTH, EnumFacing.WEST, EnumFacing.EAST
     };
     private static final long COUNTER_EVENT_LIFETIME_MS = 750L;
     private static final long SAME_COUNTER_SOURCE_DEBOUNCE_MS = 1000L;
@@ -117,7 +119,7 @@ public final class AntiWeb {
 
     private static BlockPos activeWebPos;
     private static BlockPos activeWaterPos;
-    private static BlockHitResult activePlacementHit;
+    private static MovingObjectPosition activePlacementHit;
     private static int activeWaterSlot = -1;
     private static int originalSlot = -1;
     private static WaterCyclePhase waterCyclePhase = WaterCyclePhase.IDLE;
@@ -143,29 +145,29 @@ public final class AntiWeb {
     public static void init() {
         EventBus.CLIENT_CONTEXT_CHANGED.register("AntiWeb.context", event -> shutdown(null));
         PlacementCoordinator.register(PlacementCoordinator.Owner.ANTI_WEB, AntiWeb::isBusy);
-        EventBus.PLAYER_UPDATE.register("AntiWeb.playerUpdate", AntiWeb::tick);
+        EventBus.PLAYER_UPDATE.register("AntiWeb.thePlayerUpdate", AntiWeb::tick);
     }
 
     /** Called after a client block update with the state that was replaced. */
-    public static void onBlockUpdate(BlockPos pos, BlockState previous, BlockState state) {
+    public static void onBlockUpdate(BlockPos pos, IBlockState previous, IBlockState state) {
         if (!ENABLED.get()
                 || !ANTI_ANTI_WEB_ENABLED.get()
                 || pos == null
                 || state == null
-                || !state.getFluidState().is(FluidTags.WATER)
-                || !state.getFluidState().isSource()) {
+                || !LegacyWorld.fluid(state).is(Material.water)
+                || !LegacyWorld.fluid(state).isSource()) {
             return;
         }
         if (isBusy() && pos.equals(activeWaterPos)) {
             return;
         }
 
-        Minecraft client = Minecraft.getInstance();
-        boolean replacedWeb = previous != null && previous.is(Blocks.COBWEB);
+        Minecraft client = Minecraft.getMinecraft();
+        boolean replacedWeb = previous != null && (previous.getBlock() == Blocks.web);
         BlockPos relatedWeb =
                 replacedWeb
-                        ? pos.immutable()
-                        : client.level == null ? null : adjacentCobweb(client, pos);
+                        ? new BlockPos(pos)
+                        : client.theWorld == null ? null : adjacentCobweb(client, pos);
         if (relatedWeb == null) {
             return;
         }
@@ -175,8 +177,8 @@ public final class AntiWeb {
                 && now - lastCounterSourceAtMs < SAME_COUNTER_SOURCE_DEBOUNCE_MS) {
             return;
         }
-        pendingCounterEvent = new CounterEvent(pos.immutable(), relatedWeb.immutable(), now);
-        lastCounterSource = pos.immutable();
+        pendingCounterEvent = new CounterEvent(new BlockPos(pos), new BlockPos(relatedWeb), now);
+        lastCounterSource = new BlockPos(pos);
         lastCounterSourceAtMs = now;
     }
 
@@ -189,10 +191,9 @@ public final class AntiWeb {
         }
 
         if (isBusy()) {
-            if (activeWaterSlot >= 0
-                    && client.player.getInventory().getSelectedSlot() != activeWaterSlot) {
+            if (activeWaterSlot >= 0 && client.thePlayer.inventory.currentItem != activeWaterSlot) {
                 reset(client);
-                retryAfterTick = client.player.tickCount + 10;
+                retryAfterTick = client.thePlayer.ticksExisted + 10;
                 return;
             }
             if (CYCLE_GUARD.expired(
@@ -203,21 +204,21 @@ public final class AntiWeb {
                 // cycle
                 // must also cancel that transaction and its deferred callbacks.
                 reset(client);
-                retryAfterTick = client.player.tickCount + 10;
+                retryAfterTick = client.thePlayer.ticksExisted + 10;
                 return;
             }
             tickWaterCycle(client);
             return;
         }
 
-        if (client.player.tickCount < retryAfterTick || SilentPacketRotation.isBusy()) return;
+        if (client.thePlayer.ticksExisted < retryAfterTick || SilentPacketRotation.isBusy()) return;
 
         if (PlacementCoordinator.busyFor(PlacementCoordinator.Owner.ANTI_WEB)
-                || client.level.dimension() == Level.NETHER) {
+                || client.theWorld.provider.getDimensionId() == -1) {
             return;
         }
         WaterPlacementPlan waterPlan = findPlayerWaterPlan(client);
-        int waterSlot = HotbarQueries.firstItem(client, Items.WATER_BUCKET);
+        int waterSlot = HotbarQueries.firstItem(client, Items.water_bucket);
         if (waterPlan == null || waterSlot < 0) {
             clearPendingWeb();
             if (tryRecoverWater(client)) return;
@@ -234,7 +235,7 @@ public final class AntiWeb {
         }
 
         if (!webPos.equals(pendingWebPos)) {
-            pendingWebPos = webPos.immutable();
+            pendingWebPos = new BlockPos(webPos);
             pendingDelayTicks = DELAY_TICKS.get();
             if (pendingDelayTicks > 0) {
                 return;
@@ -269,24 +270,24 @@ public final class AntiWeb {
 
         clearPendingCounterEvent();
         if (!isWaterSource(client, event.source())
-                || !withinCounterRange(client, Vec3.atCenterOf(event.source()))
-                || !withinFov(client, Vec3.atCenterOf(event.source()))) {
+                || !withinCounterRange(client, VecMath.atCenterOf(event.source()))
+                || !withinFov(client, VecMath.atCenterOf(event.source()))) {
             return false;
         }
 
-        Player target = responsibleEnemy(client, event.source(), event.webPos());
+        EntityPlayer target = responsibleEnemy(client, event.source(), event.webPos());
         if (target == null) {
             return false;
         }
 
         WaterPlacementPlan waterPlan =
                 planCounterWaterOverwrite(client, event.source(), event.webPos());
-        int waterSlot = HotbarQueries.firstItem(client, Items.WATER_BUCKET);
+        int waterSlot = HotbarQueries.firstItem(client, Items.water_bucket);
         if (waterPlan == null || waterSlot < 0) {
             return false;
         }
 
-        if (!withinCounterRange(client, waterPlan.hit().getLocation())) {
+        if (!withinCounterRange(client, waterPlan.hit().hitVec)) {
             return false;
         }
 
@@ -308,17 +309,17 @@ public final class AntiWeb {
             BlockPos webPos,
             BlockPos waterPos,
             int waterSlot,
-            BlockHitResult placementHit,
+            MovingObjectPosition placementHit,
             int waterHoldTicks,
             int smoothTicks) {
-        activeWebPos = webPos.immutable();
+        activeWebPos = new BlockPos(webPos);
         // Vanilla places the source in the cell adjacent to the clicked web
         // face. Tracking that real server-side position avoids relying on a
         // client-only "water replaces cobweb" rule.
-        activeWaterPos = waterPos.immutable();
+        activeWaterPos = new BlockPos(waterPos);
         activePlacementHit = placementHit;
         activeWaterSlot = waterSlot;
-        originalSlot = client.player.getInventory().getSelectedSlot();
+        originalSlot = client.thePlayer.inventory.currentItem;
         waterHoldRemainingTicks = Math.max(1, waterHoldTicks);
         waterHoldStarted = false;
         bucketSyncWaitTicks = 0;
@@ -337,7 +338,7 @@ public final class AntiWeb {
         waterCyclePhase = WaterCyclePhase.TURNING_TO_PLACE;
         SilentPacketRotation.beginRotation(
                 client,
-                placementHit.getLocation(),
+                placementHit.hitVec,
                 activeSmoothTicks,
                 () -> waterCyclePhase = WaterCyclePhase.WAITING_FOR_PLACE_ROTATION);
     }
@@ -368,7 +369,9 @@ public final class AntiWeb {
 
         if (waterCyclePhase == WaterCyclePhase.WAITING_FOR_PLACE_ROTATION) {
             selectSlot(client, activeWaterSlot);
-            if (!client.player.getInventory().getItem(activeWaterSlot).is(Items.WATER_BUCKET)) {
+            if (!LegacyItems.is(
+                    client.thePlayer.inventory.getStackInSlot(activeWaterSlot),
+                    Items.water_bucket)) {
                 beginReturnRotation(client);
                 return;
             }
@@ -389,7 +392,9 @@ public final class AntiWeb {
         if (waterCyclePhase == WaterCyclePhase.HOLDING_WATER) {
             BlockPos detectedSource = findWaterSourceForPlan(client, activeWebPos, activeWaterPos);
             boolean bucketEmptied =
-                    client.player.getInventory().getItem(activeWaterSlot).is(Items.BUCKET);
+                    LegacyItems.is(
+                            client.thePlayer.inventory.getStackInSlot(activeWaterSlot),
+                            Items.bucket);
             if (!waterHoldStarted) {
                 if (!bucketEmptied || detectedSource == null) {
                     if (++bucketSyncWaitTicks <= MAX_BUCKET_SYNC_TICKS) {
@@ -414,7 +419,7 @@ public final class AntiWeb {
             }
             activeWaterPos = detectedSource;
             bucketSyncWaitTicks = 0;
-            if (!withinInteractionRange(client, Vec3.atCenterOf(activeWaterPos))) {
+            if (!withinInteractionRange(client, VecMath.atCenterOf(activeWaterPos))) {
                 deferWaterRecovery(client);
                 return;
             }
@@ -423,12 +428,13 @@ public final class AntiWeb {
         }
 
         if (waterCyclePhase == WaterCyclePhase.WAITING_FOR_COLLECT_ROTATION) {
-            if (!withinInteractionRange(client, Vec3.atCenterOf(activeWaterPos))) {
+            if (!withinInteractionRange(client, VecMath.atCenterOf(activeWaterPos))) {
                 deferWaterRecovery(client);
                 return;
             }
             selectSlot(client, activeWaterSlot);
-            if (!client.player.getInventory().getItem(activeWaterSlot).is(Items.BUCKET)) {
+            if (!LegacyItems.is(
+                    client.thePlayer.inventory.getStackInSlot(activeWaterSlot), Items.bucket)) {
                 beginReturnRotation(client);
                 return;
             }
@@ -448,7 +454,9 @@ public final class AntiWeb {
                 return;
             }
             boolean bucketRefilled =
-                    client.player.getInventory().getItem(activeWaterSlot).is(Items.WATER_BUCKET);
+                    LegacyItems.is(
+                            client.thePlayer.inventory.getStackInSlot(activeWaterSlot),
+                            Items.water_bucket);
             if (bucketRefilled) {
                 pendingRecoveryWaterPos = null;
                 beginReturnRotation(client);
@@ -458,7 +466,7 @@ public final class AntiWeb {
             BlockPos remainingSource = findWaterSourceForPlan(client, activeWebPos, activeWaterPos);
             if (remainingSource != null && ++bucketSyncWaitTicks <= MAX_BUCKET_SYNC_TICKS) {
                 activeWaterPos = remainingSource;
-                if (!withinInteractionRange(client, Vec3.atCenterOf(activeWaterPos))) {
+                if (!withinInteractionRange(client, VecMath.atCenterOf(activeWaterPos))) {
                     deferWaterRecovery(client);
                 }
                 return;
@@ -475,12 +483,12 @@ public final class AntiWeb {
 
     private static void beginCollectAttempt(Minecraft client) {
         selectSlot(client, activeWaterSlot);
-        ItemStack stack = client.player.getInventory().getItem(activeWaterSlot);
-        if (stack.is(Items.WATER_BUCKET)) {
+        ItemStack stack = client.thePlayer.inventory.getStackInSlot(activeWaterSlot);
+        if (LegacyItems.is(stack, Items.water_bucket)) {
             beginReturnRotation(client);
             return;
         }
-        if (!stack.is(Items.BUCKET)) {
+        if (!LegacyItems.is(stack, Items.bucket)) {
             beginReturnRotation(client);
             return;
         }
@@ -489,11 +497,11 @@ public final class AntiWeb {
     }
 
     private static void rotateToWaterSource(Minecraft client) {
-        BlockHitResult pickupHit = waterSourceHit(activeWaterPos);
+        MovingObjectPosition pickupHit = waterSourceHit(activeWaterPos);
         waterCyclePhase = WaterCyclePhase.TURNING_TO_COLLECT;
         SilentPacketRotation.beginRotation(
                 client,
-                Vec3.atCenterOf(activeWaterPos),
+                VecMath.atCenterOf(activeWaterPos),
                 1,
                 SilentPacketRotation.Mode.INSTANT,
                 () -> waterCyclePhase = WaterCyclePhase.WAITING_FOR_COLLECT_ROTATION);
@@ -514,12 +522,12 @@ public final class AntiWeb {
                 () -> waterCyclePhase = WaterCyclePhase.WAITING_FOR_RETURN_ROTATION);
     }
 
-    private static BlockHitResult waterSourceHit(BlockPos waterPos) {
+    private static MovingObjectPosition waterSourceHit(BlockPos waterPos) {
         // The normal crosshair ray does not treat water as a block hit. Giving
         // startUseItem a BLOCK hit here makes it first send USE_ITEM_ON against
         // liquid, which server-side placement checks reject. The empty
         // bucket's own use path performs its separate SOURCE_ONLY fluid ray.
-        return BlockHitResult.miss(Vec3.atCenterOf(waterPos), Direction.UP, waterPos);
+        return LegacyWorld.miss(VecMath.atCenterOf(waterPos), EnumFacing.UP, waterPos);
     }
 
     /** Starts the cycle without packet RotationA, reusing the current camera angles. */
@@ -530,7 +538,7 @@ public final class AntiWeb {
 
     private static void deferWaterRecovery(Minecraft client) {
         if (activeWaterPos != null && isWaterSource(client, activeWaterPos)) {
-            pendingRecoveryWaterPos = activeWaterPos.immutable();
+            pendingRecoveryWaterPos = new BlockPos(activeWaterPos);
             recoveryExpiresAt = System.nanoTime() + 5_000_000_000L;
         }
         beginReturnRotation(client);
@@ -544,16 +552,16 @@ public final class AntiWeb {
             pendingRecoveryWaterPos = null;
             return false;
         }
-        if (!withinInteractionRange(client, Vec3.atCenterOf(source))) return false;
-        int emptyBucketSlot = HotbarQueries.firstItem(client, Items.BUCKET);
+        if (!withinInteractionRange(client, VecMath.atCenterOf(source))) return false;
+        int emptyBucketSlot = HotbarQueries.firstItem(client, Items.bucket);
         if (emptyBucketSlot < 0) return false;
 
         pendingRecoveryWaterPos = null; // A remembered source gets one bounded recovery cycle.
-        activeWebPos = source.immutable();
-        activeWaterPos = source.immutable();
+        activeWebPos = new BlockPos(source);
+        activeWaterPos = new BlockPos(source);
         activePlacementHit = waterSourceHit(source);
         activeWaterSlot = emptyBucketSlot;
-        originalSlot = client.player.getInventory().getSelectedSlot();
+        originalSlot = client.thePlayer.inventory.currentItem;
         waterHoldRemainingTicks = 0;
         waterHoldStarted = false;
         bucketSyncWaitTicks = 0;
@@ -567,29 +575,30 @@ public final class AntiWeb {
 
     /** Whether the already-sent placement angle can collect the source too. */
     private static boolean sentLookReachesWaterSource(Minecraft client, BlockPos source) {
-        Vec3 eye = client.player.getEyePosition();
-        double reach = client.player.blockInteractionRange();
-        BlockHitResult hit =
+        Vec3 eye = client.thePlayer.getPositionEyes(1.0F);
+        double reach = Minecraft.getMinecraft().playerController.getBlockReachDistance();
+        MovingObjectPosition hit =
                 RAYS.traceOutline(
                         client,
                         eye,
                         SilentPacketRotation.getInteractionLookVector(client),
                         reach,
-                        ClipContext.Fluid.SOURCE_ONLY,
+                        LegacyRay.Fluid.SOURCE_ONLY,
                         source);
         return BlockPlacementUtils.matchesBlock(hit, source);
     }
 
     /** The no-RotationA fast path is only legal when it matches the planned face. */
-    private static boolean currentLookMatchesHit(Minecraft client, BlockHitResult plannedHit) {
-        Vec3 eye = client.player.getEyePosition();
-        BlockHitResult currentHit =
+    private static boolean currentLookMatchesHit(
+            Minecraft client, MovingObjectPosition plannedHit) {
+        Vec3 eye = client.thePlayer.getPositionEyes(1.0F);
+        MovingObjectPosition currentHit =
                 RAYS.traceOutline(
                         client,
                         eye,
-                        client.player.getLookAngle(),
-                        client.player.blockInteractionRange(),
-                        ClipContext.Fluid.NONE,
+                        client.thePlayer.getLookVec(),
+                        Minecraft.getMinecraft().playerController.getBlockReachDistance(),
+                        LegacyRay.Fluid.NONE,
                         plannedHit.getBlockPos());
         return BlockPlacementUtils.matchesFace(currentHit, plannedHit);
     }
@@ -597,7 +606,7 @@ public final class AntiWeb {
     private static WaterPlacementPlan findPlayerWaterPlan(Minecraft client) {
         // Evaluate every web intersecting the player. A head web whose top face
         // is hidden must not suppress a reachable feet/edge web candidate.
-        AABB box = client.player.getBoundingBox();
+        AxisAlignedBB box = client.thePlayer.getEntityBoundingBox();
         int minX = Mth.floor(box.minX + BOX_EPSILON);
         int minY = Mth.floor(box.minY + BOX_EPSILON);
         int minZ = Mth.floor(box.minZ + BOX_EPSILON);
@@ -606,19 +615,20 @@ public final class AntiWeb {
         int maxZ = Mth.floor(box.maxZ - BOX_EPSILON);
         WaterPlacementPlan best = null;
         double bestScore = Double.MAX_VALUE;
-        Vec3 eye = client.player.getEyePosition();
+        Vec3 eye = client.thePlayer.getPositionEyes(1.0F);
         for (int y = minY; y <= maxY; y++) {
             for (int x = minX; x <= maxX; x++) {
                 for (int z = minZ; z <= maxZ; z++) {
                     BlockPos web = new BlockPos(x, y, z);
-                    if (!client.level.getBlockState(web).is(Blocks.COBWEB)) {
+                    if ((client.theWorld.getBlockState(web).getBlock() != Blocks.web)) {
                         continue;
                     }
                     WaterPlacementPlan plan = planWaterPlacement(client, web);
                     if (plan == null) {
                         continue;
                     }
-                    double score = plan.score() + eye.distanceToSqr(Vec3.atCenterOf(web)) * 0.001D;
+                    double score =
+                            plan.score() + eye.squareDistanceTo(VecMath.atCenterOf(web)) * 0.001D;
                     if (score < bestScore) {
                         bestScore = score;
                         best = plan;
@@ -630,22 +640,22 @@ public final class AntiWeb {
     }
 
     private static boolean isWaterSource(Minecraft client, BlockPos pos) {
-        return client.level.getFluidState(pos).is(FluidTags.WATER)
-                && client.level.getFluidState(pos).isSource();
+        return LegacyWorld.fluid(client.theWorld, pos).is(Material.water)
+                && LegacyWorld.fluid(client.theWorld, pos).isSource();
     }
 
     private static BlockPos findWaterSourceForPlan(
             Minecraft client, BlockPos webPos, BlockPos plannedWaterPos) {
         // A nearby source may belong to someone else. Only recover the water this
         // cycle actually planned, so a stale adjacent source cannot prolong the cycle.
-        return isWaterSource(client, plannedWaterPos) ? plannedWaterPos.immutable() : null;
+        return isWaterSource(client, plannedWaterPos) ? new BlockPos(plannedWaterPos) : null;
     }
 
     private static BlockPos adjacentCobweb(Minecraft client, BlockPos source) {
-        for (Direction direction : Direction.values()) {
-            BlockPos candidate = source.relative(direction);
-            if (client.level.getBlockState(candidate).is(Blocks.COBWEB)) {
-                return candidate.immutable();
+        for (EnumFacing direction : EnumFacing.values()) {
+            BlockPos candidate = source.offset(direction);
+            if (client.theWorld.getBlockState(candidate).getBlock() == Blocks.web) {
+                return new BlockPos(candidate);
             }
         }
         return null;
@@ -661,64 +671,66 @@ public final class AntiWeb {
         if (!isWaterSource(client, source)) {
             return null;
         }
-        Direction[] supportOrder = {
-            Direction.DOWN,
-            Direction.NORTH,
-            Direction.SOUTH,
-            Direction.WEST,
-            Direction.EAST,
-            Direction.UP
+        EnumFacing[] supportOrder = {
+            EnumFacing.DOWN,
+            EnumFacing.NORTH,
+            EnumFacing.SOUTH,
+            EnumFacing.WEST,
+            EnumFacing.EAST,
+            EnumFacing.UP
         };
-        Vec3 eye = client.player.getEyePosition();
-        for (Direction supportDirection : supportOrder) {
-            BlockPos supportPos = source.relative(supportDirection);
-            BlockState supportState = client.level.getBlockState(supportPos);
-            if (supportState.getCollisionShape(client.level, supportPos).isEmpty()) {
+        Vec3 eye = client.thePlayer.getPositionEyes(1.0F);
+        for (EnumFacing supportDirection : supportOrder) {
+            BlockPos supportPos = source.offset(supportDirection);
+            IBlockState supportState = client.theWorld.getBlockState(supportPos);
+            if (LegacyWorld.collision(supportState, client.theWorld, supportPos).isEmpty()) {
                 continue;
             }
-            Direction supportFace = supportDirection.getOpposite();
+            EnumFacing supportFace = supportDirection.getOpposite();
             Vec3 hitLocation =
                     new Vec3(
-                            supportPos.getX() + 0.5D + supportFace.getStepX() * 0.5D,
-                            supportPos.getY() + 0.5D + supportFace.getStepY() * 0.5D,
-                            supportPos.getZ() + 0.5D + supportFace.getStepZ() * 0.5D);
+                            supportPos.getX() + 0.5D + supportFace.getFrontOffsetX() * 0.5D,
+                            supportPos.getY() + 0.5D + supportFace.getFrontOffsetY() * 0.5D,
+                            supportPos.getZ() + 0.5D + supportFace.getFrontOffsetZ() * 0.5D);
             if (!withinCounterRange(client, hitLocation)
                     || !withinInteractionRange(client, hitLocation)) {
                 continue;
             }
-            BlockHitResult visibleHit =
+            MovingObjectPosition visibleHit =
                     RAYS.visibleFaceHit(
                             client, eye, supportPos, supportFace, hitLocation, BOX_EPSILON);
             if (visibleHit == null) continue;
             return new WaterPlacementPlan(
-                    webPos.immutable(),
-                    source.immutable(),
-                    new BlockHitResult(visibleHit.getLocation(), supportFace, supportPos, false),
-                    eye.distanceToSqr(hitLocation));
+                    new BlockPos(webPos),
+                    new BlockPos(source),
+                    LegacyWorld.hit(visibleHit.hitVec, supportFace, supportPos, false),
+                    eye.squareDistanceTo(hitLocation));
         }
         return null;
     }
 
-    private static Player responsibleEnemy(Minecraft client, BlockPos source, BlockPos webPos) {
-        Vec3 center = Vec3.atCenterOf(source);
-        Player best = null;
+    private static EntityPlayer responsibleEnemy(
+            Minecraft client, BlockPos source, BlockPos webPos) {
+        Vec3 center = VecMath.atCenterOf(source);
+        EntityPlayer best = null;
         double bestDistance = Double.MAX_VALUE;
-        for (Player target : client.level.players()) {
+        for (EntityPlayer target : client.theWorld.playerEntities) {
             if (!Targeting.isValidTargetPlayer(client, target)) {
                 continue;
             }
-            AABB targetBox = target.getBoundingBox().inflate(0.05D);
-            if (!targetBox.intersects(new AABB(source))
-                    && !targetBox.intersects(new AABB(webPos))) {
+            AxisAlignedBB targetBox = LegacyWorld.inflate(target.getEntityBoundingBox(), 0.05D);
+            if (!targetBox.intersectsWith(LegacyWorld.box(source))
+                    && !targetBox.intersectsWith(LegacyWorld.box(webPos))) {
                 continue;
             }
 
-            Vec3 toSource = center.subtract(target.getEyePosition());
-            double distance = toSource.length();
+            Vec3 toSource = center.subtract(target.getPositionEyes(1.0F));
+            double distance = toSource.lengthVector();
             if (distance > ENEMY_WATER_REACH || distance < 1.0E-5D) {
                 continue;
             }
-            if (target.getLookAngle().dot(toSource.scale(1.0D / distance)) < ENEMY_WATER_LOOK_DOT) {
+            if (target.getLookVec().dotProduct(VecMath.scale(toSource, 1.0D / distance))
+                    < ENEMY_WATER_LOOK_DOT) {
                 continue;
             }
             if (distance < bestDistance) {
@@ -730,32 +742,37 @@ public final class AntiWeb {
     }
 
     private static boolean withinCounterRange(Minecraft client, Vec3 point) {
-        double range = Math.min(ANTI_ANTI_WEB_RANGE.get(), client.player.blockInteractionRange());
-        return client.player.getEyePosition().distanceToSqr(point) <= range * range;
+        double range =
+                Math.min(
+                        ANTI_ANTI_WEB_RANGE.get(),
+                        Minecraft.getMinecraft().playerController.getBlockReachDistance());
+        return client.thePlayer.getPositionEyes(1.0F).squareDistanceTo(point) <= range * range;
     }
 
     private static boolean withinInteractionRange(Minecraft client, Vec3 point) {
-        double range = client.player.blockInteractionRange();
-        return client.player.getEyePosition().distanceToSqr(point) <= range * range;
+        double range = Minecraft.getMinecraft().playerController.getBlockReachDistance();
+        return client.thePlayer.getPositionEyes(1.0F).squareDistanceTo(point) <= range * range;
     }
 
     private static boolean withinFov(Minecraft client, Vec3 point) {
         return MathUtils.withinFov(
                 MathUtils.viewAngle(
-                        client.player.getEyePosition(), client.player.getLookAngle(), point),
+                        client.thePlayer.getPositionEyes(1.0F),
+                        client.thePlayer.getLookVec(),
+                        point),
                 ANTI_ANTI_WEB_FOV.get());
     }
 
     private static WaterPlacementPlan planWaterPlacement(Minecraft client, BlockPos webPos) {
-        Vec3 eye = client.player.getEyePosition();
-        Vec3 look = client.player.getLookAngle();
-        double reach = client.player.blockInteractionRange();
+        Vec3 eye = client.thePlayer.getPositionEyes(1.0F);
+        Vec3 look = client.thePlayer.getLookVec();
+        double reach = Minecraft.getMinecraft().playerController.getBlockReachDistance();
         WaterPlacementPlan best = null;
         double bestScore = Double.MAX_VALUE;
-        for (Direction face : WEB_PLACEMENT_FACES) {
-            BlockPos waterPos = webPos.relative(face);
-            BlockState waterState = client.level.getBlockState(waterPos);
-            if (!waterState.canBeReplaced() || !waterState.getFluidState().isEmpty()) {
+        for (EnumFacing face : WEB_PLACEMENT_FACES) {
+            BlockPos waterPos = webPos.offset(face);
+            IBlockState waterState = client.theWorld.getBlockState(waterPos);
+            if (!LegacyWorld.replaceable(waterState) || !LegacyWorld.fluid(waterState).isEmpty()) {
                 continue;
             }
             for (double first : FACE_SAMPLES) {
@@ -764,19 +781,19 @@ public final class AntiWeb {
                     if (!withinInteractionRange(client, requested)) {
                         continue;
                     }
-                    BlockHitResult hit = visibleWebFaceHit(client, webPos, face, requested);
+                    MovingObjectPosition hit = visibleWebFaceHit(client, webPos, face, requested);
                     if (hit == null) {
                         continue;
                     }
                     double score =
-                            squaredDistanceToViewRay(eye, look, hit.getLocation(), reach)
-                                    + eye.distanceToSqr(hit.getLocation()) * 0.001D
-                                    + (face == Direction.UP ? 0.0D : 0.025D);
+                            squaredDistanceToViewRay(eye, look, hit.hitVec, reach)
+                                    + eye.squareDistanceTo(hit.hitVec) * 0.001D
+                                    + (face == EnumFacing.UP ? 0.0D : 0.025D);
                     if (score < bestScore) {
                         bestScore = score;
                         best =
                                 new WaterPlacementPlan(
-                                        webPos.immutable(), waterPos.immutable(), hit, score);
+                                        new BlockPos(webPos), new BlockPos(waterPos), hit, score);
                     }
                 }
             }
@@ -784,17 +801,17 @@ public final class AntiWeb {
         return best;
     }
 
-    private static Vec3 pointOnFace(BlockPos block, Direction face, double first, double second) {
+    private static Vec3 pointOnFace(BlockPos block, EnumFacing face, double first, double second) {
         double limit = 0.5D - FACE_INSET;
         first = Mth.clamp(first, -limit, limit);
         second = Mth.clamp(second, -limit, limit);
         return BlockPlacementUtils.fullBlockFaceOffset(block, face, first, second);
     }
 
-    private static BlockHitResult visibleWebFaceHit(
-            Minecraft client, BlockPos web, Direction face, Vec3 requested) {
+    private static MovingObjectPosition visibleWebFaceHit(
+            Minecraft client, BlockPos web, EnumFacing face, Vec3 requested) {
         return RAYS.visibleFaceHit(
-                client, client.player.getEyePosition(), web, face, requested, BOX_EPSILON);
+                client, client.thePlayer.getPositionEyes(1.0F), web, face, requested, BOX_EPSILON);
     }
 
     private static double squaredDistanceToViewRay(
@@ -823,24 +840,24 @@ public final class AntiWeb {
     }
 
     private static void selectSlot(Minecraft client, int slot) {
-        var currentPlayer = client == null ? null : client.player;
+        var currentPlayer = client == null ? null : client.thePlayer;
         if (client == null || currentPlayer == null || slot < 0 || slot > 8) {
             return;
         }
-        if (currentPlayer.getInventory().getSelectedSlot() == slot) {
+        if (currentPlayer.inventory.currentItem == slot) {
             return;
         }
-        currentPlayer.getInventory().setSelectedSlot(slot);
+        currentPlayer.inventory.currentItem = slot;
     }
 
     private static void restoreSlot(Minecraft client) {
         boolean ownedRotation = isBusy();
-        var currentPlayer = client == null ? null : client.player;
+        var currentPlayer = client == null ? null : client.thePlayer;
         if (client != null
                 && currentPlayer != null
                 && activeWaterSlot >= 0
                 && originalSlot >= 0
-                && currentPlayer.getInventory().getSelectedSlot() == activeWaterSlot) {
+                && currentPlayer.inventory.currentItem == activeWaterSlot) {
             selectSlot(client, originalSlot);
         }
         activeWebPos = null;
@@ -947,7 +964,7 @@ public final class AntiWeb {
     private record CounterEvent(BlockPos source, BlockPos webPos, long detectedAtMs) {}
 
     private record WaterPlacementPlan(
-            BlockPos webPos, BlockPos waterPos, BlockHitResult hit, double score) {}
+            BlockPos webPos, BlockPos waterPos, MovingObjectPosition hit, double score) {}
 
     private enum WaterCyclePhase {
         IDLE,

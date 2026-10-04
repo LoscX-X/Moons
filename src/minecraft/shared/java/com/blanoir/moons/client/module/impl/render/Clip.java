@@ -4,7 +4,7 @@ import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.world.phys.AABB;
+import net.minecraft.util.AxisAlignedBB;
 
 public final class Clip {
     private static final BooleanSetting ENABLED =
@@ -23,17 +23,17 @@ public final class Clip {
     }
 
     /** Keeps the existing 12-chunk square; refreshes only after crossing a chunk boundary. */
-    public static boolean forceVisible(AABB box) {
+    public static boolean forceVisible(AxisAlignedBB box) {
         if (!ENABLED.get()) return false;
-        Minecraft client = Minecraft.getInstance();
-        var player = client.player;
-        if (player == null
-                || client.level == null
-                || client.options.getCameraType().isFirstPerson()) return false;
-        var chunk = player.chunkPosition();
+        Minecraft client = Minecraft.getMinecraft();
+        var player = client.thePlayer;
+        if (player == null || client.theWorld == null || client.gameSettings.thirdPersonView == 0)
+            return false;
+        var chunk =
+                new net.minecraft.world.ChunkCoordIntPair(player.chunkCoordX, player.chunkCoordZ);
         VisibilityRange range = visibilityRange;
-        if (range == null || range.chunkX != chunk.x() || range.chunkZ != chunk.z()) {
-            range = new VisibilityRange(chunk.x(), chunk.z());
+        if (range == null || range.chunkX != chunk.chunkXPos || range.chunkZ != chunk.chunkZPos) {
+            range = new VisibilityRange(chunk.chunkXPos, chunk.chunkZPos);
             visibilityRange = range;
         }
         return range.contains(box.minX, box.minZ);

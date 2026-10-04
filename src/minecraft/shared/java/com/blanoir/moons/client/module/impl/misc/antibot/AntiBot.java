@@ -7,9 +7,8 @@ import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.management.targeting.Targeting;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.entity.state.AvatarRenderState;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.player.Player;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.player.EntityPlayer;
 
 import java.util.List;
 
@@ -38,16 +37,16 @@ public final class AntiBot {
         EventBus.TICK.register("AntiBot.tick", event -> STATE.tick(event.client()));
         EventBus.PACKET_RECEIVE_APPLY.register(
                 "AntiBot.packetReceiveApply",
-                event -> STATE.handlePacket(Minecraft.getInstance(), event.packet()));
+                event -> STATE.handlePacket(Minecraft.getMinecraft(), event.packet()));
     }
 
     public static boolean isBot(Entity entity) {
-        Minecraft client = Minecraft.getInstance();
+        Minecraft client = Minecraft.getMinecraft();
         if (!isEnabled()
                 || client == null
-                || client.player == null
-                || entity == client.player
-                || !(entity instanceof Player player)) return false;
+                || client.thePlayer == null
+                || entity == client.thePlayer
+                || !(entity instanceof EntityPlayer player)) return false;
         return STATE.isBot(client, player);
     }
 
@@ -64,11 +63,7 @@ public final class AntiBot {
     }
 
     public static boolean shouldHideRenderState(Object state) {
-        if (!isHideBotActive() || !(state instanceof AvatarRenderState avatar)) return false;
-        Minecraft client = Minecraft.getInstance();
-        return client != null
-                && client.level != null
-                && shouldHide(client.level.getEntity(avatar.id));
+        return state instanceof Entity entity && shouldHide(entity);
     }
 
     public static int setHideBot(Minecraft ignoredClient, boolean value) {

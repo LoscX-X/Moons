@@ -2,6 +2,7 @@ package com.blanoir.moons.client.module.impl.render;
 
 import com.blanoir.moons.client.access.MinecraftClientAccess;
 import com.blanoir.moons.client.chat.ClientChat;
+import com.blanoir.moons.client.compat.math.Mth;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.DoubleSetting;
 import com.blanoir.moons.client.config.settings.ModeSetting;
@@ -9,18 +10,17 @@ import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.event.frame.WorldRenderEvent;
 import com.blanoir.moons.client.module.impl.misc.antibot.AntiBot;
 import com.blanoir.moons.client.module.impl.render.nametags.NametagTextCache;
+import com.blanoir.moons.client.render.LegacyCamera;
+import com.blanoir.moons.client.render.LegacyPoseStack;
 import com.blanoir.moons.client.render.WorldLabelFont;
 import com.blanoir.moons.client.render.WorldLabelRenderer;
 import com.blanoir.moons.client.render.WorldOverlayRenderer;
 import com.blanoir.moons.client.utils.text.NumberText;
-import com.mojang.blaze3d.vertex.PoseStack;
 
-import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
-import net.minecraft.util.Mth;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.util.Vec3;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -72,26 +72,26 @@ public final class Nametags {
             return;
         }
 
-        Minecraft client = Minecraft.getInstance();
-        var currentPlayer = client == null ? null : client.player;
-        var currentLevel = client == null ? null : client.level;
+        Minecraft client = Minecraft.getMinecraft();
+        var currentPlayer = client == null ? null : client.thePlayer;
+        var currentLevel = client == null ? null : client.theWorld;
         if (currentPlayer == null
                 || currentLevel == null
                 || MinecraftClientAccess.isHudHidden(client)) {
             return;
         }
 
-        var players = currentLevel.players();
+        var players = currentLevel.playerEntities;
         if (players.isEmpty() || (players.size() == 1 && players.get(0) == currentPlayer)) {
             return;
         }
 
-        PoseStack matrices = context.poseStack();
+        LegacyPoseStack matrices = context.poseStack();
         if (matrices == null) {
             return;
         }
 
-        Camera camera = MinecraftClientAccess.camera(client);
+        LegacyCamera camera = MinecraftClientAccess.camera(client);
         Vec3 cameraPos = camera.position();
         float tickDelta = context.tickDelta();
         Vec3 selfPos = interpolatedPosition(currentPlayer, tickDelta);
@@ -102,7 +102,7 @@ public final class Nametags {
         List<WorldOverlayRenderer.ColoredPin> pins = highlighter ? new ArrayList<>() : List.of();
 
         List<WorldLabelRenderer.Label> labels = new ArrayList<>();
-        for (Player player : players) {
+        for (EntityPlayer player : players) {
             if (!shouldRenderPlayer(client, player)) {
                 continue;
             }
@@ -114,7 +114,7 @@ public final class Nametags {
             var text = NametagTextCache.format(client, player, distance, showDistance, safeMode);
             labels.add(
                     new WorldLabelRenderer.Label(
-                            playerPos.add(0, player.getBbHeight() + NAMETAG_Y_OFFSET, 0),
+                            playerPos.addVector(0, player.height + NAMETAG_Y_OFFSET, 0),
                             text,
                             distance,
                             SCALE.get(),
@@ -134,15 +134,15 @@ public final class Nametags {
 
         matrices.pushPose();
         try {
-            matrices.translate(-cameraPos.x, -cameraPos.y, -cameraPos.z);
+            matrices.translate(-cameraPos.xCoord, -cameraPos.yCoord, -cameraPos.zCoord);
             WorldOverlayRenderer.renderPins(client, matrices, pins, "nametag player pins");
         } finally {
             matrices.popPose();
         }
     }
 
-    public static boolean shouldRenderPlayer(Minecraft client, Player player) {
-        var currentPlayer = client == null ? null : client.player;
+    public static boolean shouldRenderPlayer(Minecraft client, EntityPlayer player) {
+        var currentPlayer = client == null ? null : client.thePlayer;
         if (client == null || currentPlayer == null || player == null) {
             return false;
         }
@@ -150,23 +150,22 @@ public final class Nametags {
         double range = RANGE.get();
         boolean validTarget =
                 player != currentPlayer
-                        && !player.isRemoved()
-                        && player.isAlive()
-                        && player.isAttackable()
+                        && !player.isDead
+                        && player.isEntityAlive()
+                        && player.canAttackWithItem()
                         && !player.isSpectator()
                         && !AntiBot.shouldHide(player)
-                        && currentPlayer.distanceToSqr(player) <= range * range;
+                        && currentPlayer.getDistanceSqToEntity(player) <= range * range;
         return validTarget
-                && (!SAFE_MODE.get()
-                        || (!player.isShiftKeyDown() && !player.getName().getString().isBlank()));
+                && (!SAFE_MODE.get() || (!player.isSneaking() && !player.getName().isBlank()));
     }
 
-    private static WorldOverlayRenderer.ColoredPin createPlayerPin(Player player, Vec3 pos) {
+    private static WorldOverlayRenderer.ColoredPin createPlayerPin(EntityPlayer player, Vec3 pos) {
         return new WorldOverlayRenderer.ColoredPin(
-                (float) pos.x,
-                (float) pos.y,
-                (float) pos.z,
-                player.getBbHeight() + PIN_HEIGHT_PADDING,
+                (float) pos.xCoord,
+                (float) pos.yCoord,
+                (float) pos.zCoord,
+                player.height + PIN_HEIGHT_PADDING,
                 PIN_WIDTH,
                 Chams.CHAMS_RED,
                 Chams.CHAMS_GREEN,
@@ -176,9 +175,9 @@ public final class Nametags {
 
     private static Vec3 interpolatedPosition(Entity entity, float tickDelta) {
         return new Vec3(
-                Mth.lerp((double) tickDelta, entity.xo, entity.getX()),
-                Mth.lerp((double) tickDelta, entity.yo, entity.getY()),
-                Mth.lerp((double) tickDelta, entity.zo, entity.getZ()));
+                Mth.lerp((double) tickDelta, entity.lastTickPosX, entity.posX),
+                Mth.lerp((double) tickDelta, entity.lastTickPosY, entity.posY),
+                Mth.lerp((double) tickDelta, entity.lastTickPosZ, entity.posZ));
     }
 
     public static int setEnabled(Minecraft client, boolean newEnabled) {

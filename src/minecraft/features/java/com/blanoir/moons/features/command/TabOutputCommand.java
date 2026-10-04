@@ -6,11 +6,10 @@ import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.config.ClientBranding;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.components.PlayerTabOverlay;
-import net.minecraft.client.multiplayer.PlayerInfo;
-import net.minecraft.network.chat.Component;
-import net.minecraft.network.chat.FontDescription;
-import net.minecraft.world.scores.PlayerTeam;
+import net.minecraft.client.gui.GuiPlayerTabOverlay;
+import net.minecraft.client.network.NetworkPlayerInfo;
+import net.minecraft.scoreboard.ScorePlayerTeam;
+import net.minecraft.util.IChatComponent;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -26,22 +25,22 @@ final class TabOutputCommand {
     private TabOutputCommand() {}
 
     static boolean handle(String tail) {
-        Minecraft client = Minecraft.getInstance();
-        var connectionSnapshot = client == null ? null : client.getConnection();
+        Minecraft client = Minecraft.getMinecraft();
+        var connectionSnapshot = client == null ? null : client.getNetHandler();
         if (!tail.isBlank()) {
             ClientChat.send(client, "Usage: .taboutput");
             return true;
         }
-        if (connectionSnapshot == null || client.gui == null) {
+        if (connectionSnapshot == null || client.ingameGUI == null) {
             ClientChat.send(client, "Tab output requires an active server connection.");
             return true;
         }
-        PlayerTabOverlay overlay = MinecraftClientAccess.tabList(client);
+        GuiPlayerTabOverlay overlay = MinecraftClientAccess.tabList(client);
         var entries =
-                connectionSnapshot.getListedOnlinePlayers().stream()
+                connectionSnapshot.getPlayerInfoMap().stream()
                         .sorted(
                                 Comparator.comparing(
-                                        info -> info.getProfile().name(),
+                                        info -> info.getGameProfile().getName(),
                                         String.CASE_INSENSITIVE_ORDER))
                         .toList();
         StringBuilder report = new StringBuilder(4096);
@@ -57,29 +56,40 @@ final class TabOutputCommand {
         appendComponent(report, "header", GameAccess.tabHeader(overlay));
         appendComponent(report, "footer", GameAccess.tabFooter(overlay));
         report.append("\n[player_entries]\n");
-        for (PlayerInfo info : entries) {
+        for (NetworkPlayerInfo info : entries) {
             report.append("\nprofile_name=")
-                    .append(info.getProfile().name())
+                    .append(info.getGameProfile().getName())
                     .append('\n')
                     .append("uuid=")
-                    .append(info.getProfile().id())
+                    .append(info.getGameProfile().getId())
                     .append('\n')
                     .append("latency=")
-                    .append(info.getLatency())
+                    .append(info.getResponseTime())
                     .append('\n')
                     .append("game_mode=")
-                    .append(info.getGameMode())
+                    .append(info.getGameType())
                     .append('\n');
-            appendComponent(report, "server_tab_name", info.getTabListDisplayName());
-            appendComponent(report, "final_local_name", overlay.getNameForDisplay(info));
-            PlayerTeam team = info.getTeam();
-            report.append("team=").append(team == null ? "<none>" : team.getName()).append('\n');
+            appendComponent(report, "server_tab_name", info.getDisplayName());
+            appendComponent(
+                    report,
+                    "final_local_name",
+                    new net.minecraft.util.ChatComponentText(overlay.getPlayerName(info)));
+            ScorePlayerTeam team = info.getPlayerTeam();
+            report.append("team=")
+                    .append(team == null ? "<none>" : team.getRegisteredName())
+                    .append('\n');
             if (team != null) {
                 report.append("team_color=")
                         .append(MinecraftClientAccess.teamColorName(team))
                         .append('\n');
-                appendComponent(report, "team_prefix", team.getPlayerPrefix());
-                appendComponent(report, "team_suffix", team.getPlayerSuffix());
+                appendComponent(
+                        report,
+                        "team_prefix",
+                        new net.minecraft.util.ChatComponentText(team.getColorPrefix()));
+                appendComponent(
+                        report,
+                        "team_suffix",
+                        new net.minecraft.util.ChatComponentText(team.getColorSuffix()));
             }
         }
         String configuredHome = System.getProperty("moons.home", "").trim();
@@ -109,23 +119,24 @@ final class TabOutputCommand {
                 .normalize();
     }
 
-    private static void appendComponent(StringBuilder output, String name, Component component) {
+    private static void appendComponent(
+            StringBuilder output, String name, IChatComponent component) {
         if (component == null) {
             output.append(name).append("=<null>\n");
             return;
         }
         output.append(name)
                 .append(".plain=")
-                .append(escape(component.getString()))
+                .append(escape(component.getUnformattedText()))
                 .append('\n')
                 .append(name)
                 .append(".tree=")
                 .append(escape(component.toString()))
                 .append('\n');
         Map<GlyphKey, Integer> glyphs = new LinkedHashMap<>();
-        for (Component part : component.toFlatList()) {
-            String font = fontName(part.getStyle().getFont());
-            part.getString()
+        for (IChatComponent part : component) {
+            String font = "minecraft:default";
+            part.getUnformattedTextForChat()
                     .codePoints()
                     .filter(codePoint -> Character.getType(codePoint) == Character.PRIVATE_USE)
                     .forEach(
@@ -148,12 +159,6 @@ final class TabOutputCommand {
                     .append(entry.getValue());
         }
         output.append('\n');
-    }
-
-    private static String fontName(FontDescription font) {
-        return font instanceof FontDescription.Resource resource
-                ? resource.id().toString()
-                : font == null ? "minecraft:default" : font.toString();
     }
 
     private static String escape(String value) {

@@ -2,10 +2,10 @@ package com.blanoir.moons.client.module.impl.render.xray;
 
 import com.blanoir.moons.client.config.MoonsConfig;
 
+import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.Minecraft;
-import net.minecraft.core.BlockPos;
-import net.minecraft.world.level.ChunkPos;
-import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.util.BlockPos;
+import net.minecraft.world.ChunkCoordIntPair;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -27,7 +27,7 @@ public final class OreCache {
      */
     public static boolean add(BlockPos pos, XrayTarget target) {
         synchronized (XRAY_POSITIONS) {
-            BlockPos immutablePos = pos.immutable();
+            BlockPos immutablePos = new BlockPos(pos);
             XrayTarget oldTarget = XRAY_POSITIONS.get(immutablePos);
 
             if (oldTarget == target) {
@@ -85,7 +85,8 @@ public final class OreCache {
             return;
         }
 
-        ChunkPos center = client.player.chunkPosition();
+        ChunkCoordIntPair center =
+                new ChunkCoordIntPair(client.thePlayer.chunkCoordX, client.thePlayer.chunkCoordZ);
         int maxDistance = MoonsConfig.SCAN_RADIUS_CHUNKS + 2;
 
         synchronized (XRAY_POSITIONS) {
@@ -97,8 +98,8 @@ public final class OreCache {
                 int chunkX = pos.getX() >> 4;
                 int chunkZ = pos.getZ() >> 4;
 
-                int dx = Math.abs(chunkX - center.x());
-                int dz = Math.abs(chunkZ - center.z());
+                int dx = Math.abs(chunkX - center.chunkXPos);
+                int dz = Math.abs(chunkZ - center.chunkZPos);
 
                 if (dx > maxDistance || dz > maxDistance) {
                     iterator.remove();
@@ -126,13 +127,14 @@ public final class OreCache {
                                             return true;
                                         }
 
-                                        BlockState current = client.level.getBlockState(pos);
+                                        IBlockState current = client.theWorld.getBlockState(pos);
                                         if (PluginXrayTargets.blocksVanillaFallback(current)
                                                 && PluginXrayTargets.find(current) != target)
                                             return true;
 
                                         if (target.requiresCurrentState()) {
-                                            return !target.matches(client.level.getBlockState(pos));
+                                            return !target.matches(
+                                                    client.theWorld.getBlockState(pos));
                                         }
 
                                         /*
@@ -140,7 +142,7 @@ public final class OreCache {
                                          * Some servers temporarily mask ores as another non-air block; removing only
                                          * on air avoids dropping a real target just because it is currently disguised.
                                          */
-                                        return client.level.getBlockState(pos).isAir();
+                                        return client.theWorld.isAirBlock(pos);
                                     });
             if (removed) {
                 cachedEntries = null;
@@ -156,7 +158,7 @@ public final class OreCache {
         }
     }
 
-    public static void removeStaleStateTarget(BlockPos pos, BlockState state) {
+    public static void removeStaleStateTarget(BlockPos pos, IBlockState state) {
         synchronized (XRAY_POSITIONS) {
             XrayTarget target = XRAY_POSITIONS.get(pos);
             if (target != null

@@ -10,9 +10,9 @@ public final class RotationQuantizer {
     private RotationQuantizer() {}
 
     public static double mouseStep() {
-        Minecraft client = Minecraft.getInstance();
-        if (client == null || client.options == null) return 0;
-        return QuantizerA.mouseSensitivityStep(client.options.sensitivity().get());
+        Minecraft client = Minecraft.getMinecraft();
+        if (client == null || client.gameSettings == null) return 0;
+        return QuantizerA.mouseSensitivityStep(client.gameSettings.mouseSensitivity);
     }
 
     public static float yaw(float base, float desired) {

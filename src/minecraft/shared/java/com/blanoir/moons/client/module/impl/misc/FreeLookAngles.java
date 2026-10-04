@@ -1,6 +1,6 @@
 package com.blanoir.moons.client.module.impl.misc;
 
-import net.minecraft.util.Mth;
+import com.blanoir.moons.client.compat.math.Mth;
 
 /** Camera-only angles; mouse deltas have already passed through vanilla sensitivity/inversion. */
 final class FreeLookAngles {

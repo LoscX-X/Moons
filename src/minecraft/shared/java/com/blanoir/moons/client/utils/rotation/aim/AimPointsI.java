@@ -4,8 +4,8 @@ import com.blanoir.moons.client.utils.rotation.Rotation;
 import com.blanoir.moons.client.utils.world.placement.PlacementRaycast;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.world.phys.BlockHitResult;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.util.MovingObjectPosition;
+import net.minecraft.util.Vec3;
 
 /**
  * I: Fixed-direction block-face selection, currently the Vanilla Tower downward ray.
@@ -22,7 +22,7 @@ public final class AimPointsI {
             Vec3 eye,
             Rotation direction,
             double range) {
-        BlockHitResult hit =
+        MovingObjectPosition hit =
                 rays.traceFace(
                         client,
                         eye,

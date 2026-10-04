@@ -1,9 +1,8 @@
 package com.blanoir.moons.client.utils.rotation.aim;
 
+import com.blanoir.moons.client.compat.math.Mth;
 import com.blanoir.moons.client.utils.math.RandomMath;
 import com.blanoir.moons.client.utils.rotation.Rotation;
-
-import net.minecraft.util.Mth;
 
 /** B: Existing Balance constants and sampled correction. History is supplied by the mode; reset and lazy random seed timing are preserved. */
 public final class AimProfileB implements AimProfile {

@@ -2,7 +2,11 @@
 
 <p align="center"><a href="docs/README.zh-CN.md">简体中文</a> · English</p>
 
-Moons is a Windows client for Minecraft Java Edition with configurable modules, local presets and YSM models.
+Moons is a Windows client for Minecraft Java Edition with configurable modules, local presets and YSM models. [Website](https://moons.cendreal.com/en/).
+
+The `legacy/1.8.9` branch adapts the complete client framework to vanilla Minecraft 1.8.9: 64 applicable modules, the full settings UI, presets and YSM. SilentAura retains Legacy combat and its 47 applicable settings. AutoMace, AutoSpear and AutoTotem have no equivalent game mechanics and are omitted.
+
+This branch is a development snapshot awaiting user testing. It has not been merged into `main` or published as a stable release; existing checks cover only part of the functionality.
 
 > [!WARNING]
 > **Published for learning, research, and technical exchange only.**
@@ -15,15 +19,7 @@ Moons is a Windows client for Minecraft Java Edition with configurable modules, 
 >
 > **Provided as is; users bear the risks of use to the extent permitted by law.** Read the [full disclaimer](docs/DISCLAIMER.md) before use. Non-excludable liability and statutory rights remain unaffected.
 
-Supports **26.1.2**, **26.2**, **26.3**, and **26.4-snapshot-1**.
-
-## Version Support
-
-Moons maintains the stable releases listed above and the listed 26.4 preview build.
-
-Development builds such as snapshots, pre-releases and release candidates are only supported for the newest upcoming Minecraft version.
-
-Older preview builds and retired Minecraft versions may remain available through historical releases or CI artifacts, but receive no further fixes or compatibility updates.
+Supports **vanilla Minecraft 1.8.9 on Java 25 x64**. Use the main branch for modern Minecraft versions. Core-modified clients are not covered by this branch's verification.
 
 ## Risk and Responsibility Notice
 
@@ -38,7 +34,7 @@ Older preview builds and retired Minecraft versions may remain available through
 
 1. Download `moon-install-<version>-<commit>.exe` and `moon-<version>-<commit>.exe` from the same [release](https://github.com/LoscX-X/Moons/releases).
 2. Run the installer to install or update dependencies.
-3. Start a supported Minecraft version, then run the loader to select the game and load Moons.
+3. Start vanilla Minecraft 1.8.9 with Java 25 x64, then run the loader to select the game and load Moons.
 4. Press **Right Shift** to open ClickGUI (default binding).
 
 If the dependency version is unchanged and the installed files are intact, only the loader needs updating. Otherwise, run the matching installer. The installer includes the complete UI runtime and YSM dependencies and works offline. Development builds are available from [Actions](https://github.com/LoscX-X/Moons/actions).
@@ -63,7 +59,7 @@ Prepare Windows x64, JDK 25 and the native build tools listed in [BUILDING.md](d
 .\gradlew.bat moonsPackages
 ```
 
-The outputs are `build/dist/moon-install.exe`, `build/dist/moon.exe` and `build/dist/dependencies/moons-ui-runtime.jar`. In an IDE, import the Gradle project with JDK 25 and run the same task.
+The outputs are `build/dist/Moons-install.exe`, `build/dist/Moons.exe` and `build/dist/dependencies/moons-ui-runtime.jar`. In an IDE, import the Gradle project with JDK 25 and run the same task.
 
 ## How to Contribute
 

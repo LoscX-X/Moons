@@ -4,7 +4,7 @@ import com.blanoir.moons.client.module.impl.combat.critical.Critical;
 import com.blanoir.moons.client.utils.combat.CombatDecisionEngine;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.world.entity.Entity;
+import net.minecraft.entity.Entity;
 
 /** Registers the grounded packet-hop critical strategy. */
 public final class PacketMode implements CriticalMode {

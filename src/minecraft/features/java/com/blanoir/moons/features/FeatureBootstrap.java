@@ -3,7 +3,6 @@ package com.blanoir.moons.features;
 import com.blanoir.moons.client.access.MinecraftClientAccess;
 import com.blanoir.moons.client.command.PremiumCheckCommand;
 import com.blanoir.moons.client.config.Settings;
-import com.blanoir.moons.client.event.network.PacketEventAdapter;
 import com.blanoir.moons.client.management.combat.CriticalHitTracker;
 import com.blanoir.moons.client.management.input.CombatInputController;
 import com.blanoir.moons.client.management.lease.HotbarLease;
@@ -13,8 +12,6 @@ import com.blanoir.moons.client.management.time.TimerManager;
 import com.blanoir.moons.client.module.framework.ModuleRegistry;
 import com.blanoir.moons.client.module.impl.combat.AutoBlock;
 import com.blanoir.moons.client.module.impl.combat.AutoClicker;
-import com.blanoir.moons.client.module.impl.combat.AutoMace;
-import com.blanoir.moons.client.module.impl.combat.AutoSpear;
 import com.blanoir.moons.client.module.impl.combat.HitSelect;
 import com.blanoir.moons.client.module.impl.combat.Misplace;
 import com.blanoir.moons.client.module.impl.combat.Reach;
@@ -45,7 +42,6 @@ import com.blanoir.moons.client.module.impl.player.AutoHead;
 import com.blanoir.moons.client.module.impl.player.AutoLava;
 import com.blanoir.moons.client.module.impl.player.AutoMLG;
 import com.blanoir.moons.client.module.impl.player.AutoSword;
-import com.blanoir.moons.client.module.impl.player.AutoTotem;
 import com.blanoir.moons.client.module.impl.player.AutoWeb;
 import com.blanoir.moons.client.module.impl.player.InvClear;
 import com.blanoir.moons.client.module.impl.player.RightClick;
@@ -113,8 +109,6 @@ final class FeatureBootstrap {
         TriggerBot.init();
         AutoClicker.init();
         RightClick.init();
-        AutoSpear.init();
-        AutoMace.init();
         SprintReset.init();
         SilentAura.init();
         Animations.bindCombatState(
@@ -124,26 +118,26 @@ final class FeatureBootstrap {
                                 ? SilentAuraBlock.shouldRenderBlock(client)
                                 : AutoBlock.shouldRenderBlock(client),
                 () ->
-                        SilentAuraBlock.controls(Minecraft.getInstance())
+                        SilentAuraBlock.controls(Minecraft.getMinecraft())
                                 ? SilentAuraBlock.attackAnimationOnly()
                                 : AutoBlock.attackAnimationOnly(),
                 () ->
-                        SilentAuraBlock.controls(Minecraft.getInstance())
+                        SilentAuraBlock.controls(Minecraft.getMinecraft())
                                 ? SilentAuraBlock.animationProgress()
                                 : AutoBlock.animationProgress(),
                 () ->
-                        SilentAuraBlock.controls(Minecraft.getInstance())
+                        SilentAuraBlock.controls(Minecraft.getMinecraft())
                                 && SilentAuraBlock.attackAnimationOnly());
         AutoBlock.init();
         SilentAuraBlock.init();
-        CombatModuleCoordinator.reconcileConfiguredState(Minecraft.getInstance());
+        CombatModuleCoordinator.reconcileConfiguredState(Minecraft.getMinecraft());
         Scoreboard.init();
         InventorySee.init();
         TargetInfoHud.init();
         Nametags.init();
-        Minecraft client = Minecraft.getInstance();
+        Minecraft client = Minecraft.getMinecraft();
         FreeLook.reset(client);
-        if (Caver.isEnabled() && client.level != null) {
+        if (Caver.isEnabled() && client.theWorld != null) {
             MinecraftClientAccess.rebuildLevelRenderer(client);
         }
         FullBright.init();
@@ -154,7 +148,6 @@ final class FeatureBootstrap {
         Backtrack.init();
         Misplace.init();
         KeepSprint.init();
-        AutoTotem.init();
         InvManager.init();
         AutoArmor.init();
         InvClear.init();
@@ -180,12 +173,9 @@ final class FeatureBootstrap {
 
     private static void initializePacketListeners() {
         // This block stays between Backtrack and SilentPacketRotation registration.
-        // SEND: AutoSpear release filter -> Disabler -> attack snapshot -> lag modes -> FastBreak.
-        // RECEIVE: bundle intent -> Velocity -> lag modes -> Backtrack.
+        // RECEIVE: Velocity -> lag modes -> Backtrack.
         // APPLY: scoreboard -> damage confirmation -> JumpReset -> lightning.
-        PacketEventAdapter.initPacketListeners();
         AimCollect.init();
-        AutoSpear.initPacketListeners();
         Disabler.initPacketListeners();
         Scoreboard.initPacketListeners();
         CriticalHitTracker.initPacketListeners();
@@ -202,16 +192,15 @@ final class FeatureBootstrap {
         Disabler.discardPending();
         FakeLag.discardPending();
         RotationManager.reset();
-        Minecraft client = Minecraft.getInstance();
+        Minecraft client = Minecraft.getMinecraft();
         FreeLook.reset(client);
         AutoBlock.reset(client);
-        AutoSpear.reset(client);
-        AutoMace.reset(client);
         RightClick.reset();
         InvManager.reset();
         AutoArmor.reset();
         InvClear.reset();
         TimerManager.reset();
+        com.blanoir.moons.client.access.GameAccess.timer(client).timerSpeed = 1.0F;
         SilentAuraBlock.reset(client);
         SilentAuraRuntime.reset(client);
         AutoMLG.shutdown(client);

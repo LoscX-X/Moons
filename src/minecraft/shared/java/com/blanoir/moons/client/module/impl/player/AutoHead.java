@@ -1,6 +1,5 @@
 package com.blanoir.moons.client.module.impl.player;
 
-import com.blanoir.moons.client.access.GameAccess;
 import com.blanoir.moons.client.access.MinecraftClientAccess;
 import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
@@ -13,10 +12,9 @@ import com.blanoir.moons.client.utils.player.HotbarQueries;
 import com.blanoir.moons.client.utils.world.placement.PlacementCoordinator;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket;
-import net.minecraft.network.protocol.game.ServerboundUseItemPacket;
-import net.minecraft.world.InteractionHand;
-import net.minecraft.world.item.Items;
+import net.minecraft.init.Items;
+import net.minecraft.network.play.client.C08PacketPlayerBlockPlacement;
+import net.minecraft.network.play.client.C09PacketHeldItemChange;
 
 /** Uses a hotbar player head for servers that implement UHC head consumables. */
 public final class AutoHead {
@@ -51,47 +49,46 @@ public final class AutoHead {
     private static void tick(Minecraft client) {
         if (!isEnabled()
                 || client == null
-                || client.player == null
-                || client.level == null
-                || client.gameMode == null
-                || client.getConnection() == null) return;
-        if (!client.player.isAlive()
-                || client.player.isSpectator()
-                || MinecraftClientAccess.screen(client) != null
-                || client.player.isUsingItem()
-                || client.options.keyUse.isDown()
-                || client.gameMode.isDestroying()
+                || client.thePlayer == null
+                || client.theWorld == null
+                || client.playerController == null
+                || client.getNetHandler() == null) return;
+        if (!client.thePlayer.isEntityAlive()
+                || client.thePlayer.isSpectator()
+                || MinecraftClientAccess.currentScreen(client) != null
+                || client.thePlayer.isUsingItem()
+                || client.gameSettings.keyBindUseItem.isKeyDown()
+                || client.playerController.getIsHittingBlock()
                 || Scaffold.isEnabled()
                 || PlacementCoordinator.busy(PlacementCoordinator.Owner.ANTI_WEB)
                 || SilentPacketRotation.isBusy()
-                || client.player.getHealth() > HEALTH.get()
-                || client.player.getAbsorptionAmount() > 0) return;
+                || client.thePlayer.getHealth() > HEALTH.get()
+                || client.thePlayer.getAbsorptionAmount() > 0) return;
 
         long now = System.nanoTime();
         if (now < nextUseNanos) return;
-        var inventory = client.player.getInventory();
-        int slot = HotbarQueries.firstItem(inventory, Items.PLAYER_HEAD);
+        var inventory = client.thePlayer.inventory;
+        int slot =
+                HotbarQueries.firstMatch(
+                        inventory,
+                        stack ->
+                                stack != null
+                                        && stack.getItem() == Items.skull
+                                        && stack.getMetadata() == 3);
         if (slot < 0) return;
 
         int min = Math.min(MIN_DELAY.get(), MAX_DELAY.get());
         int max = Math.max(MIN_DELAY.get(), MAX_DELAY.get());
         nextUseNanos = now + RandomMath.betweenInclusive(min, max) * 1_000_000L;
-        var connection = client.getConnection();
-        int originalSlot = inventory.getSelectedSlot();
+        var connection = client.getNetHandler();
+        int originalSlot = inventory.currentItem;
         // Keep the local held item intact, with ordered select/use/restore packets.
-        connection.send(new ServerboundSetCarriedItemPacket(slot));
+        connection.addToSendQueue(new C09PacketHeldItemChange(slot));
         try {
-            GameAccess.withPredictionSequence(
-                    client.level,
-                    sequence ->
-                            connection.send(
-                                    new ServerboundUseItemPacket(
-                                            InteractionHand.MAIN_HAND,
-                                            sequence,
-                                            client.player.getYRot(),
-                                            client.player.getXRot())));
+            connection.addToSendQueue(
+                    new C08PacketPlayerBlockPlacement(inventory.getStackInSlot(slot)));
         } finally {
-            connection.send(new ServerboundSetCarriedItemPacket(originalSlot));
+            connection.addToSendQueue(new C09PacketHeldItemChange(originalSlot));
         }
     }
 

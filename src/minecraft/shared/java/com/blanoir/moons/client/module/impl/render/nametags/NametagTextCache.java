@@ -5,7 +5,7 @@ import com.blanoir.moons.client.utils.combat.damage.PlayerHitEstimator;
 import com.blanoir.moons.client.utils.player.PlayerHealthResolver;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.world.entity.player.Player;
+import net.minecraft.entity.player.EntityPlayer;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -22,13 +22,13 @@ public final class NametagTextCache {
     private static final int HIT_COLOR = 0xFFFFD75A;
 
     // Only the render thread accesses this cache; values never retain their player keys.
-    private static final Map<Player, Entry> ENTRIES = new WeakHashMap<>();
+    private static final Map<EntityPlayer, Entry> ENTRIES = new WeakHashMap<>();
 
     private NametagTextCache() {}
 
     public static List<Span> format(
             Minecraft client,
-            Player player,
+            EntityPlayer player,
             double distance,
             boolean showDistance,
             boolean safeMode) {
@@ -43,15 +43,15 @@ public final class NametagTextCache {
             changed = true;
         }
 
-        int tick = client.player.tickCount;
-        var weapon = client.player.getWeaponItem();
+        int tick = client.thePlayer.ticksExisted;
+        var weapon = client.thePlayer.getHeldItem();
         // UI estimates need one sample per game tick, not one enchantment/scoreboard scan
         // per rendered frame. A hotbar switch still refreshes the displayed estimate immediately.
         if (entry.text == null
                 || entry.sampleTick != tick
                 || entry.safeMode != safeMode
                 || entry.weapon != weapon) {
-            String name = player.getName().getString();
+            String name = player.getName();
             changed |= !name.equals(entry.name);
             entry.name = name;
             if (!safeMode) {
@@ -108,7 +108,7 @@ public final class NametagTextCache {
     }
 
     private static void appendNumber(List<Span> text, String number, int color) {
-        // A fixed alphabet reuses atlas tiles for every distance/HP value. Player names
+        // A fixed alphabet reuses atlas tiles for every distance/HP value. EntityPlayer names
         // remain whole font runs, preserving their fallback-font layout.
         for (int i = 0; i < number.length(); i++) {
             text.add(new Span(number.substring(i, i + 1), color));

@@ -1,12 +1,10 @@
 package com.blanoir.moons.client.module.impl.player.invmanager;
 
-import net.minecraft.core.component.DataComponents;
-import net.minecraft.world.entity.EquipmentSlot;
-import net.minecraft.world.entity.ai.attributes.Attributes;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
-import net.minecraft.world.item.component.ItemAttributeModifiers;
-import net.minecraft.world.item.enchantment.Enchantments;
+import com.blanoir.moons.client.utils.inventory.LegacyItems;
+
+import net.minecraft.enchantment.Enchantment;
+import net.minecraft.item.ItemArmor;
+import net.minecraft.item.ItemStack;
 
 import java.util.ArrayList;
 import java.util.BitSet;
@@ -14,9 +12,7 @@ import java.util.List;
 
 /** Ordinary-hit protection at an assumed six points of damage; ties keep the equipped piece. */
 public final class InventoryArmor {
-    private static final EquipmentSlot[] SLOTS = {
-        EquipmentSlot.FEET, EquipmentSlot.LEGS, EquipmentSlot.CHEST, EquipmentSlot.HEAD
-    };
+
     private static final double EPSILON = 1.0E-6;
 
     private InventoryArmor() {}
@@ -32,16 +28,9 @@ public final class InventoryArmor {
     }
 
     public static int slot(ItemStack stack) {
-        var equippable = stack.get(DataComponents.EQUIPPABLE);
-        if (equippable == null
-                || stack.is(Items.ELYTRA)
-                || !net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE
-                        .get(net.minecraft.resources.Identifier.parse("minecraft:player"))
-                        .map(equippable::canBeEquippedBy)
-                        .orElse(false)) return -1;
-        for (int i = 0; i < SLOTS.length; i++)
-            if (equippable.slot() == SLOTS[i] && armor(stack, SLOTS[i], false) > 0) return 36 + i;
-        return -1;
+        return !LegacyItems.empty(stack) && stack.getItem() instanceof ItemArmor armor
+                ? 39 - armor.armorType
+                : -1;
     }
 
     public static List<InventoryAction> plan(
@@ -49,7 +38,6 @@ public final class InventoryArmor {
             BitSet blocked,
             List<InventoryRole> roles,
             boolean protectSpecial,
-            boolean keepElytra,
             BitSet locked) {
         var actions = new ArrayList<InventoryAction>();
         for (int target = 36; target < 40; target++) {
@@ -57,7 +45,6 @@ public final class InventoryArmor {
             if (blocked.get(target)
                     || locked.get(target - 36)
                     || snapshot.menuSlot(target) < 0
-                    || keepElytra && current.is(Items.ELYTRA)
                     || protectSpecial && !InventoryItems.protection(current).isEmpty()) continue;
             int best = target;
             for (int source = 0; source < 36; source++) {
@@ -66,8 +53,7 @@ public final class InventoryArmor {
                         || snapshot.menuSlot(source) < 0
                         || InventoryPlan.role(roles, source) == InventoryRole.LOCKED
                         || slot(candidate) != target
-                        || candidate.getCount() != 1
-                        || InventoryItems.enchant(candidate, Enchantments.BINDING_CURSE) > 0
+                        || candidate.stackSize != 1
                         || protectSpecial && !InventoryItems.protection(candidate).isEmpty())
                     continue;
                 if (better(snapshot, target, candidate, snapshot.item(best), best == target))
@@ -78,14 +64,17 @@ public final class InventoryArmor {
                         new InventoryAction(
                                 best,
                                 target,
-                                snapshot.item(best).copy(),
-                                current.copy(),
-                                (current.isEmpty() ? "Equip " : "Upgrade ") + label(target)));
+                                LegacyItems.copy(snapshot.item(best)),
+                                LegacyItems.copy(current),
+                                (LegacyItems.empty(current) ? "Equip " : "Upgrade ")
+                                        + label(target)));
         }
         actions.sort(
                 (a, b) -> {
                     int empty =
-                            Boolean.compare(b.beforeTarget().isEmpty(), a.beforeTarget().isEmpty());
+                            Boolean.compare(
+                                    LegacyItems.empty(b.beforeTarget()),
+                                    LegacyItems.empty(a.beforeTarget()));
                     if (empty != 0) return empty;
                     double aGain =
                             damage(snapshot, a.target(), a.beforeTarget())
@@ -105,7 +94,7 @@ public final class InventoryArmor {
             ItemStack candidate,
             ItemStack current,
             boolean equipped) {
-        if (current.isEmpty()) return true;
+        if (LegacyItems.empty(current)) return true;
         boolean worn = InventoryItems.nearlyBroken(candidate);
         if (worn != InventoryItems.nearlyBroken(current)) return !worn;
         double difference = damage(snapshot, target, current) - damage(snapshot, target, candidate);
@@ -113,36 +102,46 @@ public final class InventoryArmor {
         if (equipped) return false;
         int utility = Integer.compare(utility(candidate), utility(current));
         if (utility != 0) return utility > 0;
-        return candidate.getMaxDamage() - candidate.getDamageValue()
-                > current.getMaxDamage() - current.getDamageValue();
+        return candidate.getMaxDamage() - candidate.getItemDamage()
+                > current.getMaxDamage() - current.getItemDamage();
     }
 
     public static double damage(InventorySnapshot snapshot, int target, ItemStack replacement) {
-        double armor = 0, toughness = 0;
+        double armor = 0;
         int protection = 0;
         for (int i = 36; i < 40; i++) {
             ItemStack stack = i == target ? replacement : snapshot.item(i);
-            armor += armor(stack, SLOTS[i - 36], false);
-            toughness += armor(stack, SLOTS[i - 36], true);
-            protection += InventoryItems.enchant(stack, Enchantments.PROTECTION);
+            armor += armor(stack);
+            int level = InventoryItems.enchant(stack, Enchantment.protection);
+            if (level > 0)
+                protection +=
+                        Enchantment.protection.calcModifierDamage(
+                                level, net.minecraft.util.DamageSource.generic);
         }
-        double reduction = Math.min(20, Math.max(armor * .2, armor - 6 / (2 + toughness / 4)));
-        return 6 * (1 - reduction / 25) * (1 - Math.min(20, protection) * .04);
+        double reduction = Math.min(20, armor);
+        // Vanilla 1.8 rolls EPF after summing it. Average the capped discrete
+        // distribution so comparing otherwise equal armor cannot fluctuate.
+        int epf = Math.min(25, protection);
+        int base = (epf + 1) / 2;
+        double expected = 0;
+        for (int bonus = 0; bonus <= epf / 2; bonus++) expected += Math.min(20, base + bonus);
+        expected /= epf / 2 + 1;
+        return 6 * (1 - reduction / 25) * (1 - expected * .04);
     }
 
-    private static double armor(ItemStack stack, EquipmentSlot slot, boolean toughness) {
-        return stack.getOrDefault(DataComponents.ATTRIBUTE_MODIFIERS, ItemAttributeModifiers.EMPTY)
-                .compute(toughness ? Attributes.ARMOR_TOUGHNESS : Attributes.ARMOR, 0, slot);
+    private static double armor(ItemStack stack) {
+        return !LegacyItems.empty(stack) && stack.getItem() instanceof ItemArmor armor
+                ? armor.damageReduceAmount
+                : 0;
     }
 
     private static int utility(ItemStack stack) {
-        return InventoryItems.enchant(stack, Enchantments.FEATHER_FALLING) * 8
-                + InventoryItems.enchant(stack, Enchantments.UNBREAKING) * 3
-                + InventoryItems.enchant(stack, Enchantments.MENDING) * 3
-                + InventoryItems.enchant(stack, Enchantments.RESPIRATION)
-                + InventoryItems.enchant(stack, Enchantments.DEPTH_STRIDER)
-                + InventoryItems.enchant(stack, Enchantments.FIRE_PROTECTION)
-                + InventoryItems.enchant(stack, Enchantments.BLAST_PROTECTION)
-                + InventoryItems.enchant(stack, Enchantments.PROJECTILE_PROTECTION);
+        return InventoryItems.enchant(stack, Enchantment.featherFalling) * 8
+                + InventoryItems.enchant(stack, Enchantment.unbreaking) * 3
+                + InventoryItems.enchant(stack, Enchantment.respiration)
+                + InventoryItems.enchant(stack, Enchantment.depthStrider)
+                + InventoryItems.enchant(stack, Enchantment.fireProtection)
+                + InventoryItems.enchant(stack, Enchantment.blastProtection)
+                + InventoryItems.enchant(stack, Enchantment.projectileProtection);
     }
 }

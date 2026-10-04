@@ -9,8 +9,8 @@ import com.blanoir.moons.client.render.WorldOverlayRenderer;
 import com.blanoir.moons.client.render.world.OverlayFrustum;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.core.BlockPos;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.util.BlockPos;
+import net.minecraft.util.Vec3;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -58,7 +58,7 @@ public final class OreHighlighter {
     }
 
     private static void render(WorldRenderEvent context) {
-        Minecraft client = Minecraft.getInstance();
+        Minecraft client = Minecraft.getMinecraft();
         VISIBLE.clear();
         if (!DISPLAY_ENABLED.get()
                 || !OreScanner.isClientWorldReady(client)
@@ -69,7 +69,7 @@ public final class OreHighlighter {
         for (OreCache.CachedXrayBlock entry : OreCache.snapshotEntries()) {
             BlockPos pos = entry.pos();
             double x = pos.getX(), y = pos.getY(), z = pos.getZ();
-            double dx = x + .5 - eye.x, dy = y + .5 - eye.y, dz = z + .5 - eye.z;
+            double dx = x + .5 - eye.xCoord, dy = y + .5 - eye.yCoord, dz = z + .5 - eye.zCoord;
             if (dx * dx + dy * dy + dz * dz > MAX_RENDER_DISTANCE_SQ
                     || !VIEW.isVisible(x, y, z, x + 1, y + 1, z + 1)) continue;
             XrayTarget target = entry.target();
@@ -91,7 +91,7 @@ public final class OreHighlighter {
         var matrices = context.poseStack();
         matrices.pushPose();
         try {
-            matrices.translate(-eye.x, -eye.y, -eye.z);
+            matrices.translate(-eye.xCoord, -eye.yCoord, -eye.zCoord);
             WorldOverlayRenderer.renderStyled(client, matrices, VISIBLE, "ore highlights");
         } finally {
             matrices.popPose();

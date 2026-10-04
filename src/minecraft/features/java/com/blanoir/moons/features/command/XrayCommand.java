@@ -31,14 +31,15 @@ final class XrayCommand {
     static boolean handle(String tail) {
         String[] parts = tail.split("\\s+", 4);
         if (parts[0].equalsIgnoreCase("inspect")) {
-            Minecraft client = Minecraft.getInstance();
+            Minecraft client = Minecraft.getMinecraft();
             try {
                 var selector = PluginClientContext.lookingAt(client);
                 ClientChat.send(client, selector.key());
-                var hit = (net.minecraft.world.phys.BlockHitResult) client.hitResult;
+                var hit = client.objectMouseOver;
                 ClientChat.send(
                         client,
-                        PluginXrayTargets.describe(client.level.getBlockState(hit.getBlockPos())));
+                        PluginXrayTargets.describe(
+                                client.theWorld.getBlockState(hit.getBlockPos())));
             } catch (IllegalArgumentException exception) {
                 ClientChat.send(client, exception.getMessage());
             }
@@ -63,13 +64,13 @@ final class XrayCommand {
             }
         }
         ClientChat.send(
-                Minecraft.getInstance(),
+                Minecraft.getMinecraft(),
                 "Usage: .xray ore <add block [color]|remove block> | .xray plugin <on|off|list|add looking [color]|remove looking|clear> | .xray inspect");
         return true;
     }
 
     private static void plugin(String[] parts) {
-        Minecraft client = Minecraft.getInstance();
+        Minecraft client = Minecraft.getMinecraft();
         try {
             String operation = parts.length > 1 ? parts[1].toLowerCase(Locale.ROOT) : "list";
             switch (operation) {
@@ -136,7 +137,7 @@ final class XrayCommand {
     }
 
     private static void add(String blockName, CustomXrayTargets.ColorValue color) {
-        Minecraft client = Minecraft.getInstance();
+        Minecraft client = Minecraft.getMinecraft();
         if (color == null) {
             ClientChat.send(client, "Invalid color. Use a preset, #RRGGBB, r,g,b, or rgb(r,g,b).");
             return;
@@ -161,7 +162,7 @@ final class XrayCommand {
     }
 
     private static void remove(String blockName) {
-        Minecraft client = Minecraft.getInstance();
+        Minecraft client = Minecraft.getMinecraft();
         if (!CustomXrayTargets.remove(blockName)) {
             ClientChat.send(client, "Ore target not found: " + blockName + ".");
             return;

@@ -9,8 +9,7 @@ import com.blanoir.moons.client.utils.rotation.Rotation;
  * Reset methods retain the original all-mode scope and iteration order.
  */
 final class SilentAuraModes {
-    private final SilentAuraTargets[] latest = targetsForModes();
-    private final SilentAuraTargets[] legacy = targetsForModes();
+    private final SilentAuraTargets[] targets = targetsForModes();
     private final SilentAuraRotationController[] rotations = {
         new SilentAuraRotationController(true),
         new SilentAuraRotationController(false),
@@ -40,7 +39,7 @@ final class SilentAuraModes {
     }
 
     SilentAuraTargets targets() {
-        return (SilentAuraConfig.legacyCombat() ? legacy : latest)[index()];
+        return targets[index()];
     }
 
     SilentAuraRotationController rotation() {
@@ -101,8 +100,7 @@ final class SilentAuraModes {
     }
 
     void clearTargets() {
-        for (var target : latest) target.clear();
-        for (var target : legacy) target.clear();
+        for (var target : targets) target.clear();
     }
 
     void clearRotations() {

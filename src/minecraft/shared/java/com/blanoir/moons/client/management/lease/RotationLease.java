@@ -1,12 +1,12 @@
 package com.blanoir.moons.client.management.lease;
 
+import com.blanoir.moons.client.compat.math.Mth;
 import com.blanoir.moons.client.management.rotation.RotationManager;
 import com.blanoir.moons.client.management.rotation.RotationQuantizer;
 import com.blanoir.moons.client.management.rotation.RotationRequest;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.util.Mth;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -86,7 +86,7 @@ public final class RotationLease {
     }
 
     public boolean acquire(RotationRequest request) {
-        return acquire(request, RotationManager.start(Minecraft.getInstance()), ignored -> {});
+        return acquire(request, RotationManager.start(Minecraft.getMinecraft()), ignored -> {});
     }
 
     /** The initializer runs once per acquisition, before the new producer computes its trajectory. */

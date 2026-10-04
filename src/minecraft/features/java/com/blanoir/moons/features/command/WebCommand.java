@@ -10,7 +10,7 @@ final class WebCommand {
     private WebCommand() {}
 
     static boolean handle(String tail) {
-        Minecraft client = Minecraft.getInstance();
+        Minecraft client = Minecraft.getMinecraft();
         String[] parts = tail.split("\\s+", 2);
         String operation = tail.isBlank() ? "status" : parts[0].toLowerCase(java.util.Locale.ROOT);
         switch (operation) {

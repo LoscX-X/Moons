@@ -182,7 +182,7 @@ tasks.register("verifyMinecraftTransformers", JavaExec) {
 
 
 tasks.named("check").configure {
-    dependsOn "clientClasses", "featuresClasses", "verifyMinecraftTransformers", "verifyGameAccess",
+    dependsOn "clientClasses", "featuresClasses", "verifyMinecraft189",
             "verifyLoadSession", "verifyCacheMaintenance", "verifyPayloadCache"
 }
 

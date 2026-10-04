@@ -42,7 +42,10 @@ final class RuntimeLoader implements AutoCloseable {
             throws Exception {
         Path runtimeJar =
                 PayloadCache.extract(
-                        outerJar, home, "META-INF/moons/runtime/moons-runtime.jar", "moons-runtime.jar");
+                        outerJar,
+                        home,
+                        "META-INF/moons/runtime/moons-runtime.jar",
+                        "moons-runtime.jar");
         ClassLoader bridgeParent =
                 new BridgeParentClassLoader(gameLoader, RuntimeLoader.class.getClassLoader());
         Path uiRuntime = resolveUiRuntime(home);
@@ -52,7 +55,7 @@ final class RuntimeLoader implements AutoCloseable {
                         : new java.net.URL[] {
                             runtimeJar.toUri().toURL(), uiRuntime.toUri().toURL()
                         };
-        URLClassLoader loader = new URLClassLoader(runtimeUrls, bridgeParent);
+        URLClassLoader loader = new SharedRuntimeClassLoader(runtimeUrls, bridgeParent);
         Thread thread = Thread.currentThread();
         ClassLoader previousContext = thread.getContextClassLoader();
         try {
@@ -88,6 +91,34 @@ final class RuntimeLoader implements AutoCloseable {
             throw new IllegalStateException("Moons UI runtime is missing: " + library);
         }
         return library;
+    }
+
+    /** 1.8.9 supplies older Gson/Commons APIs. Own only the feature libraries, never Netty/LWJGL. */
+    private static final class SharedRuntimeClassLoader extends URLClassLoader {
+        private SharedRuntimeClassLoader(java.net.URL[] urls, ClassLoader parent) {
+            super(urls, parent);
+        }
+
+        @Override
+        protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
+            synchronized (getClassLoadingLock(name)) {
+                Class<?> type = findLoadedClass(name);
+                if (type == null
+                        && (name.startsWith("com.google.gson.")
+                                || name.startsWith("org.apache.commons.lang3.")
+                                || name.startsWith("org.joml.")
+                                || name.startsWith("it.unimi.dsi.fastutil.")
+                                || name.startsWith("com.mojang.brigadier."))) {
+                    try {
+                        type = findClass(name);
+                    } catch (ClassNotFoundException ignored) {
+                    }
+                }
+                if (type == null) type = super.loadClass(name, false);
+                if (resolve) resolveClass(type);
+                return type;
+            }
+        }
     }
 
     RuntimeBridge bridge() {

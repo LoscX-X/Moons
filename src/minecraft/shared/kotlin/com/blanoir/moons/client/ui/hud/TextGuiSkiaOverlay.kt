@@ -11,7 +11,7 @@ import com.blanoir.moons.client.ui.compose.FinalFrameSurface
 import com.blanoir.moons.client.ui.layout.Bounds
 import com.blanoir.moons.client.utils.io.EmbeddedResources
 import com.blanoir.moons.client.utils.time.FrameClock
-import com.mojang.blaze3d.systems.RenderSystem
+
 import java.util.LinkedHashMap
 import kotlin.math.floor
 import kotlin.math.max
@@ -64,9 +64,9 @@ object TextGuiSkiaOverlay {
 
     @JvmStatic
     fun renderFrame(editorVisible: Boolean) {
-        RenderSystem.assertOnRenderThread()
-        val client = Minecraft.getInstance()
-        if (client.player == null || client.level == null) {
+        check(Minecraft.getMinecraft().isCallingFromMinecraftThread) { "Rendering must run on the Minecraft thread" }
+        val client = Minecraft.getMinecraft()
+        if (client.thePlayer == null || client.theWorld == null) {
             InventorySkiaRenderer.prepare(InventorySee.snapshot(false))
             moduleEntries.clear()
             sortedRows.clear()
@@ -107,9 +107,9 @@ object TextGuiSkiaOverlay {
             return
         }
 
-        val window = client.window
-        val width = window.width
-        val height = window.height
+        val window = client
+        val width = window.displayWidth
+        val height = window.displayHeight
         if (width <= 0 || height <= 0) return
         if (startedNanos == 0L) startedNanos = now
         val seconds = (now - startedNanos) / 1_000_000_000.0
@@ -147,7 +147,7 @@ object TextGuiSkiaOverlay {
         seconds: Double,
         animationSeconds: Double,
     ) {
-        val guiScale = client.window.guiScale.coerceAtLeast(1).toFloat()
+        val guiScale = net.minecraft.client.gui.ScaledResolution(client).scaleFactor.coerceAtLeast(1).toFloat()
         val hudScale = HudConfig.SCALE.get().toFloat()
         val physicalScale = guiScale * hudScale
         val fontSize = 9.0f * physicalScale
@@ -255,8 +255,8 @@ object TextGuiSkiaOverlay {
         val maximumWidth =
             max(1.0f, max(headerWidth, max(previewWidth, rows.maxOfOrNull { it.width } ?: 0.0f)))
 
-        val guiWidth = client.window.width / guiScale
-        val guiHeight = client.window.height / guiScale
+        val guiWidth = client.displayWidth / guiScale
+        val guiHeight = client.displayHeight / guiScale
         val unscaledWidth = floor(guiWidth / hudScale)
         val rightLogical =
             if (HudConfig.POSITION_X.get() < 0) unscaledWidth - 5.0f
@@ -427,8 +427,8 @@ object TextGuiSkiaOverlay {
         canvas: org.jetbrains.skia.Canvas,
         snapshot: TargetInfoHud.Snapshot,
     ) {
-        val client = Minecraft.getInstance()
-        val guiScale = client.window.guiScale.coerceAtLeast(1).toFloat()
+        val client = Minecraft.getMinecraft()
+        val guiScale = net.minecraft.client.gui.ScaledResolution(client).scaleFactor.coerceAtLeast(1).toFloat()
         val componentScale = TargetInfoHud.scale().toFloat() * guiScale
         val bounds = snapshot.bounds()
         val originX = (bounds.x().toFloat() + snapshot.slide()) * guiScale

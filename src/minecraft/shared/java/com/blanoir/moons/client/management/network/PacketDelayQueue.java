@@ -1,17 +1,17 @@
 package com.blanoir.moons.client.management.network;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.network.Connection;
-import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.NetworkManager;
+import net.minecraft.network.Packet;
 
 /**
- * Connection-bound outgoing Blink and timed lag. Each consumer owns an instance.
+ * NetworkManager-bound outgoing Blink and timed lag. Each consumer owns an instance.
  * Call observe on sends and ticks, and discard on world changes/unload.
  * Replay uses normal sends so rotation and send-completion observers still run.
  */
 public final class PacketDelayQueue {
     private final LagUtils<Packet<?>> packets;
-    private Connection connection;
+    private NetworkManager connection;
     private Object context;
     private long generation;
 
@@ -19,24 +19,24 @@ public final class PacketDelayQueue {
         packets = new LagUtils<>(capacity);
     }
 
-    public synchronized void observe(Connection connection) {
+    public synchronized void observe(NetworkManager connection) {
         observe(connection, null);
     }
 
     /** Tick-side observation also clears old-world packets when no send occurs. */
     public synchronized void observeClient(Minecraft client) {
-        var listener = client == null ? null : client.getConnection();
+        var listener = client == null ? null : client.getNetHandler();
         observe(
-                listener == null ? null : listener.getConnection(),
-                client == null ? null : client.level);
+                listener == null ? null : listener.getNetworkManager(),
+                client == null ? null : client.theWorld);
     }
 
     /** Identity changes discard stale packets; they must never reach another session. */
-    public synchronized void observe(Connection connection, Object context) {
+    public synchronized void observe(NetworkManager connection, Object context) {
         if (this.connection != connection
                 || this.context != context
                 || connection == null
-                || !connection.isConnected()) {
+                || !connection.isChannelOpen()) {
             packets.clear();
             generation++;
         }
@@ -55,7 +55,7 @@ public final class PacketDelayQueue {
     }
 
     private boolean canCapture() {
-        return !LagUtils.isReplaying() && connection != null && connection.isConnected();
+        return !LagUtils.isReplaying() && connection != null && connection.isChannelOpen();
     }
 
     public synchronized boolean isFull() {
@@ -100,7 +100,7 @@ public final class PacketDelayQueue {
 
     private void replay(int count, boolean dueOnly) {
         if (LagUtils.isReplaying()) return;
-        Connection observed = connection;
+        NetworkManager observed = connection;
         long observedGeneration = generation;
         long now = LagUtils.nowMillis();
         LagUtils.replay(
@@ -108,13 +108,13 @@ public final class PacketDelayQueue {
                     for (int sent = 0; sent < count; sent++) {
                         // A synchronous observer can discard or replace the context during send.
                         if (observedGeneration != generation) return;
-                        if (observed == null || !observed.isConnected()) {
+                        if (observed == null || !observed.isChannelOpen()) {
                             discard();
                             return;
                         }
                         Packet<?> packet = dueOnly ? packets.pollDue(now) : packets.poll();
                         if (packet == null) return;
-                        observed.send(packet);
+                        observed.sendPacket(packet);
                     }
                 });
     }

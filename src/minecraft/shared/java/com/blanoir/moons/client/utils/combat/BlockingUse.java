@@ -6,16 +6,15 @@ import com.blanoir.moons.client.utils.client.ClientReady;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.multiplayer.ClientLevel;
-import net.minecraft.client.multiplayer.ClientPacketListener;
-import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
-import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
-import net.minecraft.tags.ItemTags;
-import net.minecraft.world.InteractionHand;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.ItemUseAnimation;
+import net.minecraft.client.entity.EntityPlayerSP;
+import net.minecraft.client.multiplayer.WorldClient;
+import net.minecraft.client.network.NetHandlerPlayClient;
+import net.minecraft.item.EnumAction;
+import net.minecraft.item.ItemStack;
+import net.minecraft.item.ItemSword;
+import net.minecraft.network.play.client.C07PacketPlayerDigging;
+import net.minecraft.util.BlockPos;
+import net.minecraft.util.EnumFacing;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -24,9 +23,9 @@ import java.util.Set;
 public final class BlockingUse {
     private static final Set<BlockingUse> ACTIVE = new HashSet<>();
     private Minecraft ownerClient;
-    private LocalPlayer player;
-    private ClientLevel level;
-    private ClientPacketListener connection;
+    private EntityPlayerSP player;
+    private WorldClient level;
+    private NetHandlerPlayClient connection;
     private int slot = -1;
     private ItemStack nativeItem;
 
@@ -36,23 +35,23 @@ public final class BlockingUse {
 
     public boolean matches(Minecraft client) {
         return sameContext(client)
-                && client.player.getInventory().getSelectedSlot() == slot
-                && client.player.getMainHandItem().is(ItemTags.SWORDS);
+                && client.thePlayer.inventory.currentItem == slot
+                && client.thePlayer.getHeldItem() != null
+                && client.thePlayer.getHeldItem().getItem() instanceof ItemSword;
     }
 
     private boolean sameContext(Minecraft client) {
         return ClientReady.world(client)
-                && client.player == player
-                && client.level == level
-                && client.getConnection() == connection;
+                && client.thePlayer == player
+                && client.theWorld == level
+                && client.getNetHandler() == connection;
     }
 
     public boolean ownsNativeUse(Minecraft client) {
         return sameContext(client)
                 && nativeItem != null
                 && player.isUsingItem()
-                && player.getUsedItemHand() == InteractionHand.MAIN_HAND
-                && player.getUseItem() == nativeItem;
+                && player.getItemInUse() == nativeItem;
     }
 
     /** Called before vanilla key handling; interruption ends the old lifecycle explicitly. */
@@ -68,46 +67,45 @@ public final class BlockingUse {
 
     public boolean canStart(Minecraft client) {
         return ClientReady.gameplay(client)
-                && client.getConnection() != null
-                && !client.player.isUsingItem()
-                && !client.player.isSpectator()
+                && client.getNetHandler() != null
+                && !client.thePlayer.isUsingItem()
+                && !client.thePlayer.isSpectator()
                 && supportsSwordBlock(client)
-                && !client.player.getCooldowns().isOnCooldown(client.player.getMainHandItem())
                 && GameAccess.rightClickDelay(client) == 0;
     }
 
     public static boolean supportsSwordBlock(Minecraft client) {
         return ClientReady.world(client)
-                && client.player.getMainHandItem().is(ItemTags.SWORDS)
-                && client.player.getMainHandItem().getUseAnimation() == ItemUseAnimation.BLOCK;
+                && client.thePlayer.getHeldItem() != null
+                && client.thePlayer.getHeldItem().getItem() instanceof ItemSword
+                && client.thePlayer.getHeldItem().getItemUseAction() == EnumAction.BLOCK;
     }
 
     public boolean start(Minecraft client, Rotation rotation) {
         if (matches(client)) return true;
         if (!canStart(client)) return false;
         discard();
-        int selected = client.player.getInventory().getSelectedSlot();
+        int selected = client.thePlayer.inventory.currentItem;
         GameAccess.rightClickDelay(client, 4);
         // Use the installed client's prediction and item-use logic together. Vanilla owns
         // the use speed/sprint modifiers; neither the visual pose nor Legacy mode sets them.
-        float yaw = client.player.getYRot(), pitch = client.player.getXRot();
+        float yaw = client.thePlayer.rotationYaw, pitch = client.thePlayer.rotationPitch;
         try {
-            client.player.setYRot(rotation.yaw());
-            client.player.setXRot(rotation.pitch());
-            client.gameMode.useItem(client.player, InteractionHand.MAIN_HAND);
+            client.thePlayer.rotationYaw = rotation.yaw();
+            client.thePlayer.rotationPitch = rotation.pitch();
+            client.playerController.sendUseItem(
+                    client.thePlayer, client.theWorld, client.thePlayer.getHeldItem());
         } finally {
-            client.player.setYRot(yaw);
-            client.player.setXRot(pitch);
+            client.thePlayer.rotationYaw = yaw;
+            client.thePlayer.rotationPitch = pitch;
         }
         // Native useItem emits a request even if local use fails. Retain that request until
         // refresh releases it, so a failed start cannot leak server use into an attack.
-        if (client.player.isUsingItem()
-                && client.player.getUsedItemHand() == InteractionHand.MAIN_HAND)
-            nativeItem = client.player.getUseItem();
+        if (client.thePlayer.isUsingItem()) nativeItem = client.thePlayer.getItemInUse();
         ownerClient = client;
-        player = client.player;
-        level = client.level;
-        connection = client.getConnection();
+        player = client.thePlayer;
+        level = client.theWorld;
+        connection = client.getNetHandler();
         slot = selected;
         ACTIVE.add(this);
         if (nativeItem != null)
@@ -120,15 +118,15 @@ public final class BlockingUse {
         // A foreign use supersedes ours. Never release its server state independently of its
         // local state. A slot change still releases our previous use in the same context.
         boolean release = sameContext(client) && (!player.isUsingItem() || nativeUse);
-        if (release && nativeUse && client.gameMode != null) {
-            client.gameMode.releaseUsingItem(player);
+        if (release && nativeUse && client.playerController != null) {
+            client.playerController.onStoppedUsingItem(player);
         } else if (release) {
-            client.getConnection()
-                    .send(
-                            new ServerboundPlayerActionPacket(
-                                    ServerboundPlayerActionPacket.Action.RELEASE_USE_ITEM,
-                                    BlockPos.ZERO,
-                                    Direction.DOWN));
+            client.getNetHandler()
+                    .addToSendQueue(
+                            new C07PacketPlayerDigging(
+                                    C07PacketPlayerDigging.Action.RELEASE_USE_ITEM,
+                                    BlockPos.ORIGIN,
+                                    EnumFacing.DOWN));
         }
         discard();
         return release;

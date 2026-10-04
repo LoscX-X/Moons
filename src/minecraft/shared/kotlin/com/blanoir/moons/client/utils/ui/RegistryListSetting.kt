@@ -1,4 +1,5 @@
 package com.blanoir.moons.client.utils.ui
+import com.blanoir.moons.client.utils.render.isEmpty
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -19,71 +20,48 @@ import com.blanoir.moons.client.ui.clickgui.PanelStyle
 import com.blanoir.moons.client.utils.registry.RegistryLists
 import com.blanoir.moons.client.utils.render.NativeItemIcons
 import com.google.gson.JsonArray
-import net.minecraft.core.registries.BuiltInRegistries
-import net.minecraft.locale.Language
-import net.minecraft.world.item.ItemStack
-import net.minecraft.world.item.SpawnEggItem
 
-private class RegistryEntry(val id: String, val name: String, iconFactory: () -> ItemStack) {
+
+import net.minecraft.item.ItemStack
+
+
+private class RegistryEntry(val id: String, val name: String, iconFactory: () -> ItemStack?) {
     val icon by lazy(iconFactory)
 }
-
 private fun registryEntry(type: String, id: String): RegistryEntry {
-    val key =
-        net.minecraft.resources.Identifier.tryParse(id)
-            ?: return RegistryEntry(id, id) { ItemStack.EMPTY }
-    return when (type) {
-        "item_list" ->
-            BuiltInRegistries.ITEM.getOptional(key)
-                .map { item ->
-                    RegistryEntry(id, item.getName(item.defaultInstance).string) {
-                        item.defaultInstance
-                    }
-                }
-                .orElse(null)
-        "block_list" ->
-            BuiltInRegistries.BLOCK.getOptional(key)
-                .map { block ->
-                    RegistryEntry(id, block.name.string) { block.asItem().defaultInstance }
-                }
-                .orElse(null)
-        else ->
-            BuiltInRegistries.ENTITY_TYPE.getOptional(key)
-                .map { entity ->
-                    RegistryEntry(id, entity.description.string) {
-                        SpawnEggItem.byId(entity)
-                            .map { it.value().defaultInstance }
-                            .orElse(ItemStack.EMPTY)
-                    }
-                }
-                .orElse(null)
-    } ?: RegistryEntry(id, id) { ItemStack.EMPTY }
-}
-
-private fun registryEntries(type: String): List<RegistryEntry> {
-    val keys =
-        when (type) {
-            "item_list" -> BuiltInRegistries.ITEM.keySet()
-            "block_list" -> BuiltInRegistries.BLOCK.keySet()
-            else -> BuiltInRegistries.ENTITY_TYPE.keySet()
+    val key = runCatching { net.minecraft.util.ResourceLocation(id) }.getOrNull()
+        ?: return RegistryEntry(id,id){null}
+    return when(type){
+        "item_list" -> net.minecraft.item.Item.itemRegistry.getObject(key)?.let { item ->
+            val stack=ItemStack(item); RegistryEntry(id,stack.displayName){stack}
         }
-    return keys
-        .asSequence()
-        .map { it.toString() }
-        .filter { type != "mob_list" || it != "minecraft:player" }
-        .filter { type != "item_list" || it != "minecraft:air" }
-        .map { registryEntry(type, it) }
-        .sortedWith(compareBy({ it.name }, { it.id }))
-        .toList()
+        "block_list" -> net.minecraft.block.Block.blockRegistry.getObject(key)?.let { block ->
+            RegistryEntry(id,block.localizedName){net.minecraft.item.Item.getItemFromBlock(block)?.let { ItemStack(it) }}
+        }
+        else -> {
+            val name=id.substringAfter(':')
+            val number=net.minecraft.entity.EntityList.getIDFromString(name)
+            RegistryEntry(id,net.minecraft.client.resources.I18n.format("entity.$name.name")){
+                if(net.minecraft.entity.EntityList.entityEggs.containsKey(number)) ItemStack(net.minecraft.init.Items.spawn_egg,1,number) else null
+            }
+        }
+    } ?: RegistryEntry(id,id){null}
 }
-
+private fun registryEntries(type:String):List<RegistryEntry>{
+    val keys:List<String> = when(type){
+        "item_list" -> net.minecraft.item.Item.itemRegistry.keys.map { it.toString() }
+        "block_list" -> net.minecraft.block.Block.blockRegistry.keys.map { it.toString() }
+        else -> net.minecraft.entity.EntityList.getEntityNameList().map { "minecraft:$it" }
+    }
+    return keys.filter { it != "minecraft:air" }.map { registryEntry(type,it) }.sortedWith(compareBy({it.name},{it.id}))
+}
 @Composable
 internal fun RegistryListSetting(
     module: ModuleRegistry.Module,
     setting: ModuleRegistry.Setting,
     onMutated: () -> Unit,
 ) {
-    val language = Language.getInstance()
+    val language = net.minecraft.client.Minecraft.getMinecraft().languageManager.currentLanguage
     val value = setting.value().get().asJsonArray
     val selected = value.map { it.asJsonObject }
     val selectedIds = selected.map { it.get("id").asString }.toSet()
@@ -228,8 +206,8 @@ private fun RegistryEntryRow(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
-    DisposableEffect(entry.icon.item) {
-        onDispose { NativeItemIcons.cancelPending(entry.icon) }
+    DisposableEffect(entry.icon?.item) {
+        onDispose { entry.icon?.let { NativeItemIcons.cancelPending(it) } }
     }
     Row(
         Modifier.fillMaxWidth()

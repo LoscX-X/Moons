@@ -1,0 +1,72 @@
+// Independent checks against verified vanilla bytecode; never starts or mutates a Minecraft process.
+sourceSets.loaderTest.runtimeClasspath += sourceSets.ysm.output + sourceSets.ysm.compileClasspath
+tasks.register('verifyMinecraft189Audio', JavaExec) {
+    group = 'verification'
+    description = 'Checks the actual 1.8 OpenAL/decoder lifecycle and PCM constraints, together with portable sound-cache/cancellation behavior.'
+    dependsOn 'loaderTestClasses', 'ysmClasses', 'verifyYsmCore'
+    classpath = sourceSets.loaderTest.runtimeClasspath
+    mainClass = 'com.blanoir.moons.agent.core.YsmAudioHookVerification'
+}
+tasks.named('check') { dependsOn 'verifyMinecraft189Audio', 'verifyMinecraft189Version', 'verifyMinecraft189Catalog', 'verifyYsmQueries', 'verifyYsmRenderSetup' }
+sourceSets {
+    minecraft189Verification {
+        java.setSrcDirs(['src/verification/minecraft189/java'])
+        java.include('com/blanoir/moons/agent/core/**')
+        compileClasspath += sourceSets.agent.output + sourceSets.api.output + sourceSets.mapping.output + configurations.agentRuntimeClasspath + configurations.mappingRuntimeClasspath
+        runtimeClasspath += compileClasspath
+    }
+}
+sourceSets {
+    minecraft189VersionVerification {
+        java.setSrcDirs(['src/verification/minecraft189/java'])
+        java.include('com/blanoir/moons/runtime/**')
+        compileClasspath += sourceSets.runtime.output
+        runtimeClasspath += compileClasspath
+    }
+}
+tasks.register('verifyMinecraft189Version', JavaExec) {
+    group = 'verification'
+    description = 'Checks real vanilla/MCP version getters, core bytecode fingerprints and wrong-version rejection without starting Minecraft.'
+    dependsOn 'minecraft189VersionVerificationClasses', 'prepareMinecraft189'
+    classpath = sourceSets.minecraft189VersionVerification.runtimeClasspath
+    mainClass = 'com.blanoir.moons.runtime.MinecraftVersionGuardVerification'
+    doFirst {
+        args = [layout.buildDirectory.dir('minecraft189').get().asFile] + sourceSets.client.compileClasspath.files.findAll { it.name.endsWith('.jar') && !it.name.contains('minecraft-1.8.9-named') }
+    }
+}
+sourceSets {
+    minecraft189CatalogVerification {
+        java.setSrcDirs(['src/verification/minecraft189/java'])
+        java.include('com/blanoir/moons/client/**')
+        compileClasspath += sourceSets.features.output + sourceSets.client.output + sourceSets.features.compileClasspath
+        runtimeClasspath += compileClasspath
+    }
+}
+tasks.register('verifyMinecraft189Catalog', JavaExec) {
+    group = 'verification'
+    description = 'Instantiates all 64 retained module descriptors, all 47 Legacy SilentAura settings and persisted aim configuration.'
+    dependsOn 'minecraft189CatalogVerificationClasses'
+    classpath = sourceSets.minecraft189CatalogVerification.runtimeClasspath
+    mainClass = 'com.blanoir.moons.client.LegacyCatalogVerification'
+    args layout.buildDirectory.dir('reports/minecraft189-catalog/config').get().asFile
+}
+tasks.register('verifyMinecraft189', JavaExec) {
+    group = 'verification'
+    description = 'Checks every named/obfuscated 1.8.9 hook, frame flow, bridge ABI, idempotence and reverse-remap linkage.'
+    dependsOn 'minecraft189VerificationClasses', 'generateMinecraft189Hooks', 'processAgentResources'
+    classpath = sourceSets.minecraft189Verification.runtimeClasspath
+    mainClass = 'com.blanoir.moons.agent.core.Minecraft189Verification'
+    args layout.buildDirectory.dir('minecraft189').get().asFile, layout.buildDirectory.dir('reports/minecraft189-verification').get().asFile
+    if (providers.gradleProperty('minecraft189_verify_payloads').isPresent()) {
+        args providers.gradleProperty('minecraft189_verify_payloads').get().split(java.io.File.pathSeparator).collect { file(it) }
+    }
+}
+
+tasks.register('verifyMinecraft189WorldInventory', JavaExec) {
+    group = 'verification'
+    description = 'Checks real 1.8 block geometry, predicted placement, fluid policy, metadata/NBT inventory matching, Sharpness and armor protection.'
+    dependsOn 'minecraft189CatalogVerificationClasses'
+    classpath = sourceSets.minecraft189CatalogVerification.runtimeClasspath
+    mainClass = 'com.blanoir.moons.client.utils.world.LegacyWorldInventoryVerification'
+}
+tasks.named('check') { dependsOn 'verifyMinecraft189WorldInventory' }

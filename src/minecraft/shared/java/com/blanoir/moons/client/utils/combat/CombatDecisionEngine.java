@@ -1,8 +1,9 @@
 package com.blanoir.moons.client.utils.combat;
 
+import com.blanoir.moons.client.compat.math.Mth;
+import com.blanoir.moons.client.compat.math.VecMath;
 import com.blanoir.moons.client.management.input.CombatInputController;
 import com.blanoir.moons.client.management.targeting.Targeting;
-import com.blanoir.moons.client.utils.prediction.CooldownPrediction;
 import com.blanoir.moons.client.utils.prediction.DamagePrediction;
 import com.blanoir.moons.client.utils.prediction.TrajectoryPrediction;
 import com.blanoir.moons.client.utils.prediction.VerticalPrediction;
@@ -10,18 +11,17 @@ import com.blanoir.moons.client.utils.prediction.VerticalPrediction.VerticalStat
 import com.blanoir.moons.client.utils.raytrace.RaytraceUtils;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.util.Mth;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.ai.attributes.Attributes;
-import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.potion.Potion;
+import net.minecraft.util.AxisAlignedBB;
+import net.minecraft.util.Vec3;
 
 public final class CombatDecisionEngine {
-    private static final double FULL_STRENGTH = 0.90D;
+
     private static final double REACH_TOLERANCE = 0.12D;
     private static final int CRITICAL_LANDING_MARGIN_TICKS = 1;
-    private static final int IMMINENT_CRITICAL_GRACE_TICKS = 1;
+
     private static final int MAX_FORECAST_TICKS = 48;
     private static final double CONFIRMED_DESCENT_VELOCITY = -0.01D;
 
@@ -57,19 +57,18 @@ public final class CombatDecisionEngine {
 
     private CombatDecisionEngine() {}
 
-    /** Exact movement/target portion of Player.canCriticalAttack in MC 26.1.2. */
+    /** Exact critical predicate in EntityPlayer.attackTargetEntityWithCurrentItem for 1.8.9. */
     public static boolean hasVanillaCriticalMovement(Minecraft client, Entity target) {
-        var currentPlayer = client == null ? null : client.player;
+        var currentPlayer = client == null ? null : client.thePlayer;
         if (currentPlayer != null) {
             return valid(client, target)
-                    && target instanceof LivingEntity
+                    && target instanceof EntityLivingBase
                     && currentPlayer.fallDistance > 0.0D
-                    && !currentPlayer.onGround()
-                    && !currentPlayer.onClimbable()
+                    && !currentPlayer.onGround
+                    && !currentPlayer.isOnLadder()
                     && !currentPlayer.isInWater()
-                    && !currentPlayer.isMobilityRestricted()
-                    && !currentPlayer.isPassenger()
-                    && !currentPlayer.isSprinting();
+                    && !currentPlayer.isPotionActive(Potion.blindness)
+                    && !currentPlayer.isRiding();
         }
         return false;
     }
@@ -81,8 +80,7 @@ public final class CombatDecisionEngine {
      */
     public static boolean canCriticalNow(Minecraft client, Entity target) {
         return hasVanillaCriticalMovement(client, target)
-                && client.player.getDeltaMovement().y < CONFIRMED_DESCENT_VELOCITY
-                && client.player.getAttackStrengthScale(0.5F) > FULL_STRENGTH;
+                && VecMath.motion(client.thePlayer).yCoord < CONFIRMED_DESCENT_VELOCITY;
     }
 
     /**
@@ -92,11 +90,11 @@ public final class CombatDecisionEngine {
      * TriggerBot repeatedly even when no critical was actually reachable.
      */
     public static boolean isUnsafeLandingPhase(Minecraft client) {
-        var currentPlayer = client == null ? null : client.player;
+        var currentPlayer = client == null ? null : client.thePlayer;
         return client != null
                 && currentPlayer != null
-                && client.level != null
-                && !currentPlayer.onGround()
+                && client.theWorld != null
+                && !currentPlayer.onGround
                 && currentPlayer.fallDistance > 0.0F
                 && !hasCriticalLandingMargin(client);
     }
@@ -104,19 +102,19 @@ public final class CombatDecisionEngine {
     /** Conditions that cannot be fixed merely by waiting for the falling phase. */
     public static boolean allowsFutureCritical(Minecraft client, Entity target) {
         return valid(client, target)
-                && target instanceof LivingEntity
-                && !client.player.onClimbable()
-                && !client.player.isInWater()
-                && !client.player.isMobilityRestricted()
-                && !client.player.isPassenger();
+                && target instanceof EntityLivingBase
+                && !client.thePlayer.isOnLadder()
+                && !client.thePlayer.isInWater()
+                && !client.thePlayer.isPotionActive(Potion.blindness)
+                && !client.thePlayer.isRiding();
     }
 
     public static boolean wouldCurrentNormalKill(Minecraft client, Entity target) {
-        if (!valid(client, target) || !(target instanceof LivingEntity livingTarget)) {
+        if (!valid(client, target) || !(target instanceof EntityLivingBase livingTarget)) {
             return false;
         }
         double targetHealth = livingTarget.getHealth() + livingTarget.getAbsorptionAmount();
-        double charge = client.player.getAttackStrengthScale(0.5F);
+        double charge = 1.0D;
         return DamagePrediction.meleeDamage(client, livingTarget, charge, false) >= targetHealth;
     }
 
@@ -161,13 +159,13 @@ public final class CombatDecisionEngine {
             boolean stopSprintForCritical,
             boolean manualIntent,
             SyncPolicy syncPolicy) {
-        if (!valid(client, target) || !(target instanceof LivingEntity livingTarget)) {
+        if (!valid(client, target) || !(target instanceof EntityLivingBase livingTarget)) {
             return Decision.abort("invalid-target");
         }
 
         int horizon = Mth.clamp(lookaheadTicks, 0, MAX_FORECAST_TICKS);
         int earliest = Mth.clamp(earliestAttackTick, 0, horizon);
-        double currentCharge = client.player.getAttackStrengthScale(0.5F);
+        double currentCharge = 1.0D;
         boolean currentReach = !CombatGeometry.outsideVanillaRange(client, target);
         boolean currentDamageable = livingTarget.hurtTime <= 0;
 
@@ -185,7 +183,7 @@ public final class CombatDecisionEngine {
         }
 
         AttackKind currentKind =
-                client.player.isSprinting() ? AttackKind.SPRINT : AttackKind.NORMAL;
+                client.thePlayer.isSprinting() ? AttackKind.SPRINT : AttackKind.NORMAL;
         Decision current =
                 earliest == 0 && currentReach && currentDamageable
                         ? new Decision(
@@ -223,7 +221,7 @@ public final class CombatDecisionEngine {
 
     private static Decision findFutureCritical(
             Minecraft client,
-            LivingEntity target,
+            EntityLivingBase target,
             int horizon,
             int earliest,
             boolean stopSprintForCritical,
@@ -231,76 +229,36 @@ public final class CombatDecisionEngine {
         if (horizon <= 0 || !allowsFutureCritical(client, target)) {
             return Decision.abort("critical-blocked");
         }
-        if (client.player.isSprinting() && !stopSprintForCritical) {
-            return Decision.abort("sprinting");
-        }
-
-        double attackDelay = Math.max(1.0D, client.player.getCurrentItemAttackStrengthDelay());
-        double currentCharge = client.player.getAttackStrengthScale(0.5F);
-        boolean physicalJumpHeld =
-                CombatInputController.isPhysicallyDown(client, client.options.keyJump);
-        boolean jumpPhaseActive =
-                !client.player.onGround()
-                        || physicalJumpHeld
-                        || CombatInputController.isDown(client, client.options.keyJump);
         int searchHorizon = horizon;
-        if (syncPolicy.enabled() && physicalJumpHeld && syncPolicy.cycles() > 1) {
-            searchHorizon =
-                    Math.min(
-                            MAX_FORECAST_TICKS,
-                            horizon
-                                    + (int) Math.ceil(attackDelay) * (syncPolicy.cycles() - 1)
-                                    + Math.max(0, syncPolicy.maxOverchargeTicks())
-                                    + 8);
-        }
         int forecastHorizon =
                 Math.min(
                         MAX_FORECAST_TICKS + CRITICAL_LANDING_MARGIN_TICKS,
                         searchHorizon + CRITICAL_LANDING_MARGIN_TICKS);
         VerticalState[] states = forecastVerticalStates(client, forecastHorizon);
-        int activeJumpCycle = Math.max(1, states[0].jumpCycle());
-        Vec3 playerVelocity = client.player.getDeltaMovement();
-        Vec3 targetVelocity = target.getDeltaMovement();
-        AABB currentTargetBox = CombatGeometry.box(client, target);
-        double reach =
-                Math.max(
-                        1.0D, client.player.getAttributeValue(Attributes.ENTITY_INTERACTION_RANGE));
+
+        Vec3 playerVelocity = VecMath.motion(client.thePlayer);
+        Vec3 targetVelocity = VecMath.motion(target);
+        AxisAlignedBB currentTargetBox = CombatGeometry.box(client, target);
+        double reach = CombatReach.vanillaEntityInteractionRange(client.thePlayer);
 
         for (int tick = Math.max(1, earliest); tick <= searchHorizon; tick++) {
             VerticalState vertical = states[tick];
-            double charge = CooldownPrediction.chargeAt(currentCharge, attackDelay, tick);
+            double charge = 1.0D;
             if (!vertical.critical()
                     || !hasForecastLandingMargin(states, tick)
-                    || charge <= FULL_STRENGTH
                     || target.hurtTime > tick) {
                 continue;
             }
 
-            int projectedOvercharge =
-                    CooldownPrediction.projectedOverchargeTicks(
-                            currentCharge,
-                            attackDelay,
-                            tick,
-                            Math.max(0, syncPolicy.currentOverchargeTicks()));
-            if (syncPolicy.enabled()
-                    && jumpPhaseActive
-                    && vertical.jumpCycle() > activeJumpCycle
-                    && tick > IMMINENT_CRITICAL_GRACE_TICKS
-                    && projectedOvercharge > Math.max(0, syncPolicy.maxOverchargeTicks())) {
-                // Overcharge limits synchronization across later jump cycles.
-                // Never use it to turn an already committed current jump into
-                // an immediate rising normal hit.
-                continue;
-            }
-
             Vec3 futureEye =
-                    client.player
-                            .getEyePosition()
-                            .add(
-                                    playerVelocity.x * tick,
+                    client.thePlayer
+                            .getPositionEyes(1F)
+                            .addVector(
+                                    playerVelocity.xCoord * tick,
                                     vertical.yOffset(),
-                                    playerVelocity.z * tick);
-            AABB targetBox = TrajectoryPrediction.linearBox(currentTargetBox, targetVelocity, tick);
+                                    playerVelocity.zCoord * tick);
+            AxisAlignedBB targetBox =
+                    TrajectoryPrediction.linearBox(currentTargetBox, targetVelocity, tick);
             if (distanceToAabb(futureEye, targetBox) > reach + REACH_TOLERANCE) {
                 continue;
             }
@@ -308,29 +266,15 @@ public final class CombatDecisionEngine {
             double damage = DamagePrediction.meleeDamage(client, target, charge, true);
             double confidence =
                     Mth.clamp(
-                            1.0D - targetVelocity.horizontalDistance() * tick * 0.035D,
+                            1.0D - VecMath.horizontalDistance(targetVelocity) * tick * 0.035D,
                             0.55D,
                             1.0D);
-            int syncedFollowUps =
-                    syncPolicy.enabled() && physicalJumpHeld
-                            ? countSyncedFollowUps(
-                                    states,
-                                    tick,
-                                    attackDelay,
-                                    Math.max(1, syncPolicy.cycles()),
-                                    Math.max(0, syncPolicy.maxOverchargeTicks()))
-                            : 0;
-            double continuityBonus = damage * confidence * syncedFollowUps * 0.10D;
             return new Decision(
                     AttackKind.CRITICAL,
                     tick,
-                    damage * confidence + continuityBonus,
+                    damage * confidence,
                     confidence,
-                    syncedFollowUps > 0
-                            ? "synced-critical-chain"
-                            : vertical.jumpCycle() > 1
-                                    ? "next-jump-critical"
-                                    : "predicted-vanilla-critical");
+                    vertical.jumpCycle() > 1 ? "next-jump-critical" : "predicted-vanilla-critical");
         }
         return Decision.abort("no-near-critical");
     }
@@ -345,35 +289,6 @@ public final class CombatDecisionEngine {
         return marginTick < states.length && states[marginTick].critical();
     }
 
-    private static int countSyncedFollowUps(
-            VerticalState[] states,
-            int firstAttackTick,
-            double attackDelay,
-            int cycles,
-            int maxOverchargeTicks) {
-        int matches = 0;
-        int previousAttackTick = firstAttackTick;
-        int fullCooldownTicks = Math.max(1, (int) Math.ceil(attackDelay));
-
-        for (int cycle = 1; cycle < cycles; cycle++) {
-            int fullyChargedTick = previousAttackTick + fullCooldownTicks;
-            int latestTick = Math.min(states.length - 1, fullyChargedTick + maxOverchargeTicks);
-            int matchedTick = -1;
-            for (int tick = fullyChargedTick; tick <= latestTick; tick++) {
-                if (states[tick].critical()) {
-                    matchedTick = tick;
-                    break;
-                }
-            }
-            if (matchedTick < 0) {
-                break;
-            }
-            matches++;
-            previousAttackTick = matchedTick;
-        }
-        return matches;
-    }
-
     private static boolean worthWaitingForCritical(
             Decision current, Decision futureCritical, boolean manualIntent) {
         double waitPenalty = futureCritical.ticksAhead() * (manualIntent ? 0.055D : 0.035D);
@@ -382,42 +297,43 @@ public final class CombatDecisionEngine {
     }
 
     private static boolean hasActiveJumpCycle(Minecraft client) {
-        return !client.player.onGround()
-                || CombatInputController.isPhysicallyDown(client, client.options.keyJump)
-                || CombatInputController.isDown(client, client.options.keyJump);
+        return !client.thePlayer.onGround
+                || CombatInputController.isPhysicallyDown(client, client.gameSettings.keyBindJump)
+                || CombatInputController.isDown(client, client.gameSettings.keyBindJump);
     }
 
     private static VerticalState[] forecastVerticalStates(Minecraft client, int count) {
-        Vec3 start = client.player.position().add(0.0D, 0.05D, 0.0D);
+        Vec3 start = VecMath.position(client.thePlayer).addVector(0.0D, 0.05D, 0.0D);
         double groundDistance =
                 Math.max(
                         0.05D,
                         RaytraceUtils.distanceToBlock(
-                                client, start, start.add(0.0D, -8.0D, 0.0D), 8.0D));
+                                client, start, start.addVector(0.0D, -8.0D, 0.0D), 8.0D));
         boolean physicalJumpHeld =
-                CombatInputController.isPhysicallyDown(client, client.options.keyJump);
+                CombatInputController.isPhysicallyDown(client, client.gameSettings.keyBindJump);
         return VerticalPrediction.forecast(
-                client.player,
+                client.thePlayer,
                 count,
                 groundDistance,
                 physicalJumpHeld,
-                physicalJumpHeld || CombatInputController.isDown(client, client.options.keyJump));
+                physicalJumpHeld
+                        || CombatInputController.isDown(client, client.gameSettings.keyBindJump));
     }
 
     private static boolean valid(Minecraft client, Entity target) {
         return client != null
-                && client.player != null
-                && client.level != null
-                && client.gameMode != null
+                && client.thePlayer != null
+                && client.theWorld != null
+                && client.playerController != null
                 && target != null
-                && target.isAlive()
+                && target.isEntityAlive()
                 && Targeting.isEnemyPlayer(client, target);
     }
 
-    private static double distanceToAabb(Vec3 point, AABB box) {
-        double dx = Math.max(Math.max(box.minX - point.x, 0.0D), point.x - box.maxX);
-        double dy = Math.max(Math.max(box.minY - point.y, 0.0D), point.y - box.maxY);
-        double dz = Math.max(Math.max(box.minZ - point.z, 0.0D), point.z - box.maxZ);
+    private static double distanceToAabb(Vec3 point, AxisAlignedBB box) {
+        double dx = Math.max(Math.max(box.minX - point.xCoord, 0.0D), point.xCoord - box.maxX);
+        double dy = Math.max(Math.max(box.minY - point.yCoord, 0.0D), point.yCoord - box.maxY);
+        double dz = Math.max(Math.max(box.minZ - point.zCoord, 0.0D), point.zCoord - box.maxZ);
         return Math.sqrt(dx * dx + dy * dy + dz * dz);
     }
 }

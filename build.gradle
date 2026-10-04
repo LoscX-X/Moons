@@ -1,10 +1,16 @@
 plugins {
-    id 'net.fabricmc.fabric-loom' version "1.17.19"
+    id 'net.fabricmc.fabric-loom' version "1.17.19" apply false
     id 'maven-publish'
     id 'org.jetbrains.kotlin.jvm' version '2.3.20'
     id 'org.jetbrains.kotlin.plugin.compose' version '2.3.20'
     id 'org.jetbrains.compose' version '1.10.3'
     id 'com.gradleup.shadow' version '9.2.2'
+}
+
+if (project.minecraft_version.toString() == '1.8.9') {
+    apply plugin: 'java'
+} else {
+    apply plugin: 'net.fabricmc.fabric-loom'
 }
 
 // Applied scripts have their own classloader; resolve plugin types here.
@@ -16,8 +22,7 @@ ext.moonsPluginTypes = [
 
 // Applied scripts share only this immutable configuration and the lazily
 // resolved tools in moonsToolchains. Task providers are obtained by name.
-def supportedVersions = ["26.1.2": "26_1", "26.2": "26_2", "26.3": "26_3",
-        "26.4-snapshot-1": "26_4"].asImmutable()
+def supportedVersions = ["1.8.9": "1_8"].asImmutable()
 def minecraftVersion = project.minecraft_version.toString()
 def versionDirectory = supportedVersions[minecraftVersion]
 if (versionDirectory == null) {
@@ -46,9 +51,11 @@ ext.moonsBuild = [
 
 apply from: "gradle/toolchains.gradle"
 apply from: "gradle/java-conventions.gradle"
+if (minecraftVersion == '1.8.9') apply from: 'gradle/minecraft-1.8.gradle'
 apply from: "gradle/payloads.gradle"
 apply from: "gradle/native.gradle"
 apply from: "gradle/distribution.gradle"
 apply from: "gradle/verification.gradle"
 apply from: "gradle/code-style.gradle"
 apply from: "gradle/ysm.gradle"
+apply from: 'gradle/minecraft-1.8-verification.gradle'

@@ -1,8 +1,7 @@
 package com.blanoir.moons.client.utils.rotation.smooth;
 
+import com.blanoir.moons.client.compat.math.Mth;
 import com.blanoir.moons.client.utils.rotation.Rotation;
-
-import net.minecraft.util.Mth;
 
 /** F: Existing packet-domain acceleration stepping only. Sampling, random envelopes,
  * tick caching, final quantization and sent-angle history stay with the owner. */

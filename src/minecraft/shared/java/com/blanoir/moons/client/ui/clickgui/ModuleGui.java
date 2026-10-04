@@ -51,7 +51,7 @@ public final class ModuleGui {
     }
 
     public static void open(Minecraft client) {
-        if (client.player == null || client.level == null) {
+        if (client.thePlayer == null || client.theWorld == null) {
             return;
         }
         if (MinecraftClientAccess.screen(client) instanceof MoonsComposeScreen) {
@@ -79,7 +79,7 @@ public final class ModuleGui {
     }
 
     public static boolean isOpen() {
-        return MinecraftClientAccess.screen(Minecraft.getInstance()) instanceof MoonsComposeScreen;
+        return MinecraftClientAccess.screen(Minecraft.getMinecraft()) instanceof MoonsComposeScreen;
     }
 
     public static int setEnabled(Minecraft client, boolean enabled) {

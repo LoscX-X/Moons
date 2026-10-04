@@ -1,22 +1,24 @@
 package com.blanoir.moons.client.module.impl.player.automlg;
 
+import com.blanoir.moons.client.compat.math.VecMath;
 import com.blanoir.moons.client.management.rotation.SilentPacketRotation;
+import com.blanoir.moons.client.utils.inventory.LegacyItems;
 import com.blanoir.moons.client.utils.math.MathUtils;
 import com.blanoir.moons.client.utils.player.HotbarQueries;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 import com.blanoir.moons.client.utils.world.FluidQueries;
+import com.blanoir.moons.client.utils.world.LegacyRay;
+import com.blanoir.moons.client.utils.world.LegacyWorld;
+import com.blanoir.moons.client.utils.world.LegacyWorld.FluidState;
 import com.blanoir.moons.client.utils.world.placement.BlockPlacementUtils;
 import com.blanoir.moons.client.utils.world.placement.PlacementRaycast;
 
+import net.minecraft.block.material.Material;
 import net.minecraft.client.Minecraft;
-import net.minecraft.core.BlockPos;
-import net.minecraft.world.item.Items;
-import net.minecraft.world.level.ClipContext;
-import net.minecraft.world.level.material.FluidState;
-import net.minecraft.world.level.material.Fluids;
-import net.minecraft.world.phys.BlockHitResult;
-import net.minecraft.world.phys.HitResult;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.init.Items;
+import net.minecraft.util.BlockPos;
+import net.minecraft.util.MovingObjectPosition;
+import net.minecraft.util.Vec3;
 
 /** AutoMLG timing, placement and recovery state machine. */
 public final class AutoMlgRuntime {
@@ -30,8 +32,8 @@ public final class AutoMlgRuntime {
     private int postActionCooldown;
     private SilentUsePhase silentUsePhase = SilentUsePhase.IDLE;
     private SilentUseAction silentUseAction;
-    private BlockHitResult silentUseHit;
-    private ClipContext.Fluid silentUseFluid;
+    private MovingObjectPosition silentUseHit;
+    private LegacyRay.Fluid silentUseFluid;
     private int silentUseSlot = -1;
     private boolean silentUseRecovery;
     private int silentUseTicks;
@@ -54,29 +56,28 @@ public final class AutoMlgRuntime {
             SilentPacketRotation.Mode rotationMode,
             int smoothTurnTicks,
             int smoothReturnTicks) {
-        var currentPlayer = client == null ? null : client.player;
-        if (client == null || currentPlayer == null || client.level == null) return;
-        if (currentPlayer.isFallFlying()) return;
+        var currentPlayer = client == null ? null : client.thePlayer;
+        if (client == null || currentPlayer == null || client.theWorld == null) return;
         configuredRotation = rotationMode;
         configuredTurnTicks = smoothTurnTicks;
         configuredReturnTicks = smoothReturnTicks;
         placementPredictTicks = predictTicks;
         placementSolidCheck = solidCheck;
 
-        if (currentPlayer.onGround()
-                || currentPlayer.getAbilities().flying
-                || currentPlayer.isInWaterOrRain()
+        if (currentPlayer.onGround
+                || currentPlayer.capabilities.isFlying
+                || currentPlayer.isWet()
                 || currentPlayer.isInLava()) {
             accumulatedFall = 0.0F;
         } else {
-            double deltaY = currentPlayer.getY() - lastY;
+            double deltaY = currentPlayer.posY - lastY;
             if (deltaY < 0.0D) accumulatedFall -= (float) deltaY;
         }
-        lastY = currentPlayer.getY();
+        lastY = currentPlayer.posY;
 
         if (postPlaceCooldown > 0) postPlaceCooldown--;
         if (postActionCooldown > 0) postActionCooldown--;
-        if (currentPlayer.onGround() || accumulatedFall <= 0.0F) {
+        if (currentPlayer.onGround || accumulatedFall <= 0.0F) {
             waterPlaced = false;
         }
 
@@ -92,23 +93,24 @@ public final class AutoMlgRuntime {
                 && postPlaceCooldown == 0
                 && postActionCooldown == 0
                 && accumulatedFall <= 0.5F
-                && HotbarQueries.firstItem(client, Items.WATER_BUCKET) < 0
-                && (emptyBucketSlot = HotbarQueries.firstItem(client, Items.BUCKET)) >= 0
+                && HotbarQueries.firstItem(client, Items.water_bucket) < 0
+                && (emptyBucketSlot = HotbarQueries.firstItem(client, Items.bucket)) >= 0
                 && (bucketPos = findBucketPos(client)) != null) {
             Rotation rotation = rotationToBlock(client, bucketPos);
-            BlockHitResult hit =
+            MovingObjectPosition hit =
                     RAYS.traceOutline(
                             client,
                             rotation,
-                            currentPlayer.blockInteractionRange(),
-                            ClipContext.Fluid.SOURCE_ONLY,
+                            Minecraft.getMinecraft().playerController.getBlockReachDistance(),
+                            LegacyRay.Fluid.SOURCE_ONLY,
                             bucketPos);
-            if (hit.getType() != HitResult.Type.MISS && hit.getBlockPos().equals(bucketPos)) {
+            if (hit.typeOfHit != MovingObjectPosition.MovingObjectType.MISS
+                    && hit.getBlockPos().equals(bucketPos)) {
                 startSilentUse(
                         client,
                         SilentUseAction.FILL_BUCKET,
                         hit,
-                        ClipContext.Fluid.SOURCE_ONLY,
+                        LegacyRay.Fluid.SOURCE_ONLY,
                         emptyBucketSlot,
                         false);
                 return;
@@ -117,10 +119,10 @@ public final class AutoMlgRuntime {
 
         if (waterPlaced || accumulatedFall < triggerDistance) return;
 
-        int waterSlot = HotbarQueries.firstItem(client, Items.WATER_BUCKET);
+        int waterSlot = HotbarQueries.firstItem(client, Items.water_bucket);
         if (waterSlot < 0) return;
         boolean smooth = configuredRotation == SilentPacketRotation.Mode.SMOOTH;
-        BlockHitResult hit =
+        MovingObjectPosition hit =
                 AutoMlgLanding.find(
                         client,
                         smooth ? Math.max(8, predictTicks + 1) : predictTicks + 1,
@@ -131,9 +133,9 @@ public final class AutoMlgRuntime {
     }
 
     public void reset(Minecraft client) {
-        var currentPlayer = client == null ? null : client.player;
+        var currentPlayer = client == null ? null : client.thePlayer;
         if (slotToRestore != null && client != null && currentPlayer != null) {
-            currentPlayer.getInventory().setSelectedSlot(slotToRestore);
+            currentPlayer.inventory.currentItem = slotToRestore;
         }
         if (silentUsePhase != SilentUsePhase.IDLE) {
             SilentPacketRotation.reset();
@@ -145,20 +147,20 @@ public final class AutoMlgRuntime {
         postPlaceCooldown = 0;
         postActionCooldown = 0;
         accumulatedFall = 0.0F;
-        lastY = client != null && currentPlayer != null ? currentPlayer.getY() : 0.0D;
+        lastY = client != null && currentPlayer != null ? currentPlayer.posY : 0.0D;
     }
 
     private void placeWaterBucket(
-            Minecraft client, int slot, BlockHitResult hit, boolean recovery) {
+            Minecraft client, int slot, MovingObjectPosition hit, boolean recovery) {
         startSilentUse(
-                client, SilentUseAction.PLACE_WATER, hit, ClipContext.Fluid.NONE, slot, recovery);
+                client, SilentUseAction.PLACE_WATER, hit, LegacyRay.Fluid.NONE, slot, recovery);
     }
 
     private void startSilentUse(
             Minecraft client,
             SilentUseAction action,
-            BlockHitResult hit,
-            ClipContext.Fluid fluid,
+            MovingObjectPosition hit,
+            LegacyRay.Fluid fluid,
             int slot,
             boolean recovery) {
         if (silentUsePhase != SilentUsePhase.IDLE || SilentPacketRotation.isBusy()) {
@@ -173,7 +175,7 @@ public final class AutoMlgRuntime {
         actionTurnTicks = configuredTurnTicks;
         actionReturnTicks = configuredReturnTicks;
         silentUseTicks = 0;
-        turnForUse(client, hit.getLocation());
+        turnForUse(client, hit.hitVec);
     }
 
     private void turnForUse(Minecraft client, Vec3 target) {
@@ -207,19 +209,19 @@ public final class AutoMlgRuntime {
                         && actionRotation == SilentPacketRotation.Mode.SMOOTH) {
                     // Smooth may finish while the predicted landing is still outside use range.
                     // Wait for the normal placement window, then verify the first support again.
-                    if (client.player.onGround()
-                            || client.player.isInWater()
-                            || client.player.isInLava()) {
+                    if (client.thePlayer.onGround
+                            || client.thePlayer.isInWater()
+                            || client.thePlayer.isInLava()) {
                         abortSilentUse(client);
                         return;
                     }
-                    BlockHitResult landing =
+                    MovingObjectPosition landing =
                             AutoMlgLanding.find(
                                     client, placementPredictTicks + 1, placementSolidCheck);
                     if (landing == null) return;
                     if (silentUseHit == null
                             || !landing.getBlockPos().equals(silentUseHit.getBlockPos())
-                            || landing.getDirection() != silentUseHit.getDirection()) {
+                            || landing.sideHit != silentUseHit.sideHit) {
                         abortSilentUse(client);
                         return;
                     }
@@ -230,27 +232,28 @@ public final class AutoMlgRuntime {
                         new Rotation(
                                 SilentPacketRotation.getInteractionYaw(client),
                                 SilentPacketRotation.getInteractionPitch(client));
-                double range = client.player.blockInteractionRange();
-                BlockHitResult currentHit =
+                double range = Minecraft.getMinecraft().playerController.getBlockReachDistance();
+                MovingObjectPosition currentHit =
                         RAYS.traceOutline(
                                 client,
                                 sent,
                                 range,
                                 silentUseFluid,
                                 silentUseHit == null ? null : silentUseHit.getBlockPos());
-                if (currentHit.getType() == HitResult.Type.MISS
+                if (currentHit.typeOfHit == MovingObjectPosition.MovingObjectType.MISS
                         || silentUseHit == null
                         || !currentHit.getBlockPos().equals(silentUseHit.getBlockPos())
                         || (silentUseAction == SilentUseAction.PLACE_WATER
-                                && currentHit.getDirection() != silentUseHit.getDirection())) {
+                                && currentHit.sideHit != silentUseHit.sideHit)) {
                     abortSilentUse(client);
                     return;
                 }
                 var expectedItem =
                         silentUseAction == SilentUseAction.PLACE_WATER
-                                ? Items.WATER_BUCKET
-                                : Items.BUCKET;
-                if (!client.player.getInventory().getItem(silentUseSlot).is(expectedItem)) {
+                                ? Items.water_bucket
+                                : Items.bucket;
+                if (!LegacyItems.is(
+                        client.thePlayer.inventory.getStackInSlot(silentUseSlot), expectedItem)) {
                     abortSilentUse(client);
                     return;
                 }
@@ -258,12 +261,12 @@ public final class AutoMlgRuntime {
                 selectSlot(client, silentUseSlot);
                 // A bucket has its own fluid ray. A fluid BLOCK hit would also send
                 // USE_ITEM_ON against the water, which is not a block interaction.
-                BlockHitResult useHit =
+                MovingObjectPosition useHit =
                         silentUseAction == SilentUseAction.PLACE_WATER
                                 ? currentHit
-                                : BlockHitResult.miss(
-                                        currentHit.getLocation(),
-                                        currentHit.getDirection(),
+                                : LegacyWorld.miss(
+                                        currentHit.hitVec,
+                                        currentHit.sideHit,
                                         currentHit.getBlockPos());
                 // Keep slot sync/use/swing before this tick's movement. The instant
                 // angle stays pinned until that following movement is sent.
@@ -272,7 +275,7 @@ public final class AutoMlgRuntime {
                     abortSilentUse(client);
                     return;
                 }
-                silentUseTick = client.player.tickCount;
+                silentUseTick = client.thePlayer.ticksExisted;
                 completeSilentUse(client);
                 silentUsePhase = SilentUsePhase.WAITING_FOR_USE;
             }
@@ -306,8 +309,10 @@ public final class AutoMlgRuntime {
             // Vanilla predicts both the emptied bucket and the source locally.
             // Waterlogged supports store the water in the hit block itself.
             BlockPos support = silentUseHit.getBlockPos();
-            BlockPos adjacent = support.relative(silentUseHit.getDirection());
-            boolean emptied = client.player.getInventory().getItem(silentUseSlot).is(Items.BUCKET);
+            BlockPos adjacent = support.offset(silentUseHit.sideHit);
+            boolean emptied =
+                    LegacyItems.is(
+                            client.thePlayer.inventory.getStackInSlot(silentUseSlot), Items.bucket);
             placedWaterPos =
                     !emptied
                             ? null
@@ -323,24 +328,25 @@ public final class AutoMlgRuntime {
 
     private void tickRecovery(Minecraft client) {
         // Count from the actual use invocation, not the rotation/return callbacks.
-        if (client.player.tickCount - silentUseTick < 1) return;
+        if (client.thePlayer.ticksExisted - silentUseTick < 1) return;
         if (placedWaterPos == null
                 || !isWaterSource(client, placedWaterPos)
-                || !client.player.getInventory().getItem(silentUseSlot).is(Items.BUCKET)) {
+                || !LegacyItems.is(
+                        client.thePlayer.inventory.getStackInSlot(silentUseSlot), Items.bucket)) {
             beginReturn(client);
             return;
         }
         // Placement prediction can run before the fall reaches the source.
         // Leave the cushion in place until the player has actually reached it.
-        if (!client.player.isInWater() && !client.player.onGround()) return;
+        if (!client.thePlayer.isInWater() && !client.thePlayer.onGround) return;
         Rotation current =
                 new Rotation(SilentPacketRotation.getYaw(), SilentPacketRotation.getPitch());
-        BlockHitResult hit =
+        MovingObjectPosition hit =
                 RAYS.traceOutline(
                         client,
                         current,
-                        client.player.blockInteractionRange(),
-                        ClipContext.Fluid.SOURCE_ONLY,
+                        Minecraft.getMinecraft().playerController.getBlockReachDistance(),
+                        LegacyRay.Fluid.SOURCE_ONLY,
                         placedWaterPos);
         boolean reuseRotation = BlockPlacementUtils.matchesBlock(hit, placedWaterPos);
         if (!reuseRotation) {
@@ -348,8 +354,8 @@ public final class AutoMlgRuntime {
                     RAYS.traceOutline(
                             client,
                             rotationToBlock(client, placedWaterPos),
-                            client.player.blockInteractionRange(),
-                            ClipContext.Fluid.SOURCE_ONLY,
+                            Minecraft.getMinecraft().playerController.getBlockReachDistance(),
+                            LegacyRay.Fluid.SOURCE_ONLY,
                             placedWaterPos);
             if (!BlockPlacementUtils.matchesBlock(hit, placedWaterPos)) {
                 beginReturn(client);
@@ -358,13 +364,13 @@ public final class AutoMlgRuntime {
         }
         silentUseAction = SilentUseAction.RECOVER_WATER;
         silentUseHit = hit;
-        silentUseFluid = ClipContext.Fluid.SOURCE_ONLY;
+        silentUseFluid = LegacyRay.Fluid.SOURCE_ONLY;
         silentUseTicks = 0;
         if (reuseRotation) {
             silentUsePhase = SilentUsePhase.READY_TO_USE;
             tickSilentUse(client);
         } else {
-            turnForUse(client, Vec3.atCenterOf(placedWaterPos));
+            turnForUse(client, VecMath.atCenterOf(placedWaterPos));
         }
     }
 
@@ -403,26 +409,29 @@ public final class AutoMlgRuntime {
     }
 
     private BlockPos findBucketPos(Minecraft client) {
-        BlockPos playerPos = client.player.blockPosition();
+        BlockPos playerPos = client.thePlayer.getPosition();
         BlockPos closest = null;
         double closestDistance = Double.POSITIVE_INFINITY;
         for (int dy = -1; dy <= 1; dy++) {
             for (int dx = -4; dx <= 4; dx++) {
                 for (int dz = -4; dz <= 4; dz++) {
-                    BlockPos candidate = playerPos.offset(dx, dy, dz);
+                    BlockPos candidate = playerPos.add(dx, dy, dz);
                     if (!isWaterSource(client, candidate)) continue;
                     double distance =
-                            client.player.position().distanceToSqr(Vec3.atCenterOf(candidate));
+                            VecMath.position(client.thePlayer)
+                                    .squareDistanceTo(VecMath.atCenterOf(candidate));
                     if (distance >= closestDistance) continue;
                     Rotation rotation = rotationToBlock(client, candidate);
-                    BlockHitResult hit =
+                    MovingObjectPosition hit =
                             RAYS.traceOutline(
                                     client,
                                     rotation,
-                                    client.player.blockInteractionRange(),
-                                    ClipContext.Fluid.SOURCE_ONLY,
+                                    Minecraft.getMinecraft()
+                                            .playerController
+                                            .getBlockReachDistance(),
+                                    LegacyRay.Fluid.SOURCE_ONLY,
                                     candidate);
-                    if (hit.getType() == HitResult.Type.MISS
+                    if (hit.typeOfHit == MovingObjectPosition.MovingObjectType.MISS
                             || !hit.getBlockPos().equals(candidate)) continue;
                     closest = candidate;
                     closestDistance = distance;
@@ -433,22 +442,23 @@ public final class AutoMlgRuntime {
     }
 
     private static Rotation rotationToBlock(Minecraft client, BlockPos pos) {
-        return MathUtils.rotationTo(client.player.getEyePosition(), Vec3.atCenterOf(pos));
+        return MathUtils.rotationTo(
+                client.thePlayer.getPositionEyes(1.0F), VecMath.atCenterOf(pos));
     }
 
     private static boolean isWaterSource(Minecraft client, BlockPos pos) {
-        FluidState fluid = client.level.getFluidState(pos);
-        return FluidQueries.isSource(fluid, Fluids.WATER);
+        FluidState fluid = LegacyWorld.fluid(client.theWorld, pos);
+        return FluidQueries.isSource(fluid, Material.water);
     }
 
     private void selectSlot(Minecraft client, int slot) {
-        if (slotToRestore == null) slotToRestore = client.player.getInventory().getSelectedSlot();
-        client.player.getInventory().setSelectedSlot(slot);
+        if (slotToRestore == null) slotToRestore = client.thePlayer.inventory.currentItem;
+        client.thePlayer.inventory.currentItem = slot;
     }
 
     private void restoreSlot(Minecraft client) {
         if (slotToRestore == null) return;
-        client.player.getInventory().setSelectedSlot(slotToRestore);
+        client.thePlayer.inventory.currentItem = slotToRestore;
         slotToRestore = null;
     }
 

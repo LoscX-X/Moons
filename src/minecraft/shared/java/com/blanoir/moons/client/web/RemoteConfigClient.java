@@ -228,8 +228,8 @@ public final class RemoteConfigClient {
     }
 
     private void sendHello(WebSocket target) {
-        Minecraft client = Minecraft.getInstance();
-        client.execute(
+        Minecraft client = Minecraft.getMinecraft();
+        client.addScheduledTask(
                 () -> {
                     JsonObject hello = new JsonObject();
                     hello.addProperty("type", "hello");
@@ -279,7 +279,7 @@ public final class RemoteConfigClient {
                 message.has("mutation") && message.get("mutation").isJsonObject()
                         ? message.getAsJsonObject("mutation")
                         : null;
-        Minecraft.getInstance().execute(() -> apply(commandId, mutation));
+        Minecraft.getMinecraft().addScheduledTask(() -> apply(commandId, mutation));
     }
 
     private void apply(String commandId, JsonObject mutation) {
@@ -337,8 +337,8 @@ public final class RemoteConfigClient {
     }
 
     private void notifyChat(String message) {
-        Minecraft client = Minecraft.getInstance();
-        if (client != null) client.execute(() -> ClientChat.send(client, message));
+        Minecraft client = Minecraft.getMinecraft();
+        if (client != null) client.addScheduledTask(() -> ClientChat.send(client, message));
     }
 
     private static JsonElement required(JsonObject object, String name) {

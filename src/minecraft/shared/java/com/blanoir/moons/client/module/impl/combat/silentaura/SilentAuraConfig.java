@@ -13,7 +13,7 @@ import com.blanoir.moons.client.utils.registry.RegistryLists;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 
-import net.minecraft.resources.Identifier;
+import net.minecraft.util.ResourceLocation;
 
 import java.util.Collections;
 import java.util.List;
@@ -29,13 +29,6 @@ public final class SilentAuraConfig {
     private static final BooleanSetting BLOCK_VISUAL = bool("silentaura.block.visual", true);
     private static final DoubleSetting BLOCK_RANGE =
             decimal("silentaura.block.range", 4.5D, 1D, 8D);
-    private static final ModeSetting<CombatMode> COMBAT_MODE =
-            new ModeSetting.Builder<CombatMode>()
-                    .name("silentaura.combatMode")
-                    .defaultValue(CombatMode.LATEST)
-                    .option(CombatMode.LEGACY, "legacy")
-                    .option(CombatMode.LATEST, "latest")
-                    .build();
     private static final DoubleSetting MIN_CPS = decimal("silentaura.minCps", 10D, 1D, 20D);
     private static final DoubleSetting MAX_CPS = decimal("silentaura.maxCps", 14D, 1D, 20D);
     private static final DoubleSetting RANGE = decimal("silentaura.range", 3.7D, 1.0D, 6.0D);
@@ -100,7 +93,6 @@ public final class SilentAuraConfig {
                     .option(AimMode.FULL_LOCK, "full_lock")
                     .build();
     private static final BooleanSetting MATRIX_COMPATIBILITY = bool("silentaura.matrix", false);
-    private static final BooleanSetting CRITICAL_INTEGRATION = bool("silentaura.critical", true);
     private static final ModeSetting<AimPoint> AIM_POINT =
             new ModeSetting.Builder<AimPoint>()
                     .name("silentaura.aimPoint")
@@ -123,13 +115,9 @@ public final class SilentAuraConfig {
             decimal("silentaura.aimPoint.offsetResponse", .2D, .01D, 1D);
     private static final IntSetting POINT_OFFSET_INTERVAL =
             integer("silentaura.aimPoint.offsetInterval", 8, 1, 40);
-    private static final DoubleSetting MIN_CHARGE =
-            decimal("silentaura.minCharge", 0.7D, 0.7D, 1.3D);
-    private static final DoubleSetting MAX_CHARGE =
-            decimal("silentaura.maxCharge", 1.0D, 0.7D, 1.3D);
-    private static final BooleanSetting TARGET_PLAYERS = bool("silentaura.target.player", true);
+    private static final BooleanSetting TARGET_PLAYERS = bool("silentaura.target.thePlayer", true);
     private static final StringSetting TARGET_ENTITIES = text();
-    private static final Set<Identifier> targetEntityTypes =
+    private static final Set<ResourceLocation> targetEntityTypes =
             Targeting.parseEntityTypeIds(TARGET_ENTITIES.get());
 
     private SilentAuraConfig() {}
@@ -141,7 +129,6 @@ public final class SilentAuraConfig {
 
     private static final class Descriptors {
         private static final ModuleRegistry.Setting[] ALL = {
-            COMBAT_MODE.describe("combat_mode", "Combat mode", SilentAura::setCombatMode),
             DISABLE_ON_DEATH.describe(
                     "disable_on_death",
                     "Disable on death",
@@ -174,7 +161,7 @@ public final class SilentAuraConfig {
                                 BLOCK_VISUAL.set(value);
                                 return 1;
                             })
-                    .visibleWhen(() -> block() && legacyCombat()),
+                    .visibleWhen(SilentAuraConfig::block),
             BLOCK_RANGE
                     .describe(
                             "block_range",
@@ -186,8 +173,7 @@ public final class SilentAuraConfig {
                                 return 1;
                             })
                     .visibleWhen(SilentAuraConfig::block),
-            MIN_CPS.describeRange("cps", "Clicks per second", MAX_CPS, .1, SilentAura::setCps)
-                    .visibleWhen(SilentAuraConfig::legacyCombat),
+            MIN_CPS.describeRange("cps", "Clicks per second", MAX_CPS, .1, SilentAura::setCps),
             RANGE.describe("range", "Attack range", .05, SilentAura::setRange),
             THROUGH_BLOCKS.describe(
                     "through_blocks", "Through blocks", SilentAura::setThroughBlocks),
@@ -319,9 +305,6 @@ public final class SilentAuraConfig {
             MATRIX_COMPATIBILITY
                     .describe("matrix", "Optimize", SilentAura::setMatrixCompatibility)
                     .visibleWhen(() -> SilentAuraConfig.traditionalAim()),
-            CRITICAL_INTEGRATION
-                    .describe("critical", "Critical", SilentAura::setCriticalIntegration)
-                    .visibleWhen(() -> !SilentAuraConfig.legacyCombat()),
             AIM_POINT
                     .describe("aim_point", "Aim point", SilentAura::setAimPoint)
                     .visibleWhen(() -> !SilentAuraConfig.fullLockMode()),
@@ -393,10 +376,6 @@ public final class SilentAuraConfig {
                     .describe(
                             "prediction", "Turn prediction", .05, SilentAura::setPredictionStrength)
                     .visibleWhen(() -> SilentAuraConfig.traditionalAim()),
-            MIN_CHARGE
-                    .describeRange(
-                            "charge", "Attack charge", MAX_CHARGE, .01, SilentAura::setCharge)
-                    .visibleWhen(() -> !SilentAuraConfig.legacyCombat()),
             TARGET_PLAYERS.describe(
                     "target_players",
                     "Target players",
@@ -437,18 +416,6 @@ public final class SilentAuraConfig {
 
     public static double blockRange() {
         return BLOCK_RANGE.get();
-    }
-
-    public static boolean legacyCombat() {
-        return COMBAT_MODE.get() == CombatMode.LEGACY;
-    }
-
-    public static String combatMode() {
-        return COMBAT_MODE.serialized();
-    }
-
-    public static boolean combatMode(String value) {
-        return COMBAT_MODE.tryDeserialize(value);
     }
 
     public static double minCps() {
@@ -629,10 +596,6 @@ public final class SilentAuraConfig {
         return MATRIX_COMPATIBILITY.get() && traditionalAim();
     }
 
-    public static boolean criticalIntegration() {
-        return !legacyCombat() && CRITICAL_INTEGRATION.get();
-    }
-
     public static String aimMode() {
         return AIM_MODE.serialized();
     }
@@ -668,14 +631,6 @@ public final class SilentAuraConfig {
                 POINT_OFFSET_INTERVAL.get());
     }
 
-    public static double minCharge() {
-        return MIN_CHARGE.get();
-    }
-
-    public static double maxCharge() {
-        return MAX_CHARGE.get();
-    }
-
     public static boolean targetPlayers() {
         return TARGET_PLAYERS.get();
     }
@@ -691,7 +646,7 @@ public final class SilentAuraConfig {
         TARGET_ENTITIES.set(Targeting.serializeEntityTypeIds(targetEntityTypes));
     }
 
-    public static Set<Identifier> targetEntityTypes() {
+    public static Set<ResourceLocation> targetEntityTypes() {
         return Collections.unmodifiableSet(targetEntityTypes);
     }
 
@@ -763,10 +718,6 @@ public final class SilentAuraConfig {
         MATRIX_COMPATIBILITY.set(value);
     }
 
-    public static void criticalIntegration(boolean value) {
-        CRITICAL_INTEGRATION.set(value);
-    }
-
     public static void prediction(double value) {
         PREDICTION.set(value);
     }
@@ -781,11 +732,6 @@ public final class SilentAuraConfig {
 
     public static boolean targetMode(String value) {
         return TARGET_MODE.tryDeserialize(value);
-    }
-
-    public static void charge(double min, double max) {
-        MIN_CHARGE.set(Math.min(min, max));
-        MAX_CHARGE.set(Math.max(min, max));
     }
 
     public static boolean targetCategory(String category, boolean value) {
@@ -826,11 +772,6 @@ public final class SilentAuraConfig {
     private enum TargetMode {
         SWITCH,
         SINGLE
-    }
-
-    private enum CombatMode {
-        LEGACY,
-        LATEST
     }
 
     private enum AimMode {

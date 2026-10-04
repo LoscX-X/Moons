@@ -2,10 +2,10 @@ package com.blanoir.moons.client.module.impl.player.invmanager;
 
 import com.blanoir.moons.api.Subscription;
 import com.blanoir.moons.client.access.MinecraftClientAccess;
+import com.blanoir.moons.client.compat.input.InputConstants;
 import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.event.EventPriority;
 import com.blanoir.moons.client.ui.clickgui.MoonsComposeScreen;
-import com.mojang.blaze3d.platform.InputConstants;
 
 import net.minecraft.client.Minecraft;
 
@@ -25,7 +25,8 @@ public final class InventoryEditorInput {
                 event -> {
                     Page current = page;
                     if (current == null) return;
-                    if (current.screen() != MinecraftClientAccess.screen(Minecraft.getInstance())) {
+                    if (current.screen()
+                            != MinecraftClientAccess.currentScreen(Minecraft.getMinecraft())) {
                         page = null;
                         return;
                     }
@@ -39,7 +40,7 @@ public final class InventoryEditorInput {
     }
 
     public static Subscription attach(Runnable back) {
-        Object screen = MinecraftClientAccess.screen(Minecraft.getInstance());
+        Object screen = MinecraftClientAccess.currentScreen(Minecraft.getMinecraft());
         if (!(screen instanceof MoonsComposeScreen)) return () -> {};
         Page current = new Page(screen, back);
         page = current;

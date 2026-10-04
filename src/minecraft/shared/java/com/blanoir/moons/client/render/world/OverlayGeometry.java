@@ -1,8 +1,8 @@
 package com.blanoir.moons.client.render.world;
 
+import com.blanoir.moons.client.render.LegacyVertexConsumer;
 import com.blanoir.moons.client.render.WorldOverlayRenderer.ColoredBox;
 import com.blanoir.moons.client.render.WorldOverlayRenderer.ColoredPin;
-import com.mojang.blaze3d.vertex.VertexConsumer;
 
 import org.joml.Matrix4fc;
 import org.joml.Vector3f;
@@ -13,7 +13,7 @@ public final class OverlayGeometry {
 
     /** Emit pairs for DEBUG_LINES, not LINES (which Minecraft expands into shader quads).
      * Hardware clipping and a fixed one-pixel raster width avoid twisting at the camera plane. */
-    public static void renderOutlineBox(Matrix4fc pose, VertexConsumer b, ColoredBox box) {
+    public static void renderOutlineBox(Matrix4fc pose, LegacyVertexConsumer b, ColoredBox box) {
         float r = box.red(), g = box.green(), blue = box.blue();
         Vector3f point = new Vector3f();
         pose.transformPosition(box.minX(), box.minY(), box.minZ(), point);
@@ -58,11 +58,11 @@ public final class OverlayGeometry {
         vertex(b, x111, y111, z111, r, g, blue, 1);
     }
 
-    public static void renderSoftFill(Matrix4fc pose, VertexConsumer b, ColoredBox box) {
+    public static void renderSoftFill(Matrix4fc pose, LegacyVertexConsumer b, ColoredBox box) {
         renderFilledBox(pose, b, box, .18f);
     }
 
-    public static void renderPin(Matrix4fc pose, VertexConsumer builder, ColoredPin pin) {
+    public static void renderPin(Matrix4fc pose, LegacyVertexConsumer builder, ColoredPin pin) {
         float halfWidth = pin.width() / 2.0f;
         float stemTop = pin.y() + pin.height();
         float capHalfWidth = halfWidth * 1.9f;
@@ -95,12 +95,12 @@ public final class OverlayGeometry {
                 Math.min(1.0f, pin.alpha() + 0.12f));
     }
 
-    public static void renderFilledBox(Matrix4fc pose, VertexConsumer b, ColoredBox box) {
+    public static void renderFilledBox(Matrix4fc pose, LegacyVertexConsumer b, ColoredBox box) {
         renderFilledBox(pose, b, box, 1);
     }
 
     private static void renderFilledBox(
-            Matrix4fc pose, VertexConsumer b, ColoredBox box, float opacity) {
+            Matrix4fc pose, LegacyVertexConsumer b, ColoredBox box, float opacity) {
         renderFilledBox(
                 pose,
                 b,
@@ -118,7 +118,7 @@ public final class OverlayGeometry {
 
     private static void renderFilledBox(
             Matrix4fc pose,
-            VertexConsumer b,
+            LegacyVertexConsumer b,
             float x1,
             float y1,
             float z1,
@@ -129,7 +129,7 @@ public final class OverlayGeometry {
             float g,
             float blue,
             float a) {
-        // Each corner belongs to three faces. Transform it once using VertexConsumer's
+        // Each corner belongs to three faces. Transform it once using LegacyVertexConsumer's
         // exact transform operation, while retaining face/vertex order and winding.
         Vector3f point = new Vector3f();
         pose.transformPosition(x1, y1, z1, point);
@@ -176,7 +176,14 @@ public final class OverlayGeometry {
     }
 
     private static void vertex(
-            VertexConsumer b, float x, float y, float z, float r, float g, float blue, float a) {
+            LegacyVertexConsumer b,
+            float x,
+            float y,
+            float z,
+            float r,
+            float g,
+            float blue,
+            float a) {
         b.addVertex(x, y, z).setColor(r, g, blue, a);
     }
 }

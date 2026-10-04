@@ -1,5 +1,6 @@
 package com.blanoir.moons.client.module.impl.combat;
 
+import com.blanoir.moons.client.compat.math.VecMath;
 import com.blanoir.moons.client.config.Settings;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.DoubleSetting;
@@ -10,8 +11,8 @@ import com.blanoir.moons.client.module.impl.movement.JumpReset;
 import com.blanoir.moons.client.utils.math.RandomMath;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.client.entity.EntityPlayerSP;
+import net.minecraft.util.Vec3;
 
 import org.jspecify.annotations.NonNull;
 
@@ -50,6 +51,7 @@ public final class Velocity {
     private static boolean allowNext = true;
     private static boolean pendingDamageKnown;
     private static boolean pendingDamageAllowed;
+    private static volatile long playerDamageUntilNanos;
     private static final RandomMath.PercentAccumulator CHANCE_SAMPLER =
             new RandomMath.PercentAccumulator();
 
@@ -174,12 +176,20 @@ public final class Velocity {
 
     /** Uses entity-status opcode 2 to gate fake-check. */
     public static synchronized void handleEntityStatus(int entityId, byte eventId) {
-        if (active && normalMode() && eventId == 2 && entityId == playerSnapshot.entityId()) {
-            // With fake-check enabled, only a matching accepted damage event arms
-            // the next velocity. This makes player-only vs other attacks explicit.
-            allowNext = !(pendingDamageKnown && pendingDamageAllowed);
+        if (active && eventId == 2 && entityId == playerSnapshot.entityId()) {
+            // Legacy hurt packets have no source IDs. PvP-only uses nearby swing evidence.
+            boolean playerHit = playerSnapshot.nearbyPlayerSwing();
+            if (playerHit) playerDamageUntilNanos = System.nanoTime() + 250_000_000L;
+            allowNext =
+                    !(OTHER_ATTACKS.get()
+                            || playerHit
+                            || pendingDamageKnown && pendingDamageAllowed);
             clearPendingDamage();
         }
+    }
+
+    public static boolean recentPlayerDamage() {
+        return System.nanoTime() < playerDamageUntilNanos;
     }
 
     /**
@@ -199,57 +209,77 @@ public final class Velocity {
         double vertical = VERTICAL.get();
         Vec3 transformed =
                 new Vec3(
-                        horizontal > 0.0D ? incoming.x * horizontal / 100.0D : current.x,
-                        vertical > 0.0D ? incoming.y * vertical / 100.0D : current.y,
-                        horizontal > 0.0D ? incoming.z * horizontal / 100.0D : current.z);
+                        horizontal > 0.0D ? incoming.xCoord * horizontal / 100.0D : current.xCoord,
+                        vertical > 0.0D ? incoming.yCoord * vertical / 100.0D : current.yCoord,
+                        horizontal > 0.0D ? incoming.zCoord * horizontal / 100.0D : current.zCoord);
         return transformed.equals(incoming) ? null : transformed;
     }
 
     /**
-     * Explosion motion is additive in modern vanilla. This scales the final velocity,
+     * S27 explosion motion is additive in 1.8.9. This scales the final velocity,
      * so convert that final value back into an additive packet vector for an equivalent result.
      */
     public static synchronized Vec3 transformExplosionVelocity(Vec3 knockback) {
         if (!active || !normalMode()) return null;
-        if (knockback.equals(Vec3.ZERO) || FAKE_CHECK.get() && allowNext) return null;
+        if (VecMath.lengthSqr(knockback) == 0 || FAKE_CHECK.get() && allowNext) return null;
 
         allowNext = true;
         Vec3 current = playerSnapshot.movement();
         double horizontal = EXPLOSION_HORIZONTAL.get();
         Vec3 transformed = getTransformed(knockback, horizontal, current);
-        return transformed.equals(knockback) ? null : transformed;
+        return transformed.squareDistanceTo(knockback) < 1.0E-18 ? null : transformed;
     }
 
     private static @NonNull Vec3 getTransformed(Vec3 knockback, double horizontal, Vec3 current) {
         double vertical = EXPLOSION_VERTICAL.get();
         double desiredX =
-                horizontal > 0.0D ? (current.x + knockback.x) * horizontal / 100.0D : current.x;
+                horizontal > 0.0D
+                        ? (current.xCoord + knockback.xCoord) * horizontal / 100.0D
+                        : current.xCoord;
         double desiredY =
-                vertical > 0.0D ? (current.y + knockback.y) * vertical / 100.0D : current.y;
+                vertical > 0.0D
+                        ? (current.yCoord + knockback.yCoord) * vertical / 100.0D
+                        : current.yCoord;
         double desiredZ =
-                horizontal > 0.0D ? (current.z + knockback.z) * horizontal / 100.0D : current.z;
-        return new Vec3(desiredX - current.x, desiredY - current.y, desiredZ - current.z);
+                horizontal > 0.0D
+                        ? (current.zCoord + knockback.zCoord) * horizontal / 100.0D
+                        : current.zCoord;
+        return new Vec3(
+                desiredX - current.xCoord, desiredY - current.yCoord, desiredZ - current.zCoord);
     }
 
     private static synchronized void snapshot(Minecraft client) {
-        var currentLevel = client == null ? null : client.level;
-        LocalPlayer player = client == null ? null : client.player;
+        var currentLevel = client == null ? null : client.theWorld;
+        EntityPlayerSP player = client == null ? null : client.thePlayer;
         PlayerSnapshot previous = playerSnapshot;
         if (client == null || player == null) {
             playerSnapshot = PlayerSnapshot.EMPTY;
+            playerDamageUntilNanos = 0;
             allowNext = true;
             clearPendingDamage();
             return;
         }
-        int entityId = player.getId();
+        int entityId = player.getEntityId();
         Set<Integer> playerIds =
                 currentLevel == null
                         ? Set.of(entityId)
-                        : currentLevel.players().stream()
-                                .map(entity -> entity.getId())
+                        : currentLevel.playerEntities.stream()
+                                .map(entity -> entity.getEntityId())
                                 .collect(Collectors.toUnmodifiableSet());
-        playerSnapshot = new PlayerSnapshot(entityId, player.getDeltaMovement(), playerIds);
+        boolean playerSwing =
+                currentLevel != null
+                        && currentLevel.playerEntities.stream()
+                                .anyMatch(
+                                        other ->
+                                                other != player
+                                                        && other.isEntityAlive()
+                                                        && other.getDistanceSqToEntity(player)
+                                                                <= 25.0
+                                                        && other.isSwingInProgress);
+        playerSnapshot =
+                new PlayerSnapshot(entityId, VecMath.motion(player), playerIds, playerSwing);
         if (previous.entityId() != entityId) {
+            playerDamageUntilNanos = 0;
             allowNext = true;
             clearPendingDamage();
         }
@@ -268,8 +298,9 @@ public final class Velocity {
         pendingDamageAllowed = false;
     }
 
-    private record PlayerSnapshot(int entityId, Vec3 movement, Set<Integer> playerEntityIds) {
+    private record PlayerSnapshot(
+            int entityId, Vec3 movement, Set<Integer> playerEntityIds, boolean nearbyPlayerSwing) {
         private static final PlayerSnapshot EMPTY =
-                new PlayerSnapshot(Integer.MIN_VALUE, Vec3.ZERO, Set.of());
+                new PlayerSnapshot(Integer.MIN_VALUE, VecMath.ZERO, Set.of(), false);
     }
 }

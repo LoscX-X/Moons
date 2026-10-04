@@ -1,6 +1,6 @@
 package com.blanoir.moons.client.utils.rotation.smooth;
 
-import net.minecraft.util.Mth;
+import com.blanoir.moons.client.compat.math.Mth;
 
 /**
  * I: Body-yaw velocity integration with acceleration and overshoot bounds.

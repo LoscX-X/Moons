@@ -4,17 +4,14 @@ import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.entity.state.AvatarRenderState;
-import net.minecraft.world.entity.EquipmentSlot;
-import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.item.ItemDisplayContext;
-import net.minecraft.world.item.ItemStack;
+import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.entity.player.EntityPlayer;
 
 /** Hides the local player's worn armor, head items and wings without changing equipment state. */
 public final class ArmorHide {
     private static final BooleanSetting ENABLED =
             new BooleanSetting.Builder().name("armorhide.enabled").defaultValue(false).build();
-    private static final ThreadLocal<AvatarRenderState> CURRENT_AVATAR = new ThreadLocal<>();
+    private static final ThreadLocal<EntityPlayer> CURRENT_AVATAR = new ThreadLocal<>();
 
     private ArmorHide() {}
 
@@ -22,7 +19,7 @@ public final class ArmorHide {
         return ENABLED.get();
     }
 
-    public static void beginAvatar(AvatarRenderState state) {
+    public static void beginAvatar(EntityPlayer state) {
         if (state == null) {
             CURRENT_AVATAR.remove();
         } else {
@@ -39,20 +36,17 @@ public final class ArmorHide {
             return true;
         }
 
-        Minecraft client = Minecraft.getInstance();
-        var currentPlayer = client.player;
-        AvatarRenderState state = CURRENT_AVATAR.get();
-        return currentPlayer == null || state == null || state.id != currentPlayer.getId();
+        Minecraft client = Minecraft.getMinecraft();
+        var currentPlayer = client.thePlayer;
+        EntityPlayer state = CURRENT_AVATAR.get();
+        return currentPlayer == null
+                || state == null
+                || state.getEntityId() != currentPlayer.getEntityId();
     }
 
     /** Covers head-slot items submitted directly by replacement player renderers. */
-    public static boolean shouldRenderHeadItem(
-            LivingEntity wearer, ItemStack item, ItemDisplayContext context) {
-        if (!ENABLED.get() || context != ItemDisplayContext.HEAD) return true;
-        var player = Minecraft.getInstance().player;
-        return player == null
-                || wearer != player
-                || !ItemStack.isSameItemSameComponents(item, player.getItemBySlot(EquipmentSlot.HEAD));
+    public static boolean shouldRenderHeadItem(EntityLivingBase wearer) {
+        return !ENABLED.get() || wearer != Minecraft.getMinecraft().thePlayer;
     }
 
     public static int setEnabled(Minecraft client, boolean enabled) {

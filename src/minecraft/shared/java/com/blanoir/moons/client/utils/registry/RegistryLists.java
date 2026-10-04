@@ -1,12 +1,14 @@
 package com.blanoir.moons.client.utils.registry;
 
 import com.blanoir.moons.client.module.framework.ModuleRegistry;
+import com.blanoir.moons.client.utils.entity.EntityTypeIds;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.Identifier;
+import net.minecraft.block.Block;
+import net.minecraft.item.Item;
+import net.minecraft.util.ResourceLocation;
 
 import java.util.List;
 import java.util.function.Supplier;
@@ -37,51 +39,47 @@ public final class RegistryLists {
         return entry;
     }
 
-    public static JsonArray entityIds(java.util.Collection<Identifier> ids) {
+    public static JsonArray entityIds(java.util.Collection<ResourceLocation> ids) {
         JsonArray result = new JsonArray();
         ids.forEach(id -> result.add(entry(id.toString(), null)));
         return result;
     }
 
-    public static java.util.Set<Identifier> readEntityIds(JsonElement value) {
+    public static java.util.Set<ResourceLocation> readEntityIds(JsonElement value) {
         if (!valid("mob_list", value)) throw new IllegalArgumentException("Invalid entity list");
-        var result = new java.util.LinkedHashSet<Identifier>();
+        var result = new java.util.LinkedHashSet<ResourceLocation>();
         value.getAsJsonArray()
                 .forEach(
                         entry ->
                                 result.add(
-                                        Identifier.parse(
+                                        EntityTypeIds.parse(
                                                 entry.getAsJsonObject().get("id").getAsString())));
         return result;
     }
 
-    public static java.util.Set<Identifier> allMobIds() {
-        var result = new java.util.LinkedHashSet<Identifier>();
-        BuiltInRegistries.ENTITY_TYPE.forEach(
-                type -> {
-                    if (type.getCategory() != net.minecraft.world.entity.MobCategory.MISC)
-                        result.add(BuiltInRegistries.ENTITY_TYPE.getKey(type));
-                });
+    public static java.util.Set<ResourceLocation> allMobIds() {
+        var result = new java.util.LinkedHashSet<ResourceLocation>();
+        result.addAll(EntityTypeIds.knownIds());
+        result.remove(new ResourceLocation("minecraft:player"));
         return result;
     }
 
     public static boolean valid(String type, JsonElement value) {
         if (value == null || !value.isJsonArray()) return false;
-        var ids = new java.util.HashSet<Identifier>();
+        var ids = new java.util.HashSet<ResourceLocation>();
         for (JsonElement element : value.getAsJsonArray()) {
             if (!element.isJsonObject()) return false;
             JsonObject entry = element.getAsJsonObject();
             JsonElement id = entry.get("id");
             if (id == null || !id.isJsonPrimitive() || !id.getAsJsonPrimitive().isString())
                 return false;
-            Identifier key = Identifier.tryParse(id.getAsString());
+            ResourceLocation key = EntityTypeIds.parse(id.getAsString());
             if (key == null || !ids.add(key)) return false;
             boolean exists =
                     switch (type) {
-                        case "item_list" -> BuiltInRegistries.ITEM.getOptional(key).isPresent();
-                        case "block_list" -> BuiltInRegistries.BLOCK.getOptional(key).isPresent();
-                        case "entity_list", "mob_list" ->
-                                BuiltInRegistries.ENTITY_TYPE.getOptional(key).isPresent();
+                        case "item_list" -> Item.itemRegistry.containsKey(key);
+                        case "block_list" -> Block.blockRegistry.containsKey(key);
+                        case "entity_list", "mob_list" -> EntityTypeIds.knownIds().contains(key);
                         default -> false;
                     };
             if (!exists) return false;

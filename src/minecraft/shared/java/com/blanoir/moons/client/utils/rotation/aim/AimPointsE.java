@@ -3,8 +3,8 @@ package com.blanoir.moons.client.utils.rotation.aim;
 import com.blanoir.moons.client.utils.raytrace.RaytraceUtils;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.util.Vec3;
 
 /**
  * E: AimAssist candidate-point policy. Null mode selects the original Legit visible-ray
@@ -21,9 +21,9 @@ public final class AimPointsE {
             double range,
             AimGeometry.Mode mode,
             Minecraft client,
-            LivingEntity entity,
+            EntityLivingBase entity,
             Vec3 preferredAimPoint) {
-        Vec3 eyePos = client.player.getEyePosition();
+        Vec3 eyePos = client.thePlayer.getPositionEyes(1F);
 
         Vec3 aimPoint =
                 mode == null
@@ -34,16 +34,18 @@ public final class AimPointsE {
                                 range,
                                 AIM_POINT_HYSTERESIS_DEGREES)
                         : mode == AimGeometry.Mode.CENTER
-                                ? AimPointsA.centerTrackingPoint(eyePos, entity.getBoundingBox())
-                                : AimPointsB.closestTrackingPoint(eyePos, entity.getBoundingBox());
+                                ? AimPointsA.centerTrackingPoint(
+                                        eyePos, entity.getEntityBoundingBox())
+                                : AimPointsB.closestTrackingPoint(
+                                        eyePos, entity.getEntityBoundingBox());
         if (mode != null
-                && (eyePos.distanceToSqr(aimPoint) > range * range
+                && (eyePos.squareDistanceTo(aimPoint) > range * range
                         || !RaytraceUtils.canRayTraceTo(client, eyePos, aimPoint))) {
             aimPoint =
                     AimPointsC.findBestVisibleSurfacePoint(
                             client,
-                            entity.getBoundingBox(),
-                            client.player.getLookAngle(),
+                            entity.getEntityBoundingBox(),
+                            client.thePlayer.getLook(1F),
                             range,
                             .72D,
                             false);

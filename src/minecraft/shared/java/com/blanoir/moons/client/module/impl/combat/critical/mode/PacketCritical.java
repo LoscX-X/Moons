@@ -1,6 +1,7 @@
 package com.blanoir.moons.client.module.impl.combat.critical.mode;
 
 import com.blanoir.moons.client.chat.ClientChat;
+import com.blanoir.moons.client.compat.math.VecMath;
 import com.blanoir.moons.client.management.input.CombatInputController;
 import com.blanoir.moons.client.management.rotation.RotationManager;
 import com.blanoir.moons.client.module.impl.combat.critical.Critical;
@@ -9,11 +10,11 @@ import com.blanoir.moons.client.utils.combat.CombatDecisionEngine;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
-import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.network.play.client.C03PacketPlayer;
+import net.minecraft.network.play.client.C0BPacketEntityAction;
+import net.minecraft.util.Vec3;
 
 import java.util.function.Consumer;
 
@@ -21,7 +22,6 @@ import java.util.function.Consumer;
 public final class PacketCritical {
     private static final double HOP_HEIGHT = 0.0625D;
     private static final double FALL_HEIGHT = 0.001D;
-    private static final float CRITICAL_CHARGE = 0.9F;
 
     private PacketCritical() {}
 
@@ -30,7 +30,7 @@ public final class PacketCritical {
         if (!Predict.configuredEnabled()) {
             return Critical.AttackDecision.NONE;
         }
-        if (!ClientReady.gameplay(client) || target == null || !target.isAlive()) {
+        if (!ClientReady.gameplay(client) || target == null || !target.isEntityAlive()) {
             return Critical.AttackDecision.ABORTED;
         }
         if (earliestAttackTick > 0) {
@@ -48,13 +48,10 @@ public final class PacketCritical {
     public static Critical.AutomaticAttackGate gateSilentAuraAttack(
             Minecraft client, Entity target, int earliestAttackTick) {
         if (!Predict.configuredEnabled()) return Critical.AutomaticAttackGate.ALLOW;
-        if (!ClientReady.gameplay(client) || target == null || !target.isAlive()) {
+        if (!ClientReady.gameplay(client) || target == null || !target.isEntityAlive()) {
             return Critical.AutomaticAttackGate.BLOCK;
         }
-        if (canHop(client, target)
-                && client.player.getAttackStrengthScale(0.5F) <= CRITICAL_CHARGE) {
-            return Critical.AutomaticAttackGate.WAIT;
-        }
+
         return Critical.AutomaticAttackGate.ALLOW;
     }
 
@@ -65,64 +62,68 @@ public final class PacketCritical {
      * collision correction that also snaps the camera to the server's yaw.
      */
     public static void beforeAttack(Minecraft client, Entity target) {
-        if (!Predict.configuredEnabled()
-                || !canHop(client, target)
-                || client.player.getAttackStrengthScale(0.5F) <= CRITICAL_CHARGE) {
+        if (!Predict.configuredEnabled() || !canHop(client, target)) {
             return;
         }
         RotationManager.Decision decision = RotationManager.resolve();
         Rotation rotation =
                 decision == null
-                        ? new Rotation(client.player.getYRot(), client.player.getXRot())
+                        ? new Rotation(client.thePlayer.rotationYaw, client.thePlayer.rotationPitch)
                         : decision.rotation();
         // The server may still be sprinting even if another module just cleared
         // the local flag: send the stop before ATTACK, not next sendPosition.
-        client.player.setSprinting(false);
-        client.player.connection.send(
-                new ServerboundPlayerCommandPacket(
-                        client.player, ServerboundPlayerCommandPacket.Action.STOP_SPRINTING));
+        client.thePlayer.setSprinting(false);
+        client.thePlayer.sendQueue.addToSendQueue(
+                new C0BPacketEntityAction(
+                        client.thePlayer, C0BPacketEntityAction.Action.STOP_SPRINTING));
         sendMovement(
-                client.player.position(),
+                VecMath.position(client.thePlayer),
                 rotation,
-                client.player.horizontalCollision,
-                client.player.connection::send);
+                client.thePlayer.isCollidedHorizontally,
+                client.thePlayer.sendQueue::addToSendQueue);
     }
 
     private static boolean canHop(Minecraft client, Entity target) {
         return ClientReady.gameplay(client)
-                && target instanceof LivingEntity
-                && target.isAlive()
-                && client.player.onGround()
-                && !client.player.isPassenger()
-                && !client.player.onClimbable()
-                && !client.player.isInWater()
-                && !client.player.isInLava()
-                && !client.player.isMobilityRestricted()
-                && !client.player.getAbilities().flying
-                && client.level.noCollision(
-                        client.player,
-                        client.player.getBoundingBox().expandTowards(0.0D, HOP_HEIGHT, 0.0D));
+                && target instanceof EntityLivingBase
+                && target.isEntityAlive()
+                && client.thePlayer.onGround
+                && !client.thePlayer.isRiding()
+                && !client.thePlayer.isOnLadder()
+                && !client.thePlayer.isInWater()
+                && !client.thePlayer.isInLava()
+                && !client.thePlayer.isPlayerSleeping()
+                && !client.thePlayer.capabilities.isFlying
+                && client.theWorld
+                        .getCollidingBoundingBoxes(
+                                client.thePlayer,
+                                client.thePlayer
+                                        .getEntityBoundingBox()
+                                        .addCoord(0.0D, HOP_HEIGHT, 0.0D))
+                        .isEmpty();
     }
 
     private static void sendMovement(
             Vec3 position,
             Rotation rotation,
             boolean horizontalCollision,
-            Consumer<ServerboundMovePlayerPacket> send) {
+            Consumer<C03PacketPlayer> send) {
         send.accept(
-                new ServerboundMovePlayerPacket.PosRot(
-                        position.add(0.0D, HOP_HEIGHT, 0.0D),
+                new C03PacketPlayer.C06PacketPlayerPosLook(
+                        position.xCoord,
+                        position.yCoord + HOP_HEIGHT,
+                        position.zCoord,
                         rotation.yaw(),
                         rotation.pitch(),
-                        false,
-                        horizontalCollision));
+                        false));
         send.accept(
-                new ServerboundMovePlayerPacket.PosRot(
-                        position.add(0.0D, FALL_HEIGHT, 0.0D),
+                new C03PacketPlayer.C06PacketPlayerPosLook(
+                        position.xCoord,
+                        position.yCoord + FALL_HEIGHT,
+                        position.zCoord,
                         rotation.yaw(),
                         rotation.pitch(),
-                        false,
-                        horizontalCollision));
+                        false));
     }
 
     public static boolean isEnabled() {

@@ -2,6 +2,8 @@ package com.blanoir.moons.client.module.impl.combat.aim;
 
 import com.blanoir.moons.client.access.MinecraftClientAccess;
 import com.blanoir.moons.client.chat.ClientChat;
+import com.blanoir.moons.client.compat.math.Mth;
+import com.blanoir.moons.client.compat.math.VecMath;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.DoubleSetting;
 import com.blanoir.moons.client.config.settings.ModeSetting;
@@ -26,13 +28,11 @@ import com.blanoir.moons.client.utils.rotation.aim.TargetSelectorB;
 import com.blanoir.moons.client.utils.rotation.smooth.SmoothC;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.util.Mth;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.EntityHitResult;
-import net.minecraft.world.phys.HitResult;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.util.AxisAlignedBB;
+import net.minecraft.util.MovingObjectPosition;
+import net.minecraft.util.Vec3;
 
 public final class AimAssist {
 
@@ -101,7 +101,7 @@ public final class AimAssist {
     private static void frame(FrameEvent event) {
         boolean enabled = ENABLED.get();
         Minecraft client = event.client();
-        var currentPlayer = client == null ? null : client.player;
+        var currentPlayer = client == null ? null : client.thePlayer;
 
         if (!enabled) {
             clearLock();
@@ -110,7 +110,7 @@ public final class AimAssist {
 
         if (client == null
                 || currentPlayer == null
-                || client.level == null
+                || client.theWorld == null
                 || MinecraftClientAccess.screen(client) != null) {
             clearLock();
             return;
@@ -133,8 +133,8 @@ public final class AimAssist {
         }
 
         if (MODE.get() != Mode.LEGIT) {
-            Vec3 eye = currentPlayer.getEyePosition();
-            AABB box = target.entity().getBoundingBox();
+            Vec3 eye = currentPlayer.getPositionEyes(1.0F);
+            AxisAlignedBB box = target.entity().getEntityBoundingBox();
             Vec3 point =
                     MODE.get() == Mode.CENTER
                             ? AimPointsA.resolve(
@@ -155,7 +155,7 @@ public final class AimAssist {
                                     box,
                                     RANGE.get(),
                                     9);
-            if (eye.distanceToSqr(point) <= RANGE.get() * RANGE.get()
+            if (eye.squareDistanceTo(point) <= RANGE.get() * RANGE.get()
                     && RaytraceUtils.canRayTraceTo(client, eye, point)) {
                 target = AimSolverA.solve(client, target.entity(), point);
             }
@@ -165,7 +165,7 @@ public final class AimAssist {
             }
         }
 
-        lockedEntityId = target.entity().getId();
+        lockedEntityId = target.entity().getEntityId();
 
         lockedAimPoint = target.aimPoint();
 
@@ -178,25 +178,26 @@ public final class AimAssist {
         double frameSmooth = smoothForFrame(event.deltaSeconds()) * mouseSmoothMultiplier(motion);
 
         float nextYaw =
-                SmoothC.blendAngle(currentPlayer.getYRot(), target.rotation().yaw(), frameSmooth);
+                SmoothC.blendAngle(currentPlayer.rotationYaw, target.rotation().yaw(), frameSmooth);
 
         float nextPitch =
-                SmoothC.blendAngle(currentPlayer.getXRot(), target.rotation().pitch(), frameSmooth);
+                SmoothC.blendAngle(
+                        currentPlayer.rotationPitch, target.rotation().pitch(), frameSmooth);
 
-        currentPlayer.setYRot(nextYaw);
+        currentPlayer.rotationYaw = nextYaw;
 
-        currentPlayer.setXRot(Mth.clamp(nextPitch, -90.0F, 90.0F));
+        currentPlayer.rotationPitch = Mth.clamp(nextPitch, -90.0F, 90.0F);
     }
 
     public static AimForecast forecastAttack(Minecraft client, Entity target, int ticksAhead) {
-        var currentPlayer = client == null ? null : client.player;
+        var currentPlayer = client == null ? null : client.thePlayer;
         Vec3 futureEye =
                 client != null && currentPlayer != null
                         ? TrajectoryPrediction.linearPosition(
-                                currentPlayer.getEyePosition(),
-                                currentPlayer.getDeltaMovement(),
+                                currentPlayer.getPositionEyes(1.0F),
+                                VecMath.motion(currentPlayer),
                                 Math.max(0, ticksAhead))
-                        : Vec3.ZERO;
+                        : VecMath.ZERO;
 
         return forecastAttack(client, target, ticksAhead, futureEye);
     }
@@ -204,9 +205,9 @@ public final class AimAssist {
     public static AimForecast forecastAttack(
             Minecraft client, Entity target, int ticksAhead, Vec3 futureEye) {
         if (client == null
-                || client.player == null
-                || client.level == null
-                || !(target instanceof LivingEntity living)
+                || client.thePlayer == null
+                || client.theWorld == null
+                || !(target instanceof EntityLivingBase living)
                 || !isValidTarget(client, living)) {
             return AimForecast.unavailable();
         }
@@ -242,14 +243,15 @@ public final class AimAssist {
 
     private static boolean isCrosshairAlreadyAttackable(Minecraft client) {
         double range = RANGE.get();
-        if (client == null || client.player == null) {
+        if (client == null || client.thePlayer == null) {
             return false;
         }
 
-        HitResult hitResult = client.hitResult;
-        if (hitResult instanceof EntityHitResult entityHitResult) {
-            Entity target = entityHitResult.getEntity();
-            if (target instanceof LivingEntity livingTarget
+        MovingObjectPosition hitResult = client.objectMouseOver;
+        if (hitResult != null
+                && hitResult.typeOfHit == MovingObjectPosition.MovingObjectType.ENTITY) {
+            Entity target = hitResult.entityHit;
+            if (target instanceof EntityLivingBase livingTarget
                     && isValidTarget(client, livingTarget)
                     && Targeting.isWithinInteractionRange(client, target)
                     && AimPointsC.hasVisiblePoint(client, livingTarget, range)) {
@@ -257,7 +259,7 @@ public final class AimAssist {
             }
         }
 
-        // client.hitResult updates on ticks, so use the real camera ray as a
+        // client.objectMouseOver updates on ticks, so use the real camera ray as a
         // render-frequency fallback.
         return crosshairRayHitsValidTarget(client);
     }
@@ -266,7 +268,7 @@ public final class AimAssist {
         return Targeting.findTargetOnViewRay(
                         client,
                         entity ->
-                                entity instanceof LivingEntity living
+                                entity instanceof EntityLivingBase living
                                         && isValidTarget(client, living)
                                         && Targeting.isWithinInteractionRange(client, living),
                         false)
@@ -314,7 +316,7 @@ public final class AimAssist {
         return 1;
     }
 
-    private static boolean isValidTarget(Minecraft client, LivingEntity entity) {
+    private static boolean isValidTarget(Minecraft client, EntityLivingBase entity) {
         return Targeting.isEnemyPlayer(client, entity);
     }
 

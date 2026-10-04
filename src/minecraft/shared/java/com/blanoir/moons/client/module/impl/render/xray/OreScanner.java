@@ -9,13 +9,13 @@ import com.blanoir.moons.client.module.framework.ModuleKeybinds;
 import com.blanoir.moons.client.utils.world.BlockDistance;
 import com.blanoir.moons.client.utils.world.ChunkKey;
 
+import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.multiplayer.ClientLevel;
-import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
-import net.minecraft.world.level.ChunkPos;
-import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.client.multiplayer.WorldClient;
+import net.minecraft.util.BlockPos;
+import net.minecraft.util.EnumFacing;
+import net.minecraft.world.ChunkCoordIntPair;
+import net.minecraft.world.chunk.Chunk;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -31,7 +31,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public final class OreScanner {
-    private static final Queue<ChunkPos> SCAN_QUEUE = new ArrayDeque<>();
+    private static final Queue<ChunkCoordIntPair> SCAN_QUEUE = new ArrayDeque<>();
     private static final ExecutorService SCAN_EXECUTOR =
             Executors.newSingleThreadExecutor(
                     runnable -> {
@@ -65,12 +65,12 @@ public final class OreScanner {
             new BooleanSetting.Builder().name("xray.enabled").defaultValue(false).build();
 
     private static int tickCounter = 0;
-    private static ChunkPos lastCenterChunk = null;
+    private static ChunkCoordIntPair lastCenterChunk = null;
 
     private OreScanner() {}
 
     public static void init() {
-        ModuleKeybinds.registerAction("clearscan", () -> clearAll(Minecraft.getInstance()));
+        ModuleKeybinds.registerAction("clearscan", () -> clearAll(Minecraft.getMinecraft()));
         EventBus.CLIENT_CONTEXT_CHANGED.register(
                 "OreScanner.context",
                 event -> {
@@ -116,12 +116,13 @@ public final class OreScanner {
 
         tickCounter++;
 
-        ChunkPos currentCenter = client.player.chunkPosition();
+        ChunkCoordIntPair currentCenter =
+                new ChunkCoordIntPair(client.thePlayer.chunkCoordX, client.thePlayer.chunkCoordZ);
 
         boolean movedToAnotherChunk =
                 lastCenterChunk == null
-                        || lastCenterChunk.x() != currentCenter.x()
-                        || lastCenterChunk.z() != currentCenter.z();
+                        || lastCenterChunk.chunkXPos != currentCenter.chunkXPos
+                        || lastCenterChunk.chunkZPos != currentCenter.chunkZPos;
 
         if (movedToAnotherChunk) {
             lastCenterChunk = currentCenter;
@@ -174,10 +175,15 @@ public final class OreScanner {
             return;
         }
 
-        ChunkPos center = client.player.chunkPosition();
+        ChunkCoordIntPair center =
+                new ChunkCoordIntPair(client.thePlayer.chunkCoordX, client.thePlayer.chunkCoordZ);
 
-        for (int chunkX = center.x() - radius; chunkX <= center.x() + radius; chunkX++) {
-            for (int chunkZ = center.z() - radius; chunkZ <= center.z() + radius; chunkZ++) {
+        for (int chunkX = center.chunkXPos - radius;
+                chunkX <= center.chunkXPos + radius;
+                chunkX++) {
+            for (int chunkZ = center.chunkZPos - radius;
+                    chunkZ <= center.chunkZPos + radius;
+                    chunkZ++) {
                 long key = ChunkKey.pack(chunkX, chunkZ);
 
                 if (!forceRescan && SCANNED_CHUNKS.contains(key)) {
@@ -185,25 +191,28 @@ public final class OreScanner {
                 }
 
                 if (QUEUED_CHUNKS.add(key)) {
-                    SCAN_QUEUE.add(new ChunkPos(chunkX, chunkZ));
+                    SCAN_QUEUE.add(new ChunkCoordIntPair(chunkX, chunkZ));
                 }
             }
         }
     }
 
     private static void processScanQueue(Minecraft client, int maxChunks) {
-        ClientLevel level = client.level;
-        if (level == null || client.player == null) return;
+        WorldClient level = client.theWorld;
+        if (level == null || client.thePlayer == null) return;
         int generation = SCAN_GENERATION.get();
         int submitted = 0;
         while (submitted < maxChunks
                 && IN_FLIGHT.get() + COMPLETED_SCANS.size() + (currentScan == null ? 0 : 1)
                         < maxChunks) {
-            ChunkPos chunkPos = SCAN_QUEUE.poll();
+            ChunkCoordIntPair chunkPos = SCAN_QUEUE.poll();
             if (chunkPos == null) break;
-            long key = ChunkKey.pack(chunkPos.x(), chunkPos.z());
+            long key = ChunkKey.pack(chunkPos.chunkXPos, chunkPos.chunkZPos);
             QUEUED_CHUNKS.remove(key);
-            LevelChunk chunk = level.getChunkSource().getChunk(chunkPos.x(), chunkPos.z(), false);
+            Chunk chunk =
+                    level.getChunkProvider().chunkExists(chunkPos.chunkXPos, chunkPos.chunkZPos)
+                            ? level.getChunkFromChunkCoords(chunkPos.chunkXPos, chunkPos.chunkZPos)
+                            : null;
             if (chunk == null) continue;
             IN_FLIGHT.incrementAndGet();
             submitted++;
@@ -212,7 +221,11 @@ public final class OreScanner {
                     () -> {
                         try {
                             List<BlockPos> positions =
-                                    scanChunk(chunk, chunkPos.x(), chunkPos.z(), generation);
+                                    scanChunk(
+                                            chunk,
+                                            chunkPos.chunkXPos,
+                                            chunkPos.chunkZPos,
+                                            generation);
                             if (positions != null && generation == SCAN_GENERATION.get()) {
                                 COMPLETED_SCANS.add(
                                         new ScanBatch(level, generation, key, positions));
@@ -224,15 +237,14 @@ public final class OreScanner {
         }
     }
 
-    private static List<BlockPos> scanChunk(
-            LevelChunk chunk, int chunkX, int chunkZ, int generation) {
+    private static List<BlockPos> scanChunk(Chunk chunk, int chunkX, int chunkZ, int generation) {
         List<BlockPos> positions = new ArrayList<>();
 
         int startX = chunkX << 4;
         int startZ = chunkZ << 4;
 
-        int bottomY = chunk.getMinY();
-        int topYExclusive = bottomY + chunk.getHeight();
+        int bottomY = 0;
+        int topYExclusive = 256;
 
         BlockPos.MutableBlockPos mutablePos = new BlockPos.MutableBlockPos();
 
@@ -247,9 +259,9 @@ public final class OreScanner {
                 for (int y = bottomY; y < topYExclusive; y++) {
                     mutablePos.set(worldX, y, worldZ);
 
-                    BlockState state = chunk.getBlockState(mutablePos);
+                    IBlockState state = chunk.getBlockState(mutablePos);
                     if (XrayBlockTarget.findEnabledTarget(state) != null) {
-                        positions.add(mutablePos.immutable());
+                        positions.add(new BlockPos(mutablePos));
                     }
                 }
             }
@@ -260,7 +272,7 @@ public final class OreScanner {
 
     /** Apply a bounded amount of work on the client thread, after checking the world identity. */
     private static void processCompletedScans(Minecraft client) {
-        ClientLevel level = client.level;
+        WorldClient level = client.theWorld;
         if (level == null) return;
         int processed = 0;
         while (processed < MoonsConfig.SCAN_RESULTS_PER_TICK) {
@@ -285,9 +297,9 @@ public final class OreScanner {
     }
 
     private record ScanBatch(
-            ClientLevel level, int generation, long chunkKey, List<BlockPos> positions) {}
+            WorldClient level, int generation, long chunkKey, List<BlockPos> positions) {}
 
-    private static void recordTargetIfPresent(Minecraft client, BlockPos pos, BlockState state) {
+    private static void recordTargetIfPresent(Minecraft client, BlockPos pos, IBlockState state) {
         OreCache.removeStaleStateTarget(pos, state);
         XrayTarget target = XrayBlockTarget.findEnabledTarget(state);
 
@@ -304,7 +316,7 @@ public final class OreScanner {
     }
 
     private static void recordTarget(Minecraft client, BlockPos pos, XrayTarget target) {
-        BlockPos foundPos = pos.immutable();
+        BlockPos foundPos = new BlockPos(pos);
 
         if (target == XrayBlockTarget.DIAMOND
                 && !XrayCoverMode.shouldRecordDiamond(client, foundPos)) {
@@ -331,7 +343,7 @@ public final class OreScanner {
                             + ", distance="
                             + String.format("%.1f", distance);
 
-            client.execute(
+            client.addScheduledTask(
                     () -> {
                         if (isClientWorldReady(client)) {
                             ClientChat.send(client, message);
@@ -370,7 +382,7 @@ public final class OreScanner {
 
         synchronized (PENDING_UPDATES) {
             if (PENDING_UPDATES.size() < MAX_QUEUED_UPDATES) {
-                PENDING_UPDATES.add(pos.immutable());
+                PENDING_UPDATES.add(new BlockPos(pos));
             }
         }
     }
@@ -401,9 +413,9 @@ public final class OreScanner {
             return;
         }
 
-        BlockState state = client.level.getBlockState(pos);
+        IBlockState state = client.theWorld.getBlockState(pos);
 
-        if (state.isAir()) {
+        if (state.getBlock() == net.minecraft.init.Blocks.air) {
             OreCache.removePosition(pos);
             return;
         }
@@ -412,11 +424,14 @@ public final class OreScanner {
 
         BlockPos.MutableBlockPos neighbor = new BlockPos.MutableBlockPos();
 
-        for (Direction direction : Direction.values()) {
-            neighbor.set(pos).move(direction);
-            BlockState neighborState = client.level.getBlockState(neighbor);
+        for (EnumFacing direction : EnumFacing.values()) {
+            neighbor.set(
+                    pos.getX() + direction.getFrontOffsetX(),
+                    pos.getY() + direction.getFrontOffsetY(),
+                    pos.getZ() + direction.getFrontOffsetZ());
+            IBlockState neighborState = client.theWorld.getBlockState(neighbor);
 
-            if (!neighborState.isAir()) {
+            if (neighborState.getBlock() != net.minecraft.init.Blocks.air) {
                 recordTargetIfPresent(client, neighbor, neighborState);
             }
         }
@@ -470,7 +485,8 @@ public final class OreScanner {
             return;
         }
 
-        ChunkPos center = client.player.chunkPosition();
+        ChunkCoordIntPair center =
+                new ChunkCoordIntPair(client.thePlayer.chunkCoordX, client.thePlayer.chunkCoordZ);
         int maxDistance = MoonsConfig.SCAN_RADIUS_CHUNKS + 2;
 
         SCANNED_CHUNKS.removeIf(
@@ -478,8 +494,8 @@ public final class OreScanner {
                     int chunkX = ChunkKey.unpackX(key);
                     int chunkZ = ChunkKey.unpackZ(key);
 
-                    int dx = Math.abs(chunkX - center.x());
-                    int dz = Math.abs(chunkZ - center.z());
+                    int dx = Math.abs(chunkX - center.chunkXPos);
+                    int dz = Math.abs(chunkZ - center.chunkZPos);
 
                     return dx > maxDistance || dz > maxDistance;
                 });
@@ -490,6 +506,6 @@ public final class OreScanner {
     }
 
     public static boolean isClientWorldReady(Minecraft client) {
-        return client != null && client.level != null && client.player != null;
+        return client != null && client.theWorld != null && client.thePlayer != null;
     }
 }

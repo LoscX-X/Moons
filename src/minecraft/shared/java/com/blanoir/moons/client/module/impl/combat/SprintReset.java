@@ -8,8 +8,8 @@ import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.management.input.CombatInputController;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.EntityLivingBase;
 
 import java.util.List;
 
@@ -44,16 +44,16 @@ public final class SprintReset {
 
     /** Called immediately before vanilla sends the attack. */
     public static void onAttack(Entity entity) {
-        Minecraft client = Minecraft.getInstance();
-        var currentPlayer = client.player;
+        Minecraft client = Minecraft.getMinecraft();
+        var currentPlayer = client.thePlayer;
         if (!ENABLED.get()
-                || !(entity instanceof LivingEntity target)
+                || !(entity instanceof EntityLivingBase target)
                 || currentPlayer == null
                 || !currentPlayer.isSprinting()
                 || System.currentTimeMillis() - lastResetAtMs < INTERVAL_MS.get()) return;
 
         if (REQUIRE_TARGET_DAMAGE.get()) {
-            pendingTargetId = target.getId();
+            pendingTargetId = target.getEntityId();
             pendingInitialHurtTime = target.hurtTime;
             pendingTicks = 10;
         } else {
@@ -62,21 +62,21 @@ public final class SprintReset {
     }
 
     private static void tick(Minecraft client) {
-        var currentPlayer = client == null ? null : client.player;
-        var currentLevel = client == null ? null : client.level;
+        var currentPlayer = client == null ? null : client.thePlayer;
+        var currentLevel = client == null ? null : client.theWorld;
         if (client == null || currentPlayer == null || currentLevel == null || !ENABLED.get()) {
             clear(client);
             return;
         }
 
         if (pendingTargetId >= 0) {
-            Entity entity = currentLevel.getEntity(pendingTargetId);
-            if (entity instanceof LivingEntity target
+            Entity entity = currentLevel.getEntityByID(pendingTargetId);
+            if (entity instanceof EntityLivingBase target
                     && (target.hurtTime > pendingInitialHurtTime || target.hurtTime >= 9)) {
                 pendingTargetId = -1;
                 pendingTicks = 0;
                 beginReset(client);
-            } else if (--pendingTicks <= 0 || entity == null || !entity.isAlive()) {
+            } else if (--pendingTicks <= 0 || entity == null || !entity.isEntityAlive()) {
                 pendingTargetId = -1;
                 pendingTicks = 0;
             }
@@ -92,7 +92,7 @@ public final class SprintReset {
     }
 
     private static void beginReset(Minecraft client) {
-        var currentPlayer = client == null ? null : client.player;
+        var currentPlayer = client == null ? null : client.thePlayer;
         if (currentPlayer == null || resetActive) return;
         lastResetAtMs = System.currentTimeMillis();
         restoreAtMs = lastResetAtMs + DURATION_MS.get();

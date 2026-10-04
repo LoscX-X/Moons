@@ -1,16 +1,18 @@
 package com.blanoir.moons.client.utils.prediction;
 
-import net.minecraft.core.BlockPos;
-import net.minecraft.tags.FluidTags;
-import net.minecraft.util.Mth;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.Vec3;
-import net.minecraft.world.phys.shapes.CollisionContext;
+import com.blanoir.moons.client.compat.math.Mth;
+import com.blanoir.moons.client.compat.math.VecMath;
+import com.blanoir.moons.client.compat.world.LegacyCollision;
+import com.blanoir.moons.client.utils.world.LegacyWorld;
 
-import java.util.List;
+import net.minecraft.block.BlockLiquid;
+import net.minecraft.block.material.Material;
+import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.init.Blocks;
+import net.minecraft.util.AxisAlignedBB;
+import net.minecraft.util.BlockPos;
+import net.minecraft.util.Vec3;
+
 import java.util.function.BiFunction;
 import java.util.function.BiPredicate;
 
@@ -18,83 +20,92 @@ import java.util.function.BiPredicate;
 public final class LandingPrediction {
     private LandingPrediction() {}
 
-    public record FallImpact(int ticks, double fallDistance, AABB box) {}
+    public record FallImpact(int ticks, double fallDistance, AxisAlignedBB box) {}
 
     /** Predict the first downward collision of the whole body, bounded by the reaction window. */
-    public static FallImpact fallImpact(Player player, int horizon) {
+    public static FallImpact fallImpact(EntityPlayer player, int horizon) {
         return fallImpact(
-                player.getBoundingBox(),
-                player.getDeltaMovement(),
+                player.getEntityBoundingBox(),
+                VecMath.motion(player),
                 player.fallDistance,
                 horizon,
-                (box, velocity) ->
-                        Entity.collideBoundingBox(player, velocity, box, player.level(), List.of()),
+                (box, velocity) -> LegacyCollision.resolve(player, velocity, box, player.worldObj),
                 (box, movement) -> interruptsFall(player, box, movement));
     }
 
     static FallImpact fallImpact(
-            AABB box,
+            AxisAlignedBB box,
             Vec3 velocity,
             double distance,
             int horizon,
-            BiFunction<AABB, Vec3, Vec3> collision,
-            BiPredicate<AABB, Vec3> interrupted) {
+            BiFunction<AxisAlignedBB, Vec3, Vec3> collision,
+            BiPredicate<AxisAlignedBB, Vec3> interrupted) {
         for (int tick = 1; tick <= Math.clamp(horizon, 0, 20); tick++) {
             Vec3 movement = collision.apply(box, velocity);
             if (interrupted.test(box, movement)) return null;
-            box = box.move(movement);
-            distance += Math.max(0, -(float) movement.y);
-            if (velocity.y < 0 && movement.y > velocity.y + 1.0E-5)
+            box = VecMath.move(box, movement);
+            distance += Math.max(0, -(float) movement.yCoord);
+            if (velocity.yCoord < 0 && movement.yCoord > velocity.yCoord + 1.0E-5)
                 return new FallImpact(tick, distance, box);
             velocity =
                     new Vec3(
-                            Math.abs(movement.x - velocity.x) > 1.0E-5 ? 0 : velocity.x * .91,
-                            (velocity.y - .08) * .98,
-                            Math.abs(movement.z - velocity.z) > 1.0E-5 ? 0 : velocity.z * .91);
+                            Math.abs(movement.xCoord - velocity.xCoord) > 1.0E-5
+                                    ? 0
+                                    : velocity.xCoord * .91,
+                            (velocity.yCoord - .08) * .98,
+                            Math.abs(movement.zCoord - velocity.zCoord) > 1.0E-5
+                                    ? 0
+                                    : velocity.zCoord * .91);
         }
         return null;
     }
 
-    private static boolean interruptsFall(Player player, AABB box, Vec3 movement) {
+    private static boolean interruptsFall(EntityPlayer player, AxisAlignedBB box, Vec3 movement) {
         // Sample the swept body, so fast falls cannot skip a one-block water layer.
-        int steps = Math.clamp(Mth.ceil(movement.length() * 2), 1, 64);
+        int steps = Math.clamp(Mth.ceil(movement.lengthVector() * 2), 1, 64);
         for (int step = 1; step <= steps; step++) {
-            AABB sample = box.move(movement.scale((double) step / steps)).deflate(1.0E-5);
+            AxisAlignedBB sample =
+                    VecMath.move(box, VecMath.scale(movement, (double) step / steps))
+                            .expand(-1.0E-5, -1.0E-5, -1.0E-5);
             for (BlockPos pos :
-                    BlockPos.betweenClosed(
-                            Mth.floor(sample.minX),
-                            Mth.floor(sample.minY),
-                            Mth.floor(sample.minZ),
-                            Mth.floor(sample.maxX),
-                            Mth.floor(sample.maxY),
-                            Mth.floor(sample.maxZ))) {
-                var state = player.level().getBlockState(pos);
-                var fluid = state.getFluidState();
-                if ((fluid.is(FluidTags.WATER)
-                                && sample.minY < pos.getY() + fluid.getHeight(player.level(), pos))
-                        || state.is(Blocks.COBWEB)
-                        || state.is(Blocks.POWDER_SNOW)
-                        || state.is(net.minecraft.tags.BlockTags.CLIMBABLE)) return true;
+                    BlockPos.getAllInBox(
+                            new BlockPos(sample.minX, sample.minY, sample.minZ),
+                            new BlockPos(sample.maxX, sample.maxY, sample.maxZ))) {
+                var state = player.worldObj.getBlockState(pos);
+                var block = state.getBlock();
+                boolean water = block.getMaterial() == Material.water;
+                double height =
+                        water
+                                ? 1
+                                        - BlockLiquid.getLiquidHeightPercent(
+                                                block.getMetaFromState(state))
+                                : 0;
+                if ((water && sample.minY < pos.getY() + height)
+                        || block == Blocks.web
+                        || block == Blocks.ladder
+                        || block == Blocks.vine) return true;
             }
         }
         return false;
     }
 
     /** Resolve the actual support shape, including slabs, fences and edge landings. */
-    public static BlockPos supportBlock(Player player, AABB box) {
+    public static BlockPos supportBlock(EntityPlayer player, AxisAlignedBB box) {
         BlockPos best = null;
         double overlap = 0;
-        var context = CollisionContext.of(player);
+
         for (int x = Mth.floor(box.minX + 1.0E-5); x <= Mth.floor(box.maxX - 1.0E-5); x++) {
             for (int z = Mth.floor(box.minZ + 1.0E-5); z <= Mth.floor(box.maxZ - 1.0E-5); z++) {
                 for (int y = Mth.floor(box.minY) - 2; y <= Mth.floor(box.minY); y++) {
                     BlockPos pos = new BlockPos(x, y, z);
-                    for (AABB local :
-                            player.level()
-                                    .getBlockState(pos)
-                                    .getCollisionShape(player.level(), pos, context)
+                    for (AxisAlignedBB local :
+                            LegacyWorld.collision(
+                                            player.worldObj.getBlockState(pos),
+                                            player.worldObj,
+                                            pos,
+                                            player)
                                     .toAabbs()) {
-                        AABB shape = local.move(x, y, z);
+                        AxisAlignedBB shape = local.offset(x, y, z);
                         if (Math.abs(shape.maxY - box.minY) > 1.0E-5) continue;
                         double area =
                                 Math.max(
@@ -129,18 +140,18 @@ public final class LandingPrediction {
         return Integer.MAX_VALUE;
     }
 
-    public static BlockPos landingBlock(Player player) {
-        return landingBlock(player.position(), player.getDeltaMovement());
+    public static BlockPos landingBlock(EntityPlayer player) {
+        return landingBlock(VecMath.position(player), VecMath.motion(player));
     }
 
     /** Projects onto the current feet-cell plane; this is not a world collision scan. */
     public static BlockPos landingBlock(Vec3 position, Vec3 velocity) {
-        double x = position.x;
-        double y = position.y;
-        double z = position.z;
-        double vx = velocity.x;
-        double vy = velocity.y;
-        double vz = velocity.z;
+        double x = position.xCoord;
+        double y = position.yCoord;
+        double z = position.zCoord;
+        double vx = velocity.xCoord;
+        double vy = velocity.yCoord;
+        double vz = velocity.zCoord;
         double landY = Math.floor(y - 0.01D) + 1.0D;
 
         for (int tick = 0; tick < 20; tick++) {

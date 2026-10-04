@@ -127,103 +127,6 @@ final class Combat {
                         "Fixed");
     }
 
-    static ModuleRegistry.Module autoMace() {
-        return module(
-                "automace",
-                "AutoMace",
-                ModuleCategories.COMBAT,
-                AutoMace::isEnabled,
-                AutoMace::setEnabled,
-                AutoMace::statusTag,
-                bool(
-                        "require_attack",
-                        "Hold attack to start",
-                        "automace.requireAttack",
-                        true,
-                        AutoMace::setRequireAttack),
-                number(
-                        "range",
-                        "Target range",
-                        "automace.range",
-                        3.0,
-                        1.0,
-                        3.0,
-                        .1,
-                        AutoMace::setRange),
-                integer(
-                        "cooldown",
-                        "Combo cooldown (ticks)",
-                        "automace.cooldown",
-                        40,
-                        20,
-                        200,
-                        5,
-                        AutoMace::setCooldown));
-    }
-
-    static ModuleRegistry.Module autoSpear() {
-        return module(
-                "autospear",
-                "SpearAssist",
-                ModuleCategories.COMBAT,
-                AutoSpear::isEnabled,
-                AutoSpear::setEnabled,
-                () -> "",
-                bool(
-                        "ignore_cooldown",
-                        "Ignore client cooldown",
-                        "autospear.ignoreCooldown",
-                        false,
-                        AutoSpear::setIgnoreCooldown),
-                bool("full_hold", "Full hold", "autospear.fullHold", false, AutoSpear::setFullHold),
-                number(
-                        "motion_multiply",
-                        "Motion multiply",
-                        "autospear.motionMultiply",
-                        1.0,
-                        1.0,
-                        5.0,
-                        .1,
-                        AutoSpear::setMotionMultiply),
-                bool(
-                        "impact_burst",
-                        "Impact burst (experimental)",
-                        "autospear.impactBurst",
-                        false,
-                        AutoSpear::setImpactBurst),
-                number(
-                                "impact_multiply",
-                                "Impact multiply",
-                                "autospear.impactMultiply",
-                                8.0,
-                                1.0,
-                                20.0,
-                                .5,
-                                AutoSpear::setImpactMultiply)
-                        .visibleWhen(AutoSpear::impactBurstEnabled),
-                bool("blink", "FakeLag", "autospear.blink", false, AutoSpear::setFakeLag),
-                integer(
-                                "blink_duration",
-                                "FakeLag delay (ms)",
-                                "autospear.blinkDurationMs",
-                                150,
-                                50,
-                                500,
-                                25,
-                                AutoSpear::setFakeLagDelay)
-                        .visibleWhen(AutoSpear::fakeLagEnabled),
-                integer(
-                                "fakelag_duration",
-                                "FakeLag duration (ms)",
-                                "autospear.fakeLagDurationMs",
-                                500,
-                                100,
-                                2000,
-                                50,
-                                AutoSpear::setFakeLagDuration)
-                        .visibleWhen(AutoSpear::fakeLagEnabled));
-    }
-
     static ModuleRegistry.Module autoClicker() {
         return module(
                 "autoclicker",
@@ -359,7 +262,7 @@ final class Combat {
                         SilentAura::setEnabled,
                         SilentAura::hudTag,
                         SilentAuraConfig.settings())
-                .withHudTag(() -> SilentAuraConfig.legacyCombat() ? "Legacy" : "Latest");
+                .withHudTag("Legacy");
     }
 
     static ModuleRegistry.Module aimAssist() {
@@ -380,18 +283,7 @@ final class Combat {
                 "Combat",
                 TriggerBot::isEnabled,
                 TriggerBot::setEnabled,
-                () -> rangeText("triggerbot.minCharge", "triggerbot.maxCharge", .7, 1.3),
-                range(
-                        "charge",
-                        "Attack charge",
-                        "triggerbot.minCharge",
-                        "triggerbot.maxCharge",
-                        .7,
-                        1.3,
-                        .7,
-                        1.3,
-                        .01,
-                        TriggerBot::setChargeRange),
+                () -> "Legacy",
                 range(
                         "miss_delay",
                         "Miss delay",
@@ -455,28 +347,6 @@ final class Combat {
                                 "predictcritical.stopSprint",
                                 true,
                                 Predict::setStopSprint)
-                        .visibleWhen(Critical::predictMode),
-                bool("sync", "Sync", "predictcritical.sync", true, Predict::setSyncEnabled)
-                        .visibleWhen(Critical::predictMode),
-                integer(
-                                "overcharge",
-                                "Overcharge ticks",
-                                "predictcritical.overcharge",
-                                2,
-                                0,
-                                6,
-                                1,
-                                Predict::setMaxOverchargeTicks)
-                        .visibleWhen(Critical::predictMode),
-                integer(
-                                "cycles",
-                                "Sync cycles",
-                                "predictcritical.cycles",
-                                2,
-                                1,
-                                3,
-                                1,
-                                Predict::setSyncCycles)
                         .visibleWhen(Critical::predictMode));
     }
 

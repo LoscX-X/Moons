@@ -12,7 +12,7 @@ final class ConfigCommand {
     private ConfigCommand() {}
 
     static boolean handle(String tail) {
-        Minecraft client = Minecraft.getInstance();
+        Minecraft client = Minecraft.getMinecraft();
         String[] parts = tail.trim().split("\\s+", 2);
         String action = parts[0].toLowerCase(Locale.ROOT);
         String name = parts.length > 1 ? parts[1].trim() : ConfigProfiles.selected();

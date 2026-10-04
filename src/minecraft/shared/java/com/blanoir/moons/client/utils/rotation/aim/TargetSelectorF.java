@@ -3,12 +3,12 @@ package com.blanoir.moons.client.utils.rotation.aim;
 import com.blanoir.moons.client.utils.world.placement.FaceScanA;
 import com.blanoir.moons.client.utils.world.placement.PlacementRaycast;
 
+import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.Minecraft;
-import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
-import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.phys.BlockHitResult;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.util.BlockPos;
+import net.minecraft.util.EnumFacing;
+import net.minecraft.util.MovingObjectPosition;
+import net.minecraft.util.Vec3;
 
 /**
  * F: AntiLava supporting-face target selection. Preserves the supplied face order, collision
@@ -18,20 +18,21 @@ import net.minecraft.world.phys.Vec3;
 public final class TargetSelectorF {
     private TargetSelectorF() {}
 
-    public static BlockHitResult select(
+    public static MovingObjectPosition select(
             PlacementRaycast rays,
             Minecraft client,
             BlockPos source,
             Vec3 eye,
             double range,
-            Direction[] supportFaces,
+            EnumFacing[] supportFaces,
             double[] offsets) {
-        BlockHitResult best = null;
+        MovingObjectPosition best = null;
         double bestScore = Double.POSITIVE_INFINITY;
-        for (Direction face : supportFaces) {
-            BlockPos supportPos = source.relative(face.getOpposite());
-            BlockState support = client.level.getBlockState(supportPos);
-            if (support.getCollisionShape(client.level, supportPos).isEmpty()) {
+        for (EnumFacing face : supportFaces) {
+            BlockPos supportPos = source.offset(face.getOpposite());
+            IBlockState support = client.theWorld.getBlockState(supportPos);
+            if (support.getBlock().getCollisionBoundingBox(client.theWorld, supportPos, support)
+                    == null) {
                 continue;
             }
             FaceScanA.Result candidate =

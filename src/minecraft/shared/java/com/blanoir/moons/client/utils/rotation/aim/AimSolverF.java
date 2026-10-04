@@ -1,8 +1,7 @@
 package com.blanoir.moons.client.utils.rotation.aim;
 
+import com.blanoir.moons.client.compat.math.Mth;
 import com.blanoir.moons.client.utils.rotation.Rotation;
-
-import net.minecraft.util.Mth;
 
 /**
  * F: GodBridge compass-heading and pitch solution. Preserves sector hysteresis and side

@@ -1,14 +1,15 @@
 package com.blanoir.moons.client.utils.rotation.aim;
 
+import com.blanoir.moons.client.compat.math.Mth;
+import com.blanoir.moons.client.compat.math.VecMath;
 import com.blanoir.moons.client.utils.entity.EntityDistance;
 import com.blanoir.moons.client.utils.math.RandomMath;
 import com.blanoir.moons.client.utils.raytrace.RaytraceUtils;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.util.Mth;
-import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.util.AxisAlignedBB;
+import net.minecraft.util.Vec3;
 
 /**
  * A: Center geometry and smooth target-local wandering. Used by AimAssist and SilentAura.
@@ -42,9 +43,9 @@ public final class AimPointsA {
     public static Vec3 resolve(
             State state,
             Minecraft client,
-            LivingEntity target,
+            EntityLivingBase target,
             Vec3 eye,
-            AABB box,
+            AxisAlignedBB box,
             double range,
             double wander,
             int wanderTicks,
@@ -56,9 +57,9 @@ public final class AimPointsA {
     public static Vec3 resolve(
             State state,
             Minecraft client,
-            LivingEntity target,
+            EntityLivingBase target,
             Vec3 eye,
-            AABB box,
+            AxisAlignedBB box,
             double range,
             double wander,
             int wanderTicks,
@@ -82,25 +83,27 @@ public final class AimPointsA {
     private static Vec3 wanderPoint(
             State state,
             Minecraft client,
-            LivingEntity target,
+            EntityLivingBase target,
             Vec3 eye,
-            AABB box,
+            AxisAlignedBB box,
             double trackingRange,
             double wander,
             int wanderTicks,
             boolean keepLevel,
             boolean throughBlocks) {
         if (wander <= 0.0D) return null;
-        int tick = client.player.tickCount;
-        if (state.anchorTargetId != target.getId() || tick >= state.nextAnchorTick) {
-            boolean changed = state.anchorTargetId != target.getId() || state.wanderFrom == null;
+        int tick = client.thePlayer.ticksExisted;
+        if (state.anchorTargetId != target.getEntityId() || tick >= state.nextAnchorTick) {
+            boolean changed =
+                    state.anchorTargetId != target.getEntityId() || state.wanderFrom == null;
             Vec3 previous = changed ? null : wanderFractions(state, tick);
-            state.anchorTargetId = target.getId();
+            state.anchorTargetId = target.getEntityId();
             double spread = 0.5D * Mth.clamp(wander, 0.0D, 1.0D);
             state.anchorFractionX = RandomMath.between(0.5D - spread, 0.5D + spread);
             // Centre vertical wander on the closest (normally horizontal)
             // upper-body ray. It is an offset, not a random head-to-feet pick.
-            double rawEyeFractionY = (eye.y - box.minY) / Math.max(box.getYsize(), 0.1D);
+            double rawEyeFractionY =
+                    (eye.yCoord - box.minY) / Math.max((box.maxY - box.minY), 0.1D);
             double closestFractionY = Mth.clamp(rawEyeFractionY, UPPER_BODY_FLOOR, 0.90D);
             double verticalSpread = spread * 0.18D;
             boolean balanceCanStayLevel =
@@ -128,8 +131,9 @@ public final class AimPointsA {
                             : previous;
         }
         Vec3 fractions = wanderFractions(state, tick);
-        Vec3 anchor = AimGeometry.localPoint(box, fractions.x, fractions.y, fractions.z);
-        if (eye.distanceToSqr(anchor) > trackingRange * trackingRange) return null;
+        Vec3 anchor =
+                AimGeometry.localPoint(box, fractions.xCoord, fractions.yCoord, fractions.zCoord);
+        if (eye.squareDistanceTo(anchor) > trackingRange * trackingRange) return null;
         return RaytraceUtils.canRayTraceTo(client, eye, anchor, throughBlocks) ? anchor : null;
     }
 
@@ -142,26 +146,28 @@ public final class AimPointsA {
                         1.0D);
         double blend =
                 progress * progress * progress * (progress * (progress * 6.0D - 15.0D) + 10.0D);
-        return state.wanderFrom.lerp(
+        return VecMath.lerp(
+                state.wanderFrom,
                 new Vec3(state.anchorFractionX, state.anchorFractionY, state.anchorFractionZ),
                 blend);
     }
 
-    public static Vec3 centerTrackingPoint(Vec3 eye, AABB box) {
+    public static Vec3 centerTrackingPoint(Vec3 eye, AxisAlignedBB box) {
         // Preserve eye-height following: it removes artificial vertical head
         // motion on level ground and is part of Center's humanized behaviour.
         Vec3 closest = EntityDistance.closestPoint(eye, box);
-        Vec3 inset = closest.lerp(box.getCenter(), 0.18D);
+        Vec3 inset = VecMath.lerp(closest, VecMath.center(box), 0.18D);
         double lowerAimY = Mth.lerp(0.58D, box.minY, box.maxY);
         double upperAimY = Mth.lerp(0.92D, box.minY, box.maxY);
-        return new Vec3(inset.x, Mth.clamp(closest.y, lowerAimY, upperAimY), inset.z);
+        return new Vec3(
+                inset.xCoord, Mth.clamp(closest.yCoord, lowerAimY, upperAimY), inset.zCoord);
     }
 
-    public static Vec3 center(AABB box) {
+    public static Vec3 center(AxisAlignedBB box) {
         return center(box, 0.58D);
     }
 
-    public static Vec3 center(AABB box, double verticalFactor) {
+    public static Vec3 center(AxisAlignedBB box, double verticalFactor) {
         return new Vec3(
                 (box.minX + box.maxX) * 0.5D,
                 Mth.lerp(Mth.clamp(verticalFactor, 0.0D, 1.0D), box.minY, box.maxY),

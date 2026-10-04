@@ -1,9 +1,8 @@
 package com.blanoir.moons.client.utils.rotation.aim;
 
+import com.blanoir.moons.client.compat.math.Mth;
 import com.blanoir.moons.client.utils.math.MathUtils;
 import com.blanoir.moons.client.utils.rotation.Rotation;
-
-import net.minecraft.util.Mth;
 
 /**
  * G: Camera-return angle solution, separate from target tracking. Preserves the original

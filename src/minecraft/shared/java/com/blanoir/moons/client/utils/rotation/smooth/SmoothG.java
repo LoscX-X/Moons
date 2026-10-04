@@ -1,9 +1,8 @@
 package com.blanoir.moons.client.utils.rotation.smooth;
 
+import com.blanoir.moons.client.compat.math.Mth;
 import com.blanoir.moons.client.utils.math.MathUtils;
 import com.blanoir.moons.client.utils.rotation.Rotation;
-
-import net.minecraft.util.Mth;
 
 /**
  * G: Cubic decay of a silent offset relative to the live camera.

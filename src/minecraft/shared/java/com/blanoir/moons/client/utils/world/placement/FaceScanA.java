@@ -2,8 +2,8 @@ package com.blanoir.moons.client.utils.world.placement;
 
 import com.blanoir.moons.client.utils.rotation.Rotation;
 
-import net.minecraft.world.phys.BlockHitResult;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.util.MovingObjectPosition;
+import net.minecraft.util.Vec3;
 
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -21,7 +21,7 @@ public final class FaceScanA {
     private FaceScanA() {}
 
     public record Sample(
-            double u, double v, Vec3 requested, Rotation rotation, BlockHitResult hit) {}
+            double u, double v, Vec3 requested, Rotation rotation, MovingObjectPosition hit) {}
 
     public record Result(Sample sample, double score) {}
 
@@ -34,7 +34,7 @@ public final class FaceScanA {
             double[] offsets,
             BiFunction<Double, Double, Vec3> pointAt,
             Function<Vec3, Rotation> rotationAt,
-            Function<Rotation, BlockHitResult> trace,
+            Function<Rotation, MovingObjectPosition> trace,
             ToDoubleFunction<Sample> score,
             double initialBestScore) {
         return scanPrimitive(
@@ -46,7 +46,7 @@ public final class FaceScanA {
             double[] offsets,
             PointFactory pointAt,
             Function<Vec3, Rotation> rotationAt,
-            Function<Rotation, BlockHitResult> trace,
+            Function<Rotation, MovingObjectPosition> trace,
             ToDoubleFunction<Sample> score,
             double initialBestScore) {
         Result best = null;
@@ -56,7 +56,7 @@ public final class FaceScanA {
                 Vec3 point = pointAt.apply(u, v);
                 Rotation rotation = rotationAt.apply(point);
                 if (rotation == null) continue;
-                BlockHitResult hit = trace.apply(rotation);
+                MovingObjectPosition hit = trace.apply(rotation);
                 if (hit == null) continue;
                 Sample candidate = new Sample(u, v, point, rotation, hit);
                 double candidateScore = score.applyAsDouble(candidate);

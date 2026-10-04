@@ -11,10 +11,10 @@ import com.blanoir.moons.client.module.impl.combat.hitselect.HitSelectCycle;
 import com.blanoir.moons.client.utils.client.ClientReady;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.multiplayer.ClientLevel;
-import net.minecraft.network.protocol.game.ClientboundDamageEventPacket;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.player.Player;
+import net.minecraft.client.multiplayer.WorldClient;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.network.play.server.S19PacketEntityStatus;
 
 import java.util.IdentityHashMap;
 import java.util.Map;
@@ -27,9 +27,11 @@ public final class HitSelect {
     private static final IntSetting PAUSE = number("pauseMs", 450, 500);
     private static final IntSetting FIRST = number("firstMs", 150, 500);
     private static final IntSetting TRADE = number("tradeMs", 0, 250);
+    private static final com.blanoir.moons.client.utils.combat.MeleeHitConfirmation HITS =
+            new com.blanoir.moons.client.utils.combat.MeleeHitConfirmation();
     private static final Map<Entity, Track> TRACKS = new IdentityHashMap<>();
-    private static ClientLevel level;
-    private static Player player;
+    private static WorldClient level;
+    private static EntityPlayer player;
     private static int bypassDepth;
     private static String status = "Ready";
 
@@ -63,36 +65,40 @@ public final class HitSelect {
         EventBus.ATTACK_ENTITY_POST.register(
                 "HitSelect.dispatched",
                 event -> {
-                    Minecraft client = Minecraft.getInstance();
+                    Minecraft client = Minecraft.getMinecraft();
                     if (bypassDepth == 0
                             && context(client)
                             && event.attacker() == player
                             && eligible(client, event.target())) {
                         track(event.target()).attacked(now());
+                        HITS.sent(event.target().getEntityId(), System.nanoTime());
                         status = "Pause";
                     }
                 });
         EventBus.PACKET_RECEIVE_APPLY.register(
                 "HitSelect.damage",
                 event -> {
-                    Minecraft client = Minecraft.getInstance();
+                    Minecraft client = Minecraft.getMinecraft();
                     if (!context(client)
-                            || event.listener() != client.getConnection()
-                            || !(event.packet() instanceof ClientboundDamageEventPacket damage))
-                        return;
+                            || event.listener() != client.getNetHandler()
+                            || !(event.packet() instanceof S19PacketEntityStatus damage)) return;
+                    if (damage.getOpCode() != 2) return;
                     long now = now();
-                    Entity target = level.getEntity(damage.entityId());
+                    Entity target = damage.getEntity(level);
                     if (eligible(client, target)) {
-                        track(target)
-                                .targetDamaged(
-                                        now,
-                                        damage.sourceCauseId() == player.getId()
-                                                && damage.sourceDirectId() == player.getId());
+                        // 1.8.9 reports hurt status without a source id. Match only an
+                        // outstanding local attempt; unrelated hurt never confirms our hit.
+                        boolean matched =
+                                HITS.confirm(
+                                        target.getEntityId(),
+                                        -1,
+                                        -1,
+                                        player.getEntityId(),
+                                        System.nanoTime());
+                        track(target).targetDamaged(now, matched);
                     } else if (target == player) {
-                        Entity attacker = level.getEntity(damage.sourceCauseId());
-                        if (eligible(client, attacker)
-                                && damage.sourceDirectId() == attacker.getId())
-                            track(attacker).incomingHit(now);
+                        Entity attacker = player.getLastAttacker();
+                        if (eligible(client, attacker)) track(attacker).incomingHit(now);
                     }
                 });
     }
@@ -100,9 +106,9 @@ public final class HitSelect {
     public static boolean shouldDelay(Minecraft client, Entity target) {
         if (bypassDepth > 0 || !context(client) || !eligible(client, target)) return false;
         var info =
-                client.getConnection() == null
+                client.getNetHandler() == null
                         ? null
-                        : client.getConnection().getPlayerInfo(player.getUUID());
+                        : client.getNetHandler().getPlayerInfo(player.getUniqueID());
         var gate =
                 track(target)
                         .evaluate(
@@ -112,7 +118,9 @@ public final class HitSelect {
                                         FIRST.get(),
                                         TRADE.get(),
                                         SERVER_TIME.get(),
-                                        info == null ? 0 : Math.clamp(info.getLatency(), 0, 2000)));
+                                        info == null
+                                                ? 0
+                                                : Math.clamp(info.getResponseTime(), 0, 2000)));
         status =
                 switch (gate) {
                     case READY -> "Ready";
@@ -151,24 +159,27 @@ public final class HitSelect {
     private static boolean eligible(Minecraft client, Entity entity) {
         return entity != null
                 && Targeting.isEnemyPlayer(client, entity)
-                && client.level.getEntity(entity.getId()) == entity;
+                && client.theWorld.getEntityByID(entity.getEntityId()) == entity;
     }
 
     private static boolean context(Minecraft client) {
-        if (!ENABLED.get() || !ClientReady.aliveGameplay(client) || client.player.isSpectator()) {
+        if (!ENABLED.get()
+                || !ClientReady.aliveGameplay(client)
+                || client.thePlayer.isSpectator()) {
             reset();
             return false;
         }
-        if (level != client.level || player != client.player) {
+        if (level != client.theWorld || player != client.thePlayer) {
             reset();
-            level = client.level;
-            player = client.player;
+            level = client.theWorld;
+            player = client.thePlayer;
         }
         return true;
     }
 
     private static void reset() {
         TRACKS.clear();
+        HITS.reset();
         level = null;
         player = null;
         status = "Ready";

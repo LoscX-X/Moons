@@ -1,69 +1,51 @@
 package com.blanoir.moons.client.management.network;
 
-import com.blanoir.moons.client.access.PacketAccess;
+import net.minecraft.client.multiplayer.WorldClient;
+import net.minecraft.entity.Entity;
+import net.minecraft.network.Packet;
+import net.minecraft.network.play.server.S14PacketEntity;
+import net.minecraft.network.play.server.S18PacketEntityTeleport;
+import net.minecraft.util.Vec3;
 
-import net.minecraft.client.multiplayer.ClientLevel;
-import net.minecraft.network.protocol.Packet;
-import net.minecraft.network.protocol.game.ClientboundEntityPositionSyncPacket;
-import net.minecraft.network.protocol.game.ClientboundMoveEntityPacket;
-import net.minecraft.network.protocol.game.ClientboundTeleportEntityPacket;
-import net.minecraft.network.protocol.game.VecDeltaCodec;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.phys.Vec3;
-
-/**
- * Tracks delayed entity positions from vanilla movement packets.
- */
+/** Vanilla 1.8.9 entity movement is encoded in units of 1/32 block, not modern 1/4096. */
 public final class TrackedEntityPosition {
-    private final VecDeltaCodec codec = new VecDeltaCodec();
+    private Vec3 position = new Vec3(0, 0, 0);
 
-    public TrackedEntityPosition() {
-        this(Vec3.ZERO);
-    }
+    public TrackedEntityPosition() {}
 
     public TrackedEntityPosition(Entity entity) {
-        this(entity.getPositionCodec().getBase());
-    }
-
-    private TrackedEntityPosition(Vec3 initialPosition) {
-        codec.setBase(initialPosition);
+        setBaseFrom(entity);
     }
 
     public Vec3 base() {
-        return this.codec.getBase();
+        return position;
     }
 
     public void base(Vec3 value) {
-        this.codec.setBase(value);
+        position = value;
     }
 
     public void setBaseFrom(Entity entity) {
-        this.codec.setBase(entity.getPositionCodec().getBase());
+        position =
+                new Vec3(
+                        entity.serverPosX / 32.0,
+                        entity.serverPosY / 32.0,
+                        entity.serverPosZ / 32.0);
     }
 
-    /**
-     * Advances the tracked position with a movement packet, returning the new tracked
-     * position, or {@code null} when the packet does not move the tracked entity.
-     */
-    public Vec3 handlePacket(Packet<?> packet, ClientLevel level, Entity target) {
-        Vec3 trackedPos =
-                switch (packet) {
-                    case ClientboundMoveEntityPacket move when move.getEntity(level) == target ->
-                            PacketAccess.decodeEntityDelta(move, codec);
-                    case ClientboundTeleportEntityPacket teleport
-                            when teleport.id() == target.getId() ->
-                            teleport.change().position();
-                    case ClientboundEntityPositionSyncPacket sync
-                            when sync.id() == target.getId() ->
-                            PacketAccess.syncPosition(sync);
-                    case null, default -> null;
-                };
-
-        if (trackedPos == null) {
-            return null;
-        }
-
-        this.base(trackedPos);
-        return trackedPos;
+    public Vec3 handlePacket(Packet<?> packet, WorldClient world, Entity target) {
+        if (packet instanceof S14PacketEntity move && move.getEntity(world) == target)
+            position =
+                    position.addVector(
+                            move.func_149062_c() / 32.0,
+                            move.func_149061_d() / 32.0,
+                            move.func_149064_e() / 32.0);
+        else if (packet instanceof S18PacketEntityTeleport teleport
+                && teleport.getEntityId() == target.getEntityId())
+            position =
+                    new Vec3(
+                            teleport.getX() / 32.0, teleport.getY() / 32.0, teleport.getZ() / 32.0);
+        else return null;
+        return position;
     }
 }

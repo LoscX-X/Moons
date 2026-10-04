@@ -1,5 +1,6 @@
 package com.blanoir.moons.client.module.impl.combat.silentaura;
 
+import com.blanoir.moons.client.compat.math.VecMath;
 import com.blanoir.moons.client.utils.math.MathUtils;
 import com.blanoir.moons.client.utils.math.RandomMath;
 import com.blanoir.moons.client.utils.rotation.aim.AimParameters;
@@ -12,8 +13,8 @@ import com.blanoir.moons.client.utils.rotation.aim.AimSolverG;
 import com.blanoir.moons.client.utils.rotation.aim.AimState;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.util.Vec3;
 
 /** Continuous rotation whose path noise fades out completely at the target. */
 public final class SilentAuraRotationController {
@@ -31,19 +32,19 @@ public final class SilentAuraRotationController {
         this.fullLockMode = fullLockMode;
     }
 
-    public void track(Minecraft client, LivingEntity target, Vec3 point, double deltaSeconds) {
-        var currentPlayer = client == null ? null : client.player;
+    public void track(Minecraft client, EntityLivingBase target, Vec3 point, double deltaSeconds) {
+        var currentPlayer = client == null ? null : client.thePlayer;
         if (client == null || currentPlayer == null || target == null || point == null) {
             returnToCamera(client, deltaSeconds);
             return;
         }
         if (!Double.isFinite(deltaSeconds) || deltaSeconds <= 0.0D) return;
         if (!state.active) {
-            state.yaw = currentPlayer.getYRot();
-            state.pitch = currentPlayer.getXRot();
+            state.yaw = currentPlayer.rotationYaw;
+            state.pitch = currentPlayer.rotationPitch;
             state.yawVelocity = state.pitchVelocity = 0.0F;
         }
-        boolean targetChanged = state.targetId != target.getId();
+        boolean targetChanged = state.targetId != target.getEntityId();
         if (targetChanged) {
             state.crossingTarget = false;
             state.crossingTurnDirection = 0.0F;
@@ -52,20 +53,21 @@ public final class SilentAuraRotationController {
             state.pathJitterBlend = 0.0F;
             state.prediction.reset();
             state.heldOrbitOffset = null;
-            state.orbitOffset = Vec3.ZERO;
+            state.orbitOffset = VecMath.ZERO;
             state.nextAimSampleSeconds = 0.0D;
             state.flickArmed = false;
             state.flickYawAccelScale = state.flickPitchAccelScale = 1.0D;
             state.correction.reset();
             state.motionSeed =
                     RandomMath.nextLong()
-                            ^ Integer.toUnsignedLong(target.getId()) * 0xD1B54A32D192ED03L
-                            ^ Integer.toUnsignedLong(currentPlayer.tickCount) * 0x9E3779B97F4A7C15L;
-            state.stickyAimY = point.y;
+                            ^ Integer.toUnsignedLong(target.getEntityId()) * 0xD1B54A32D192ED03L
+                            ^ Integer.toUnsignedLong(currentPlayer.ticksExisted)
+                                    * 0x9E3779B97F4A7C15L;
+            state.stickyAimY = point.yCoord;
         }
         state.active = true;
         state.returning = false;
-        state.targetId = target.getId();
+        state.targetId = target.getEntityId();
         learnedPoint = point;
         AimParameters parameters = parameters();
         AimSolverB.observe(state, aimType, parameters, client, target, deltaSeconds);
@@ -79,7 +81,7 @@ public final class SilentAuraRotationController {
 
     public void returnToCamera(Minecraft client, double deltaSeconds) {
         learnedPoint = null;
-        var currentPlayer = client == null ? null : client.player;
+        var currentPlayer = client == null ? null : client.thePlayer;
         state.targetId = -1;
         state.crossingTarget = false;
         state.yawFeedForward = 0.0D;
@@ -99,12 +101,13 @@ public final class SilentAuraRotationController {
             state.heldOrbitOffset = null;
             state.returnMotionSeed =
                     RandomMath.nextLong()
-                            ^ Integer.toUnsignedLong(currentPlayer.tickCount) * 0x94D049BB133111EBL;
+                            ^ Integer.toUnsignedLong(currentPlayer.ticksExisted)
+                                    * 0x94D049BB133111EBL;
             state.nextReturnMotionSample = 0.0D;
             state.correction.reset();
         }
 
-        AimSolverG.returnTarget(state, currentPlayer.getYRot(), currentPlayer.getXRot());
+        AimSolverG.returnTarget(state, currentPlayer.rotationYaw, currentPlayer.rotationPitch);
         double time = System.nanoTime() * 1.0E-9D;
         AimSolverG.returnStep(state, aimType, parameters(), deltaSeconds, time);
     }
@@ -122,7 +125,7 @@ public final class SilentAuraRotationController {
     }
 
     public void cancelReturn(Minecraft client) {
-        if (state.returning && client != null && client.player != null) {
+        if (state.returning && client != null && client.thePlayer != null) {
             clearAtCamera(client);
         }
     }
@@ -167,7 +170,7 @@ public final class SilentAuraRotationController {
     }
 
     public Vec3 lookVector() {
-        return Vec3.directionFromRotation(state.pitch, state.yaw);
+        return VecMath.directionFromRotation(state.pitch, state.yaw);
     }
 
     public void clear() {
@@ -180,7 +183,7 @@ public final class SilentAuraRotationController {
         state.motionSeed = 0L;
         state.stickyAimY = Double.NaN;
         state.heldOrbitOffset = null;
-        state.orbitOffset = Vec3.ZERO;
+        state.orbitOffset = VecMath.ZERO;
         state.prediction.reset();
         state.noiseTime = state.noiseStrength = 0.0D;
         state.noiseSpeed = 1.0D;
@@ -204,14 +207,14 @@ public final class SilentAuraRotationController {
         // Re-base onto the camera yaw without a modulo snap: pick the 360°
         // equivalent closest to the current continuous yaw, otherwise crossing
         // the ±180 boundary emits a ~360° delta packet instead of a small turn.
-        state.yaw += MathUtils.wrappedAngleDifference(state.yaw, client.player.getYRot());
+        state.yaw += MathUtils.wrappedAngleDifference(state.yaw, client.thePlayer.rotationYaw);
         // The old implementation only rebased the controller and immediately
         // disabled it. The following vanilla packet therefore still used the
         // camera's wrapped numeric yaw (for example -179 after a sent 181),
         // producing a -360 degree delta. Preserve the visually identical
         // continuous equivalent on the actual player before releasing control.
-        client.player.setYRot(state.yaw);
-        state.pitch = client.player.getXRot();
+        client.thePlayer.rotationYaw = state.yaw;
+        state.pitch = client.thePlayer.rotationPitch;
         clear();
     }
 

@@ -17,7 +17,7 @@ import com.blanoir.moons.client.utils.math.RandomMath;
 import com.blanoir.moons.client.utils.text.NumberText;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.world.item.BlockItem;
+import net.minecraft.item.ItemBlock;
 
 /** Repeats vanilla use actions while the user holds their bound use key. */
 public final class RightClick {
@@ -67,17 +67,18 @@ public final class RightClick {
     private static boolean canClick(Minecraft client) {
         return ENABLED.get()
                 && ClientReady.aliveGameplay(client)
-                && client.isWindowActive()
-                && !client.isPaused()
-                && !client.player.isSpectator()
-                && !client.player.isUsingItem()
+                && client.inGameHasFocus
+                && !client.isGamePaused()
+                && !client.thePlayer.isSpectator()
+                && !client.thePlayer.isUsingItem()
                 && !HotbarLease.isHeld()
                 && !RotationLease.hasSilentRotation()
-                && CombatInputController.isPhysicallyDown(client, client.options.keyUse)
-                && client.options.keyUse.isDown()
+                && CombatInputController.isPhysicallyDown(
+                        client, client.gameSettings.keyBindUseItem)
+                && client.gameSettings.keyBindUseItem.isKeyDown()
                 && (!BLOCKS_ONLY.get()
-                        || client.player.getMainHandItem().getItem() instanceof BlockItem
-                        || client.player.getOffhandItem().getItem() instanceof BlockItem);
+                        || (client.thePlayer.getHeldItem() != null
+                                && client.thePlayer.getHeldItem().getItem() instanceof ItemBlock));
     }
 
     public static void reset() {

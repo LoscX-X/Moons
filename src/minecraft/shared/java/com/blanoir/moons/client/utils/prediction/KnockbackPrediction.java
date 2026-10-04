@@ -1,10 +1,13 @@
 package com.blanoir.moons.client.utils.prediction;
 
+import com.blanoir.moons.client.compat.math.Mth;
+import com.blanoir.moons.client.compat.math.VecMath;
+
 import net.minecraft.client.Minecraft;
-import net.minecraft.util.Mth;
-import net.minecraft.world.entity.ai.attributes.Attributes;
-import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.enchantment.EnchantmentHelper;
+import net.minecraft.entity.SharedMonsterAttributes;
+import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.util.Vec3;
 
 /** Observed target motion with a short reservation for an expected attack impulse. */
 public final class KnockbackPrediction {
@@ -12,15 +15,15 @@ public final class KnockbackPrediction {
     private int sampledTargetId = -1;
     private int sampledTargetTick = Integer.MIN_VALUE;
     private Vec3 lastSampledTargetPosition;
-    private Vec3 smoothedTargetVelocity = Vec3.ZERO;
-    private Vec3 smoothedTargetAcceleration = Vec3.ZERO;
-    private Vec3 attackBaselineVelocity = Vec3.ZERO;
-    private Vec3 anticipatedAttackVelocity = Vec3.ZERO;
+    private Vec3 smoothedTargetVelocity = VecMath.ZERO;
+    private Vec3 smoothedTargetAcceleration = VecMath.ZERO;
+    private Vec3 attackBaselineVelocity = VecMath.ZERO;
+    private Vec3 anticipatedAttackVelocity = VecMath.ZERO;
     private boolean awaitingAttackVelocity;
     private int knockbackWaitTicks;
 
-    public boolean matches(Player target) {
-        return target != null && sampledTargetId == target.getId();
+    public boolean matches(EntityPlayer target) {
+        return target != null && sampledTargetId == target.getEntityId();
     }
 
     public Vec3 velocity() {
@@ -31,11 +34,11 @@ public final class KnockbackPrediction {
         return smoothedTargetAcceleration;
     }
 
-    public void begin(Minecraft client, Player target) {
-        sampledTargetId = target.getId();
-        sampledTargetTick = target.tickCount;
-        lastSampledTargetPosition = target.position();
-        attackBaselineVelocity = target.getDeltaMovement();
+    public void begin(Minecraft client, EntityPlayer target) {
+        sampledTargetId = target.getEntityId();
+        sampledTargetTick = target.ticksExisted;
+        lastSampledTargetPosition = VecMath.position(target);
+        attackBaselineVelocity = VecMath.motion(target);
         anticipatedAttackVelocity = expectedPostAttackVelocity(client, target);
         awaitingAttackVelocity =
                 horizontalDifference(anticipatedAttackVelocity, attackBaselineVelocity)
@@ -43,7 +46,7 @@ public final class KnockbackPrediction {
         knockbackWaitTicks = 0;
         smoothedTargetVelocity =
                 awaitingAttackVelocity ? anticipatedAttackVelocity : attackBaselineVelocity;
-        smoothedTargetAcceleration = Vec3.ZERO;
+        smoothedTargetAcceleration = VecMath.ZERO;
     }
 
     /**
@@ -52,23 +55,26 @@ public final class KnockbackPrediction {
      * server knockback update. Acceleration is deliberately capped at prediction
      * time so one interpolation correction cannot throw the lava several cells.
      */
-    public void observe(Minecraft client, Player target) {
+    public void observe(Minecraft client, EntityPlayer target) {
         if (target == null) {
             return;
         }
-        if (sampledTargetId != target.getId() || lastSampledTargetPosition == null) {
+        if (sampledTargetId != target.getEntityId() || lastSampledTargetPosition == null) {
             begin(client, target);
             return;
         }
-        if (sampledTargetTick == target.tickCount) {
+        if (sampledTargetTick == target.ticksExisted) {
             return;
         }
 
-        int elapsedTicks = Math.max(1, target.tickCount - sampledTargetTick);
-        Vec3 position = target.position();
-        Vec3 observed = position.subtract(lastSampledTargetPosition).scale(1.0D / elapsedTicks);
-        Vec3 reported = target.getDeltaMovement();
-        Vec3 sample = limitHorizontal(observed.scale(0.72D).add(reported.scale(0.28D)), 1.5D);
+        int elapsedTicks = Math.max(1, target.ticksExisted - sampledTargetTick);
+        Vec3 position = VecMath.position(target);
+        Vec3 observed =
+                VecMath.scale(position.subtract(lastSampledTargetPosition), 1.0D / elapsedTicks);
+        Vec3 reported = VecMath.motion(target);
+        Vec3 sample =
+                limitHorizontal(
+                        VecMath.scale(observed, 0.72D).add(VecMath.scale(reported, 0.28D)), 1.5D);
         Vec3 previousVelocity = smoothedTargetVelocity;
         knockbackWaitTicks += elapsedTicks;
         if (awaitingAttackVelocity
@@ -79,7 +85,7 @@ public final class KnockbackPrediction {
             // has not arrived yet. Keep the vanilla impulse estimate instead
             // of smoothing it back into the stale pre-hit motion.
             smoothedTargetVelocity = anticipatedAttackVelocity;
-            smoothedTargetAcceleration = Vec3.ZERO;
+            smoothedTargetAcceleration = VecMath.ZERO;
         } else {
             awaitingAttackVelocity = false;
             double impulse = horizontalDifference(sample, previousVelocity);
@@ -88,70 +94,73 @@ public final class KnockbackPrediction {
                 // multi-tick acceleration. Adopt it immediately so a large
                 // sideways hit cannot be damped by the old 55/45 filter.
                 smoothedTargetVelocity = sample;
-                smoothedTargetAcceleration = Vec3.ZERO;
+                smoothedTargetAcceleration = VecMath.ZERO;
             } else {
-                smoothedTargetVelocity = previousVelocity.scale(0.55D).add(sample.scale(0.45D));
+                smoothedTargetVelocity =
+                        VecMath.scale(previousVelocity, 0.55D).add(VecMath.scale(sample, 0.45D));
                 Vec3 observedAcceleration = smoothedTargetVelocity.subtract(previousVelocity);
                 smoothedTargetAcceleration =
-                        smoothedTargetAcceleration
-                                .scale(0.65D)
-                                .add(observedAcceleration.scale(0.35D));
+                        VecMath.scale(smoothedTargetAcceleration, 0.65D)
+                                .add(VecMath.scale(observedAcceleration, 0.35D));
             }
         }
         lastSampledTargetPosition = position;
-        sampledTargetTick = target.tickCount;
+        sampledTargetTick = target.ticksExisted;
     }
 
     private static Vec3 limitHorizontal(Vec3 movement, double maximum) {
-        double horizontal = Math.sqrt(movement.x * movement.x + movement.z * movement.z);
+        double horizontal =
+                Math.sqrt(movement.xCoord * movement.xCoord + movement.zCoord * movement.zCoord);
         if (horizontal <= maximum || horizontal <= 1.0E-9D) {
             return movement;
         }
         double scale = maximum / horizontal;
-        return new Vec3(movement.x * scale, movement.y, movement.z * scale);
+        return new Vec3(movement.xCoord * scale, movement.yCoord, movement.zCoord * scale);
     }
 
     public void reset() {
         sampledTargetId = -1;
         sampledTargetTick = Integer.MIN_VALUE;
         lastSampledTargetPosition = null;
-        smoothedTargetVelocity = Vec3.ZERO;
-        smoothedTargetAcceleration = Vec3.ZERO;
-        attackBaselineVelocity = Vec3.ZERO;
-        anticipatedAttackVelocity = Vec3.ZERO;
+        smoothedTargetVelocity = VecMath.ZERO;
+        smoothedTargetAcceleration = VecMath.ZERO;
+        attackBaselineVelocity = VecMath.ZERO;
+        anticipatedAttackVelocity = VecMath.ZERO;
         awaitingAttackVelocity = false;
         knockbackWaitTicks = 0;
     }
 
-    public static Vec3 expectedPostAttackVelocity(Minecraft client, Player target) {
-        Vec3 current = target.getDeltaMovement();
-        double dx = target.getX() - client.player.getX();
-        double dz = target.getZ() - client.player.getZ();
+    public static Vec3 expectedPostAttackVelocity(Minecraft client, EntityPlayer target) {
+        Vec3 current = VecMath.motion(target);
+        double dx = target.posX - client.thePlayer.posX;
+        double dz = target.posZ - client.thePlayer.posZ;
         double length = Math.hypot(dx, dz);
         if (length < 1.0E-6D) {
             return current;
         }
         double levels =
-                Math.max(0.0D, client.player.getAttributeValue(Attributes.ATTACK_KNOCKBACK))
-                        + (client.player.isSprinting() ? 1.0D : 0.0D);
+                Math.max(0.0D, EnchantmentHelper.getKnockbackModifier(client.thePlayer))
+                        + (client.thePlayer.isSprinting() ? 1.0D : 0.0D);
         double impulse =
                 levels
                         * 0.5D
                         * (1.0D
                                 - Mth.clamp(
-                                        target.getAttributeValue(Attributes.KNOCKBACK_RESISTANCE),
+                                        target.getEntityAttribute(
+                                                        SharedMonsterAttributes.knockbackResistance)
+                                                .getAttributeValue(),
                                         0.0D,
                                         1.0D));
         if (impulse <= 1.0E-6D) {
             return current;
         }
         return new Vec3(
-                current.x * 0.5D + dx / length * impulse,
-                current.y,
-                current.z * 0.5D + dz / length * impulse);
+                current.xCoord * 0.5D + dx / length * impulse,
+                current.yCoord,
+                current.zCoord * 0.5D + dz / length * impulse);
     }
 
     private static double horizontalDifference(Vec3 first, Vec3 second) {
-        return Math.hypot(first.x - second.x, first.z - second.z);
+        return Math.hypot(first.xCoord - second.xCoord, first.zCoord - second.zCoord);
     }
 }

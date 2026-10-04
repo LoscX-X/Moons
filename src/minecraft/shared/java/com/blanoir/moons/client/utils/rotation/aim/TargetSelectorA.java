@@ -1,17 +1,18 @@
 package com.blanoir.moons.client.utils.rotation.aim;
 
+import com.blanoir.moons.client.compat.math.VecMath;
 import com.blanoir.moons.client.management.targeting.Targeting;
 import com.blanoir.moons.client.utils.combat.CombatGeometry;
 import com.blanoir.moons.client.utils.combat.CombatReach;
 import com.blanoir.moons.client.utils.math.MathUtils;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.NeutralMob;
-import net.minecraft.world.entity.monster.Enemy;
-import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.entity.EntityLiving;
+import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.entity.monster.IMob;
+import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.util.AxisAlignedBB;
+import net.minecraft.util.Vec3;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -30,7 +31,7 @@ public final class TargetSelectorA {
 
     public record Parameters(
             boolean targetPlayers,
-            java.util.Set<net.minecraft.resources.Identifier> targetEntityTypes,
+            java.util.Set<net.minecraft.util.ResourceLocation> targetEntityTypes,
             double fov,
             int hurtTime,
             double aimRange,
@@ -39,7 +40,7 @@ public final class TargetSelectorA {
             boolean throughBlocks) {}
 
     public record Candidate(
-            LivingEntity entity,
+            EntityLivingBase entity,
             Vec3 point,
             double distanceSquared,
             boolean attackable,
@@ -51,7 +52,7 @@ public final class TargetSelectorA {
             Parameters parameters,
             Minecraft client,
             Vec3 referenceLook,
-            LivingEntity locked,
+            EntityLivingBase locked,
             double attackRange,
             double scanRange) {
         List<Candidate> candidates = new ArrayList<>();
@@ -59,11 +60,13 @@ public final class TargetSelectorA {
                 candidate(parameters, client, locked, referenceLook, attackRange, scanRange, true);
         if (lockedCandidate != null) candidates.add(lockedCandidate);
 
-        AABB searchBox =
-                client.player.getBoundingBox().inflate(scanRange + CombatGeometry.searchPadding());
-        for (LivingEntity entity :
-                client.level.getEntitiesOfClass(
-                        LivingEntity.class,
+        AxisAlignedBB searchBox =
+                VecMath.inflate(
+                        client.thePlayer.getEntityBoundingBox(),
+                        scanRange + CombatGeometry.searchPadding());
+        for (EntityLivingBase entity :
+                client.theWorld.getEntitiesWithinAABB(
+                        EntityLivingBase.class,
                         searchBox,
                         entity ->
                                 entity != locked
@@ -98,7 +101,7 @@ public final class TargetSelectorA {
     public static Candidate candidate(
             Parameters parameters,
             Minecraft client,
-            LivingEntity entity,
+            EntityLivingBase entity,
             Vec3 referenceLook,
             double attackRange,
             double scanRange,
@@ -118,7 +121,7 @@ public final class TargetSelectorA {
     }
 
     public static boolean trackingEligible(
-            Parameters parameters, Minecraft client, LivingEntity entity, double range) {
+            Parameters parameters, Minecraft client, EntityLivingBase entity, double range) {
         if (entity == null) return false;
         if (!Targeting.isConfiguredTarget(
                 client, entity, parameters.targetPlayers(), false, parameters.targetEntityTypes()))
@@ -128,12 +131,12 @@ public final class TargetSelectorA {
         // hint.  Recheck it for the cached and already locked target as well;
         // otherwise one successful acquisition turns every configured FOV into
         // a persistent 360-degree lock.
-        Vec3 center = CombatGeometry.box(client, entity).getCenter();
+        Vec3 center = VecMath.center(CombatGeometry.box(client, entity));
         return MathUtils.withinFov(viewAngle(parameters, client, center), parameters.fov());
     }
 
     public static boolean acquisitionEligible(
-            Parameters parameters, Minecraft client, LivingEntity entity, double range) {
+            Parameters parameters, Minecraft client, EntityLivingBase entity, double range) {
         return trackingEligible(parameters, client, entity, range)
                 && entity.hurtTime <= parameters.hurtTime();
     }
@@ -150,18 +153,18 @@ public final class TargetSelectorA {
                                         + candidate.entity().getAbsorptionAmount())
                 .thenComparingInt(candidate -> candidate.entity().hurtTime)
                 .thenComparingInt(candidate -> candidate.locked() ? 0 : 1)
-                .thenComparingInt(candidate -> candidate.entity().getId());
+                .thenComparingInt(candidate -> candidate.entity().getEntityId());
     }
 
-    public static double angle(Parameters parameters, Minecraft client, LivingEntity entity) {
-        return viewAngle(parameters, client, CombatGeometry.box(client, entity).getCenter());
+    public static double angle(Parameters parameters, Minecraft client, EntityLivingBase entity) {
+        return viewAngle(parameters, client, VecMath.center(CombatGeometry.box(client, entity)));
     }
 
-    public static int typeRank(Parameters parameters, Minecraft client, LivingEntity entity) {
-        if (entity instanceof Player) return 0;
-        if (entity instanceof Enemy) return 1;
-        if (entity instanceof NeutralMob neutral
-                && client.player.getUUID().equals(neutral.getPersistentAngerTarget())) {
+    public static int typeRank(Parameters parameters, Minecraft client, EntityLivingBase entity) {
+        if (entity instanceof EntityPlayer) return 0;
+        if (entity instanceof IMob) return 1;
+        if (entity instanceof EntityLiving neutral
+                && neutral.getAttackTarget() == client.thePlayer) {
             return 2;
         }
         return 3;
@@ -169,11 +172,11 @@ public final class TargetSelectorA {
 
     public static double viewAngle(Parameters parameters, Minecraft client, Vec3 point) {
         return AimSolverD.viewAngle(
-                client.player.getEyePosition(), client.player.getViewVector(1.0F), point);
+                client.thePlayer.getPositionEyes(1F), client.thePlayer.getLook(1.0F), point);
     }
 
     public static boolean validClient(Parameters parameters, Minecraft client) {
-        return client != null && client.player != null && client.level != null;
+        return client != null && client.thePlayer != null && client.theWorld != null;
     }
 
     public static double attackRange(Parameters parameters, Minecraft client) {
@@ -185,9 +188,13 @@ public final class TargetSelectorA {
     }
 
     public static Vec3 visibleAimPoint(
-            Parameters parameters, Minecraft client, LivingEntity target, Vec3 look, double range) {
+            Parameters parameters,
+            Minecraft client,
+            EntityLivingBase target,
+            Vec3 look,
+            double range) {
         if (!validClient(parameters, client) || target == null || range <= 0.0D) return null;
-        AABB aimBox = CombatGeometry.box(client, target);
+        AxisAlignedBB aimBox = CombatGeometry.box(client, target);
         return AimPointsC.findBestVisibleSurfacePoint(
                 client,
                 aimBox,

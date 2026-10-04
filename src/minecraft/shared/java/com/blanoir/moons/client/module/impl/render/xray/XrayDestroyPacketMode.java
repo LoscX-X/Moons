@@ -1,8 +1,6 @@
 package com.blanoir.moons.client.module.impl.render.xray;
 
-import com.blanoir.moons.client.access.GameAccess;
 import com.blanoir.moons.client.access.MinecraftClientAccess;
-import com.blanoir.moons.client.access.PacketAccess;
 import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.config.MoonsConfig;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
@@ -11,19 +9,16 @@ import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.event.tick.TickEvent;
 import com.blanoir.moons.client.module.impl.combat.SilentAura;
 
+import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.multiplayer.ClientLevel;
-import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
-import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
-import net.minecraft.tags.ItemTags;
-import net.minecraft.world.InteractionHand;
-import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.phys.BlockHitResult;
-import net.minecraft.world.phys.EntityHitResult;
-import net.minecraft.world.phys.HitResult;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.client.multiplayer.WorldClient;
+import net.minecraft.item.ItemPickaxe;
+import net.minecraft.network.play.client.C07PacketPlayerDigging;
+import net.minecraft.network.play.client.C0APacketAnimation;
+import net.minecraft.util.BlockPos;
+import net.minecraft.util.EnumFacing;
+import net.minecraft.util.MovingObjectPosition;
+import net.minecraft.util.Vec3;
 
 import java.util.ArrayDeque;
 
@@ -58,7 +53,7 @@ public final class XrayDestroyPacketMode {
 
     private static final ArrayDeque<ProbeTarget> STATIC_TARGETS = new ArrayDeque<>();
 
-    private static ClientLevel activeLevel;
+    private static WorldClient activeLevel;
     private static BlockPos lastCrosshairBlock;
     private static boolean crosshairBlockProbed;
     private static BlockPos staticOrigin;
@@ -146,8 +141,8 @@ public final class XrayDestroyPacketMode {
             return;
         }
 
-        if (activeLevel != client.level) {
-            activeLevel = client.level;
+        if (activeLevel != client.theWorld) {
+            activeLevel = client.theWorld;
             resetTargetState();
         }
 
@@ -166,13 +161,14 @@ public final class XrayDestroyPacketMode {
     }
 
     private static void tickCrosshairScan(Minecraft client) {
-        if (!(client.hitResult instanceof BlockHitResult crosshair)
-                || crosshair.getType() != HitResult.Type.BLOCK) {
+        if (client.objectMouseOver == null
+                || client.objectMouseOver.typeOfHit
+                        != MovingObjectPosition.MovingObjectType.BLOCK) {
             resetCrosshairState();
             return;
         }
 
-        BlockPos surfaceBlock = crosshair.getBlockPos().immutable();
+        BlockPos surfaceBlock = client.objectMouseOver.getBlockPos();
         if (!isProbeableBlock(client, surfaceBlock)) {
             resetCrosshairState();
             return;
@@ -186,22 +182,27 @@ public final class XrayDestroyPacketMode {
             return;
         }
 
-        BlockHitResult target = deepestTargetOnViewRay(client);
+        MovingObjectPosition target = deepestTargetOnViewRay(client);
         crosshairBlockProbed = true;
         if (target != null) {
-            sendProbe(client, target.getBlockPos(), target.getDirection());
+            sendProbe(client, target.getBlockPos(), target.sideHit);
         }
     }
 
-    private static BlockHitResult deepestTargetOnViewRay(Minecraft client) {
-        Vec3 eye = client.player.getEyePosition();
-        Vec3 view = client.player.getViewVector(1.0F).normalize();
-        double reach = client.player.blockInteractionRange();
+    private static MovingObjectPosition deepestTargetOnViewRay(Minecraft client) {
+        Vec3 eye = client.thePlayer.getPositionEyes(1.0F);
+        Vec3 view = client.thePlayer.getLook(1.0F).normalize();
+        double reach = client.playerController.getBlockReachDistance();
 
         BlockPos previous = null;
-        BlockHitResult deepest = null;
+        MovingObjectPosition deepest = null;
         for (double distance = 0.0D; distance <= reach; distance += RAY_STEP) {
-            BlockPos pos = BlockPos.containing(eye.add(view.scale(distance)));
+            BlockPos pos =
+                    new BlockPos(
+                            eye.addVector(
+                                    view.xCoord * distance,
+                                    view.yCoord * distance,
+                                    view.zCoord * distance));
             if (previous != null && pos.equals(previous)) {
                 continue;
             }
@@ -209,7 +210,7 @@ public final class XrayDestroyPacketMode {
             if (!isProbeableBlock(client, pos)) {
                 continue;
             }
-            BlockHitResult hit = raycastTarget(client, pos, null);
+            MovingObjectPosition hit = raycastTarget(client, pos, null);
             if (hit != null) {
                 deepest = hit;
             }
@@ -218,7 +219,7 @@ public final class XrayDestroyPacketMode {
     }
 
     private static void tickStaticScan(Minecraft client) {
-        BlockPos playerBlock = client.player.blockPosition().immutable();
+        BlockPos playerBlock = client.thePlayer.getPosition();
         if (!playerBlock.equals(staticOrigin)) {
             STATIC_TARGETS.clear();
             staticOrigin = playerBlock;
@@ -240,149 +241,151 @@ public final class XrayDestroyPacketMode {
 
     private static void rebuildStaticTargets(Minecraft client, BlockPos origin) {
         STATIC_TARGETS.clear();
-        Vec3 eye = client.player.getEyePosition();
-        double reach = client.player.blockInteractionRange();
+        Vec3 eye = client.thePlayer.getPositionEyes(1.0F);
+        double reach = client.playerController.getBlockReachDistance();
         int radius = (int) Math.ceil(reach);
         double candidateRangeSqr = (reach + 1.5D) * (reach + 1.5D);
 
         for (int x = -radius; x <= radius; x++) {
             for (int y = -radius; y <= radius; y++) {
                 for (int z = -radius; z <= radius; z++) {
-                    BlockPos pos = origin.offset(x, y, z);
-                    if (eye.distanceToSqr(Vec3.atCenterOf(pos)) > candidateRangeSqr
+                    BlockPos pos = origin.add(x, y, z);
+                    if (eye.squareDistanceTo(
+                                            new Vec3(
+                                                    pos.getX() + .5,
+                                                    pos.getY() + .5,
+                                                    pos.getZ() + .5))
+                                    > candidateRangeSqr
                             || !isProbeableBlock(client, pos)) {
                         continue;
                     }
 
                     // The ray already determines the hit face. Repeating the
                     // identical shape clip for all six faces adds no candidates.
-                    BlockHitResult hit = raycastTarget(client, pos, null);
+                    MovingObjectPosition hit = raycastTarget(client, pos, null);
                     if (hit != null) {
-                        STATIC_TARGETS.addLast(
-                                new ProbeTarget(hit.getBlockPos().immutable(), hit.getDirection()));
+                        STATIC_TARGETS.addLast(new ProbeTarget(hit.getBlockPos(), hit.sideHit));
                     }
                 }
             }
         }
     }
 
-    private static void sendProbe(Minecraft client, BlockPos pos, Direction direction) {
-        var currentPlayer = client == null ? null : client.player;
-        var currentLevel = client == null ? null : client.level;
-        var currentGameMode = client == null ? null : client.gameMode;
-        var connectionSnapshot = client == null ? null : client.getConnection();
+    private static void sendProbe(Minecraft client, BlockPos pos, EnumFacing direction) {
+        var currentPlayer = client == null ? null : client.thePlayer;
+        var currentLevel = client == null ? null : client.theWorld;
+        var currentGameMode = client == null ? null : client.playerController;
+        var connectionSnapshot = client == null ? null : client.getNetHandler();
         if (client == null
                 || currentPlayer == null
                 || currentLevel == null
                 || currentGameMode == null
                 || connectionSnapshot == null
-                || currentPlayer.blockActionRestricted(
-                        currentLevel, pos, currentGameMode.getPlayerMode())
-                || !currentLevel.getWorldBorder().isWithinBounds(pos)
+                || currentGameMode.isSpectator()
+                || !currentLevel.getWorldBorder().contains(pos)
                 || !isProbeableBlock(client, pos)) {
             return;
         }
 
-        BlockHitResult verifiedHit = raycastTarget(client, pos, direction);
+        MovingObjectPosition verifiedHit = raycastTarget(client, pos, direction);
         if (verifiedHit == null) {
             return;
         }
 
-        GameAccess.withPredictionSequence(
-                currentLevel,
-                sequence ->
-                        connectionSnapshot.send(
-                                new ServerboundPlayerActionPacket(
-                                        ServerboundPlayerActionPacket.Action.START_DESTROY_BLOCK,
-                                        pos,
-                                        direction,
-                                        sequence)));
-        connectionSnapshot.send(
-                new ServerboundPlayerActionPacket(
-                        ServerboundPlayerActionPacket.Action.ABORT_DESTROY_BLOCK,
-                        pos,
-                        Direction.DOWN,
-                        0));
-        connectionSnapshot.send(PacketAccess.swingPacket(InteractionHand.MAIN_HAND));
+        connectionSnapshot.addToSendQueue(
+                new C07PacketPlayerDigging(
+                        C07PacketPlayerDigging.Action.START_DESTROY_BLOCK, pos, direction));
+        connectionSnapshot.addToSendQueue(
+                new C07PacketPlayerDigging(
+                        C07PacketPlayerDigging.Action.ABORT_DESTROY_BLOCK, pos, EnumFacing.DOWN));
+        connectionSnapshot.addToSendQueue(new C0APacketAnimation());
         packetsSent++;
     }
 
-    private static BlockHitResult raycastTarget(
-            Minecraft client, BlockPos pos, Direction requiredDirection) {
+    private static MovingObjectPosition raycastTarget(
+            Minecraft client, BlockPos pos, EnumFacing requiredDirection) {
         if (!isProbeableBlock(client, pos)) {
             return null;
         }
 
-        BlockState state = client.level.getBlockState(pos);
-        Vec3 eye = client.player.getEyePosition();
-        double reach = client.player.blockInteractionRange();
-        Vec3 end = eye.add(client.player.getViewVector(1.0F).normalize().scale(reach));
-        BlockHitResult hit =
-                client.level.clipWithInteractionOverride(
-                        eye, end, pos, state.getShape(client.level, pos), state);
+        IBlockState state = client.theWorld.getBlockState(pos);
+        Vec3 eye = client.thePlayer.getPositionEyes(1.0F);
+        double reach = client.playerController.getBlockReachDistance();
+        Vec3 end =
+                eye.addVector(
+                        client.thePlayer.getLook(1.0F).xCoord * reach,
+                        client.thePlayer.getLook(1.0F).yCoord * reach,
+                        client.thePlayer.getLook(1.0F).zCoord * reach);
+        MovingObjectPosition hit =
+                state.getBlock().collisionRayTrace(client.theWorld, pos, eye, end);
 
         return isValidProbeHit(hit, pos, requiredDirection, eye, reach) ? hit : null;
     }
 
     static boolean isValidProbeHit(
-            BlockHitResult hit, BlockPos pos, Direction requiredDirection, Vec3 eye, double reach) {
+            MovingObjectPosition hit,
+            BlockPos pos,
+            EnumFacing requiredDirection,
+            Vec3 eye,
+            double reach) {
         // clipWithInteractionOverride returns null for blocks outside the ray.
         return hit != null
-                && hit.getType() == HitResult.Type.BLOCK
+                && hit.typeOfHit == MovingObjectPosition.MovingObjectType.BLOCK
                 && hit.getBlockPos().equals(pos)
-                && (requiredDirection == null || hit.getDirection() == requiredDirection)
-                && hit.getLocation().distanceToSqr(eye) <= reach * reach + DISTANCE_EPSILON;
+                && (requiredDirection == null || hit.sideHit == requiredDirection)
+                && hit.hitVec.squareDistanceTo(eye) <= reach * reach + DISTANCE_EPSILON;
     }
 
     private static boolean isProbeableBlock(Minecraft client, BlockPos pos) {
-        var currentLevel = client == null ? null : client.level;
+        var currentLevel = client == null ? null : client.theWorld;
         if (currentLevel == null
                 || pos == null
-                || !currentLevel.isInWorldBounds(pos)
-                || !currentLevel.isLoaded(pos)) {
+                || (pos.getY() < 0 || pos.getY() >= 256)
+                || !currentLevel.isBlockLoaded(pos)) {
             return false;
         }
 
-        BlockState state = currentLevel.getBlockState(pos);
-        return !state.isAir()
-                && state.getFluidState().isEmpty()
-                && state.getDestroySpeed(currentLevel, pos) >= 0.0F
-                && !state.getCollisionShape(currentLevel, pos).isEmpty()
-                && !state.getShape(currentLevel, pos).isEmpty();
+        IBlockState state = currentLevel.getBlockState(pos);
+        return state.getBlock() != net.minecraft.init.Blocks.air
+                && !state.getBlock().getMaterial().isLiquid()
+                && state.getBlock().getBlockHardness(currentLevel, pos) >= 0
+                && state.getBlock().getCollisionBoundingBox(currentLevel, pos, state) != null;
     }
 
     private static boolean canProbe(Minecraft client) {
-        var currentPlayer = client == null ? null : client.player;
-        var currentLevel = client == null ? null : client.level;
-        var currentGameMode = client == null ? null : client.gameMode;
+        var currentPlayer = client == null ? null : client.thePlayer;
+        var currentLevel = client == null ? null : client.theWorld;
+        var currentGameMode = client == null ? null : client.playerController;
         if (client == null
                 || currentPlayer == null
                 || currentLevel == null
                 || currentGameMode == null
-                || client.getConnection() == null
-                || client.hasSingleplayerServer()
-                || currentLevel.dimension().equals(Level.END)
+                || client.getNetHandler() == null
+                || client.isIntegratedServerRunning()
+                || currentPlayer.dimension == 1
                 || MinecraftClientAccess.screen(client) != null
-                || client.options.keyAttack.isDown()
-                || client.options.keyUse.isDown()
+                || client.gameSettings.keyBindAttack.isKeyDown()
+                || client.gameSettings.keyBindUseItem.isKeyDown()
                 || currentPlayer.isUsingItem()
-                || currentGameMode.isDestroying()
-                || client.hitResult instanceof EntityHitResult
+                || currentGameMode.getIsHittingBlock()
+                || (client.objectMouseOver != null
+                        && client.objectMouseOver.typeOfHit
+                                == MovingObjectPosition.MovingObjectType.ENTITY)
                 || SilentAura.hasLockedTarget(client)) {
             return false;
         }
 
-        return currentPlayer.getMainHandItem().isEmpty()
-                || currentPlayer.getMainHandItem().is(ItemTags.PICKAXES);
+        return currentPlayer.getHeldItem() == null
+                || currentPlayer.getHeldItem().getItem() instanceof ItemPickaxe;
     }
 
     private static boolean isStationary(Minecraft client) {
-        return client.player.getDeltaMovement().horizontalDistance() <= 0.05D
-                && !client.options.keyUp.isDown()
-                && !client.options.keyDown.isDown()
-                && !client.options.keyLeft.isDown()
-                && !client.options.keyRight.isDown()
-                && !client.options.keyJump.isDown();
+        return Math.hypot(client.thePlayer.motionX, client.thePlayer.motionZ) <= 0.05D
+                && !client.gameSettings.keyBindForward.isKeyDown()
+                && !client.gameSettings.keyBindBack.isKeyDown()
+                && !client.gameSettings.keyBindLeft.isKeyDown()
+                && !client.gameSettings.keyBindRight.isKeyDown()
+                && !client.gameSettings.keyBindJump.isKeyDown();
     }
 
     private static void resetAllState() {
@@ -407,5 +410,5 @@ public final class XrayDestroyPacketMode {
         staticIntervalCounter = 0;
     }
 
-    private record ProbeTarget(BlockPos pos, Direction direction) {}
+    private record ProbeTarget(BlockPos pos, EnumFacing direction) {}
 }

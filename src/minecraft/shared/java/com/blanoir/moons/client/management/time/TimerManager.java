@@ -26,9 +26,9 @@ public final class TimerManager {
 
     public static boolean request(Object owner, float multiplier, int priority, long holdMillis) {
         init();
-        Minecraft client = Minecraft.getInstance();
+        Minecraft client = Minecraft.getMinecraft();
         observe(client);
-        if (!ClientReady.gameplay(client) || client.isPaused()) return false;
+        if (!ClientReady.gameplay(client) || client.isGamePaused()) return false;
         REQUESTS.request(owner, multiplier, priority, holdMillis);
         return true;
     }
@@ -44,7 +44,7 @@ public final class TimerManager {
 
     public static boolean active(Minecraft client) {
         observe(client);
-        return ClientReady.gameplay(client) && !client.isPaused() && REQUESTS.active();
+        return ClientReady.gameplay(client) && !client.isGamePaused() && REQUESTS.active();
     }
 
     public static float multiplier(Minecraft client) {
@@ -56,8 +56,8 @@ public final class TimerManager {
     }
 
     private static void observe(Minecraft client) {
-        Object nextWorld = client == null ? null : client.level;
-        Object nextConnection = client == null ? null : client.getConnection();
+        Object nextWorld = client == null ? null : client.theWorld;
+        Object nextConnection = client == null ? null : client.getNetHandler();
         if (world != nextWorld || connection != nextConnection) {
             REQUESTS.reset();
             world = nextWorld;

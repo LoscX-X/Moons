@@ -1,6 +1,7 @@
 package com.blanoir.moons.client.module.impl.combat;
 
 import com.blanoir.moons.client.chat.ClientChat;
+import com.blanoir.moons.client.compat.math.VecMath;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.DoubleSetting;
 import com.blanoir.moons.client.event.EventBus;
@@ -9,9 +10,8 @@ import com.blanoir.moons.client.utils.math.RandomMath;
 import com.blanoir.moons.client.utils.raytrace.RaytraceUtils;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.world.entity.EntitySelector;
-import net.minecraft.world.phys.EntityHitResult;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.util.MovingObjectPosition;
+import net.minecraft.util.Vec3;
 
 /** Extends manual entity picking with a configurable per-tick chance. */
 public final class Reach {
@@ -55,19 +55,25 @@ public final class Reach {
             return;
         }
         double entityRange = RANGE.get();
-        Vec3 start = client.player.getEyePosition();
-        Vec3 look = client.player.getViewVector(1.0F);
-        EntityHitResult extendedHit =
+        Vec3 start = client.thePlayer.getPositionEyes(1.0F);
+        Vec3 look = client.thePlayer.getLook(1.0F);
+        MovingObjectPosition extendedHit =
                 RaytraceUtils.findEntity(
                         client,
                         start,
-                        start.add(look.scale(entityRange + 0.5D)),
+                        start.add(VecMath.scale(look, entityRange + 0.5D)),
                         entityRange,
                         false,
-                        EntitySelector.CAN_BE_PICKED);
+                        entity ->
+                                entity.canBeCollidedWith()
+                                        && !(entity
+                                                        instanceof
+                                                        net.minecraft.entity.player.EntityPlayer
+                                                                spectator
+                                                && spectator.isSpectator()));
         if (extendedHit != null) {
-            client.hitResult = extendedHit;
-            client.crosshairPickEntity = extendedHit.getEntity();
+            client.objectMouseOver = extendedHit;
+            client.pointedEntity = extendedHit.entityHit;
         }
     }
 

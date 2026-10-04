@@ -10,7 +10,7 @@ final class CollectCommand {
     private CollectCommand() {}
 
     static boolean handle(String tail) {
-        Minecraft client = Minecraft.getInstance();
+        Minecraft client = Minecraft.getMinecraft();
         String value = tail.trim();
         if (value.equalsIgnoreCase("on") || value.equalsIgnoreCase("off")) {
             AimCollect.setEnabled(client, value.equalsIgnoreCase("on"));

@@ -1,7 +1,7 @@
 package com.blanoir.moons.client.module.impl.render.xray;
 
-import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.block.Block;
+import net.minecraft.block.state.IBlockState;
 
 public interface XrayTarget {
     String commandName();
@@ -16,7 +16,7 @@ public interface XrayTarget {
 
     boolean matches(Block block);
 
-    default boolean matches(BlockState state) {
+    default boolean matches(IBlockState state) {
         return matches(state.getBlock());
     }
 

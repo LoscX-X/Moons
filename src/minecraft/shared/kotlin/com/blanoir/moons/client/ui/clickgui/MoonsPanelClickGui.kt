@@ -76,7 +76,7 @@ internal fun MoonsPanelClickGui(
             ControlSection("misc", "Misc", ModuleCategories.MISC, "misc"),
             ControlSection("experiment", "Experiment", ModuleCategories.EXPERIMENT, "experiment"),
             ControlSection("world", "World", ModuleCategories.WORLD, "world"),
-            ControlSection("player", "Player", ModuleCategories.PLAYER, "player"),
+            ControlSection("player", "EntityPlayer", ModuleCategories.PLAYER, "player"),
             ControlSection("network", "Network", ModuleCategories.NETWORK, "network"),
         )
     }

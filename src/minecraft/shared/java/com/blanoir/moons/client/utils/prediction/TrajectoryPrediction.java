@@ -1,13 +1,15 @@
 package com.blanoir.moons.client.utils.prediction;
 
+import com.blanoir.moons.client.access.GameAccess;
+import com.blanoir.moons.client.compat.input.InputSnapshot;
+import com.blanoir.moons.client.compat.math.Mth;
+import com.blanoir.moons.client.compat.math.VecMath;
+import com.blanoir.moons.client.compat.world.LegacyCollision;
+
 import net.minecraft.client.Minecraft;
-import net.minecraft.util.Mth;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.Pose;
-import net.minecraft.world.entity.player.Input;
-import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.util.AxisAlignedBB;
+import net.minecraft.util.Vec3;
 
 import java.util.function.UnaryOperator;
 
@@ -25,23 +27,23 @@ public final class TrajectoryPrediction {
 
     /** Constant-velocity projection; the caller owns the horizon policy. */
     public static Vec3 linearPosition(Vec3 position, Vec3 velocity, double ticks) {
-        return position.add(velocity.scale(ticks));
+        return position.add(VecMath.scale(velocity, ticks));
     }
 
-    public static AABB linearBox(AABB box, Vec3 velocity, double ticks) {
-        return box.move(velocity.scale(ticks));
+    public static AxisAlignedBB linearBox(AxisAlignedBB box, Vec3 velocity, double ticks) {
+        return VecMath.move(box, VecMath.scale(velocity, ticks));
     }
 
     public static TrajectoryStep advance(
-            Minecraft client, Player target, Vec3 position, Vec3 velocity, boolean grounded) {
-        AABB box = target.getBoundingBox().move(position.subtract(target.position()));
+            Minecraft client, EntityPlayer target, Vec3 position, Vec3 velocity, boolean grounded) {
+        AxisAlignedBB box =
+                VecMath.move(
+                        target.getEntityBoundingBox(), position.subtract(VecMath.position(target)));
         return advance(
                 position,
                 velocity,
                 grounded,
-                requested ->
-                        Entity.collideBoundingBox(
-                                target, requested, box, client.level, java.util.List.of()));
+                requested -> LegacyCollision.resolve(target, requested, box, client.theWorld));
     }
 
     /** One physics step; collision resolution is supplied by the world adapter. */
@@ -50,27 +52,28 @@ public final class TrajectoryPrediction {
         // Resolve each step against real block shapes. The small downward
         // grounded step detects both floor support and walking off an edge.
         Vec3 requested =
-                grounded && velocity.y <= 0.0D
-                        ? new Vec3(velocity.x, -GRAVITY, velocity.z)
+                grounded && velocity.yCoord <= 0.0D
+                        ? new Vec3(velocity.xCoord, -GRAVITY, velocity.zCoord)
                         : velocity;
         Vec3 movement = collision.apply(requested);
-        boolean blockedX = Math.abs(movement.x - requested.x) > RAY_EPSILON;
-        boolean blockedY = Math.abs(movement.y - requested.y) > RAY_EPSILON;
-        boolean blockedZ = Math.abs(movement.z - requested.z) > RAY_EPSILON;
+        boolean blockedX = Math.abs(movement.xCoord - requested.xCoord) > RAY_EPSILON;
+        boolean blockedY = Math.abs(movement.yCoord - requested.yCoord) > RAY_EPSILON;
+        boolean blockedZ = Math.abs(movement.zCoord - requested.zCoord) > RAY_EPSILON;
         Vec3 nextVelocity =
                 new Vec3(
-                        blockedX ? 0.0D : velocity.x * HORIZONTAL_DRAG,
-                        blockedY ? 0.0D : (requested.y - GRAVITY) * VERTICAL_DRAG,
-                        blockedZ ? 0.0D : velocity.z * HORIZONTAL_DRAG);
+                        blockedX ? 0.0D : velocity.xCoord * HORIZONTAL_DRAG,
+                        blockedY ? 0.0D : (requested.yCoord - GRAVITY) * VERTICAL_DRAG,
+                        blockedZ ? 0.0D : velocity.zCoord * HORIZONTAL_DRAG);
         return new TrajectoryStep(
-                position.add(movement), nextVelocity, blockedY && requested.y < 0.0D);
+                position.add(movement), nextVelocity, blockedY && requested.yCoord < 0.0D);
     }
 
-    public static AABB freeFlightBox(Player target, int ticks) {
+    public static AxisAlignedBB freeFlightBox(EntityPlayer target, int ticks) {
         Vec3 position =
                 freeFlightPosition(
-                        target.position(), target.getDeltaMovement(), target.onGround(), ticks);
-        return target.getDimensions(Pose.STANDING).makeBoundingBox(position);
+                        VecMath.position(target), VecMath.motion(target), target.onGround, ticks);
+        return VecMath.move(
+                target.getEntityBoundingBox(), position.subtract(VecMath.position(target)));
     }
 
     /** Collision-free path, retaining the original ground/air integration order. */
@@ -78,11 +81,11 @@ public final class TrajectoryPrediction {
             Vec3 position, Vec3 velocity, boolean grounded, int ticks) {
         for (int tick = 0; tick < ticks; tick++) {
             if (grounded) {
-                position = position.add(velocity.x, 0.0D, velocity.z);
-                velocity = new Vec3(velocity.x * 0.91D, 0.0D, velocity.z * 0.91D);
+                position = position.addVector(velocity.xCoord, 0.0D, velocity.zCoord);
+                velocity = new Vec3(velocity.xCoord * 0.91D, 0.0D, velocity.zCoord * 0.91D);
             } else {
-                double nextY = (velocity.y - 0.08D) * 0.98D;
-                velocity = new Vec3(velocity.x * 0.91D, nextY, velocity.z * 0.91D);
+                double nextY = (velocity.yCoord - 0.08D) * 0.98D;
+                velocity = new Vec3(velocity.xCoord * 0.91D, nextY, velocity.zCoord * 0.91D);
                 position = position.add(velocity);
             }
         }
@@ -91,24 +94,23 @@ public final class TrajectoryPrediction {
 
     /** Immediate horizontal footprint, before applying drag or gravity. */
     public static Vec3 horizontalCollisionTravel(
-            Minecraft client, Player target, Vec3 velocity, double ticks) {
-        return Entity.collideBoundingBox(
+            Minecraft client, EntityPlayer target, Vec3 velocity, double ticks) {
+        return LegacyCollision.resolve(
                 target,
-                new Vec3(velocity.x * ticks, 0.0D, velocity.z * ticks),
-                target.getBoundingBox(),
-                client.level,
-                java.util.List.of());
+                new Vec3(velocity.xCoord * ticks, 0.0D, velocity.zCoord * ticks),
+                target.getEntityBoundingBox(),
+                client.theWorld);
     }
 
-    public static Vec3 observedVelocity(Player target) {
+    public static Vec3 observedVelocity(EntityPlayer target) {
         Vec3 observed =
                 new Vec3(
-                        target.getX() - target.xo,
-                        target.getY() - target.yo,
-                        target.getZ() - target.zo);
-        return Double.isFinite(observed.lengthSqr()) && observed.lengthSqr() <= 2.25D
+                        target.posX - target.prevPosX,
+                        target.posY - target.prevPosY,
+                        target.posZ - target.prevPosZ);
+        return Double.isFinite(VecMath.lengthSqr(observed)) && VecMath.lengthSqr(observed) <= 2.25D
                 ? observed
-                : Vec3.ZERO;
+                : VecMath.ZERO;
     }
 
     /**
@@ -117,25 +119,27 @@ public final class TrajectoryPrediction {
      * along it instead of predicting through the wall or stopping completely.
      */
     public static Vec3 horizontalPosition(
-            Minecraft client, Player entity, Vec3 velocity, Vec3 acceleration, double ticks) {
-        Vec3 position = entity.position();
-        AABB box = entity.getBoundingBox();
+            Minecraft client, EntityPlayer entity, Vec3 velocity, Vec3 acceleration, double ticks) {
+        Vec3 position = VecMath.position(entity);
+        AxisAlignedBB box = entity.getEntityBoundingBox();
         double remaining = Math.max(0.0D, ticks);
         double velocityX =
-                velocity.x + Mth.clamp(acceleration.x, -0.08D, 0.08D) * Math.min(1.0D, remaining);
+                velocity.xCoord
+                        + Mth.clamp(acceleration.xCoord, -0.08D, 0.08D) * Math.min(1.0D, remaining);
         double velocityZ =
-                velocity.z + Mth.clamp(acceleration.z, -0.08D, 0.08D) * Math.min(1.0D, remaining);
+                velocity.zCoord
+                        + Mth.clamp(acceleration.zCoord, -0.08D, 0.08D) * Math.min(1.0D, remaining);
         while (remaining > 1.0E-6D) {
             double fraction = Math.min(1.0D, remaining);
             Vec3 moved =
                     collideHorizontal(
                             client, entity, box, velocityX * fraction, velocityZ * fraction);
-            position = position.add(moved.x, 0.0D, moved.z);
-            box = box.move(moved.x, 0.0D, moved.z);
-            if (Math.abs(moved.x - velocityX * fraction) > 1.0E-4D) {
+            position = position.addVector(moved.xCoord, 0.0D, moved.zCoord);
+            box = box.offset(moved.xCoord, 0.0D, moved.zCoord);
+            if (Math.abs(moved.xCoord - velocityX * fraction) > 1.0E-4D) {
                 velocityX = 0.0D;
             }
-            if (Math.abs(moved.z - velocityZ * fraction) > 1.0E-4D) {
+            if (Math.abs(moved.zCoord - velocityZ * fraction) > 1.0E-4D) {
                 velocityZ = 0.0D;
             }
             velocityX *= Math.pow(HORIZONTAL_DRAG, fraction);
@@ -146,31 +150,40 @@ public final class TrajectoryPrediction {
     }
 
     private static Vec3 collideHorizontal(
-            Minecraft client, Player entity, AABB box, double requestedX, double requestedZ) {
+            Minecraft client,
+            EntityPlayer entity,
+            AxisAlignedBB box,
+            double requestedX,
+            double requestedZ) {
         double movedX = clipAxis(client, entity, box, requestedX, true);
-        AABB afterX = box.move(movedX, 0.0D, 0.0D);
+        AxisAlignedBB afterX = box.offset(movedX, 0.0D, 0.0D);
         double movedZ = clipAxis(client, entity, afterX, requestedZ, false);
         return new Vec3(movedX, 0.0D, movedZ);
     }
 
     private static double clipAxis(
-            Minecraft client, Player entity, AABB box, double requested, boolean xAxis) {
+            Minecraft client,
+            EntityPlayer entity,
+            AxisAlignedBB box,
+            double requested,
+            boolean xAxis) {
         if (Math.abs(requested) <= 1.0E-9D) {
             return 0.0D;
         }
-        AABB full = xAxis ? box.move(requested, 0.0D, 0.0D) : box.move(0.0D, 0.0D, requested);
-        if (client.level.noCollision(entity, full)) {
+        AxisAlignedBB full =
+                xAxis ? box.offset(requested, 0.0D, 0.0D) : box.offset(0.0D, 0.0D, requested);
+        if (client.theWorld.getCollidingBoundingBoxes(entity, full).isEmpty()) {
             return requested;
         }
         double low = 0.0D;
         double high = 1.0D;
         for (int step = 0; step < COLLISION_BINARY_STEPS; step++) {
             double middle = (low + high) * 0.5D;
-            AABB candidate =
+            AxisAlignedBB candidate =
                     xAxis
-                            ? box.move(requested * middle, 0.0D, 0.0D)
-                            : box.move(0.0D, 0.0D, requested * middle);
-            if (client.level.noCollision(entity, candidate)) {
+                            ? box.offset(requested * middle, 0.0D, 0.0D)
+                            : box.offset(0.0D, 0.0D, requested * middle);
+            if (client.theWorld.getCollidingBoundingBoxes(entity, candidate).isEmpty()) {
                 low = middle;
             } else {
                 high = middle;
@@ -179,27 +192,27 @@ public final class TrajectoryPrediction {
         return requested * low;
     }
 
-    public static AABB nextInputBox(Minecraft client) {
-        return nextInputBox(client, client.player.input.keyPresses);
+    public static AxisAlignedBB nextInputBox(Minecraft client) {
+        return nextInputBox(client, GameAccess.inputSnapshot(client.thePlayer.movementInput));
     }
 
     /** Use the caller's raw input when prediction runs before movement correction. */
-    public static AABB nextInputBox(Minecraft client, Input input) {
+    public static AxisAlignedBB nextInputBox(Minecraft client, InputSnapshot input) {
         int forward = (input.forward() ? 1 : 0) - (input.backward() ? 1 : 0);
         int strafe = (input.left() ? 1 : 0) - (input.right() ? 1 : 0);
         double moveX;
         double moveZ;
         if (forward == 0 && strafe == 0) {
-            Vec3 velocity = client.player.getDeltaMovement();
-            moveX = velocity.x;
-            moveZ = velocity.z;
+            Vec3 velocity = VecMath.motion(client.thePlayer);
+            moveX = velocity.xCoord;
+            moveZ = velocity.zCoord;
         } else {
-            double speed = client.player.isSprinting() ? 0.2873D : 0.221D;
-            float yaw = adjustedYaw(client.player.getYRot(), forward, strafe);
+            double speed = client.thePlayer.isSprinting() ? 0.2873D : 0.221D;
+            float yaw = adjustedYaw(client.thePlayer.rotationYaw, forward, strafe);
             moveX = -Math.sin(yaw * Mth.DEG_TO_RAD) * speed;
             moveZ = Math.cos(yaw * Mth.DEG_TO_RAD) * speed;
         }
-        return client.player.getBoundingBox().move(moveX, 0.0D, moveZ);
+        return client.thePlayer.getEntityBoundingBox().offset(moveX, 0.0D, moveZ);
     }
 
     private static float adjustedYaw(float yaw, float forward, float strafe) {
@@ -211,8 +224,9 @@ public final class TrajectoryPrediction {
         return Mth.wrapDegrees(yaw);
     }
 
-    public static AABB boundedLinearBox(AABB box, Vec3 smoothedVelocity, double ticksAhead) {
+    public static AxisAlignedBB boundedLinearBox(
+            AxisAlignedBB box, Vec3 smoothedVelocity, double ticksAhead) {
         double ticks = Mth.clamp(ticksAhead, 0.0D, 3.0D);
-        return box.move(smoothedVelocity.scale(ticks));
+        return VecMath.move(box, VecMath.scale(smoothedVelocity, ticks));
     }
 }

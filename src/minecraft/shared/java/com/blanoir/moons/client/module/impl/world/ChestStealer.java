@@ -11,19 +11,17 @@ import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.module.impl.world.cheststealer.ChestStealPlan;
 import com.blanoir.moons.client.utils.inventory.InventoryClickFailure;
 import com.blanoir.moons.client.utils.inventory.InventoryClicks;
+import com.blanoir.moons.client.utils.inventory.LegacyItems;
 import com.blanoir.moons.client.utils.registry.RegistryLists;
 
-import net.minecraft.IdentifierException;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
-import net.minecraft.client.gui.screens.inventory.ContainerScreen;
-import net.minecraft.client.gui.screens.inventory.ShulkerBoxScreen;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.Identifier;
-import net.minecraft.world.inventory.AbstractContainerMenu;
-import net.minecraft.world.inventory.ContainerInput;
-import net.minecraft.world.inventory.Slot;
-import net.minecraft.world.item.ItemStack;
+import net.minecraft.client.gui.inventory.GuiChest;
+import net.minecraft.client.gui.inventory.GuiContainer;
+import net.minecraft.inventory.Container;
+import net.minecraft.inventory.Slot;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
+import net.minecraft.util.ResourceLocation;
 
 import java.util.Arrays;
 import java.util.LinkedHashSet;
@@ -84,8 +82,8 @@ public final class ChestStealer {
                     .range(0, 1000)
                     .build();
 
-    private static final Set<Identifier> lockedItems = loadLockedItems();
-    private static AbstractContainerMenu lastHandler;
+    private static final Set<ResourceLocation> lockedItems = loadLockedItems();
+    private static Container lastHandler;
     private static long nextStealAtNanos;
     private static boolean tookItems;
     private static int closeAfterTick = Integer.MIN_VALUE;
@@ -112,8 +110,8 @@ public final class ChestStealer {
     }
 
     private static void tick(Minecraft client) {
-        var currentPlayer = client == null ? null : client.player;
-        var currentGameMode = client == null ? null : client.gameMode;
+        var currentPlayer = client == null ? null : client.thePlayer;
+        var currentGameMode = client == null ? null : client.playerController;
         if (!ENABLED.get() || client == null || currentPlayer == null || currentGameMode == null) {
             resetScreenState();
             return;
@@ -121,16 +119,15 @@ public final class ChestStealer {
 
         // Only steal from chest-like storage (chests, barrels, ender chests, shulker boxes).
         // Crafting tables, furnaces, anvils and other utility screens are ignored.
-        if (!(MinecraftClientAccess.screen(client) instanceof ContainerScreen)
-                && !(MinecraftClientAccess.screen(client) instanceof ShulkerBoxScreen)) {
+        if (!(MinecraftClientAccess.currentScreen(client) instanceof GuiChest)) {
             resetScreenState();
             return;
         }
 
-        AbstractContainerMenu handler =
-                ((AbstractContainerScreen<?>) MinecraftClientAccess.screen(client)).getMenu();
-        if (currentPlayer.containerMenu != handler
-                || !handler.getCarried().isEmpty()
+        Container handler =
+                ((GuiContainer) MinecraftClientAccess.currentScreen(client)).inventorySlots;
+        if (currentPlayer.openContainer != handler
+                || !LegacyItems.empty(LegacyItems.carried(handler))
                 || InventoryClicks.busyExcept(INVENTORY_OWNER)) {
             resetCloseState();
             return;
@@ -169,45 +166,42 @@ public final class ChestStealer {
             return;
         }
 
-        Slot source = handler.slots.get(slotIndex.getAsInt());
+        Slot source = handler.inventorySlots.get(slotIndex.getAsInt());
         if (FAILURE.beforeClick(client, handler, slotIndex.getAsInt(), INVENTORY_OWNER)) {
             nextStealAtNanos = now + Math.max(50, nextDelayMs()) * 1_000_000L;
             return;
         }
-        int before = source.getItem().getCount();
-        currentGameMode.handleContainerInput(
-                handler.containerId,
-                slotIndex.getAsInt(),
-                0,
-                ContainerInput.QUICK_MOVE,
-                currentPlayer);
-        tookItems |= source.getItem().getCount() < before;
+        int before = source.getStack().stackSize;
+        currentGameMode.windowClick(handler.windowId, slotIndex.getAsInt(), 0, 1, currentPlayer);
+        tookItems |= (source.getStack() == null ? 0 : source.getStack().stackSize) < before;
 
         nextStealAtNanos = System.nanoTime() + nextDelayMs() * 1_000_000L;
         closeIfFinished(client, handler);
     }
 
-    private static void stealBlatant(Minecraft client, AbstractContainerMenu handler) {
+    private static void stealBlatant(Minecraft client, Container handler) {
         if (!InventoryClicks.acquire(INVENTORY_OWNER)) return;
         try {
             int[] inventorySlots = new int[36];
             Arrays.fill(inventorySlots, -1);
             var sources = new java.util.ArrayList<Integer>();
-            for (int index = 0; index < handler.slots.size(); index++) {
-                Slot slot = handler.slots.get(index);
-                if (slot.container == client.player.getInventory()) {
-                    int inventoryIndex = slot.getContainerSlot();
+            for (int index = 0; index < handler.inventorySlots.size(); index++) {
+                Slot slot = handler.inventorySlots.get(index);
+                if (slot.inventory == client.thePlayer.inventory) {
+                    int inventoryIndex = LegacyItems.slotIndex(slot);
                     if (inventoryIndex >= 0 && inventoryIndex < 36)
                         inventorySlots[inventoryIndex] = index;
-                } else if (slot.hasItem()
-                        && shouldSteal(slot.getItem())
-                        && slot.mayPickup(client.player)) {
+                } else if (slot.getHasStack()
+                        && shouldSteal(slot.getStack())
+                        && slot.canTakeStack(client.thePlayer)) {
                     sources.add(index);
                 }
             }
             var plan =
                     ChestStealPlan.build(
-                            handler.slots.stream().map(slot -> slot.getItem().copy()).toList(),
+                            handler.inventorySlots.stream()
+                                    .map(slot -> LegacyItems.copy(slot.getStack()))
+                                    .toList(),
                             inventorySlots,
                             sources);
             // Native prediction updates each pair before the next pair in the same client tick.
@@ -229,46 +223,44 @@ public final class ChestStealer {
     }
 
     private static boolean preparedSwap(
-            Minecraft client, AbstractContainerMenu handler, ChestStealPlan.Swap action) {
-        if (client.player.containerMenu != handler || !handler.getCarried().isEmpty()) return false;
+            Minecraft client, Container handler, ChestStealPlan.Swap action) {
+        if (client.thePlayer.openContainer != handler
+                || !LegacyItems.empty(LegacyItems.carried(handler))) return false;
         Slot slot = handler.getSlot(action.slot()), hotbar = handler.getSlot(action.hotbarSlot());
-        if (!ItemStack.matches(slot.getItem(), action.beforeSlot())
-                || !ItemStack.matches(hotbar.getItem(), action.beforeHotbar())
-                || !slot.mayPickup(client.player)
-                || !hotbar.mayPickup(client.player)
-                || !action.beforeSlot().isEmpty() && !hotbar.mayPlace(action.beforeSlot())
-                || !action.beforeHotbar().isEmpty() && !slot.mayPlace(action.beforeHotbar()))
-            return false;
+        if (!LegacyItems.matches(slot.getStack(), action.beforeSlot())
+                || !LegacyItems.matches(hotbar.getStack(), action.beforeHotbar())
+                || !slot.canTakeStack(client.thePlayer)
+                || !hotbar.canTakeStack(client.thePlayer)
+                || !LegacyItems.empty(action.beforeSlot())
+                        && !hotbar.isItemValid(action.beforeSlot())
+                || !LegacyItems.empty(action.beforeHotbar())
+                        && !slot.isItemValid(action.beforeHotbar())) return false;
         // Survival middle click is CLONE/button 2, interpreted as MIDDLE/NOTHING by
         // Bukkit. It must target the very same slot as the following NUMBER_KEY/SWAP.
         // Creative CLONE creates a carried item, so creative uses only the real swap.
-        if (!client.player.getAbilities().instabuild) {
-            client.gameMode.handleContainerInput(
-                    handler.containerId, action.slot(), 2, ContainerInput.CLONE, client.player);
-            if (client.player.containerMenu != handler
-                    || !handler.getCarried().isEmpty()
-                    || !ItemStack.matches(slot.getItem(), action.beforeSlot())
-                    || !ItemStack.matches(hotbar.getItem(), action.beforeHotbar())) return false;
+        if (!client.thePlayer.capabilities.isCreativeMode) {
+            client.playerController.windowClick(
+                    handler.windowId, action.slot(), 2, 3, client.thePlayer);
+            if (client.thePlayer.openContainer != handler
+                    || !LegacyItems.empty(LegacyItems.carried(handler))
+                    || !LegacyItems.matches(slot.getStack(), action.beforeSlot())
+                    || !LegacyItems.matches(hotbar.getStack(), action.beforeHotbar())) return false;
         }
-        client.gameMode.handleContainerInput(
-                handler.containerId,
-                action.slot(),
-                action.button(),
-                ContainerInput.SWAP,
-                client.player);
-        return handler.getCarried().isEmpty()
-                && ItemStack.matches(slot.getItem(), action.beforeHotbar())
-                && ItemStack.matches(hotbar.getItem(), action.beforeSlot());
+        client.playerController.windowClick(
+                handler.windowId, action.slot(), action.button(), 2, client.thePlayer);
+        return LegacyItems.empty(LegacyItems.carried(handler))
+                && LegacyItems.matches(slot.getStack(), action.beforeHotbar())
+                && LegacyItems.matches(hotbar.getStack(), action.beforeSlot());
     }
 
-    private static OptionalInt findNextContainerSlotIndex(AbstractContainerMenu handler) {
-        int playerInventoryStart = Math.max(0, handler.slots.size() - 36);
+    private static OptionalInt findNextContainerSlotIndex(Container handler) {
+        int playerInventoryStart = Math.max(0, handler.inventorySlots.size() - 36);
 
         for (int index = 0; index < playerInventoryStart; index++) {
-            Slot slot = handler.slots.get(index);
-            ItemStack stack = slot.getItem();
+            Slot slot = handler.inventorySlots.get(index);
+            ItemStack stack = slot.getStack();
 
-            if (!stack.isEmpty() && shouldSteal(stack)) {
+            if (!LegacyItems.empty(stack) && shouldSteal(stack)) {
                 return OptionalInt.of(index);
             }
         }
@@ -277,20 +269,20 @@ public final class ChestStealer {
     }
 
     private static boolean shouldSteal(ItemStack stack) {
-        Identifier id = BuiltInRegistries.ITEM.getKey(stack.getItem());
+        ResourceLocation id = Item.itemRegistry.getNameForObject(stack.getItem());
         return ALL.get() || lockedItems.contains(id);
     }
 
-    private static void closeIfFinished(Minecraft client, AbstractContainerMenu handler) {
+    private static void closeIfFinished(Minecraft client, Container handler) {
         // Finish a real looting session; an opening menu can be temporarily empty
         // before its contents arrive. Failed/full-inventory clicks do not finish it.
         if (!AUTO_CLOSE.get() || !tookItems) {
             resetCloseState();
             return;
         }
-        for (int index = 0; index < handler.slots.size() - 36; index++) {
-            ItemStack stack = handler.slots.get(index).getItem();
-            if (!stack.isEmpty() && shouldSteal(stack)) {
+        for (int index = 0; index < handler.inventorySlots.size() - 36; index++) {
+            ItemStack stack = handler.inventorySlots.get(index).getStack();
+            if (!LegacyItems.empty(stack) && shouldSteal(stack)) {
                 resetCloseState();
                 return;
             }
@@ -299,12 +291,13 @@ public final class ChestStealer {
         // every waiting pass still rechecks contents so late slot updates resume looting.
         long now = System.nanoTime();
         if (closeAfterTick == Integer.MIN_VALUE) {
-            closeAfterTick = client.player.tickCount + (legitMode() ? 0 : 1);
-            int delay = ThreadLocalRandom.current().nextInt(closeDelayMinMs(), closeDelayMaxMs() + 1);
+            closeAfterTick = client.thePlayer.ticksExisted + (legitMode() ? 0 : 1);
+            int delay =
+                    ThreadLocalRandom.current().nextInt(closeDelayMinMs(), closeDelayMaxMs() + 1);
             closeAtNanos = now + delay * 1_000_000L;
         }
-        if (client.player.tickCount - closeAfterTick < 0 || now - closeAtNanos < 0L) return;
-        client.player.closeContainer();
+        if (client.thePlayer.ticksExisted - closeAfterTick < 0 || now - closeAtNanos < 0L) return;
+        client.thePlayer.closeScreen();
         resetScreenState();
     }
 
@@ -449,9 +442,12 @@ public final class ChestStealer {
                 .forEach(
                         entry ->
                                 lockedItems.add(
-                                        Identifier.parse(
+                                        new ResourceLocation(
                                                 entry.getAsJsonObject().get("id").getAsString())));
-        ITEMS.set(lockedItems.stream().map(Identifier::toString).collect(Collectors.joining(",")));
+        ITEMS.set(
+                lockedItems.stream()
+                        .map(ResourceLocation::toString)
+                        .collect(Collectors.joining(",")));
     }
 
     private static String lockedItemsText() {
@@ -460,10 +456,12 @@ public final class ChestStealer {
             return "none";
         }
 
-        return lockedItems.stream().map(Identifier::toString).collect(Collectors.joining(", "));
+        return lockedItems.stream()
+                .map(ResourceLocation::toString)
+                .collect(Collectors.joining(", "));
     }
 
-    private static Set<Identifier> loadLockedItems() {
+    private static Set<ResourceLocation> loadLockedItems() {
         String value = ITEMS.get();
 
         return Arrays.stream(value.split(","))
@@ -475,7 +473,7 @@ public final class ChestStealer {
                 .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
-    private static Identifier normalizeItemId(String itemName) {
+    private static ResourceLocation normalizeItemId(String itemName) {
         String normalized = itemName.trim().toLowerCase();
 
         if (!normalized.contains(":")) {
@@ -483,13 +481,13 @@ public final class ChestStealer {
         }
 
         try {
-            return Identifier.parse(normalized);
-        } catch (IdentifierException exception) {
+            return new ResourceLocation(normalized);
+        } catch (IllegalArgumentException exception) {
             return null;
         }
     }
 
-    private static boolean itemExists(Identifier id) {
-        return BuiltInRegistries.ITEM.getOptional(id).isPresent();
+    private static boolean itemExists(ResourceLocation id) {
+        return Item.itemRegistry.containsKey(id);
     }
 }

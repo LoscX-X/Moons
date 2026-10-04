@@ -290,7 +290,7 @@ public final class AimDatasetWriter {
                                                     "startedAt",
                                                     Instant.now().toString(),
                                                     "source",
-                                                    "remote_entity_packets_at_client_apply",
+                                                    "remote_entity_packets_at_client_apply_1_8_9",
                                                     "maxDatasetBytes",
                                                     budget,
                                                     "angles",
@@ -298,7 +298,9 @@ public final class AimDatasetWriter {
                                                     "positions",
                                                     "blocks",
                                                     "visibility",
-                                                    "unknown"))
+                                                    "unknown",
+                                                    "combatWindowEvidence",
+                                                    "hurt_status_with_nearby_swing_not_confirmed_attacker"))
                                     + "\n")
                             .getBytes(StandardCharsets.UTF_8);
             if (used + header.length + line.length > budget) throw new QuotaReached();

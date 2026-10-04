@@ -1,6 +1,8 @@
 package com.blanoir.moons.client.module.impl.world.cheststealer;
 
-import net.minecraft.world.item.ItemStack;
+import com.blanoir.moons.client.utils.inventory.LegacyItems;
+
+import net.minecraft.item.ItemStack;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -31,7 +33,7 @@ public final class ChestStealPlan {
             if (source < 0
                     || source >= stacks.size()
                     || unique.contains(source)
-                    || working.get(source).isEmpty()) continue;
+                    || LegacyItems.empty(working.get(source))) continue;
             int button = empty(working, inventorySlots, 0, 9);
             if (button < 0) {
                 int storage = empty(working, inventorySlots, 9, 36);
@@ -53,7 +55,7 @@ public final class ChestStealPlan {
 
     private static int empty(List<ItemStack> stacks, int[] slots, int start, int end) {
         for (int index = start; index < end; index++)
-            if (stacks.get(slots[index]).isEmpty()) return index;
+            if (LegacyItems.empty(stacks.get(slots[index]))) return index;
         return -1;
     }
 
@@ -65,7 +67,14 @@ public final class ChestStealPlan {
             int button,
             boolean fromContainer) {
         ItemStack source = working.get(slot), target = working.get(hotbar);
-        actions.add(new Swap(slot, hotbar, button, source.copy(), target.copy(), fromContainer));
+        actions.add(
+                new Swap(
+                        slot,
+                        hotbar,
+                        button,
+                        LegacyItems.copy(source),
+                        target.copy(),
+                        fromContainer));
         working.set(slot, target);
         working.set(hotbar, source);
     }

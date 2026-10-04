@@ -2,14 +2,13 @@ package com.blanoir.moons.client.management.input;
 
 import com.blanoir.moons.client.access.GameAccess;
 import com.blanoir.moons.client.access.MinecraftClientAccess;
+import com.blanoir.moons.client.compat.input.InputConstants;
 import com.blanoir.moons.client.event.EventBus;
-import com.mojang.blaze3d.platform.InputConstants;
 
-import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.input.MouseButtonInfo;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.phys.EntityHitResult;
+import net.minecraft.client.settings.KeyBinding;
+import net.minecraft.entity.Entity;
+import net.minecraft.util.MovingObjectPosition;
 
 import java.util.EnumSet;
 
@@ -31,7 +30,6 @@ public final class CombatInputController {
         BLOCK_IN,
         BLOCKING_USE,
         AUTO_BLOCK,
-        AUTO_SPEAR,
         ANTI_LAVA,
         ANTI_WEB,
         SPRINT_RESET
@@ -45,7 +43,7 @@ public final class CombatInputController {
     private static boolean initialized;
     private static boolean syntheticAttackDown;
     private static int syntheticAttackTicks;
-    private static EntityHitResult pendingAttackTarget;
+    private static MovingObjectPosition pendingAttackTarget;
     private static boolean invokingTargetAttack;
     private static long completedTargetAttacks;
 
@@ -64,7 +62,8 @@ public final class CombatInputController {
         EventBus.ATTACK_ENTITY_POST.register(
                 "CombatInputController.attackCompleted",
                 event -> {
-                    if (invokingTargetAttack && event.attacker() == Minecraft.getInstance().player)
+                    if (invokingTargetAttack
+                            && event.attacker() == Minecraft.getMinecraft().thePlayer)
                         completedTargetAttacks++;
                 });
     }
@@ -72,28 +71,28 @@ public final class CombatInputController {
     public static void suppressForward(Minecraft client, Owner owner) {
         forwardSuppressors.add(owner);
         if (valid(client)) {
-            client.options.keyUp.setDown(false);
+            KeyBinding.setKeyBindState(client.gameSettings.keyBindForward.getKeyCode(), false);
         }
     }
 
     public static void releaseForward(Minecraft client, Owner owner) {
         forwardSuppressors.remove(owner);
         if (valid(client) && forwardSuppressors.isEmpty()) {
-            restorePhysicalState(client, client.options.keyUp);
+            restorePhysicalState(client, client.gameSettings.keyBindForward);
         }
     }
 
     public static void suppressSprint(Minecraft client, Owner owner) {
         sprintSuppressors.add(owner);
         if (valid(client)) {
-            client.options.keySprint.setDown(false);
+            KeyBinding.setKeyBindState(client.gameSettings.keyBindSprint.getKeyCode(), false);
         }
     }
 
     public static void releaseSprint(Minecraft client, Owner owner) {
         sprintSuppressors.remove(owner);
         if (valid(client) && sprintSuppressors.isEmpty()) {
-            restorePhysicalState(client, client.options.keySprint);
+            restorePhysicalState(client, client.gameSettings.keyBindSprint);
         }
     }
 
@@ -105,42 +104,43 @@ public final class CombatInputController {
     public static void suppressAttack(Minecraft client, Owner owner) {
         attackSuppressors.add(owner);
         if (valid(client)) {
-            client.options.keyAttack.setDown(false);
+            KeyBinding.setKeyBindState(client.gameSettings.keyBindAttack.getKeyCode(), false);
         }
     }
 
     public static void releaseAttack(Minecraft client, Owner owner) {
         attackSuppressors.remove(owner);
         if (valid(client) && attackSuppressors.isEmpty()) {
-            restorePhysicalState(client, client.options.keyAttack);
+            restorePhysicalState(client, client.gameSettings.keyBindAttack);
         }
     }
 
     public static void forceJump(Minecraft client, Owner owner) {
         jumpForcers.add(owner);
         if (valid(client)) {
-            client.options.keyJump.setDown(true);
+            KeyBinding.setKeyBindState(client.gameSettings.keyBindJump.getKeyCode(), true);
         }
     }
 
     public static void releaseJump(Minecraft client, Owner owner) {
         jumpForcers.remove(owner);
         if (valid(client) && jumpForcers.isEmpty()) {
-            restorePhysicalState(client, client.options.keyJump);
+            restorePhysicalState(client, client.gameSettings.keyBindJump);
         }
     }
 
     /** Maintains a native held-use action without submitting another use click. */
     public static void holdUse(Minecraft client, Owner owner) {
         useForcers.add(owner);
-        if (valid(client)) client.options.keyUse.setDown(true);
+        if (valid(client))
+            KeyBinding.setKeyBindState(client.gameSettings.keyBindUseItem.getKeyCode(), true);
     }
 
     public static void releaseUse(Minecraft client, Owner owner) {
         if (!useForcers.remove(owner) || !useForcers.isEmpty()) return;
-        if (client != null && client.options != null) {
-            client.options.keyUse.setDown(false);
-            if (valid(client)) restorePhysicalState(client, client.options.keyUse);
+        if (client != null && client.gameSettings != null) {
+            KeyBinding.setKeyBindState(client.gameSettings.keyBindUseItem.getKeyCode(), false);
+            if (valid(client)) restorePhysicalState(client, client.gameSettings.keyBindUseItem);
         }
     }
 
@@ -151,31 +151,20 @@ public final class CombatInputController {
     public static void pressJumpPhysical(Minecraft client, Owner owner) {
         jumpForcers.add(owner);
         if (valid(client)) {
-            pressPhysicalKey(client, client.options.keyJump);
+            pressPhysicalKey(client, client.gameSettings.keyBindJump);
         }
     }
 
     public static void releaseJumpPhysical(Minecraft client, Owner owner) {
         jumpForcers.remove(owner);
         if (valid(client) && jumpForcers.isEmpty()) {
-            KeyMapping mapping = client.options.keyJump;
+            KeyBinding mapping = client.gameSettings.keyBindJump;
             InputConstants.Key key = GameAccess.boundKey(mapping);
             if (isInvalidKey(key)) {
-                mapping.setDown(false);
+                KeyBinding.setKeyBindState(mapping.getKeyCode(), false);
                 return;
             }
-            if (key.getType() == InputConstants.Type.MOUSE) {
-                // A real press must never be cancelled by the synthetic release.
-                if (!isPhysicallyDown(client, mapping)) {
-                    GameAccess.invokeMouseButton(
-                            client.mouseHandler,
-                            client.getWindow().handle(),
-                            new MouseButtonInfo(key.getValue(), 0),
-                            InputConstants.RELEASE);
-                }
-            } else {
-                KeyMapping.set(key, isPhysicallyDown(client, mapping));
-            }
+            KeyBinding.setKeyBindState(mapping.getKeyCode(), isPhysicallyDown(client, mapping));
         }
     }
 
@@ -199,22 +188,23 @@ public final class CombatInputController {
         syntheticAttackTicks = 0;
         pendingAttackTarget = null;
         invokingTargetAttack = false;
-        if (client == null || client.options == null) return;
-        client.options.keyUp.setDown(false);
-        client.options.keySprint.setDown(false);
-        client.options.keyAttack.setDown(false);
-        client.options.keyJump.setDown(false);
-        if (heldUse) client.options.keyUse.setDown(false);
+        if (client == null || client.gameSettings == null) return;
+        KeyBinding.setKeyBindState(client.gameSettings.keyBindForward.getKeyCode(), false);
+        KeyBinding.setKeyBindState(client.gameSettings.keyBindSprint.getKeyCode(), false);
+        KeyBinding.setKeyBindState(client.gameSettings.keyBindAttack.getKeyCode(), false);
+        KeyBinding.setKeyBindState(client.gameSettings.keyBindJump.getKeyCode(), false);
+        if (heldUse)
+            KeyBinding.setKeyBindState(client.gameSettings.keyBindUseItem.getKeyCode(), false);
         if (valid(client)) {
-            restorePhysicalState(client, client.options.keyUp);
-            restorePhysicalState(client, client.options.keySprint);
-            restorePhysicalState(client, client.options.keyAttack);
-            restorePhysicalState(client, client.options.keyJump);
-            if (heldUse) restorePhysicalState(client, client.options.keyUse);
+            restorePhysicalState(client, client.gameSettings.keyBindForward);
+            restorePhysicalState(client, client.gameSettings.keyBindSprint);
+            restorePhysicalState(client, client.gameSettings.keyBindAttack);
+            restorePhysicalState(client, client.gameSettings.keyBindJump);
+            if (heldUse) restorePhysicalState(client, client.gameSettings.keyBindUseItem);
         }
     }
 
-    public static boolean isPhysicallyDown(Minecraft client, KeyMapping mapping) {
+    public static boolean isPhysicallyDown(Minecraft client, KeyBinding mapping) {
         if (!valid(client) || mapping == null) {
             return false;
         }
@@ -230,15 +220,15 @@ public final class CombatInputController {
      * playable.  Outside gameplay (GUI open, no world/player) the mapping may
      * hold a stale W/Space state, so callers must not treat it as input.
      */
-    public static boolean isDown(Minecraft client, KeyMapping mapping) {
-        return valid(client) && mapping != null && mapping.isDown();
+    public static boolean isDown(Minecraft client, KeyBinding mapping) {
+        return valid(client) && mapping != null && mapping.isKeyDown();
     }
 
-    public static void click(Minecraft client, KeyMapping mapping) {
+    public static void click(Minecraft client, KeyBinding mapping) {
         if (!valid(client) || mapping == null) {
             return;
         }
-        if (mapping == client.options.keyAttack) {
+        if (mapping == client.gameSettings.keyBindAttack) {
             pendingAttackTarget = null;
             pressAttack(client, mapping);
             return;
@@ -247,10 +237,10 @@ public final class CombatInputController {
         if (isInvalidKey(key)) {
             return;
         }
-        KeyMapping.click(key);
+        KeyBinding.onTick(mapping.getKeyCode());
     }
 
-    private static boolean pressAttack(Minecraft client, KeyMapping mapping) {
+    private static boolean pressAttack(Minecraft client, KeyBinding mapping) {
         if (!pressPhysicalKey(client, mapping)) {
             return false;
         }
@@ -260,7 +250,7 @@ public final class CombatInputController {
     }
 
     /** Feeds a press through the vanilla mouse/keyboard callback like a real event. */
-    private static boolean pressPhysicalKey(Minecraft client, KeyMapping mapping) {
+    private static boolean pressPhysicalKey(Minecraft client, KeyBinding mapping) {
         if (!valid(client) || mapping == null) {
             return false;
         }
@@ -268,16 +258,9 @@ public final class CombatInputController {
         if (isInvalidKey(key)) {
             return false;
         }
-        if (key.getType() == InputConstants.Type.MOUSE) {
-            GameAccess.invokeMouseButton(
-                    client.mouseHandler,
-                    client.getWindow().handle(),
-                    new MouseButtonInfo(key.getValue(), 0),
-                    InputConstants.PRESS);
-        } else {
-            KeyMapping.set(key, true);
-            KeyMapping.click(key);
-        }
+
+        KeyBinding.setKeyBindState(mapping.getKeyCode(), true);
+        KeyBinding.onTick(mapping.getKeyCode());
         return true;
     }
 
@@ -304,22 +287,22 @@ public final class CombatInputController {
     public static boolean attackTargetNow(
             Minecraft client, Entity target, boolean forceTargetOverride) {
         return target != null
-                && attackTargetNow(client, new EntityHitResult(target), forceTargetOverride);
+                && attackTargetNow(client, new MovingObjectPosition(target), forceTargetOverride);
     }
 
     /** Preserve the validated contact point for vanilla's weapon-specific AttackRange check. */
     public static boolean attackTargetNow(
-            Minecraft client, EntityHitResult targetHit, boolean forceTargetOverride) {
-        Entity target = targetHit == null ? null : targetHit.getEntity();
-        if (!valid(client) || target == null || !target.isAlive()) return false;
+            Minecraft client, MovingObjectPosition targetHit, boolean forceTargetOverride) {
+        Entity target = targetHit == null ? null : targetHit.entityHit;
+        if (!valid(client) || target == null || !target.isEntityAlive()) return false;
         boolean cameraAlreadyTargetsEntity =
-                client.hitResult instanceof EntityHitResult hit && hit.getEntity() == target;
+                client.objectMouseOver != null && client.objectMouseOver.entityHit == target;
         pendingAttackTarget = forceTargetOverride || !cameraAlreadyTargetsEntity ? targetHit : null;
-        if (!pressAttack(client, client.options.keyAttack)) {
+        if (!pressAttack(client, client.gameSettings.keyBindAttack)) {
             pendingAttackTarget = null;
             return false;
         }
-        while (client.options.keyAttack.consumeClick()) {
+        while (client.gameSettings.keyBindAttack.isPressed()) {
             // startAttack is invoked below; do not leave a duplicate click queued.
         }
         // startAttack's boolean describes block breaking. Observe the entity
@@ -346,30 +329,30 @@ public final class CombatInputController {
 
     /** The target that startAttack will consume, available to cancellable PRE listeners. */
     public static Entity attackInputTarget(Minecraft client) {
-        Entity target = pendingAttackTarget == null ? null : pendingAttackTarget.getEntity();
-        if (target == null && client != null && client.hitResult instanceof EntityHitResult hit)
-            target = hit.getEntity();
+        Entity target = pendingAttackTarget == null ? null : pendingAttackTarget.entityHit;
+        if (target == null && client != null && client.objectMouseOver != null)
+            target = client.objectMouseOver.entityHit;
         return client != null
-                        && client.level != null
+                        && client.theWorld != null
                         && target != null
-                        && client.level.getEntity(target.getId()) == target
+                        && client.theWorld.getEntityByID(target.getEntityId()) == target
                 ? target
                 : null;
     }
 
     /** Consumed by Minecraft.startAttack; stale or cross-world targets are rejected. */
-    public static EntityHitResult consumePendingAttackHit(Minecraft client) {
-        var currentLevel = client == null ? null : client.level;
-        EntityHitResult hit = pendingAttackTarget;
-        Entity target = hit == null ? null : hit.getEntity();
+    public static MovingObjectPosition consumePendingAttackHit(Minecraft client) {
+        var currentLevel = client == null ? null : client.theWorld;
+        MovingObjectPosition hit = pendingAttackTarget;
+        Entity target = hit == null ? null : hit.entityHit;
         pendingAttackTarget = null;
         if (client == null
                 || currentLevel == null
                 || !valid(client)
                 || target == null
-                || !target.isAlive()
-                || target == client.player
-                || currentLevel.getEntity(target.getId()) != target) {
+                || !target.isEntityAlive()
+                || target == client.thePlayer
+                || currentLevel.getEntityByID(target.getEntityId()) != target) {
             return null;
         }
         return hit;
@@ -390,37 +373,22 @@ public final class CombatInputController {
             return;
         }
 
-        KeyMapping mapping = client.options.keyAttack;
+        KeyBinding mapping = client.gameSettings.keyBindAttack;
         InputConstants.Key key = GameAccess.boundKey(mapping);
         if (isInvalidKey(key)) {
-            mapping.setDown(false);
+            KeyBinding.setKeyBindState(mapping.getKeyCode(), false);
             return;
         }
         if (isPhysicallyDown(client, mapping)) {
             return;
         }
 
-        if (key.getType() == InputConstants.Type.MOUSE) {
-            GameAccess.invokeMouseButton(
-                    client.mouseHandler,
-                    client.getWindow().handle(),
-                    new MouseButtonInfo(key.getValue(), 0),
-                    InputConstants.RELEASE);
-        } else {
-            KeyMapping.set(key, false);
-        }
+        KeyBinding.setKeyBindState(mapping.getKeyCode(), false);
     }
 
-    private static void restorePhysicalState(Minecraft client, KeyMapping mapping) {
-        if (mapping == client.options.keySprint && client.options.toggleSprint().get()) {
-            // Vanilla toggle sprint runs on a ToggleKeyMapping: setDown(true)
-            // flips the toggle and setDown(false) is ignored. Restoring here
-            // would cancel the user's toggled sprint, so leave it to vanilla's
-            // screen-open handling instead.
-            return;
-        }
+    private static void restorePhysicalState(Minecraft client, KeyBinding mapping) {
 
-        mapping.setDown(isPhysicallyDown(client, mapping));
+        KeyBinding.setKeyBindState(mapping.getKeyCode(), isPhysicallyDown(client, mapping));
     }
 
     private static boolean isInvalidKey(InputConstants.Key key) {
@@ -434,8 +402,8 @@ public final class CombatInputController {
         // pressing/releasing them would leak input into menus or the title screen.
         return client != null
                 && MinecraftClientAccess.screen(client) == null
-                && client.player != null
-                && client.level != null
-                && client.gameMode != null;
+                && client.thePlayer != null
+                && client.theWorld != null
+                && client.playerController != null;
     }
 }

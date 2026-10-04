@@ -15,10 +15,10 @@ import net.minecraft.client.Minecraft
 
 @Composable
 internal fun InvClearPreview() {
-    var drops by remember { mutableStateOf(InvClear.preview(Minecraft.getInstance())) }
+    var drops by remember { mutableStateOf(InvClear.preview(Minecraft.getMinecraft())) }
     LaunchedEffect(Unit) {
         while (isActive) {
-            drops = InvClear.preview(Minecraft.getInstance())
+            drops = InvClear.preview(Minecraft.getMinecraft())
             delay(150)
         }
     }
@@ -35,9 +35,9 @@ internal fun InvClearPreview() {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                ItemIcon(drop.item(), drop.item().hoverName.string, Modifier.size(24.dp))
+                ItemIcon(drop.item(), drop.item().displayName, Modifier.size(24.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("${drop.item().hoverName.string} ×${drop.item().count}", fontSize = 10.sp)
+                    Text("${drop.item().displayName} ×${drop.item().stackSize}", fontSize = 10.sp)
                     Text(
                         "Slot ${drop.source() + 1} · ${drop.reason()}",
                         color = PanelStyle.muted,

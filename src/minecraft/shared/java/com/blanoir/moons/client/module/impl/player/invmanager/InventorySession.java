@@ -1,6 +1,6 @@
 package com.blanoir.moons.client.module.impl.player.invmanager;
 
-import net.minecraft.world.item.ItemStack;
+import com.blanoir.moons.client.utils.inventory.LegacyItems;
 
 import java.util.ArrayList;
 import java.util.BitSet;
@@ -8,7 +8,7 @@ import java.util.List;
 
 /** Manual edits stay protected until this inventory screen closes. */
 public final class InventorySession {
-    private final BitSet manualSlots = new BitSet(41);
+    private final BitSet manualSlots = new BitSet(40);
     private InventorySnapshot manualBefore;
     private long manualUntil;
 
@@ -24,8 +24,8 @@ public final class InventorySession {
 
     public void observe(InventorySnapshot current, long now) {
         if (manualBefore == null) return;
-        for (int i = 0; i < 41; i++)
-            if (!ItemStack.matches(manualBefore.item(i), current.item(i))) manualSlots.set(i);
+        for (int i = 0; i < 40; i++)
+            if (!LegacyItems.matches(manualBefore.item(i), current.item(i))) manualSlots.set(i);
         manualBefore = now < manualUntil ? current : null;
     }
 
@@ -51,10 +51,10 @@ public final class InventorySession {
                                 attempt ->
                                         attempt.source() == action.source()
                                                 && attempt.target() == action.target()
-                                                && ItemStack.matches(
+                                                && LegacyItems.matches(
                                                         attempt.beforeSource(),
                                                         action.beforeSource())
-                                                && ItemStack.matches(
+                                                && LegacyItems.matches(
                                                         attempt.beforeTarget(),
                                                         action.beforeTarget()))
                         .count();

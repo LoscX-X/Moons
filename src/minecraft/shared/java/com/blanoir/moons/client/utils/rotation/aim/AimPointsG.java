@@ -7,7 +7,7 @@ import com.blanoir.moons.client.utils.world.placement.FaceScanA;
 import com.blanoir.moons.client.utils.world.placement.PlacementRaycast;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.util.Vec3;
 
 /**
  * G: Scaffold face-point policy. Selects the least-turn visible hit after the original
@@ -72,7 +72,7 @@ public final class AimPointsG {
             Rotation base,
             double[] offsets,
             QuantizerA.Adapter quantizer) {
-        double range = client.player.blockInteractionRange();
+        double range = client.playerController.getBlockReachDistance();
         FaceScanA.Result best =
                 FaceScanA.scanPrimitive(
                         offsets,

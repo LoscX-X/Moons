@@ -3,8 +3,8 @@ package com.blanoir.moons.client.management.lease;
 import com.blanoir.moons.client.event.EventBus;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.world.item.ItemStack;
+import net.minecraft.client.entity.EntityPlayerSP;
+import net.minecraft.item.ItemStack;
 
 /** Arbitrates temporary hotbar ownership and restores the user's latest slot. */
 public final class HotbarLease {
@@ -12,7 +12,7 @@ public final class HotbarLease {
     public static final int PRIORITY_PLACEMENT = 20;
     private static HotbarLease holder;
     private static boolean initialized;
-    private LocalPlayer player;
+    private EntityPlayerSP player;
 
     private final String owner;
     private final int priority;
@@ -38,7 +38,7 @@ public final class HotbarLease {
     }
 
     public synchronized boolean acquire(Minecraft client, int slot) {
-        var currentPlayer = client == null ? null : client.player;
+        var currentPlayer = client == null ? null : client.thePlayer;
         if (client == null || currentPlayer == null || slot < 0 || slot > 8) return false;
         synchronized (HotbarLease.class) {
             if (holder != null && holder != this && holder.priority >= priority) return false;
@@ -47,7 +47,7 @@ public final class HotbarLease {
         }
         cancelled = false;
         player = currentPlayer;
-        if (restoreSlot < 0) restoreSlot = currentPlayer.getInventory().getSelectedSlot();
+        if (restoreSlot < 0) restoreSlot = currentPlayer.inventory.currentItem;
         leasedSlot = slot;
         select(client, slot);
         return true;
@@ -63,9 +63,9 @@ public final class HotbarLease {
     }
 
     public synchronized ItemStack userStack(Minecraft client, ItemStack fallback) {
-        var currentPlayer = client == null ? null : client.player;
+        var currentPlayer = client == null ? null : client.thePlayer;
         return client != null && currentPlayer != null && restoreSlot >= 0 && restoreSlot <= 8
-                ? currentPlayer.getInventory().getItem(restoreSlot)
+                ? currentPlayer.inventory.getStackInSlot(restoreSlot)
                 : fallback;
     }
 
@@ -86,12 +86,12 @@ public final class HotbarLease {
     }
 
     public synchronized void release(Minecraft client) {
-        var currentPlayer = client == null ? null : client.player;
+        var currentPlayer = client == null ? null : client.thePlayer;
         if (holder == this
                 && currentPlayer != null
                 && currentPlayer == player
                 && restoreSlot >= 0) {
-            int current = currentPlayer.getInventory().getSelectedSlot();
+            int current = currentPlayer.inventory.currentItem;
             if (current == leasedSlot) select(client, restoreSlot);
         }
         finish();
@@ -120,7 +120,7 @@ public final class HotbarLease {
     }
 
     private static void select(Minecraft client, int slot) {
-        if (client.player.getInventory().getSelectedSlot() == slot) return;
-        client.player.getInventory().setSelectedSlot(slot);
+        if (client.thePlayer.inventory.currentItem == slot) return;
+        client.thePlayer.inventory.currentItem = slot;
     }
 }

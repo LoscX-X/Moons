@@ -1,16 +1,17 @@
 package com.blanoir.moons.client.module.impl.player.invmanager;
 
 import com.blanoir.moons.client.config.Settings;
+import com.blanoir.moons.client.utils.inventory.LegacyItems;
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
-import com.mojang.serialization.JsonOps;
+import com.google.gson.JsonPrimitive;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.core.component.DataComponentType;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.Identifier;
-import net.minecraft.world.item.ItemStack;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
+import net.minecraft.nbt.JsonToNBT;
+import net.minecraft.util.ResourceLocation;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -23,16 +24,7 @@ public final class InventoryRules {
     private static final Gson JSON = new com.google.gson.GsonBuilder().serializeNulls().create();
     private static final String KEY = "invmanager.rules";
     public static final String BLOCK = "blocks";
-    public static final List<String> SAMPLE_FIELDS =
-            List.of(
-                    "potion_contents",
-                    "enchantments",
-                    "custom_name",
-                    "lore",
-                    "custom_model_data",
-                    "item_model",
-                    "custom_data",
-                    "attribute_modifiers");
+    public static final List<String> SAMPLE_FIELDS = List.of("damage", "nbt");
     private static String loaded;
     private static State state = new State(1, List.of());
     private static String error = "";
@@ -43,14 +35,15 @@ public final class InventoryRules {
             boolean allowSpecial,
             Map<String, JsonElement> sample) {
         public Entry {
-            if (item == null || Identifier.tryParse(item) == null)
+            if (item == null || parseId(item) == null)
                 throw new IllegalArgumentException("Invalid item ID");
             components = components == null ? Map.of() : Map.copyOf(components);
             sample = sample == null ? components : Map.copyOf(sample);
         }
 
         public boolean matches(ItemStack stack) {
-            if (stack.isEmpty() || !item.equals(itemId(stack)) || !available()) return false;
+            if (LegacyItems.empty(stack) || !item.equals(itemId(stack)) || !available())
+                return false;
             for (var component : components.entrySet()) {
                 var type = componentType(component.getKey());
                 if (type == null) return false;
@@ -61,7 +54,7 @@ public final class InventoryRules {
         }
 
         public boolean available() {
-            if (!BuiltInRegistries.ITEM.containsKey(Identifier.tryParse(item))) return false;
+            if (!Item.itemRegistry.containsKey(parseId(item))) return false;
             for (String key : components.keySet()) if (componentType(key) == null) return false;
             return true;
         }
@@ -72,19 +65,15 @@ public final class InventoryRules {
             return allowSpecial
                     && !components.isEmpty()
                     && matches(stack)
-                    && components
-                            .keySet()
-                            .containsAll(SAMPLE_FIELDS.subList(2, SAMPLE_FIELDS.size()))
-                    && !stack.has(net.minecraft.core.component.DataComponents.CONTAINER)
-                    && !stack.has(net.minecraft.core.component.DataComponents.BUNDLE_CONTENTS);
+                    && components.containsKey("nbt");
         }
 
         public ItemStack icon() {
-            Identifier id = Identifier.tryParse(item);
-            if (!BuiltInRegistries.ITEM.containsKey(id)) return ItemStack.EMPTY;
-            ItemStack stack = new ItemStack(BuiltInRegistries.ITEM.getValue(id));
-            Minecraft client = Minecraft.getInstance();
-            if (client.level != null) {
+            ResourceLocation id = parseId(item);
+            if (!Item.itemRegistry.containsKey(id)) return LegacyItems.EMPTY;
+            ItemStack stack = new ItemStack(Item.itemRegistry.getObject(id));
+            Minecraft client = Minecraft.getMinecraft();
+            if (client.theWorld != null) {
                 for (var field : components.entrySet())
                     applyComponent(stack, field.getKey(), field.getValue());
             }
@@ -108,7 +97,7 @@ public final class InventoryRules {
         }
 
         public boolean matches(ItemStack stack) {
-            if (stack.isEmpty()) return false;
+            if (LegacyItems.empty(stack)) return false;
             String stackId = itemId(stack);
             for (Entry entry : exclude)
                 if (entry.matches(stack) || entry.item().equals(stackId) && !entry.available())
@@ -120,8 +109,9 @@ public final class InventoryRules {
         }
 
         public boolean mayMove(ItemStack stack, boolean protectSpecial) {
-            if (stack.isEmpty() || !protectSpecial || InventoryItems.protection(stack).isEmpty())
-                return true;
+            if (LegacyItems.empty(stack)
+                    || !protectSpecial
+                    || InventoryItems.protection(stack).isEmpty()) return true;
             for (Entry entry : include) if (entry.authorizesSpecial(stack)) return true;
             return false;
         }
@@ -138,7 +128,7 @@ public final class InventoryRules {
         }
 
         public String reason(ItemStack stack) {
-            if (stack.isEmpty()) return "Empty";
+            if (LegacyItems.empty(stack)) return "Empty";
             if (exclude.stream().anyMatch(entry -> entry.matches(stack))) return "Excluded by rule";
             if (include.stream().anyMatch(entry -> entry.matches(stack)))
                 return "Matches allowed item";
@@ -282,72 +272,70 @@ public final class InventoryRules {
     }
 
     public static String itemId(ItemStack stack) {
-        return BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
+        return Item.itemRegistry.getNameForObject(stack.getItem()).toString();
     }
 
     public static List<ItemStack> search(String query, boolean inventoryOnly) {
-        Minecraft client = Minecraft.getInstance();
+        Minecraft client = Minecraft.getMinecraft();
         String needle = query.strip().toLowerCase(java.util.Locale.ROOT);
         var result = new ArrayList<ItemStack>();
         Iterable<ItemStack> candidates;
         if (inventoryOnly) {
-            if (client.player == null) return List.of();
+            if (client.thePlayer == null) return List.of();
             candidates =
                     InventorySnapshot.capture(
-                                    client.player.inventoryMenu, client.player.getInventory())
+                                    client.thePlayer.inventoryContainer, client.thePlayer.inventory)
                             .items();
         } else {
-            candidates = BuiltInRegistries.ITEM.stream().map(ItemStack::new).toList();
+            var all = new ArrayList<ItemStack>();
+            for (Item item : Item.itemRegistry) all.add(new ItemStack(item));
+            candidates = all;
         }
         for (ItemStack stack : candidates) {
-            if (stack.isEmpty()
+            if (LegacyItems.empty(stack)
                     || !itemId(stack).contains(needle)
-                            && !stack.getHoverName()
-                                    .getString()
+                            && !stack.getDisplayName()
                                     .toLowerCase(java.util.Locale.ROOT)
                                     .contains(needle)) continue;
-            if (result.stream()
-                    .noneMatch(existing -> ItemStack.isSameItemSameComponents(existing, stack)))
-                result.add(stack.copy());
+            if (result.stream().noneMatch(existing -> LegacyItems.same(existing, stack)))
+                result.add(LegacyItems.copy(stack));
             if (result.size() == 60) break;
         }
         return List.copyOf(result);
     }
 
-    private static DataComponentType<?> componentType(String key) {
-        Identifier id = Identifier.tryParse(key);
-        return id == null ? null : BuiltInRegistries.DATA_COMPONENT_TYPE.getValue(id);
+    private static ResourceLocation parseId(String value) {
+        if (value == null || !value.matches("(?:[a-z0-9_.-]+:)?[a-z0-9_./-]+")) return null;
+        return new ResourceLocation(value);
     }
 
-    private static <T> JsonElement encode(ItemStack stack, DataComponentType<T> type) {
-        T value = stack.get(type);
-        if (value == null) return JsonNull.INSTANCE;
-        Minecraft client = Minecraft.getInstance();
-        if (client == null || client.level == null || type.codec() == null) return null;
-        return type.codec()
-                .encodeStart(
-                        client.level.registryAccess().createSerializationContext(JsonOps.INSTANCE),
-                        value)
-                .result()
-                .orElse(null);
+    private static String componentType(String key) {
+        return SAMPLE_FIELDS.contains(key) ? key : null;
     }
 
-    private static <T> void applyComponent(ItemStack stack, String key, JsonElement value) {
-        @SuppressWarnings("unchecked")
-        DataComponentType<T> type = (DataComponentType<T>) componentType(key);
-        if (type == null || type.codec() == null) return;
-        if (value.isJsonNull()) {
-            stack.remove(type);
+    private static JsonElement encode(ItemStack stack, String field) {
+        if (field.equals("damage")) return new JsonPrimitive(stack.getMetadata());
+        if (field.equals("nbt"))
+            return stack.hasTagCompound()
+                    ? new JsonPrimitive(stack.getTagCompound().toString())
+                    : JsonNull.INSTANCE;
+        return null;
+    }
+
+    private static void applyComponent(ItemStack stack, String field, JsonElement value) {
+        if (field.equals("damage")) {
+            if (!value.isJsonNull()) stack.setItemDamage(value.getAsInt());
             return;
         }
-        type.codec()
-                .parse(
-                        Minecraft.getInstance()
-                                .level
-                                .registryAccess()
-                                .createSerializationContext(JsonOps.INSTANCE),
-                        value)
-                .result()
-                .ifPresent(component -> stack.set(type, component));
+        if (!field.equals("nbt")) return;
+        if (value.isJsonNull()) {
+            stack.setTagCompound(null);
+            return;
+        }
+        try {
+            stack.setTagCompound(JsonToNBT.getTagFromJson(value.getAsString()));
+        } catch (net.minecraft.nbt.NBTException invalid) {
+            throw new IllegalArgumentException("Invalid NBT sample", invalid);
+        }
     }
 }

@@ -1,6 +1,6 @@
 package com.blanoir.moons.client.event.frame;
 
-import com.mojang.blaze3d.vertex.PoseStack;
+import com.blanoir.moons.client.render.LegacyPoseStack;
 
 /** World-render boundary emitted after translucent terrain. */
-public record WorldRenderEvent(PoseStack poseStack, float tickDelta) {}
+public record WorldRenderEvent(LegacyPoseStack poseStack, float tickDelta) {}

@@ -1,19 +1,16 @@
 package com.blanoir.moons.client.module.impl.world.structure;
 
-import net.minecraft.core.BlockPos;
-import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.chunk.LevelChunkSection;
-import net.minecraft.world.level.chunk.PalettedContainer;
+import net.minecraft.block.Block;
+import net.minecraft.init.Blocks;
+import net.minecraft.util.BlockPos;
+import net.minecraft.world.chunk.storage.ExtendedBlockStorage;
 
-import java.util.ArrayList;
-import java.util.EnumSet;
-import java.util.List;
+import java.util.*;
 import java.util.function.BooleanSupplier;
 
-/** Copies selected palettes on the client thread; all block traversal uses the copies. */
+/** Copies 1.8 packed state IDs on the client thread; workers never touch a mutable chunk. */
 final class StructureChunkScanner {
-    record Section(int y, PalettedContainer<BlockState> blocks, boolean markers, boolean shape) {}
+    record Section(int y, char[] blocks) {}
 
     record Result(List<StructureEvidence.Marker> markers, CavitySnapshot cavity) {}
 
@@ -21,34 +18,18 @@ final class StructureChunkScanner {
         return kind != null
                 && (enabled.contains(kind)
                         || kind == StructureEvidence.Kind.SPAWNER
-                                && enabled.contains(StructureEvidence.Kind.DUNGEON)
-                        || kind == StructureEvidence.Kind.STRONGHOLD
-                                && enabled.contains(StructureEvidence.Kind.TRIAL_CHAMBER));
+                                && enabled.contains(StructureEvidence.Kind.DUNGEON));
     }
 
     static List<Section> capture(
-            LevelChunkSection[] sections,
+            ExtendedBlockStorage[] sections,
             int minY,
             EnumSet<StructureEvidence.Kind> enabled,
             boolean shapeEnabled) {
         var result = new ArrayList<Section>();
-        for (int i = 0; i < sections.length; i++) {
-            var section = sections[i];
-            int y = minY + i * 16;
-            boolean markers =
-                    section.maybeHas(
-                            state -> wants(enabled, StructureEvidence.marker(state.getBlock())));
-            boolean shape = shapeEnabled && y >= CavitySnapshot.MIN_Y && y < CavitySnapshot.MAX_Y;
-            if (!markers && !shape) continue;
-            boolean uniformWall = shape && !section.maybeHas(state -> !state.isSolidRender());
-            // A solid palette needs no per-block copy when no material markers are requested.
-            result.add(
-                    new Section(
-                            y,
-                            !markers && uniformWall ? null : section.getStates().copy(),
-                            markers,
-                            shape));
-        }
+        for (var section : sections)
+            if (section != null && !section.isEmpty())
+                result.add(new Section(section.getYLocation(), section.getData().clone()));
         return List.copyOf(result);
     }
 
@@ -60,29 +41,23 @@ final class StructureChunkScanner {
             boolean shapeEnabled,
             BooleanSupplier cancelled) {
         var markers = new ArrayList<StructureEvidence.Marker>();
-        var cavity = shapeEnabled ? new CavitySnapshot.Builder(chunkX, chunkZ) : null;
         for (var section : sections) {
             if (cancelled.getAsBoolean()) return null;
-            if (section.blocks == null) {
-                cavity.solidSection(section.y);
-                continue;
-            }
             for (int i = 0; i < 4096; i++) {
-                int x = i & 15, z = (i >> 4) & 15, dy = i >> 8, y = section.y + dy;
-                var state = section.blocks.get(x, dy, z);
-                if (section.shape) cavity.set(x, y, z, CavitySnapshot.classify(state));
-                var kind = section.markers ? StructureEvidence.marker(state.getBlock()) : null;
+                int x = i & 15, z = (i >> 4) & 15, y = section.y() + (i >> 8);
+                int packed = section.blocks()[i];
+                Block block = Block.getBlockById(packed >> 4);
+                var kind = StructureEvidence.marker(block);
                 if (wants(enabled, kind)
                         && StructureEvidence.allowedHeight(kind, y)
-                        && markers.size() < 16_384)
+                        && markers.size() < 16384)
                     markers.add(
                             new StructureEvidence.Marker(
                                     kind,
                                     new BlockPos((chunkX << 4) + x, y, (chunkZ << 4) + z),
-                                    state.is(Blocks.MOSSY_COBBLESTONE),
-                                    state.is(Blocks.CALCITE)));
+                                    block == Blocks.mossy_cobblestone));
             }
         }
-        return new Result(List.copyOf(markers), cavity == null ? null : cavity.build());
+        return new Result(List.copyOf(markers), null);
     }
 }

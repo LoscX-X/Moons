@@ -7,13 +7,11 @@ import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.utils.text.DynamicMiniMessage;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.multiplayer.PlayerInfo;
-import net.minecraft.network.chat.Component;
-import net.minecraft.network.chat.ComponentContents;
-import net.minecraft.network.chat.MutableComponent;
-import net.minecraft.network.chat.contents.PlainTextContents;
-import net.minecraft.network.chat.contents.TranslatableContents;
-import net.minecraft.world.entity.player.Player;
+import net.minecraft.client.network.NetworkPlayerInfo;
+import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.util.ChatComponentText;
+import net.minecraft.util.ChatComponentTranslation;
+import net.minecraft.util.IChatComponent;
 
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -33,8 +31,8 @@ public final class Nickname {
     private static long renderFrame;
     private static long renderTimeMillis;
     private static long cachedRenderFrame = Long.MIN_VALUE;
-    private static Component cachedStyledValue = Component.empty();
-    private static final MutableComponent LIVE_CHAT_STYLED_VALUE = Component.empty();
+    private static IChatComponent cachedStyledValue = new ChatComponentText("");
+    private static final IChatComponent LIVE_CHAT_STYLED_VALUE = new ChatComponentText("");
     private static boolean chatStyledValueUsed;
     private static long nextChatRefreshMillis;
 
@@ -68,7 +66,7 @@ public final class Nickname {
         return VALUE.get();
     }
 
-    public static synchronized Component styledValue() {
+    public static synchronized IChatComponent styledValue() {
         String markup = VALUE.get();
         long frame = renderFrame;
         long timeMillis = frame == 0L ? System.nanoTime() / 1_000_000L : renderTimeMillis;
@@ -78,73 +76,75 @@ public final class Nickname {
             cachedMarkup = markup;
             cachedRenderFrame = frame;
             cachedStyledValue = DynamicMiniMessage.parse(markup, timeMillis);
-            Component refreshedChatValue = withoutImageGlyphs(cachedStyledValue);
+            IChatComponent refreshedChatValue = withoutImageGlyphs(cachedStyledValue);
             LIVE_CHAT_STYLED_VALUE.getSiblings().clear();
-            LIVE_CHAT_STYLED_VALUE.append(refreshedChatValue);
+            LIVE_CHAT_STYLED_VALUE.appendSibling(refreshedChatValue);
         }
         return cachedStyledValue;
     }
 
-    public static synchronized Component chatStyledValue() {
+    public static synchronized IChatComponent chatStyledValue() {
         // styledValue refreshes both variants once for the current render frame.
         styledValue();
         chatStyledValueUsed = true;
         return LIVE_CHAT_STYLED_VALUE;
     }
 
-    public static boolean appliesTo(Player player) {
-        Minecraft client = Minecraft.getInstance();
-        var currentPlayer = client == null ? null : client.player;
+    public static boolean appliesTo(EntityPlayer player) {
+        Minecraft client = Minecraft.getMinecraft();
+        var currentPlayer = client == null ? null : client.thePlayer;
         return isEnabled() && currentPlayer != null && player == currentPlayer;
     }
 
     public static boolean appliesTo(UUID uuid) {
-        Minecraft client = Minecraft.getInstance();
-        var currentPlayer = client == null ? null : client.player;
-        var connectionSnapshot = client == null ? null : client.getConnection();
+        Minecraft client = Minecraft.getMinecraft();
+        var currentPlayer = client == null ? null : client.thePlayer;
+        var connectionSnapshot = client == null ? null : client.getNetHandler();
         if (!isEnabled() || uuid == null) return false;
-        if (currentPlayer != null && uuid.equals(currentPlayer.getUUID())) return true;
-        return connectionSnapshot != null
-                && uuid.equals(connectionSnapshot.getLocalGameProfile().id());
+        if (currentPlayer != null && uuid.equals(currentPlayer.getUniqueID())) return true;
+        return connectionSnapshot != null && uuid.equals(client.getSession().getProfile().getId());
     }
 
-    public static boolean appliesTo(PlayerInfo info) {
+    public static boolean appliesTo(NetworkPlayerInfo info) {
         if (info == null || !isEnabled()) return false;
-        if (appliesTo(info.getProfile().id())) return true;
+        if (appliesTo(info.getGameProfile().getId())) return true;
         String localName = realName();
-        return !localName.isBlank() && info.getProfile().name().equalsIgnoreCase(localName);
+        return !localName.isBlank() && info.getGameProfile().getName().equalsIgnoreCase(localName);
     }
 
-    public static Component replaceLocalPlayerName(Player player, Component original) {
-        String shuffled = player == null ? null : NicknameShuffle.name(player.getUUID());
-        if (shuffled != null) return anonymize(original, player.getGameProfile().name(), shuffled);
+    public static IChatComponent replaceLocalPlayerName(
+            EntityPlayer player, IChatComponent original) {
+        String shuffled = player == null ? null : NicknameShuffle.name(player.getUniqueID());
+        if (shuffled != null)
+            return anonymize(original, player.getGameProfile().getName(), shuffled);
         return appliesTo(player) ? replace(original, realName(), false) : original;
     }
 
-    public static Component replaceTabName(PlayerInfo info, Component original) {
-        String shuffled = NicknameShuffle.name(info.getProfile().id());
-        if (shuffled != null) return anonymize(original, info.getProfile().name(), shuffled);
+    public static IChatComponent replaceTabName(NetworkPlayerInfo info, IChatComponent original) {
+        String shuffled = NicknameShuffle.name(info.getGameProfile().getId());
+        if (shuffled != null) return anonymize(original, info.getGameProfile().getName(), shuffled);
         return appliesTo(info) ? replaceOwnName(original) : original;
     }
 
-    private static Component anonymize(Component original, String realName, String alias) {
-        Component replaced =
-                replaceWithFlatFallback(original, realName, false, Component.literal(alias));
+    private static IChatComponent anonymize(
+            IChatComponent original, String realName, String alias) {
+        IChatComponent replaced =
+                replaceWithFlatFallback(original, realName, false, new ChatComponentText(alias));
         if (original != null
-                && replaced.getString().equals(original.getString())
-                && indexOfIgnoreCase(original.getString(), alias, 0) < 0) {
-            return Component.literal(alias).setStyle(original.getStyle());
+                && replaced.getUnformattedText().equals(original.getUnformattedText())
+                && indexOfIgnoreCase(original.getUnformattedText(), alias, 0) < 0) {
+            return new ChatComponentText(alias).setChatStyle(original.getChatStyle());
         }
         return replaced;
     }
 
     /** Replaces the real local name inside chat/tab components without flattening their styles. */
-    public static Component replaceOwnName(Component original) {
+    public static IChatComponent replaceOwnName(IChatComponent original) {
         return isEnabled() ? replaceWithFlatFallback(original, realName(), false) : original;
     }
 
     /** Chat mentions use the animated text but omit private-use resource-pack icons. */
-    public static Component replaceOwnNameInChat(Component original) {
+    public static IChatComponent replaceOwnNameInChat(IChatComponent original) {
         if (NicknameShuffle.isEnabled()) return NicknameShuffle.chat(original);
         // Chat messages can contain arbitrary server IDs. Only replace a
         // structured component that represents the exact local name; never
@@ -152,83 +152,69 @@ public final class Nickname {
         return isEnabled() ? replace(original, realName(), true) : original;
     }
 
-    private static Component replace(Component original, String realName, boolean chatVariant) {
+    private static IChatComponent replace(
+            IChatComponent original, String realName, boolean chatVariant) {
         return replace(original, realName, chatVariant, null);
     }
 
-    private static Component replace(
-            Component original, String realName, boolean chatVariant, Component fixedValue) {
+    private static IChatComponent replace(
+            IChatComponent original,
+            String realName,
+            boolean chatVariant,
+            IChatComponent fixedValue) {
         if (original == null
                 || realName.isBlank()
-                || realName.equals(fixedValue == null ? VALUE.get() : fixedValue.getString())) {
+                || realName.equals(
+                        fixedValue == null ? VALUE.get() : fixedValue.getUnformattedText())) {
             return original;
         }
 
-        ComponentContents contents = original.getContents();
-        ComponentContents replacedContents = contents;
-        if (contents instanceof PlainTextContents plain) {
-            String text = plain.text();
-            if (chatVariant && !text.equalsIgnoreCase(realName)) {
-                MutableComponent unchanged =
-                        MutableComponent.create(contents).setStyle(original.getStyle());
-                for (Component sibling : original.getSiblings()) {
-                    unchanged.append(replace(sibling, realName, true, fixedValue));
-                }
-                return unchanged;
-            }
-            if (indexOfIgnoreCase(text, realName, 0) >= 0) {
-                MutableComponent replaced = Component.empty().setStyle(original.getStyle());
-                int start = 0;
-                int occurrence;
+        IChatComponent replaced;
+        if (original instanceof ChatComponentText plain) {
+            String text = plain.getChatComponentText_TextValue();
+            replaced =
+                    new ChatComponentText("")
+                            .setChatStyle(original.getChatStyle().createShallowCopy());
+            if (chatVariant && !text.equalsIgnoreCase(realName)) replaced.appendText(text);
+            else {
+                int start = 0, occurrence;
                 while ((occurrence = indexOfIgnoreCase(text, realName, start)) >= 0) {
-                    if (occurrence > start) {
-                        replaced.append(Component.literal(text.substring(start, occurrence)));
-                    }
-                    replaced.append(
+                    if (occurrence > start) replaced.appendText(text.substring(start, occurrence));
+                    replaced.appendSibling(
                             fixedValue != null
                                     ? fixedValue
                                     : chatVariant ? chatStyledValue() : styledValue());
                     start = occurrence + realName.length();
                 }
-                if (start < text.length()) {
-                    replaced.append(Component.literal(text.substring(start)));
-                }
-                for (Component sibling : original.getSiblings()) {
-                    replaced.append(replace(sibling, realName, chatVariant, fixedValue));
-                }
-                return replaced;
+                if (start < text.length()) replaced.appendText(text.substring(start));
             }
-        } else if (contents instanceof TranslatableContents translatable) {
-            Object[] arguments = translatable.getArgs().clone();
-            for (int index = 0; index < arguments.length; index++) {
-                Object argument = arguments[index];
-                if (argument instanceof Component component) {
-                    arguments[index] = replace(component, realName, chatVariant, fixedValue);
-                } else if (argument instanceof String text
-                        && indexOfIgnoreCase(text, realName, 0) >= 0) {
-                    arguments[index] =
-                            replace(Component.literal(text), realName, chatVariant, fixedValue);
-                }
+        } else if (original instanceof ChatComponentTranslation translated) {
+            Object[] args = translated.getFormatArgs().clone();
+            for (int i = 0; i < args.length; i++) {
+                if (args[i] instanceof IChatComponent part)
+                    args[i] = replace(part, realName, chatVariant, fixedValue);
+                else if (args[i] instanceof String text)
+                    args[i] =
+                            replace(new ChatComponentText(text), realName, chatVariant, fixedValue);
             }
-            replacedContents =
-                    new TranslatableContents(
-                            translatable.getKey(), translatable.getFallback(), arguments);
+            replaced =
+                    new ChatComponentTranslation(translated.getKey(), args)
+                            .setChatStyle(original.getChatStyle().createShallowCopy());
+        } else {
+            replaced = original.createCopy();
+            replaced.getSiblings().clear();
         }
-
-        MutableComponent replaced =
-                MutableComponent.create(replacedContents).setStyle(original.getStyle());
-        for (Component sibling : original.getSiblings()) {
-            replaced.append(replace(sibling, realName, chatVariant, fixedValue));
-        }
+        for (IChatComponent sibling : original.getSiblings())
+            replaced.appendSibling(replace(sibling, realName, chatVariant, fixedValue));
         return replaced;
     }
 
-    private static Component withoutImageGlyphs(Component component) {
-        MutableComponent result = Component.empty();
+    private static IChatComponent withoutImageGlyphs(IChatComponent component) {
+        IChatComponent result = new ChatComponentText("");
         boolean leading = true;
-        for (Component part : component.toFlatList()) {
+        for (IChatComponent part : component) {
             String filtered =
-                    part.getString()
+                    part.getUnformattedTextForChat()
                             .codePoints()
                             .filter(
                                     codePoint ->
@@ -245,37 +231,40 @@ public final class Nickname {
                 }
                 leading = false;
             }
-            result.append(Component.literal(filtered).setStyle(part.getStyle()));
+            result.appendSibling(new ChatComponentText(filtered).setChatStyle(part.getChatStyle()));
         }
         return result;
     }
 
-    private static Component replaceWithFlatFallback(
-            Component original, String realName, boolean chatVariant) {
+    private static IChatComponent replaceWithFlatFallback(
+            IChatComponent original, String realName, boolean chatVariant) {
         return replaceWithFlatFallback(original, realName, chatVariant, null);
     }
 
-    private static Component replaceWithFlatFallback(
-            Component original, String realName, boolean chatVariant, Component fixedValue) {
-        Component replaced = replace(original, realName, chatVariant, fixedValue);
+    private static IChatComponent replaceWithFlatFallback(
+            IChatComponent original,
+            String realName,
+            boolean chatVariant,
+            IChatComponent fixedValue) {
+        IChatComponent replaced = replace(original, realName, chatVariant, fixedValue);
         if (original == null
-                || !replaced.getString().equals(original.getString())
-                || indexOfIgnoreCase(original.getString(), realName, 0) < 0) {
+                || !replaced.getUnformattedText().equals(original.getUnformattedText())
+                || indexOfIgnoreCase(original.getUnformattedText(), realName, 0) < 0) {
             return replaced;
         }
-        String text = original.getString();
-        MutableComponent flattened = Component.empty().setStyle(original.getStyle());
+        String text = original.getUnformattedText();
+        IChatComponent flattened = new ChatComponentText("").setChatStyle(original.getChatStyle());
         int start = 0;
         int occurrence;
         while ((occurrence = indexOfIgnoreCase(text, realName, start)) >= 0) {
-            if (occurrence > start) flattened.append(text.substring(start, occurrence));
-            flattened.append(
+            if (occurrence > start) flattened.appendText(text.substring(start, occurrence));
+            flattened.appendSibling(
                     fixedValue != null
                             ? fixedValue
                             : chatVariant ? chatStyledValue() : styledValue());
             start = occurrence + realName.length();
         }
-        if (start < text.length()) flattened.append(text.substring(start));
+        if (start < text.length()) flattened.appendText(text.substring(start));
         return flattened;
     }
 
@@ -304,13 +293,13 @@ public final class Nickname {
     }
 
     private static String realName() {
-        Minecraft client = Minecraft.getInstance();
-        var currentPlayer = client == null ? null : client.player;
-        var connectionSnapshot = client == null ? null : client.getConnection();
+        Minecraft client = Minecraft.getMinecraft();
+        var currentPlayer = client == null ? null : client.thePlayer;
+        var connectionSnapshot = client == null ? null : client.getNetHandler();
         if (connectionSnapshot != null) {
-            return connectionSnapshot.getLocalGameProfile().name();
+            return client.getSession().getProfile().getName();
         }
-        return currentPlayer == null ? "" : currentPlayer.getGameProfile().name();
+        return currentPlayer == null ? "" : currentPlayer.getGameProfile().getName();
     }
 
     public static void commandSet(Minecraft client, String raw) {
@@ -328,8 +317,8 @@ public final class Nickname {
             return;
         }
 
-        Component styled = DynamicMiniMessage.parse(nickname);
-        String visible = styled.getString();
+        IChatComponent styled = DynamicMiniMessage.parse(nickname);
+        String visible = styled.getUnformattedText();
         if (visible.isBlank()) {
             ClientChat.send(client, "Nickname must contain visible text.");
             return;

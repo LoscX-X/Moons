@@ -1,6 +1,6 @@
 package com.blanoir.moons.client.module.impl.player.invmanager;
 
-import net.minecraft.world.item.ItemStack;
+import net.minecraft.item.ItemStack;
 
 /** A desired exchange; equipment exchanges are executed as a checked cursor transaction. */
 public record InventoryAction(

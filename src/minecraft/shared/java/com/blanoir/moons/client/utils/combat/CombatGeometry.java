@@ -1,25 +1,26 @@
 package com.blanoir.moons.client.utils.combat;
 
+import com.blanoir.moons.client.compat.math.VecMath;
 import com.blanoir.moons.client.module.impl.combat.Misplace;
 import com.blanoir.moons.client.utils.raytrace.RaytraceUtils;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.EntityHitResult;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.entity.Entity;
+import net.minecraft.util.AxisAlignedBB;
+import net.minecraft.util.MovingObjectPosition;
+import net.minecraft.util.Vec3;
 
 import java.util.function.Predicate;
 
 /** Shared aiming/attack geometry. Backtrack already updates the live entity by delayed replay. */
 public final class CombatGeometry {
-    public record Shape(AABB box, Vec3 offset) {
+    public record Shape(AxisAlignedBB box, Vec3 offset) {
         public Vec3 original(Vec3 point) {
             return point.subtract(offset);
         }
 
         public boolean shifted() {
-            return offset.lengthSqr() > 1.0E-9;
+            return VecMath.lengthSqr(offset) > 1.0E-9;
         }
     }
 
@@ -29,19 +30,20 @@ public final class CombatGeometry {
         return Misplace.attackShape(client, entity);
     }
 
-    public static AABB box(Minecraft client, Entity entity) {
+    public static AxisAlignedBB box(Minecraft client, Entity entity) {
         return shape(client, entity).box();
     }
 
     public static double distanceSquared(Minecraft client, Entity entity) {
-        return client == null || client.player == null || entity == null
+        return client == null || client.thePlayer == null || entity == null
                 ? Double.MAX_VALUE
-                : box(client, entity).distanceToSqr(client.player.getEyePosition());
+                : com.blanoir.moons.client.utils.entity.EntityDistance.squaredToBox(
+                        client.thePlayer.getPositionEyes(1F), box(client, entity));
     }
 
     public static boolean outsideVanillaRange(Minecraft client, Entity entity) {
-        if (client == null || client.player == null || entity == null) return true;
-        double range = CombatReach.vanillaEntityInteractionRange(client.player);
+        if (client == null || client.thePlayer == null || entity == null) return true;
+        double range = CombatReach.vanillaEntityInteractionRange(client.thePlayer);
         return distanceSquared(client, entity) > range * range;
     }
 
@@ -58,26 +60,36 @@ public final class CombatGeometry {
             Predicate<Entity> predicate,
             boolean throughBlocks) {
         if (client == null
-                || client.player == null
-                || client.level == null
+                || client.thePlayer == null
+                || client.theWorld == null
                 || start == null
                 || look == null
-                || look.lengthSqr() < 1.0E-9
+                || VecMath.lengthSqr(look) < 1.0E-9
                 || !Double.isFinite(range)
                 || range <= 0) return null;
-        Vec3 end = start.add(look.normalize().scale(range));
+        Vec3 end = start.add(VecMath.scale(look.normalize(), range));
         Entity best = null;
         double nearest = range * range;
         for (Entity entity :
-                client.level.getEntities(
-                        client.player, new AABB(start, end).inflate(searchPadding()), predicate)) {
-            if (entity.getRootVehicle() == client.player.getRootVehicle()) continue;
+                client.theWorld.getEntitiesInAABBexcluding(
+                        client.thePlayer,
+                        new AxisAlignedBB(
+                                        Math.min(start.xCoord, end.xCoord),
+                                        Math.min(start.yCoord, end.yCoord),
+                                        Math.min(start.zCoord, end.zCoord),
+                                        Math.max(start.xCoord, end.xCoord),
+                                        Math.max(start.yCoord, end.yCoord),
+                                        Math.max(start.zCoord, end.zCoord))
+                                .expand(searchPadding(), searchPadding(), searchPadding()),
+                        e -> predicate.test(e))) {
+            if (RaytraceUtils.rootVehicle(entity) == RaytraceUtils.rootVehicle(client.thePlayer))
+                continue;
             Shape shape = shape(client, entity);
             Vec3 hit = contact(shape.box(), start, end);
             if (hit == null
-                    || start.distanceToSqr(hit) > nearest
+                    || start.squareDistanceTo(hit) > nearest
                     || !visible(client, shape, start, hit, throughBlocks)) continue;
-            nearest = start.distanceToSqr(hit);
+            nearest = start.squareDistanceTo(hit);
             best = entity;
         }
         return best;
@@ -91,12 +103,12 @@ public final class CombatGeometry {
             Entity target,
             boolean throughBlocks) {
         if (client == null
-                || client.player == null
-                || client.level == null
+                || client.thePlayer == null
+                || client.theWorld == null
                 || target == null
                 || start == null
                 || look == null
-                || look.lengthSqr() < 1.0E-9
+                || VecMath.lengthSqr(look) < 1.0E-9
                 || !Double.isFinite(range)
                 || range <= 0) return RaytraceUtils.EntityRayState.RANGE;
         Shape shape = shape(client, target);
@@ -110,9 +122,9 @@ public final class CombatGeometry {
 
     public static RaytraceUtils.EntityRayState traceShape(
             Shape shape, Vec3 start, Vec3 look, double range, Predicate<Vec3> visible) {
-        if (shape.box().distanceToSqr(start) > range * range)
-            return RaytraceUtils.EntityRayState.RANGE;
-        Vec3 hit = contact(shape.box(), start, start.add(look.normalize().scale(range)));
+        if (com.blanoir.moons.client.utils.entity.EntityDistance.squaredToBox(start, shape.box())
+                > range * range) return RaytraceUtils.EntityRayState.RANGE;
+        Vec3 hit = contact(shape.box(), start, start.add(VecMath.scale(look.normalize(), range)));
         if (hit == null) return RaytraceUtils.EntityRayState.AIM;
         return visible.test(hit)
                 ? RaytraceUtils.EntityRayState.HIT
@@ -127,13 +139,16 @@ public final class CombatGeometry {
                                 client, eye, shape.original(hit), throughBlocks));
     }
 
-    public static Vec3 contact(AABB box, Vec3 start, Vec3 end) {
-        return box.contains(start) ? start : box.clip(start, end).orElse(null);
+    public static Vec3 contact(AxisAlignedBB box, Vec3 start, Vec3 end) {
+        return box.isVecInside(start)
+                ? start
+                : RaytraceUtils.intercept(box, start, end).orElse(null);
     }
 
-    public static EntityHitResult attackHit(
+    public static MovingObjectPosition attackHit(
             Minecraft client, Entity target, Vec3 eye, Vec3 look, double range) {
-        Vec3 contact = contact(box(client, target), eye, eye.add(look.normalize().scale(range)));
-        return contact == null ? null : new EntityHitResult(target, contact);
+        Vec3 contact =
+                contact(box(client, target), eye, eye.add(VecMath.scale(look.normalize(), range)));
+        return contact == null ? null : new MovingObjectPosition(target, contact);
     }
 }

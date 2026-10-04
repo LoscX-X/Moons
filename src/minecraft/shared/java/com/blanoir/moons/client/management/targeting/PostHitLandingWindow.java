@@ -1,7 +1,9 @@
 package com.blanoir.moons.client.management.targeting;
 
-import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.phys.Vec3;
+import com.blanoir.moons.client.compat.math.VecMath;
+
+import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.util.Vec3;
 
 /**
  * Tracks the short, reliable ground-placement window after an attacked player
@@ -22,7 +24,7 @@ public final class PostHitLandingWindow {
     private double targetHorizontalSpeed = Double.POSITIVE_INFINITY;
     private double relativeHorizontalSpeed = Double.POSITIVE_INFINITY;
 
-    public void arm(Player target, int lifetimeTicks, int landingWindowTicks) {
+    public void arm(EntityPlayer target, int lifetimeTicks, int landingWindowTicks) {
         arm(Sample.of(target), lifetimeTicks, landingWindowTicks);
     }
 
@@ -47,14 +49,14 @@ public final class PostHitLandingWindow {
         windowTicks = 0;
         lastTargetTick = target.tick();
         lastPosition = target.position();
-        previousOnGround = target.onGround();
+        previousOnGround = target.onGround;
         sawAirborne = !previousOnGround;
         landingObserved = false;
         targetHorizontalSpeed = Double.POSITIVE_INFINITY;
         relativeHorizontalSpeed = Double.POSITIVE_INFINITY;
     }
 
-    public Snapshot update(Player target, Vec3 observerVelocity) {
+    public Snapshot update(EntityPlayer target, Vec3 observerVelocity) {
         return update(Sample.of(target), observerVelocity);
     }
 
@@ -80,13 +82,14 @@ public final class PostHitLandingWindow {
         Vec3 position = target.position();
         Vec3 observed =
                 lastPosition == null
-                        ? Vec3.ZERO
-                        : position.subtract(lastPosition).scale(1.0D / elapsedTicks);
-        targetHorizontalSpeed = Math.hypot(observed.x, observed.z);
-        Vec3 observer = observerVelocity == null ? Vec3.ZERO : observerVelocity;
-        relativeHorizontalSpeed = Math.hypot(observed.x - observer.x, observed.z - observer.z);
+                        ? VecMath.ZERO
+                        : VecMath.scale(position.subtract(lastPosition), 1.0D / elapsedTicks);
+        targetHorizontalSpeed = Math.hypot(observed.xCoord, observed.zCoord);
+        Vec3 observer = observerVelocity == null ? VecMath.ZERO : observerVelocity;
+        relativeHorizontalSpeed =
+                Math.hypot(observed.xCoord - observer.xCoord, observed.zCoord - observer.zCoord);
 
-        boolean onGround = target.onGround();
+        boolean onGround = target.onGround;
         if (!onGround) {
             sawAirborne = true;
         }
@@ -101,8 +104,8 @@ public final class PostHitLandingWindow {
         return snapshot();
     }
 
-    public boolean matches(Player target) {
-        return target != null && target.getId() == targetId;
+    public boolean matches(EntityPlayer target) {
+        return target != null && target.getEntityId() == targetId;
     }
 
     public void clear() {
@@ -141,11 +144,14 @@ public final class PostHitLandingWindow {
 
     /** Tick-stamped observations also allow deterministic replay of attack/landing ordering. */
     public record Sample(int targetId, int tick, Vec3 position, boolean onGround) {
-        private static Sample of(Player target) {
+        private static Sample of(EntityPlayer target) {
             return target == null
                     ? null
                     : new Sample(
-                            target.getId(), target.tickCount, target.position(), target.onGround());
+                            target.getEntityId(),
+                            target.ticksExisted,
+                            VecMath.position(target),
+                            target.onGround);
         }
     }
 }

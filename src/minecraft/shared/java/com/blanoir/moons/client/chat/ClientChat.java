@@ -4,10 +4,11 @@ import com.blanoir.moons.client.access.MinecraftClientAccess;
 import com.blanoir.moons.client.config.ClientBranding;
 import com.blanoir.moons.client.config.Settings;
 
-import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
-import net.minecraft.network.chat.Component;
-import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.util.ChatComponentText;
+import net.minecraft.util.ChatStyle;
+import net.minecraft.util.EnumChatFormatting;
+import net.minecraft.util.IChatComponent;
 
 public final class ClientChat {
     private static final String ENABLED_KEY = "clientchat.prefixEnabled";
@@ -18,27 +19,34 @@ public final class ClientChat {
     public static void send(Minecraft client, String message) {
         if (client != null && SILENCE_DEPTH.get() == 0 && !isToggleNotice(message)) {
             MinecraftClientAccess.sendSystemMessage(
-                    client, decorate(Component.literal(normalize(message))), false);
+                    client, decorate(new ChatComponentText(normalize(message))), false);
         }
     }
 
-    public static void send(Minecraft client, Component message) {
+    public static void send(Minecraft client, IChatComponent message) {
         if (client != null && message != null && SILENCE_DEPTH.get() == 0) {
             MinecraftClientAccess.sendSystemMessage(client, decorate(message), false);
         }
     }
 
-    private static MutableComponent decorate(Component message) {
+    private static IChatComponent decorate(IChatComponent message) {
         if (!isPrefixEnabled()) {
-            return message.copy();
+            return message.createCopy();
         }
-        return Component.literal("[")
-                .withStyle(ChatFormatting.DARK_GRAY)
-                .append(
-                        Component.literal(prefix())
-                                .withStyle(ChatFormatting.AQUA, ChatFormatting.BOLD))
-                .append(Component.literal("] › ").withStyle(ChatFormatting.DARK_GRAY))
-                .append(message.copy().withStyle(ChatFormatting.GRAY));
+        IChatComponent result =
+                new ChatComponentText("[")
+                        .setChatStyle(new ChatStyle().setColor(EnumChatFormatting.DARK_GRAY));
+        result.appendSibling(
+                new ChatComponentText(prefix())
+                        .setChatStyle(
+                                new ChatStyle().setColor(EnumChatFormatting.AQUA).setBold(true)));
+        result.appendSibling(
+                new ChatComponentText("] › ")
+                        .setChatStyle(new ChatStyle().setColor(EnumChatFormatting.DARK_GRAY)));
+        IChatComponent body = message.createCopy();
+        if (body.getChatStyle().getColor() == null)
+            body.getChatStyle().setColor(EnumChatFormatting.GRAY);
+        return result.appendSibling(body);
     }
 
     public static boolean isPrefixEnabled() {
@@ -71,7 +79,7 @@ public final class ClientChat {
     public static void actionBar(Minecraft client, String message) {
         if (client != null && SILENCE_DEPTH.get() == 0) {
             MinecraftClientAccess.sendSystemMessage(
-                    client, decorate(Component.literal(normalize(message))), true);
+                    client, decorate(new ChatComponentText(normalize(message))), true);
         }
     }
 

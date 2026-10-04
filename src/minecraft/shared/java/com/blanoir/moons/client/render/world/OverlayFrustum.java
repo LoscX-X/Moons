@@ -1,7 +1,8 @@
 package com.blanoir.moons.client.render.world;
 
-import net.minecraft.client.Camera;
-import net.minecraft.world.phys.Vec3;
+import com.blanoir.moons.client.render.LegacyCamera;
+
+import net.minecraft.util.Vec3;
 
 import org.joml.FrustumIntersection;
 import org.joml.Matrix4f;
@@ -13,15 +14,15 @@ public final class OverlayFrustum {
     private final FrustumIntersection frustum = new FrustumIntersection();
     private double eyeX, eyeY, eyeZ;
 
-    public void update(Camera camera) {
+    public void update(LegacyCamera camera) {
         set(camera.getViewRotationProjectionMatrix(matrix), camera.position());
     }
 
     public void set(Matrix4fc projection, Vec3 eye) {
         frustum.set(projection);
-        eyeX = eye.x;
-        eyeY = eye.y;
-        eyeZ = eye.z;
+        eyeX = eye.xCoord;
+        eyeY = eye.yCoord;
+        eyeZ = eye.zCoord;
     }
 
     public boolean isVisible(double x1, double y1, double z1, double x2, double y2, double z2) {

@@ -2,6 +2,8 @@ package com.blanoir.moons.client.module.impl.player;
 
 import com.blanoir.moons.client.access.MinecraftClientAccess;
 import com.blanoir.moons.client.chat.ClientChat;
+import com.blanoir.moons.client.compat.input.InputConstants;
+import com.blanoir.moons.client.compat.math.VecMath;
 import com.blanoir.moons.client.config.settings.*;
 import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.event.EventPriority;
@@ -12,12 +14,12 @@ import com.blanoir.moons.client.module.impl.player.invmanager.*;
 import com.blanoir.moons.client.utils.client.ClientReady;
 import com.blanoir.moons.client.utils.inventory.InventoryClickFailure;
 import com.blanoir.moons.client.utils.inventory.InventoryClicks;
+import com.blanoir.moons.client.utils.inventory.LegacyItems;
 import com.blanoir.moons.client.utils.world.placement.PlacementCoordinator;
-import com.mojang.blaze3d.platform.InputConstants;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.screens.inventory.InventoryScreen;
-import net.minecraft.world.item.ItemStack;
+import net.minecraft.client.gui.inventory.GuiInventory;
+import net.minecraft.item.ItemStack;
 
 import java.util.*;
 
@@ -36,7 +38,7 @@ public final class InvClear {
     private static final IntSetting OPEN_DELAY = delay("openDelayMs", 250);
     private static final IntSetting ACTION_DELAY = delay("actionDelayMs", 150);
     private static final IntSetting MANUAL_DELAY = delay("manualDelayMs", 500);
-    private static InventoryScreen screen;
+    private static GuiInventory screen;
     private static InventorySession session = new InventorySession();
     private static final Set<Integer> MOUSE_HELD = new HashSet<>();
     private static final List<InventoryCleanup.Drop> ATTEMPTS = new ArrayList<>();
@@ -68,20 +70,21 @@ public final class InvClear {
         EventBus.ATTACK_ENTITY_POST.register(
                 "InvClear.combat",
                 event -> {
-                    if (event.attacker() == Minecraft.getInstance().player)
+                    if (event.attacker() == Minecraft.getMinecraft().thePlayer)
                         combatUntil = System.nanoTime() + 500_000_000L;
                 });
         EventBus.KEY_INPUT.register(
                 "InvClear.key",
                 event -> {
                     if (!event.isCancelled() && event.action() != InputConstants.RELEASE)
-                        manualInput(Minecraft.getInstance());
+                        manualInput(Minecraft.getMinecraft());
                 });
         EventBus.MOUSE_BUTTON.register(
                 "InvClear.mouse",
                 event -> {
-                    Minecraft client = Minecraft.getInstance();
-                    if (!(MinecraftClientAccess.screen(client) instanceof InventoryScreen)) return;
+                    Minecraft client = Minecraft.getMinecraft();
+                    if (!(MinecraftClientAccess.currentScreen(client) instanceof GuiInventory))
+                        return;
                     if (!event.isCancelled()) manualInput(client);
                     if (event.action() == InputConstants.RELEASE)
                         MOUSE_HELD.remove(event.button().button());
@@ -101,7 +104,7 @@ public final class InvClear {
         status = "Open inventory to clean";
     }
 
-    private static void enter(InventoryScreen current, long now) {
+    private static void enter(GuiInventory current, long now) {
         if (current == screen) return;
         FAILURE.reset();
         screen = current;
@@ -116,8 +119,8 @@ public final class InvClear {
     private static void manualInput(Minecraft client) {
         if (!enabled()
                 || !ClientReady.interaction(client)
-                || !(MinecraftClientAccess.screen(client) instanceof InventoryScreen current)
-                || client.player.containerMenu != client.player.inventoryMenu) return;
+                || !(MinecraftClientAccess.currentScreen(client) instanceof GuiInventory current)
+                || client.thePlayer.openContainer != client.thePlayer.inventoryContainer) return;
         long now = System.nanoTime();
         enter(current, now);
         session.manualInput(snapshot(client), now, MANUAL_DELAY.get());
@@ -126,8 +129,8 @@ public final class InvClear {
     private static void tick(Minecraft client) {
         if (!enabled()) return;
         if (!ClientReady.interaction(client)
-                || !(MinecraftClientAccess.screen(client) instanceof InventoryScreen current)
-                || client.player.containerMenu != client.player.inventoryMenu) {
+                || !(MinecraftClientAccess.currentScreen(client) instanceof GuiInventory current)
+                || client.thePlayer.openContainer != client.thePlayer.inventoryContainer) {
             if (screen != null) reset();
             return;
         }
@@ -144,12 +147,11 @@ public final class InvClear {
             status = "Inventory changed · reopen inventory to retry";
             return;
         }
-        if (!client.isWindowActive() || !MOUSE_HELD.isEmpty() || session.paused(now)) {
+        if (!client.inGameHasFocus || !MOUSE_HELD.isEmpty() || session.paused(now)) {
             status = "Paused · manual input";
             return;
         }
-        if (!client.player.inventoryMenu.getCarried().isEmpty()
-                || AutoTotem.inventoryBusy()
+        if (!LegacyItems.empty(LegacyItems.carried(client.thePlayer.inventoryContainer))
                 || InventoryClicks.busyExcept(null)
                 || InventoryClicks.recentlyBusy(now)
                 || HotbarLease.isHeld()
@@ -157,18 +159,18 @@ public final class InvClear {
             status = "Paused · another inventory action";
             return;
         }
-        if (client.player.isDeadOrDying()
-                || client.player.isSpectator()
-                || client.player.isUsingItem()
-                || client.gameMode.isDestroying()
+        if (client.thePlayer.isDead
+                || client.thePlayer.isSpectator()
+                || client.thePlayer.isUsingItem()
+                || client.playerController.getIsHittingBlock()
                 || now < combatUntil
-                || !client.player.onGround()
-                || client.player.getDeltaMovement().horizontalDistanceSqr() > .0001
-                || client.options.keyUp.isDown()
-                || client.options.keyDown.isDown()
-                || client.options.keyLeft.isDown()
-                || client.options.keyRight.isDown()
-                || client.options.keyJump.isDown()) {
+                || !client.thePlayer.onGround
+                || VecMath.horizontalDistanceSqr(VecMath.motion(client.thePlayer)) > .0001
+                || client.gameSettings.keyBindForward.isKeyDown()
+                || client.gameSettings.keyBindBack.isKeyDown()
+                || client.gameSettings.keyBindLeft.isKeyDown()
+                || client.gameSettings.keyBindRight.isKeyDown()
+                || client.gameSettings.keyBindJump.isKeyDown()) {
             status = "Paused · movement or combat";
             return;
         }
@@ -188,10 +190,13 @@ public final class InvClear {
             return;
         }
         var drop = plan.getFirst();
-        status = "Drop " + drop.item().getHoverName().getString() + " · " + drop.reason();
+        status = "Drop " + drop.item().getDisplayName() + " · " + drop.reason();
         if (now < nextActionAt) return;
         if (FAILURE.beforeClick(
-                client, client.player.inventoryMenu, snapshot.menuSlot(drop.source()), null)) {
+                client,
+                client.thePlayer.inventoryContainer,
+                snapshot.menuSlot(drop.source()),
+                null)) {
             status = "Misclick · retrying";
             activityVersion = InventoryClicks.activityVersion();
             nextActionAt = now + Math.max(50, ACTION_DELAY.get()) * 1_000_000L;
@@ -202,7 +207,7 @@ public final class InvClear {
                                 .filter(
                                         old ->
                                                 old.source() == drop.source()
-                                                        && ItemStack.matches(
+                                                        && LegacyItems.matches(
                                                                 old.item(), drop.item()))
                                 .count()
                         >= 2) {
@@ -212,7 +217,7 @@ public final class InvClear {
         ATTEMPTS.add(drop);
         if (!InventoryClicks.dropStack(
                 client,
-                client.player.inventoryMenu,
+                client.thePlayer.inventoryContainer,
                 snapshot.menuSlot(drop.source()),
                 drop.item())) {
             stalled = true;
@@ -223,18 +228,22 @@ public final class InvClear {
     }
 
     private static InventorySnapshot snapshot(Minecraft client) {
-        return InventorySnapshot.capture(client.player.inventoryMenu, client.player.getInventory());
+        return InventorySnapshot.capture(
+                client.thePlayer.inventoryContainer, client.thePlayer.inventory);
     }
 
     private static List<InventoryCleanup.Drop> plan(Minecraft client, InventorySnapshot snapshot) {
         BitSet blocked = session.protectedSlots();
-        blocked.set(client.player.getInventory().getSelectedSlot());
+        blocked.set(client.thePlayer.inventory.currentItem);
         var rules = InventoryRules.groups();
         for (int index = 0; index < 36; index++) {
             int slot = snapshot.menuSlot(index);
             ItemStack item = snapshot.item(index);
             if (slot < 0
-                    || !client.player.inventoryMenu.getSlot(slot).mayPickup(client.player)
+                    || !client.thePlayer
+                            .inventoryContainer
+                            .getSlot(slot)
+                            .canTakeStack(client.thePlayer)
                     || rules.stream()
                             .flatMap(rule -> rule.include().stream())
                             .anyMatch(entry -> entry.matches(item))) blocked.set(index);

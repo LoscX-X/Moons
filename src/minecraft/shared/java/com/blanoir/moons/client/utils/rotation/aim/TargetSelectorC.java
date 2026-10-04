@@ -1,12 +1,13 @@
 package com.blanoir.moons.client.utils.rotation.aim;
 
+import com.blanoir.moons.client.compat.math.VecMath;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 
+import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.Minecraft;
-import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
-import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.util.BlockPos;
+import net.minecraft.util.EnumFacing;
+import net.minecraft.util.Vec3;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -21,7 +22,7 @@ import java.util.function.Predicate;
  * history is updated and no mode configuration, input or rotation ownership is read.
  */
 public final class TargetSelectorC {
-    private static final Direction[] FACES = Direction.values();
+    private static final EnumFacing[] FACES = EnumFacing.values();
 
     private TargetSelectorC() {}
 
@@ -32,26 +33,33 @@ public final class TargetSelectorC {
             int searchRadius,
             boolean keepHeight,
             int startY,
-            Predicate<BlockState> interactable) {
-        if (!client.level.getBlockState(desired).canBeReplaced()) return List.of();
+            Predicate<IBlockState> interactable) {
+        if (!client.theWorld
+                .getBlockState(desired)
+                .getBlock()
+                .isReplaceable(client.theWorld, desired)) return List.of();
 
         List<BlockTarget> targets = new ArrayList<>();
-        Vec3 targetCenter = Vec3.atCenterOf(desired);
-        double reachSqr = Math.pow(client.player.blockInteractionRange(), 2.0D);
+        Vec3 targetCenter = VecMath.atCenterOf(desired);
+        double reachSqr = Math.pow(client.playerController.getBlockReachDistance(), 2.0D);
         for (int x = -searchRadius; x <= searchRadius; x++) {
             for (int y = -searchRadius; y <= 0; y++) {
                 for (int z = -searchRadius; z <= searchRadius; z++) {
-                    BlockPos support = desired.offset(x, y, z);
-                    BlockState state = client.level.getBlockState(support);
-                    if (state.canBeReplaced()
+                    BlockPos support = desired.add(x, y, z);
+                    IBlockState state = client.theWorld.getBlockState(support);
+                    if (state.getBlock().isReplaceable(client.theWorld, support)
                             || interactable.test(state)
-                            || playerPosition.distanceToSqr(Vec3.atCenterOf(support)) > reachSqr
+                            || playerPosition.squareDistanceTo(VecMath.atCenterOf(support))
+                                    > reachSqr
                             || keepHeight && support.getY() >= startY) continue;
-                    for (Direction face : FACES) {
-                        if (face == Direction.DOWN) continue;
-                        BlockPos placed = support.relative(face);
+                    for (EnumFacing face : FACES) {
+                        if (face == EnumFacing.DOWN) continue;
+                        BlockPos placed = support.offset(face);
                         if (placed.getY() > desired.getY()
-                                || !client.level.getBlockState(placed).canBeReplaced()) continue;
+                                || !client.theWorld
+                                        .getBlockState(placed)
+                                        .getBlock()
+                                        .isReplaceable(client.theWorld, placed)) continue;
                         // Each offset visits one distinct support, and each face occurs once.
                         targets.add(new BlockTarget(support, face));
                     }
@@ -62,7 +70,7 @@ public final class TargetSelectorC {
                 Comparator.comparingDouble(
                                 (BlockTarget target) -> target.placeDistanceSquared(targetCenter))
                         .thenComparingDouble(target -> target.supportDistanceSquared(targetCenter))
-                        .thenComparingInt(target -> target.face() == Direction.UP ? 0 : 1));
+                        .thenComparingInt(target -> target.face() == EnumFacing.UP ? 0 : 1));
         return targets;
     }
 
@@ -73,7 +81,7 @@ public final class TargetSelectorC {
             int maxCandidates,
             BlockPos previousPlaced,
             Function<BlockTarget, BlockAim> aimAt) {
-        Vec3 desiredCenter = Vec3.atCenterOf(desired);
+        Vec3 desiredCenter = VecMath.atCenterOf(desired);
         float baseYaw = base.yaw();
         float basePitch = base.pitch();
         BlockAim best = null;

@@ -1,6 +1,6 @@
 package com.blanoir.moons.client.utils.input;
 
-import net.minecraft.util.Mth;
+import com.blanoir.moons.client.compat.math.Mth;
 
 /**
  * A: Existing mouse-activity influence on assistance. Computes one multiplier from

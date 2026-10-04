@@ -118,7 +118,7 @@ public final class ModuleRegistry {
         }
         try {
             ClientChat.withoutNoticesOnCurrentThread(
-                    () -> module.toggle().apply(Minecraft.getInstance(), enabled));
+                    () -> module.toggle().apply(Minecraft.getMinecraft(), enabled));
             return success(module.toJson());
         } catch (RuntimeException exception) {
             return error(messageOf(exception));
@@ -144,7 +144,7 @@ public final class ModuleRegistry {
         }
         try {
             ClientChat.withoutNoticesOnCurrentThread(
-                    () -> setting.apply().apply(Minecraft.getInstance(), value));
+                    () -> setting.apply().apply(Minecraft.getMinecraft(), value));
             return success(module.toJson());
         } catch (RuntimeException exception) {
             return error(messageOf(exception));

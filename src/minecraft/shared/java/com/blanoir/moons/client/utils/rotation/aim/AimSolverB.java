@@ -2,6 +2,8 @@ package com.blanoir.moons.client.utils.rotation.aim;
 
 import static com.blanoir.moons.client.utils.math.MathUtils.approach;
 
+import com.blanoir.moons.client.compat.math.Mth;
+import com.blanoir.moons.client.compat.math.VecMath;
 import com.blanoir.moons.client.utils.math.MathUtils;
 import com.blanoir.moons.client.utils.math.RandomMath;
 import com.blanoir.moons.client.utils.math.Smoothing;
@@ -12,10 +14,9 @@ import com.blanoir.moons.client.utils.raytrace.RaytraceUtils;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.util.Mth;
-import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.util.AxisAlignedBB;
+import net.minecraft.util.Vec3;
 
 /**
  * B: Existing Lock/Balance predictive point processing and frame rotation. Camera return is G.
@@ -49,15 +50,15 @@ public final class AimSolverB {
             AimProfile profile,
             AimParameters parameters,
             Minecraft client,
-            LivingEntity target,
+            EntityLivingBase target,
             double deltaSeconds) {
-        var currentPlayer = client.player;
+        var currentPlayer = client.thePlayer;
         MotionPrediction.Parameters predictionParameters = parameters.motionPredictionParameters();
         if (!state.prediction.parameters().equals(predictionParameters)) {
             state.prediction = new MotionPrediction(predictionParameters);
         }
         state.prediction.observe(
-                currentPlayer.tickCount, target.position(), target.getDeltaMovement());
+                currentPlayer.ticksExisted, VecMath.position(target), VecMath.motion(target));
         double frameDelta = Math.max(0.0D, Math.min(0.05D, deltaSeconds));
         double parameterBlend = Smoothing.exponentialResponse(12.0D, frameDelta);
         state.noiseStrength += (parameters.jitter() - state.noiseStrength) * parameterBlend;
@@ -70,19 +71,18 @@ public final class AimSolverB {
             AimProfile profile,
             AimParameters parameters,
             Minecraft client,
-            LivingEntity target,
+            EntityLivingBase target,
             Vec3 point,
             double deltaSeconds,
             boolean targetChanged) {
-        var currentPlayer = client.player;
+        var currentPlayer = client.thePlayer;
         double frameDelta = Math.max(0.0D, Math.min(0.05D, deltaSeconds));
         double time = state.noiseTime;
-        Vec3 eye = currentPlayer.getEyePosition();
-        AABB targetBox = target.getBoundingBox();
-        Vec3 relativeVelocity =
-                state.prediction.velocity().subtract(currentPlayer.getDeltaMovement());
+        Vec3 eye = currentPlayer.getPositionEyes(1F);
+        AxisAlignedBB targetBox = target.getEntityBoundingBox();
+        Vec3 relativeVelocity = state.prediction.velocity().subtract(VecMath.motion(currentPlayer));
         double targetYawRate =
-                AimPrediction.yawRateDegrees(eye, targetBox.getCenter(), relativeVelocity);
+                AimPrediction.yawRateDegrees(eye, VecMath.center(targetBox), relativeVelocity);
         if (!state.crossingTarget && Math.abs(targetYawRate) > 0.01D) {
             state.crossingTurnDirection = (float) Math.signum(targetYawRate);
         }
@@ -118,7 +118,7 @@ public final class AimSolverB {
             // have crossed out of that body it must release immediately;
             // otherwise a long landing keeps the pre-crossing pitch and the
             // attack gate appears to stall for several ticks.
-            state.crossingRecoveryUntilTick = currentPlayer.tickCount + 2;
+            state.crossingRecoveryUntilTick = currentPlayer.ticksExisted + 2;
             state.pathJitterBlend = 0.0F;
             state.heldOrbitOffset = null;
         }
@@ -130,33 +130,38 @@ public final class AimSolverB {
             // horizontal direction while inside the box. The old code froze
             // yaw and pitch at their entry values; repeated look packets with
             // that exact pair are what ACA EqualRotation checks directly.
-            Vec3 centre = targetBox.getCenter();
+            Vec3 centre = VecMath.center(targetBox);
             double lookahead =
                     AimPrediction.crossingLookaheadTicks(
-                            currentPlayer.getDeltaMovement(),
+                            VecMath.motion(currentPlayer),
                             state.prediction.velocity(),
                             eye,
                             targetBox,
                             CROSSING_EXIT_MARGIN);
-            Vec3 localVelocity = currentPlayer.getDeltaMovement();
+            Vec3 localVelocity = VecMath.motion(currentPlayer);
             Vec3 targetVelocity = state.prediction.velocity();
             Vec3 yawEye =
                     lookahead <= 0.0D
                             ? eye
-                            : eye.add(
-                                    localVelocity.x * lookahead, 0.0D, localVelocity.z * lookahead);
+                            : eye.addVector(
+                                    localVelocity.xCoord * lookahead,
+                                    0.0D,
+                                    localVelocity.zCoord * lookahead);
             Vec3 yawCentre =
                     lookahead <= 0.0D
                             ? centre
-                            : centre.add(
-                                    targetVelocity.x * lookahead,
+                            : centre.addVector(
+                                    targetVelocity.xCoord * lookahead,
                                     0.0D,
-                                    targetVelocity.z * lookahead);
+                                    targetVelocity.zCoord * lookahead);
             double horizontalSquared =
-                    Mth.square(yawCentre.x - yawEye.x) + Mth.square(yawCentre.z - yawEye.z);
+                    Mth.square(yawCentre.xCoord - yawEye.xCoord)
+                            + Mth.square(yawCentre.zCoord - yawEye.zCoord);
             if (horizontalSquared > 1.0E-4D) {
                 state.crossingBodyYaw =
-                        AimSolverD.rotationTo(yawEye, new Vec3(yawCentre.x, yawEye.y, yawCentre.z))
+                        AimSolverD.rotationTo(
+                                        yawEye,
+                                        new Vec3(yawCentre.xCoord, yawEye.yCoord, yawCentre.zCoord))
                                 .yaw();
             }
             double crossingDelta = Mth.clamp(deltaSeconds, 0.0D, 1.0D / 20.0D);
@@ -180,14 +185,19 @@ public final class AimSolverB {
                 crossingTurn += Math.copySign(360.0F, state.crossingTurnDirection);
             }
             state.crossingHeadYaw += Mth.clamp(crossingTurn, -yawLimit, yawLimit);
-            boolean eyeInsideTarget = targetBox.inflate(CROSSING_ENTER_MARGIN).contains(eye);
+            boolean eyeInsideTarget =
+                    VecMath.contains(VecMath.inflate(targetBox, CROSSING_ENTER_MARGIN), eye);
             // Inside the body, preserve valid pitch. Above it, use actual exit
             // geometry; a fixed 2-5 degree yaw-coupled pitch had no geometric basis.
             float crossingPitchTarget =
                     eyeInsideTarget
                             ? state.crossingHeadPitch
                             : AimSolverD.rotationTo(
-                                            yawEye, new Vec3(yawCentre.x, point.y, yawCentre.z))
+                                            yawEye,
+                                            new Vec3(
+                                                    yawCentre.xCoord,
+                                                    point.yCoord,
+                                                    yawCentre.zCoord))
                                     .pitch();
             double crossingPitchRate =
                     matrixProfile
@@ -254,7 +264,7 @@ public final class AimSolverB {
                 AimNoiseA.insideHitbox(
                         eye,
                         point,
-                        target.getBoundingBox(),
+                        target.getEntityBoundingBox(),
                         time,
                         state.motionSeed,
                         effectiveJitter,
@@ -263,7 +273,7 @@ public final class AimSolverB {
             // Balance humanizes yaw/depth only. Pitch must represent actual
             // geometry, not a noise channel, otherwise a level target causes
             // needless head lifts even though the horizontal ray is valid.
-            jitteredPoint = new Vec3(jitteredPoint.x, point.y, jitteredPoint.z);
+            jitteredPoint = new Vec3(jitteredPoint.xCoord, point.yCoord, jitteredPoint.zCoord);
         }
         Vec3 anchoredPoint =
                 stabilizeAimHeight(
@@ -337,14 +347,14 @@ public final class AimSolverB {
                                 settle * (0.25D + 0.75D * state.pathJitterBlend));
         Vec3 offsetCandidate = orbitCandidate.subtract(movingPoint);
         if (lowerBodyFallback) {
-            state.heldOrbitOffset = Vec3.ZERO;
+            state.heldOrbitOffset = VecMath.ZERO;
             state.nextAimSampleSeconds = time;
         } else if (targetChanged
                 || state.heldOrbitOffset == null
                 || time >= state.nextAimSampleSeconds) {
             if (targetChanged
                     || state.heldOrbitOffset == null
-                    || offsetCandidate.subtract(state.heldOrbitOffset).lengthSqr()
+                    || VecMath.lengthSqr(offsetCandidate.subtract(state.heldOrbitOffset))
                             > ORBIT_OFFSET_DEADZONE * ORBIT_OFFSET_DEADZONE) {
                 state.heldOrbitOffset = offsetCandidate;
             }
@@ -355,31 +365,34 @@ public final class AimSolverB {
         }
         state.orbitOffset =
                 lowerBodyFallback
-                        ? Vec3.ZERO
-                        : state.orbitOffset.lerp(
+                        ? VecMath.ZERO
+                        : VecMath.lerp(
+                                state.orbitOffset,
                                 state.heldOrbitOffset,
                                 Smoothing.exponentialResponse(16.0D, frameDelta));
         Vec3 desiredPoint = movingPoint.add(state.orbitOffset);
-        AABB aimBox = target.getBoundingBox();
-        double insetX = lowerBodyFallback ? 0.002D : Math.min(aimBox.getXsize() * 0.12D, 0.08D);
-        double insetZ = lowerBodyFallback ? 0.002D : Math.min(aimBox.getZsize() * 0.12D, 0.08D);
+        AxisAlignedBB aimBox = target.getEntityBoundingBox();
+        double insetX =
+                lowerBodyFallback ? 0.002D : Math.min((aimBox.maxX - aimBox.minX) * 0.12D, 0.08D);
+        double insetZ =
+                lowerBodyFallback ? 0.002D : Math.min((aimBox.maxZ - aimBox.minZ) * 0.12D, 0.08D);
         double bodyFloor = Mth.lerp(bodyFloorFraction, aimBox.minY, aimBox.maxY);
         double upperBodyCeiling = Mth.lerp(UPPER_BODY_CEILING, aimBox.minY, aimBox.maxY);
         boolean localAirborne =
-                !currentPlayer.onGround() && Math.abs(currentPlayer.getDeltaMovement().y) > 0.012D;
-        double desiredY = desiredPoint.y;
+                !currentPlayer.onGround && Math.abs(VecMath.motion(currentPlayer).yCoord) > 0.012D;
+        double desiredY = desiredPoint.yCoord;
         if (localAirborne && !lowerBodyFallback) {
             // Stay inside the same valid hitbox while choosing a height closer
             // to our moving eye. This reduces needless head nodding during our
             // own jump without weakening the pitch needed to keep the ray valid.
-            double calmY = Mth.clamp(eye.y, bodyFloor, upperBodyCeiling);
+            double calmY = Mth.clamp(eye.yCoord, bodyFloor, upperBodyCeiling);
             desiredY = Mth.lerp(AIRBORNE_AIM_HEIGHT_BLEND, desiredY, calmY);
         }
         desiredPoint =
                 new Vec3(
-                        Mth.clamp(desiredPoint.x, aimBox.minX + insetX, aimBox.maxX - insetX),
+                        Mth.clamp(desiredPoint.xCoord, aimBox.minX + insetX, aimBox.maxX - insetX),
                         Mth.clamp(desiredY, bodyFloor, upperBodyCeiling),
-                        Mth.clamp(desiredPoint.z, aimBox.minZ + insetZ, aimBox.maxZ - insetZ));
+                        Mth.clamp(desiredPoint.zCoord, aimBox.minZ + insetZ, aimBox.maxZ - insetZ));
         if (!RaytraceUtils.canRayTraceTo(client, eye, desiredPoint, parameters.throughBlocks())) {
             // Prediction/jitter can move an originally visible top-edge point
             // behind the ledge when attacking downward. Recover the selector's
@@ -431,7 +444,7 @@ public final class AimSolverB {
             AimProfile profile,
             AimParameters parameters,
             Minecraft client,
-            LivingEntity target,
+            EntityLivingBase target,
             Vec3 point,
             boolean lowerBodyFallback) {
         double baseLead =
@@ -442,7 +455,8 @@ public final class AimSolverB {
         // opening is exposed it can move an otherwise visible point behind the
         // cover. The live selector already follows the moving entity.
         if (baseLead <= 0.0D || lowerBodyFallback) return point;
-        Rotation currentBearing = AimSolverD.rotationTo(client.player.getEyePosition(), point);
+        Rotation currentBearing =
+                AimSolverD.rotationTo(client.thePlayer.getPositionEyes(1F), point);
         double leadTicks =
                 AimPrediction.turnLookaheadTicks(
                         baseLead,
@@ -450,18 +464,22 @@ public final class AimSolverB {
                         profile.maxYawSpeed() / 20.0D,
                         profile.response(parameters.smooth()) / 20.0D,
                         state.prediction.parameters().maxHorizonTicks());
-        Vec3 localVelocity = client.player.getDeltaMovement();
+        Vec3 localVelocity = VecMath.motion(client.thePlayer);
         Vec3 relativeTravel =
                 state.prediction
                         .displacement(leadTicks)
-                        .subtract(localVelocity.x * leadTicks, 0.0D, localVelocity.z * leadTicks);
-        AABB box = target.getBoundingBox();
+                        .subtract(
+                                localVelocity.xCoord * leadTicks,
+                                0.0D,
+                                localVelocity.zCoord * leadTicks);
+        AxisAlignedBB box = target.getEntityBoundingBox();
         double upperBodyFloor = Mth.lerp(UPPER_BODY_FLOOR, box.minY, box.maxY);
         double upperBodyCeiling = Mth.lerp(UPPER_BODY_CEILING, box.minY, box.maxY);
         return AimPrediction.clampedLead(
                 point,
                 relativeTravel,
-                new AABB(box.minX, upperBodyFloor, box.minZ, box.maxX, upperBodyCeiling, box.maxZ));
+                new AxisAlignedBB(
+                        box.minX, upperBodyFloor, box.minZ, box.maxX, upperBodyCeiling, box.maxZ));
     }
 
     public static Vec3 settledOrbit(
@@ -471,19 +489,19 @@ public final class AimSolverB {
             Vec3 eye,
             Vec3 basePoint,
             Vec3 movingPoint,
-            LivingEntity target,
+            EntityLivingBase target,
             double time,
             double blend) {
         double strength =
                 Mth.clamp(parameters.settledJitter(), 0.0D, 1.0D) * blend * state.noiseStrength;
         if (strength <= 0.0D) return movingPoint;
         double distance = Math.max(eye.distanceTo(basePoint), 0.3D);
-        AABB box = target.getBoundingBox();
-        double lateral = Math.min(distance * 0.014D * strength, box.getXsize() * 0.26D);
+        AxisAlignedBB box = target.getEntityBoundingBox();
+        double lateral = Math.min(distance * 0.014D * strength, (box.maxX - box.minX) * 0.26D);
         if (lateral <= 1.0E-4D) return movingPoint;
         long seed = state.motionSeed ^ 0xBF58476D1CE4E5B9L;
-        double viewX = basePoint.x - eye.x;
-        double viewZ = basePoint.z - eye.z;
+        double viewX = basePoint.xCoord - eye.xCoord;
+        double viewZ = basePoint.zCoord - eye.zCoord;
         double horizontalLength = Math.hypot(viewX, viewZ);
         double rightX = horizontalLength < 1.0E-6D ? 1.0D : -viewZ / horizontalLength;
         double rightZ = horizontalLength < 1.0E-6D ? 0.0D : viewX / horizontalLength;
@@ -493,17 +511,17 @@ public final class AimSolverB {
         double depth = AimNoiseB.sample(time * 0.83D, seed ^ 0x9E3779B97F4A7C15L);
         Vec3 orbit =
                 movingPoint
-                        .add(rightX * sway * lateral, 0.0D, rightZ * sway * lateral)
-                        .add(
+                        .addVector(rightX * sway * lateral, 0.0D, rightZ * sway * lateral)
+                        .addVector(
                                 forwardX * depth * lateral * 0.5D,
                                 0.0D,
                                 forwardZ * depth * lateral * 0.5D);
-        double insetX = Math.min(box.getXsize() * 0.12D, 0.08D);
-        double insetY = Math.min(box.getYsize() * 0.10D, 0.14D);
-        double insetZ = Math.min(box.getZsize() * 0.12D, 0.08D);
+        double insetX = Math.min((box.maxX - box.minX) * 0.12D, 0.08D);
+        double insetY = Math.min((box.maxY - box.minY) * 0.10D, 0.14D);
+        double insetZ = Math.min((box.maxZ - box.minZ) * 0.12D, 0.08D);
         return MathUtils.closestPoint(
                 orbit,
-                new AABB(
+                new AxisAlignedBB(
                         box.minX + insetX,
                         box.minY + insetY,
                         box.minZ + insetZ,
@@ -517,21 +535,21 @@ public final class AimSolverB {
             AimProfile profile,
             AimParameters parameters,
             Minecraft client,
-            LivingEntity target,
+            EntityLivingBase target,
             Vec3 eye,
             Vec3 desiredPoint,
             Rotation desired,
             boolean lowerBodyFallback) {
-        if (lowerBodyFallback || client.player.tickCount < state.crossingRecoveryUntilTick)
+        if (lowerBodyFallback || client.thePlayer.ticksExisted < state.crossingRecoveryUntilTick)
             return desired;
-        Vec3 localVelocity = client.player.getDeltaMovement();
+        Vec3 localVelocity = VecMath.motion(client.thePlayer);
         Vec3 targetVelocity = state.prediction.velocity();
         boolean verticalMotion =
-                (!client.player.onGround() && Math.abs(localVelocity.y) > 0.012D)
-                        || (!target.onGround() && Math.abs(targetVelocity.y) > 0.012D);
+                (!client.thePlayer.onGround && Math.abs(localVelocity.yCoord) > 0.012D)
+                        || (!target.onGround && Math.abs(targetVelocity.yCoord) > 0.012D);
         if (!verticalMotion) return desired;
 
-        AABB box = target.getBoundingBox();
+        AxisAlignedBB box = target.getEntityBoundingBox();
         double currentMargin =
                 verticalRayMargin(
                         state, profile, parameters, client, eye, desired.yaw(), state.pitch, box);
@@ -549,7 +567,8 @@ public final class AimSolverB {
         float trackingPitch = desired.pitch();
         if (horizonTicks > 1.0E-4D) {
             Vec3 futureEye = TrajectoryPrediction.linearPosition(eye, localVelocity, horizonTicks);
-            AABB futureBox = TrajectoryPrediction.linearBox(box, targetVelocity, horizonTicks);
+            AxisAlignedBB futureBox =
+                    TrajectoryPrediction.linearBox(box, targetVelocity, horizonTicks);
             Vec3 futurePoint =
                     TrajectoryPrediction.linearPosition(desiredPoint, targetVelocity, horizonTicks);
             Rotation futureRotation = AimSolverD.rotationTo(futureEye, futurePoint);
@@ -600,23 +619,23 @@ public final class AimSolverB {
             Vec3 eye,
             float yaw,
             float pitch,
-            AABB box) {
-        if (box.contains(eye)) return 0.5D;
-        Vec3 look = Vec3.directionFromRotation(pitch, yaw);
+            AxisAlignedBB box) {
+        if (VecMath.contains(box, eye)) return 0.5D;
+        Vec3 look = VecMath.directionFromRotation(pitch, yaw);
         double diagonal =
                 Math.sqrt(
-                        Mth.square(box.getXsize())
-                                + Mth.square(box.getYsize())
-                                + Mth.square(box.getZsize()));
-        double length = eye.distanceTo(box.getCenter()) + diagonal + 1.0D;
-        var hit = box.clip(eye, eye.add(look.scale(length)));
+                        Mth.square((box.maxX - box.minX))
+                                + Mth.square((box.maxY - box.minY))
+                                + Mth.square((box.maxZ - box.minZ)));
+        double length = eye.distanceTo(VecMath.center(box)) + diagonal + 1.0D;
+        var hit = VecMath.clip(box, eye, eye.add(VecMath.scale(look, length)));
         if (hit.isEmpty()
                 || !RaytraceUtils.canRayTraceTo(
                         client, eye, hit.get(), parameters.throughBlocks())) {
             return 0.0D;
         }
-        double height = Math.max(box.getYsize(), 0.1D);
-        double fraction = Mth.clamp((hit.get().y - box.minY) / height, 0.0D, 1.0D);
+        double height = Math.max((box.maxY - box.minY), 0.1D);
+        double fraction = Mth.clamp((hit.get().yCoord - box.minY) / height, 0.0D, 1.0D);
         return Math.min(fraction, 1.0D - fraction);
     }
 
@@ -632,15 +651,15 @@ public final class AimSolverB {
             AimParameters parameters,
             Minecraft client,
             Vec3 eye,
-            AABB box,
+            AxisAlignedBB box,
             double margin) {
-        AABB corridor = box.inflate(margin);
-        AABB localBox = client.player.getBoundingBox();
+        AxisAlignedBB corridor = VecMath.inflate(box, margin);
+        AxisAlignedBB localBox = client.thePlayer.getEntityBoundingBox();
         boolean horizontalCentreInside =
-                eye.x >= corridor.minX
-                        && eye.x <= corridor.maxX
-                        && eye.z >= corridor.minZ
-                        && eye.z <= corridor.maxZ;
+                eye.xCoord >= corridor.minX
+                        && eye.xCoord <= corridor.maxX
+                        && eye.zCoord >= corridor.minZ
+                        && eye.zCoord <= corridor.maxZ;
         boolean bodiesOverlapVertically =
                 localBox.maxY >= corridor.minY && localBox.minY <= corridor.maxY;
         return horizontalCentreInside && bodiesOverlapVertically;
@@ -650,19 +669,19 @@ public final class AimSolverB {
             AimState state,
             AimProfile profile,
             AimParameters parameters,
-            LivingEntity target,
+            EntityLivingBase target,
             Vec3 desired,
             double rawDelta,
             boolean targetChanged,
             double bodyFloorFraction) {
-        AABB box = target.getBoundingBox();
+        AxisAlignedBB box = target.getEntityBoundingBox();
         double minimum = Mth.lerp(bodyFloorFraction, box.minY, box.maxY);
         double maximum = Mth.lerp(UPPER_BODY_CEILING, box.minY, box.maxY);
-        double preferred = Mth.clamp(desired.y, minimum, maximum);
+        double preferred = Mth.clamp(desired.yCoord, minimum, maximum);
         if (targetChanged || !Double.isFinite(state.stickyAimY)) {
             state.stickyAimY = preferred;
             state.lastTargetMinY = box.minY;
-            return new Vec3(desired.x, state.stickyAimY, desired.z);
+            return new Vec3(desired.xCoord, state.stickyAimY, desired.zCoord);
         }
 
         // Keep jump/fall acquisition in target prediction without raising the
@@ -681,7 +700,8 @@ public final class AimSolverB {
             // the exposed lower region. This is frame-rate independent and
             // avoids one-packet pitch snaps when cover enters the view.
             state.stickyAimY = approach(state.stickyAimY, preferred, 8.0D * delta);
-            return new Vec3(desired.x, Mth.clamp(state.stickyAimY, minimum, maximum), desired.z);
+            return new Vec3(
+                    desired.xCoord, Mth.clamp(state.stickyAimY, minimum, maximum), desired.zCoord);
         }
 
         boolean anchorWasInside = state.stickyAimY >= minimum && state.stickyAimY <= maximum;
@@ -695,14 +715,19 @@ public final class AimSolverB {
             // slow correction toward the requested body point.
             state.stickyAimY = approach(state.stickyAimY, preferred, 0.12D * delta);
         }
-        return new Vec3(desired.x, Mth.clamp(state.stickyAimY, minimum, maximum), desired.z);
+        return new Vec3(
+                desired.xCoord, Mth.clamp(state.stickyAimY, minimum, maximum), desired.zCoord);
     }
 
     public static double bodyFloorFraction(
-            AimState state, AimProfile profile, AimParameters parameters, Vec3 point, AABB box) {
-        double height = Math.max(box.getYsize(), 0.1D);
+            AimState state,
+            AimProfile profile,
+            AimParameters parameters,
+            Vec3 point,
+            AxisAlignedBB box) {
+        double height = Math.max((box.maxY - box.minY), 0.1D);
         double fraction =
-                Mth.clamp((point.y - box.minY) / height, LOWER_BODY_FLOOR, UPPER_BODY_CEILING);
+                Mth.clamp((point.yCoord - box.minY) / height, LOWER_BODY_FLOOR, UPPER_BODY_CEILING);
         if (fraction >= UPPER_BODY_FLOOR) return UPPER_BODY_FLOOR;
         return Mth.clamp(fraction - 0.025D, LOWER_BODY_FLOOR, UPPER_BODY_FLOOR);
     }
@@ -714,11 +739,11 @@ public final class AimSolverB {
             Minecraft client,
             Vec3 eye,
             Vec3 surfacePoint,
-            AABB box) {
-        Vec3 center = box.getCenter();
+            AxisAlignedBB box) {
+        Vec3 center = VecMath.center(box);
         double[] insetFractions = {0.20D, 0.14D, 0.09D, 0.05D, 0.02D, 0.0D};
         for (double fraction : insetFractions) {
-            Vec3 candidate = surfacePoint.lerp(center, fraction);
+            Vec3 candidate = VecMath.lerp(surfacePoint, center, fraction);
             if (RaytraceUtils.canRayTraceTo(client, eye, candidate, parameters.throughBlocks())) {
                 return candidate;
             }

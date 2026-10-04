@@ -1,6 +1,7 @@
 package com.blanoir.moons.client.module.impl.player;
 
 import com.blanoir.moons.client.chat.ClientChat;
+import com.blanoir.moons.client.compat.math.VecMath;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.DoubleSetting;
 import com.blanoir.moons.client.config.settings.IntSetting;
@@ -11,6 +12,7 @@ import com.blanoir.moons.client.management.targeting.PostHitLandingWindow;
 import com.blanoir.moons.client.management.targeting.Targeting;
 import com.blanoir.moons.client.utils.client.ClientReady;
 import com.blanoir.moons.client.utils.combat.CombatDecisionEngine;
+import com.blanoir.moons.client.utils.inventory.LegacyItems;
 import com.blanoir.moons.client.utils.math.MathUtils;
 import com.blanoir.moons.client.utils.math.RandomMath;
 import com.blanoir.moons.client.utils.player.HotbarQueries;
@@ -18,23 +20,24 @@ import com.blanoir.moons.client.utils.prediction.KnockbackPrediction;
 import com.blanoir.moons.client.utils.prediction.TrajectoryPrediction;
 import com.blanoir.moons.client.utils.rotation.aim.AimPointsF;
 import com.blanoir.moons.client.utils.world.FluidQueries;
+import com.blanoir.moons.client.utils.world.LegacyRay;
+import com.blanoir.moons.client.utils.world.LegacyWorld;
 import com.blanoir.moons.client.utils.world.placement.BlockPlacementUtils;
 import com.blanoir.moons.client.utils.world.placement.PlacementCoordinator;
 import com.blanoir.moons.client.utils.world.placement.PlacementRaycast;
 
+import net.minecraft.block.material.Material;
+import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.Minecraft;
-import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
-import net.minecraft.tags.FluidTags;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.item.Items;
-import net.minecraft.world.level.ClipContext;
-import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.BlockHitResult;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.init.Blocks;
+import net.minecraft.init.Items;
+import net.minecraft.util.AxisAlignedBB;
+import net.minecraft.util.BlockPos;
+import net.minecraft.util.EnumFacing;
+import net.minecraft.util.MovingObjectPosition;
+import net.minecraft.util.Vec3;
 
 /** Critical-triggered lava place/collect cycle using vanilla bucket actions. */
 public final class AutoLava {
@@ -51,13 +54,13 @@ public final class AutoLava {
     private static final int GROUND_LANDING_WINDOW_TICKS = 3;
     private static final double MAX_GROUND_TARGET_SPEED = 0.15D;
     private static final double MAX_GROUND_RELATIVE_SPEED = 0.25D;
-    private static final Direction[] SUPPORT_DIRECTIONS = {
-        Direction.DOWN,
-        Direction.NORTH,
-        Direction.SOUTH,
-        Direction.WEST,
-        Direction.EAST,
-        Direction.UP
+    private static final EnumFacing[] SUPPORT_DIRECTIONS = {
+        EnumFacing.DOWN,
+        EnumFacing.NORTH,
+        EnumFacing.SOUTH,
+        EnumFacing.WEST,
+        EnumFacing.EAST,
+        EnumFacing.UP
     };
     private static final BooleanSetting ENABLED =
             new BooleanSetting.Builder().name("autolava.enabled").defaultValue(false).build();
@@ -154,7 +157,7 @@ public final class AutoLava {
     private static int activeTargetId = -1;
     private static PlacementRoute activePlacementRoute = PlacementRoute.NONE;
     private static BlockPos lavaPos;
-    private static BlockHitResult placementHit;
+    private static MovingObjectPosition placementHit;
     private static int bucketSlot = -1;
     private static int originalSlot = -1;
     private static int cooldownTicks;
@@ -177,13 +180,13 @@ public final class AutoLava {
     public static void init() {
         EventBus.CLIENT_CONTEXT_CHANGED.register("AutoLava.context", event -> shutdown(null));
         PlacementCoordinator.register(PlacementCoordinator.Owner.AUTO_LAVA, AutoLava::isBusy);
-        EventBus.PLAYER_UPDATE.register("AutoLava.playerUpdate", event -> tick(event.client()));
+        EventBus.PLAYER_UPDATE.register("AutoLava.thePlayerUpdate", event -> tick(event.client()));
     }
 
     /** Samples the critical gate before vanilla resets attack strength. */
     public static boolean isCriticalTriggerEligible(Entity entity) {
-        Minecraft client = Minecraft.getInstance();
-        return entity instanceof Player target
+        Minecraft client = Minecraft.getMinecraft();
+        return entity instanceof EntityPlayer target
                 && ClientReady.aliveGameplay(client)
                 && (WALL_ENABLED.get() || GROUND_ENABLED.get())
                 && Targeting.isValidTargetPlayer(client, target)
@@ -192,22 +195,22 @@ public final class AutoLava {
 
     /** Called after the vanilla attack path has dispatched its packet. */
     public static void onAttackDispatched(Entity entity, boolean criticalEligibleBeforeAttack) {
-        Minecraft client = Minecraft.getInstance();
+        Minecraft client = Minecraft.getMinecraft();
         if (!ENABLED.get()
                 || !ClientReady.aliveGameplay(client)
                 || isBusy()
                 || cooldownTicks > 0
                 || PlacementCoordinator.busyFor(PlacementCoordinator.Owner.AUTO_LAVA)
-                || !(entity instanceof Player target)
+                || !(entity instanceof EntityPlayer target)
                 || !Targeting.isValidTargetPlayer(client, target)
-                || target.isOnFire()
+                || target.isBurning()
                 || (!WALL_ENABLED.get() && !GROUND_ENABLED.get())
                 || !criticalEligibleBeforeAttack
                 || !RandomMath.chance(CHANCE.get())
-                || HotbarQueries.firstItem(client, Items.LAVA_BUCKET) < 0) {
+                || HotbarQueries.firstItem(client, Items.lava_bucket) < 0) {
             return;
         }
-        pendingTargetId = target.getId();
+        pendingTargetId = target.getEntityId();
         pendingExecuteAtNanos = System.nanoTime() + TRIGGER_DELAY_MS.get() * 1_000_000L;
         pendingWallAttempted = false;
         if (GROUND_ENABLED.get()) {
@@ -233,14 +236,14 @@ public final class AutoLava {
 
         if (phase == CyclePhase.IDLE) {
             if (pendingTargetId >= 0) {
-                Player target = targetById(client, pendingTargetId);
-                if (!Targeting.isValidTargetPlayer(client, target) || target.isOnFire()) {
+                EntityPlayer target = targetById(client, pendingTargetId);
+                if (!Targeting.isValidTargetPlayer(client, target) || target.isBurning()) {
                     clearPendingTrigger();
                     TARGET_MOTION.reset();
                 } else {
                     TARGET_MOTION.observe(client, target);
                     PostHitLandingWindow.Snapshot landing =
-                            GROUND_LANDING_WINDOW.update(target, client.player.getDeltaMovement());
+                            GROUND_LANDING_WINDOW.update(target, VecMath.motion(client.thePlayer));
                     if (GROUND_ENABLED.get()
                             && landing.expired()
                             && (pendingWallAttempted || !WALL_ENABLED.get())) {
@@ -253,7 +256,7 @@ public final class AutoLava {
             }
             return;
         }
-        Player activeTarget = targetById(client, activeTargetId);
+        EntityPlayer activeTarget = targetById(client, activeTargetId);
         if (activeTarget != null) {
             TARGET_MOTION.observe(client, activeTarget);
         }
@@ -267,8 +270,8 @@ public final class AutoLava {
     }
 
     private static void tryBeginPendingCycle(
-            Minecraft client, Player target, PostHitLandingWindow.Snapshot landing) {
-        planningViewDirection = client.player.getLookAngle();
+            Minecraft client, EntityPlayer target, PostHitLandingWindow.Snapshot landing) {
+        planningViewDirection = client.thePlayer.getLookVec();
         if (!pendingWallAttempted) {
             pendingWallAttempted = true;
             if (WALL_ENABLED.get()) {
@@ -307,23 +310,23 @@ public final class AutoLava {
             return;
         }
 
-        Player target = targetById(client, pending);
-        if (!Targeting.isValidTargetPlayer(client, target) || target.isOnFire()) {
+        EntityPlayer target = targetById(client, pending);
+        if (!Targeting.isValidTargetPlayer(client, target) || target.isBurning()) {
             TARGET_MOTION.reset();
             return;
         }
-        int slot = HotbarQueries.firstItem(client, Items.LAVA_BUCKET);
+        int slot = HotbarQueries.firstItem(client, Items.lava_bucket);
         if (slot < 0) {
             TARGET_MOTION.reset();
             return;
         }
 
-        activeTargetId = target.getId();
+        activeTargetId = target.getEntityId();
         activePlacementRoute = route;
-        lavaPos = initialPlan.lavaPos().immutable();
+        lavaPos = new BlockPos(initialPlan.lavaPos());
         placementHit = initialPlan.hit();
         bucketSlot = slot;
-        originalSlot = client.player.getInventory().getSelectedSlot();
+        originalSlot = client.thePlayer.inventory.currentItem;
         selectSlot(client, bucketSlot);
         CombatInputController.suppressAttack(client, CombatInputController.Owner.AUTO_LAVA);
 
@@ -343,7 +346,7 @@ public final class AutoLava {
     }
 
     private static void beginPlacementRotation(Minecraft client) {
-        BlockHitResult hit = placementHit;
+        MovingObjectPosition hit = placementHit;
         if (hit == null || lavaPos == null) {
             abortCycle(client);
             return;
@@ -352,7 +355,7 @@ public final class AutoLava {
         transition(CyclePhase.TURNING_TO_PLACE);
         SilentPacketRotation.beginRotation(
                 client,
-                hit.getLocation(),
+                hit.hitVec,
                 activeSmoothTicks,
                 () ->
                         transitionIfCurrent(
@@ -393,8 +396,8 @@ public final class AutoLava {
         }
 
         if (phase == CyclePhase.WAITING_FOR_PLACE_ROTATION) {
-            Player target = targetById(client, activeTargetId);
-            if (!Targeting.isValidTargetPlayer(client, target) || target.isOnFire()) {
+            EntityPlayer target = targetById(client, activeTargetId);
+            if (!Targeting.isValidTargetPlayer(client, target) || target.isBurning()) {
                 beginReturnRotation(client);
                 return;
             }
@@ -439,7 +442,8 @@ public final class AutoLava {
         if (phase == CyclePhase.WAITING_FOR_PICKUP_ROTATION) {
             if (!isLavaSource(client, lavaPos)
                     || bucketSlot < 0
-                    || !client.player.getInventory().getItem(bucketSlot).is(Items.BUCKET)) {
+                    || !LegacyItems.is(
+                            client.thePlayer.inventory.getStackInSlot(bucketSlot), Items.bucket)) {
                 beginReturnRotation(client);
                 return;
             }
@@ -471,10 +475,9 @@ public final class AutoLava {
             }
             boolean bucketRefilled =
                     bucketSlot >= 0
-                            && client.player
-                                    .getInventory()
-                                    .getItem(bucketSlot)
-                                    .is(Items.LAVA_BUCKET);
+                            && LegacyItems.is(
+                                    client.thePlayer.inventory.getStackInSlot(bucketSlot),
+                                    Items.lava_bucket);
             if (!bucketRefilled
                     && isLavaSource(client, lavaPos)
                     && ++bucketSyncWaitTicks <= MAX_BUCKET_SYNC_TICKS) {
@@ -501,7 +504,9 @@ public final class AutoLava {
         }
         boolean bucketEmptied =
                 bucketSlot >= 0
-                        && client.player.getInventory().getItem(bucketSlot).is(Items.BUCKET);
+                        && LegacyItems.is(
+                                client.thePlayer.inventory.getStackInSlot(bucketSlot),
+                                Items.bucket);
         if (!bucketEmptied || !isLavaSource(client, lavaPos)) {
             if (!advanceSyncTimeout || ++bucketSyncWaitTicks <= MAX_BUCKET_SYNC_TICKS) {
                 return;
@@ -517,7 +522,7 @@ public final class AutoLava {
         if (now < pickupReadyAtNanos) {
             return;
         }
-        BlockHitResult pickupHit = lavaSourceHit(lavaPos);
+        MovingObjectPosition pickupHit = lavaSourceHit(lavaPos);
         if (sentLookReachesLavaSource(client, lavaPos)) {
             if (RAYS.invokeUseInPlayerUpdate(client, pickupHit)) {
                 transition(CyclePhase.CLICKING_TO_PICKUP);
@@ -536,7 +541,7 @@ public final class AutoLava {
         int generation = activeGeneration;
         SilentPacketRotation.beginRotation(
                 client,
-                pickupHit.getLocation(),
+                pickupHit.hitVec,
                 activeSmoothTicks,
                 () ->
                         transitionIfCurrent(
@@ -547,13 +552,14 @@ public final class AutoLava {
 
     private static void beginAfterSlotDelay(Minecraft client) {
         if (bucketSlot < 0
-                || !client.player.getInventory().getItem(bucketSlot).is(Items.LAVA_BUCKET)) {
+                || !LegacyItems.is(
+                        client.thePlayer.inventory.getStackInSlot(bucketSlot), Items.lava_bucket)) {
             abortCycle(client);
             return;
         }
         selectSlot(client, bucketSlot);
-        Player target = targetById(client, activeTargetId);
-        if (!Targeting.isValidTargetPlayer(client, target) || target.isOnFire()) {
+        EntityPlayer target = targetById(client, activeTargetId);
+        if (!Targeting.isValidTargetPlayer(client, target) || target.isBurning()) {
             finishCycle(client);
             return;
         }
@@ -561,13 +567,13 @@ public final class AutoLava {
         // This is the cycle's one and only placement plan.  It is deliberately
         // made after both configurable delays, from the current camera ray and
         // the latest sampled motion, so later phases cannot jump between cells.
-        planningViewDirection = client.player.getLookAngle();
+        planningViewDirection = client.thePlayer.getLookVec();
         PlacementPlan plan = planAtTarget(client, target, activePlacementRoute);
         if (plan == null) {
             finishCycle(client);
             return;
         }
-        lavaPos = plan.lavaPos().immutable();
+        lavaPos = new BlockPos(plan.lavaPos());
         placementHit = plan.hit();
         beginPlacementRotation(client);
     }
@@ -602,14 +608,14 @@ public final class AutoLava {
     }
 
     private static void restoreOriginalSlotWhenReady(Minecraft client) {
-        var currentPlayer = client == null ? null : client.player;
+        var currentPlayer = client == null ? null : client.thePlayer;
         if (deferredOriginalSlot < 0
                 || System.nanoTime() < deferredRestoreAtNanos
                 || client == null
                 || currentPlayer == null) {
             return;
         }
-        if (currentPlayer.getInventory().getSelectedSlot() == deferredBucketSlot) {
+        if (currentPlayer.inventory.currentItem == deferredBucketSlot) {
             selectSlot(client, deferredOriginalSlot);
         }
         deferredOriginalSlot = -1;
@@ -624,8 +630,8 @@ public final class AutoLava {
 
     /** Hard failure path: discard a queued synthetic use and release all ownership. */
     private static void abortCycle(Minecraft client) {
-        if (client != null && client.options != null) {
-            while (client.options.keyUse.consumeClick()) {
+        if (client != null && client.gameSettings != null) {
+            while (client.gameSettings.keyBindUseItem.isPressed()) {
                 // Prevent a timed-out synthetic click from firing later at the camera ray.
             }
         }
@@ -646,51 +652,52 @@ public final class AutoLava {
     }
 
     /** Empty BucketItem performs its own SOURCE_ONLY ray along the sent aim. */
-    private static BlockHitResult lavaSourceHit(BlockPos source) {
-        return BlockHitResult.miss(Vec3.atCenterOf(source), Direction.UP, source);
+    private static MovingObjectPosition lavaSourceHit(BlockPos source) {
+        return LegacyWorld.miss(VecMath.atCenterOf(source), EnumFacing.UP, source);
     }
 
     private static boolean isLavaSource(Minecraft client, BlockPos source) {
         if (source == null) {
             return false;
         }
-        BlockState state = client.level.getBlockState(source);
-        return FluidQueries.isSource(state.getFluidState(), FluidTags.LAVA);
+        IBlockState state = client.theWorld.getBlockState(source);
+        return FluidQueries.isSource(LegacyWorld.fluid(state), Material.lava);
     }
 
     private static boolean sentLookReachesLavaSource(Minecraft client, BlockPos source) {
-        Vec3 eye = client.player.getEyePosition();
-        BlockHitResult hit =
+        Vec3 eye = client.thePlayer.getPositionEyes(1.0F);
+        MovingObjectPosition hit =
                 RAYS.traceOutline(
                         client,
                         eye,
                         SilentPacketRotation.getInteractionLookVector(client),
-                        client.player.blockInteractionRange(),
-                        ClipContext.Fluid.SOURCE_ONLY,
+                        Minecraft.getMinecraft().playerController.getBlockReachDistance(),
+                        LegacyRay.Fluid.SOURCE_ONLY,
                         source);
         return BlockPlacementUtils.matchesBlock(hit, source);
     }
 
     /** The quantized packet ray must hit the exact planned support face. */
-    private static boolean sentLookMatchesPlacement(Minecraft client, BlockHitResult plannedHit) {
-        Vec3 eye = client.player.getEyePosition();
-        BlockHitResult hit =
+    private static boolean sentLookMatchesPlacement(
+            Minecraft client, MovingObjectPosition plannedHit) {
+        Vec3 eye = client.thePlayer.getPositionEyes(1.0F);
+        MovingObjectPosition hit =
                 RAYS.traceOutline(
                         client,
                         eye,
                         SilentPacketRotation.getInteractionLookVector(client),
-                        client.player.blockInteractionRange(),
-                        ClipContext.Fluid.NONE,
+                        Minecraft.getMinecraft().playerController.getBlockReachDistance(),
+                        LegacyRay.Fluid.NONE,
                         plannedHit.getBlockPos());
         return BlockPlacementUtils.matchesFace(hit, plannedHit);
     }
 
-    private static Player targetById(Minecraft client, int id) {
-        var currentLevel = client == null ? null : client.level;
+    private static EntityPlayer targetById(Minecraft client, int id) {
+        var currentLevel = client == null ? null : client.theWorld;
         return client != null
                         && currentLevel != null
                         && id >= 0
-                        && currentLevel.getEntity(id) instanceof Player player
+                        && currentLevel.getEntityByID(id) instanceof EntityPlayer player
                 ? player
                 : null;
     }
@@ -707,67 +714,76 @@ public final class AutoLava {
         Vec3 predicted =
                 TrajectoryPrediction.horizontalPosition(
                         client,
-                        client.player,
-                        client.player.getDeltaMovement(),
-                        Vec3.ZERO,
+                        client.thePlayer,
+                        VecMath.motion(client.thePlayer),
+                        VecMath.ZERO,
                         Math.min(3.0D, Math.max(0.0D, leadTicks)));
-        Vec3 movement = predicted.subtract(client.player.position());
-        AABB current =
-                client.player
-                        .getBoundingBox()
-                        .inflate(SELF_SAFETY_MARGIN, 0.05D, SELF_SAFETY_MARGIN);
-        AABB future = current.move(movement.x, 0.0D, movement.z);
-        AABB swept =
-                new AABB(
+        Vec3 movement = predicted.subtract(VecMath.position(client.thePlayer));
+        AxisAlignedBB current =
+                LegacyWorld.inflate(
+                        client.thePlayer.getEntityBoundingBox(),
+                        SELF_SAFETY_MARGIN,
+                        0.05D,
+                        SELF_SAFETY_MARGIN);
+        AxisAlignedBB future = LegacyWorld.move(current, movement.xCoord, 0.0D, movement.zCoord);
+        AxisAlignedBB swept =
+                LegacyWorld.box(
                         Math.min(current.minX, future.minX),
                         Math.min(current.minY, future.minY),
                         Math.min(current.minZ, future.minZ),
                         Math.max(current.maxX, future.maxX),
                         Math.max(current.maxY, future.maxY),
                         Math.max(current.maxZ, future.maxZ));
-        return !swept.intersects(new AABB(source));
+        return !swept.intersectsWith(LegacyWorld.box(source));
     }
 
     private static PlacementPlan planAtTarget(
-            Minecraft client, Player target, PlacementRoute route) {
+            Minecraft client, EntityPlayer target, PlacementRoute route) {
         double strength = PREDICTION.get();
         Vec3 velocity =
-                TARGET_MOTION.matches(target)
-                        ? TARGET_MOTION.velocity()
-                        : target.getDeltaMovement();
+                TARGET_MOTION.matches(target) ? TARGET_MOTION.velocity() : VecMath.motion(target);
         Vec3 acceleration =
-                TARGET_MOTION.matches(target) ? TARGET_MOTION.acceleration() : Vec3.ZERO;
+                TARGET_MOTION.matches(target) ? TARGET_MOTION.acceleration() : VecMath.ZERO;
         double predictionDelayTicks = PREDICTION_DELAY_MS.get() / 50.0D;
         double leadTicks = (SMOOTH_TICKS.get() + 1.5D + predictionDelayTicks) * strength;
         Vec3 predicted =
                 TrajectoryPrediction.horizontalPosition(
                         client, target, velocity, acceleration, leadTicks);
         BlockPos desired =
-                BlockPos.containing(
-                        predicted.x, target.getBoundingBox().minY + 1.0E-4D, predicted.z);
-        Vec3 eye = client.player.getEyePosition();
+                new BlockPos(
+                        predicted.xCoord,
+                        target.getEntityBoundingBox().minY + 1.0E-4D,
+                        predicted.zCoord);
+        Vec3 eye = client.thePlayer.getPositionEyes(1.0F);
         Vec3 look =
-                planningViewDirection != null && planningViewDirection.lengthSqr() > 1.0E-9D
+                planningViewDirection != null && VecMath.lengthSqr(planningViewDirection) > 1.0E-9D
                         ? planningViewDirection.normalize()
-                        : client.player.getLookAngle();
-        double rayLength = Math.min(RANGE.get(), client.player.blockInteractionRange());
+                        : client.thePlayer.getLookVec();
+        double rayLength =
+                Math.min(
+                        RANGE.get(),
+                        Minecraft.getMinecraft().playerController.getBlockReachDistance());
         PlacementPlan bestPlan = null;
         double bestScore = Double.POSITIVE_INFINITY;
-        Vec3 targetMovement = predicted.subtract(target.position());
-        AABB currentTarget = target.getBoundingBox();
-        AABB predictedTarget = currentTarget.move(targetMovement.x, 0.0D, targetMovement.z);
-        AABB targetSweep =
-                new AABB(
+        Vec3 targetMovement = predicted.subtract(VecMath.position(target));
+        AxisAlignedBB currentTarget = target.getEntityBoundingBox();
+        AxisAlignedBB predictedTarget =
+                LegacyWorld.move(currentTarget, targetMovement.xCoord, 0.0D, targetMovement.zCoord);
+        AxisAlignedBB targetSweep =
+                LegacyWorld.inflate(
+                        LegacyWorld.box(
                                 Math.min(currentTarget.minX, predictedTarget.minX),
                                 Math.min(currentTarget.minY, predictedTarget.minY),
                                 Math.min(currentTarget.minZ, predictedTarget.minZ),
                                 Math.max(currentTarget.maxX, predictedTarget.maxX),
                                 Math.max(currentTarget.maxY, predictedTarget.maxY),
-                                Math.max(currentTarget.maxZ, predictedTarget.maxZ))
-                        .inflate(TARGET_PATH_PADDING, 0.05D, TARGET_PATH_PADDING);
+                                Math.max(currentTarget.maxZ, predictedTarget.maxZ)),
+                        TARGET_PATH_PADDING,
+                        0.05D,
+                        TARGET_PATH_PADDING);
 
         // A web already covering the target is a deliberate support block:
-        // click its UP face and place lava in webPos.above(). Do this before
+        // click its UP face and place lava in webPos.up(). Do this before
         // wall/ground routing so the broad scan cannot prefer a side cell and
         // so the web itself is preserved instead of treated as the destination.
         PlacementPlan cobwebTopPlan =
@@ -782,46 +798,46 @@ public final class AutoLava {
         // score; aim continuity is only a tie-breaker.
         for (int x = -PLACEMENT_SCAN_RADIUS; x <= PLACEMENT_SCAN_RADIUS; x++) {
             for (int z = -PLACEMENT_SCAN_RADIUS; z <= PLACEMENT_SCAN_RADIUS; z++) {
-                BlockPos placePos = desired.offset(x, 0, z);
-                if (!new AABB(placePos).intersects(targetSweep)) {
+                BlockPos placePos = desired.add(x, 0, z);
+                if (!LegacyWorld.box(placePos).intersectsWith(targetSweep)) {
                     continue;
                 }
-                BlockState state = client.level.getBlockState(placePos);
-                if (!state.canBeReplaced()
-                        || !state.getFluidState().isEmpty()
+                IBlockState state = client.theWorld.getBlockState(placePos);
+                if (!LegacyWorld.replaceable(state)
+                        || !LegacyWorld.fluid(state).isEmpty()
                         || !safeForLocalPlayer(client, placePos, leadTicks)) {
                     continue;
                 }
-                Vec3 placeCenter = Vec3.atCenterOf(placePos);
+                Vec3 placeCenter = VecMath.atCenterOf(placePos);
                 double targetDistance =
-                        Math.pow(placeCenter.x - predicted.x, 2.0D)
-                                + Math.pow(placeCenter.z - predicted.z, 2.0D);
-                for (Direction supportDirection : SUPPORT_DIRECTIONS) {
-                    if (route == PlacementRoute.GROUND && supportDirection != Direction.DOWN) {
+                        Math.pow(placeCenter.xCoord - predicted.xCoord, 2.0D)
+                                + Math.pow(placeCenter.zCoord - predicted.zCoord, 2.0D);
+                for (EnumFacing supportDirection : SUPPORT_DIRECTIONS) {
+                    if (route == PlacementRoute.GROUND && supportDirection != EnumFacing.DOWN) {
                         continue;
                     }
                     if (route == PlacementRoute.WALL
                             && !supportDirection.getAxis().isHorizontal()) {
                         continue;
                     }
-                    BlockPos supportPos = placePos.relative(supportDirection);
-                    BlockState support = client.level.getBlockState(supportPos);
-                    Direction face = supportDirection.getOpposite();
+                    BlockPos supportPos = placePos.offset(supportDirection);
+                    IBlockState support = client.theWorld.getBlockState(supportPos);
+                    EnumFacing face = supportDirection.getOpposite();
                     if (!isUsableSupport(client, supportPos, support, face)) {
                         continue;
                     }
-                    AABB facePlane = insetFacePlane(supportPos, face);
+                    AxisAlignedBB facePlane = insetFacePlane(supportPos, face);
                     Vec3 nearest = AimPointsF.closest(facePlane, eye, look, rayLength);
-                    BlockHitResult visibleHit = visibleFaceHit(client, supportPos, face, nearest);
+                    MovingObjectPosition visibleHit =
+                            visibleFaceHit(client, supportPos, face, nearest);
                     if (visibleHit == null
-                            || !withinRange(client, visibleHit.getLocation())
-                            || !withinFov(client, visibleHit.getLocation(), look)) {
+                            || !withinRange(client, visibleHit.hitVec)
+                            || !withinFov(client, visibleHit.hitVec, look)) {
                         continue;
                     }
                     double rayDistance =
-                            squaredDistanceToViewRay(
-                                    eye, look, visibleHit.getLocation(), rayLength);
-                    double eyeDistance = eye.distanceToSqr(visibleHit.getLocation());
+                            squaredDistanceToViewRay(eye, look, visibleHit.hitVec, rayLength);
+                    double eyeDistance = eye.squareDistanceTo(visibleHit.hitVec);
                     double score =
                             targetDistance * 8.0D
                                     + rayDistance * 0.8D
@@ -841,7 +857,7 @@ public final class AutoLava {
     private static PlacementPlan planAboveTargetCobweb(
             Minecraft client,
             BlockPos desired,
-            AABB targetSweep,
+            AxisAlignedBB targetSweep,
             Vec3 predicted,
             Vec3 eye,
             Vec3 look,
@@ -851,33 +867,32 @@ public final class AutoLava {
         double bestScore = Double.POSITIVE_INFINITY;
         for (int x = -PLACEMENT_SCAN_RADIUS; x <= PLACEMENT_SCAN_RADIUS; x++) {
             for (int z = -PLACEMENT_SCAN_RADIUS; z <= PLACEMENT_SCAN_RADIUS; z++) {
-                BlockPos webPos = desired.offset(x, 0, z);
-                if (!client.level.getBlockState(webPos).is(Blocks.COBWEB)
-                        || !new AABB(webPos).intersects(targetSweep)) {
+                BlockPos webPos = desired.add(x, 0, z);
+                if ((client.theWorld.getBlockState(webPos).getBlock() != Blocks.web)
+                        || !LegacyWorld.box(webPos).intersectsWith(targetSweep)) {
                     continue;
                 }
-                BlockPos placePos = webPos.above();
-                BlockState placeState = client.level.getBlockState(placePos);
-                if (!new AABB(placePos).intersects(targetSweep)
-                        || !placeState.canBeReplaced()
-                        || !placeState.getFluidState().isEmpty()
+                BlockPos placePos = webPos.up();
+                IBlockState placeState = client.theWorld.getBlockState(placePos);
+                if (!LegacyWorld.box(placePos).intersectsWith(targetSweep)
+                        || !LegacyWorld.replaceable(placeState)
+                        || !LegacyWorld.fluid(placeState).isEmpty()
                         || !safeForLocalPlayer(client, placePos, leadTicks)) {
                     continue;
                 }
-                AABB topFace = insetFacePlane(webPos, Direction.UP);
+                AxisAlignedBB topFace = insetFacePlane(webPos, EnumFacing.UP);
                 Vec3 nearest = AimPointsF.closest(topFace, eye, look, rayLength);
-                BlockHitResult hit = visibleFaceHit(client, webPos, Direction.UP, nearest);
+                MovingObjectPosition hit = visibleFaceHit(client, webPos, EnumFacing.UP, nearest);
                 if (hit == null
-                        || !withinRange(client, hit.getLocation())
-                        || !withinFov(client, hit.getLocation(), look)) {
+                        || !withinRange(client, hit.hitVec)
+                        || !withinFov(client, hit.hitVec, look)) {
                     continue;
                 }
-                Vec3 webCenter = Vec3.atCenterOf(webPos);
+                Vec3 webCenter = VecMath.atCenterOf(webPos);
                 double score =
-                        Math.pow(webCenter.x - predicted.x, 2.0D)
-                                + Math.pow(webCenter.z - predicted.z, 2.0D)
-                                + squaredDistanceToViewRay(eye, look, hit.getLocation(), rayLength)
-                                        * 0.1D;
+                        Math.pow(webCenter.xCoord - predicted.xCoord, 2.0D)
+                                + Math.pow(webCenter.zCoord - predicted.zCoord, 2.0D)
+                                + squaredDistanceToViewRay(eye, look, hit.hitVec, rayLength) * 0.1D;
                 if (score < bestScore) {
                     bestScore = score;
                     bestPlan = new PlacementPlan(placePos, hit);
@@ -888,7 +903,7 @@ public final class AutoLava {
     }
 
     /** Bounded support-face plane, inset so an edge cannot resolve to another face. */
-    private static AABB insetFacePlane(BlockPos supportPos, Direction face) {
+    private static AxisAlignedBB insetFacePlane(BlockPos supportPos, EnumFacing face) {
         double minX = supportPos.getX() + FACE_EDGE_INSET;
         double maxX = supportPos.getX() + 1.0D - FACE_EDGE_INSET;
         double minY = supportPos.getY() + FACE_EDGE_INSET;
@@ -897,25 +912,30 @@ public final class AutoLava {
         double maxZ = supportPos.getZ() + 1.0D - FACE_EDGE_INSET;
         return switch (face.getAxis()) {
             case X -> {
-                double x = face == Direction.EAST ? supportPos.getX() + 1.0D : supportPos.getX();
-                yield new AABB(x, minY, minZ, x, maxY, maxZ);
+                double x = face == EnumFacing.EAST ? supportPos.getX() + 1.0D : supportPos.getX();
+                yield LegacyWorld.box(x, minY, minZ, x, maxY, maxZ);
             }
             case Y -> {
-                double y = face == Direction.UP ? supportPos.getY() + 1.0D : supportPos.getY();
-                yield new AABB(minX, y, minZ, maxX, y, maxZ);
+                double y = face == EnumFacing.UP ? supportPos.getY() + 1.0D : supportPos.getY();
+                yield LegacyWorld.box(minX, y, minZ, maxX, y, maxZ);
             }
             case Z -> {
-                double z = face == Direction.SOUTH ? supportPos.getZ() + 1.0D : supportPos.getZ();
-                yield new AABB(minX, minY, z, maxX, maxY, z);
+                double z = face == EnumFacing.SOUTH ? supportPos.getZ() + 1.0D : supportPos.getZ();
+                yield LegacyWorld.box(minX, minY, z, maxX, maxY, z);
             }
         };
     }
 
     /** Confirms that aiming at the selected plane point really reaches that face. */
-    private static BlockHitResult visibleFaceHit(
-            Minecraft client, BlockPos supportPos, Direction face, Vec3 planePoint) {
+    private static MovingObjectPosition visibleFaceHit(
+            Minecraft client, BlockPos supportPos, EnumFacing face, Vec3 planePoint) {
         return RAYS.visibleFaceHit(
-                client, client.player.getEyePosition(), supportPos, face, planePoint, RAY_EPSILON);
+                client,
+                client.thePlayer.getPositionEyes(1.0F),
+                supportPos,
+                face,
+                planePoint,
+                RAY_EPSILON);
     }
 
     private static double squaredDistanceToViewRay(
@@ -927,55 +947,57 @@ public final class AutoLava {
         if (lavaPos == null
                 || placementHit == null
                 || bucketSlot < 0
-                || !withinRange(client, placementHit.getLocation())
-                || !client.player.getInventory().getItem(bucketSlot).is(Items.LAVA_BUCKET)) {
+                || !withinRange(client, placementHit.hitVec)
+                || !LegacyItems.is(
+                        client.thePlayer.inventory.getStackInSlot(bucketSlot), Items.lava_bucket)) {
             return false;
         }
-        BlockState state = client.level.getBlockState(lavaPos);
-        if (!state.canBeReplaced()
-                || !state.getFluidState().isEmpty()
+        IBlockState state = client.theWorld.getBlockState(lavaPos);
+        if (!LegacyWorld.replaceable(state)
+                || !LegacyWorld.fluid(state).isEmpty()
                 || !safeForLocalPlayer(client, lavaPos, Math.max(1.0D, activeSmoothTicks + 1.0D))) {
             return false;
         }
-        Direction supportDirection = placementHit.getDirection().getOpposite();
-        BlockPos supportPos = lavaPos.relative(supportDirection);
+        EnumFacing supportDirection = placementHit.sideHit.getOpposite();
+        BlockPos supportPos = lavaPos.offset(supportDirection);
         return supportPos.equals(placementHit.getBlockPos())
                 && isUsableSupport(
                         client,
                         supportPos,
-                        client.level.getBlockState(supportPos),
-                        placementHit.getDirection())
-                && visibleFaceHit(
-                                client,
-                                supportPos,
-                                placementHit.getDirection(),
-                                placementHit.getLocation())
+                        client.theWorld.getBlockState(supportPos),
+                        placementHit.sideHit)
+                && visibleFaceHit(client, supportPos, placementHit.sideHit, placementHit.hitVec)
                         != null;
     }
 
     /** Cobweb has no normal collision support, but its top outline is clickable. */
     private static boolean isUsableSupport(
-            Minecraft client, BlockPos supportPos, BlockState support, Direction face) {
-        if (support.is(Blocks.COBWEB)) {
-            return face == Direction.UP;
+            Minecraft client, BlockPos supportPos, IBlockState support, EnumFacing face) {
+        if ((support.getBlock() == Blocks.web)) {
+            return face == EnumFacing.UP;
         }
-        return !support.getCollisionShape(client.level, supportPos).isEmpty();
+        return !LegacyWorld.collision(support, client.theWorld, supportPos).isEmpty();
     }
 
     private static void selectSlot(Minecraft client, int slot) {
-        if (slot >= 0 && slot < 9 && client.player.getInventory().getSelectedSlot() != slot) {
-            client.player.getInventory().setSelectedSlot(slot);
+        if (slot >= 0 && slot < 9 && client.thePlayer.inventory.currentItem != slot) {
+            client.thePlayer.inventory.currentItem = slot;
         }
     }
 
     private static boolean withinRange(Minecraft client, Vec3 point) {
-        double reach = Math.min(RANGE.get(), client.player.blockInteractionRange());
-        return BlockPlacementUtils.withinReach(client.player.getEyePosition(), point, reach);
+        double reach =
+                Math.min(
+                        RANGE.get(),
+                        Minecraft.getMinecraft().playerController.getBlockReachDistance());
+        return BlockPlacementUtils.withinReach(
+                client.thePlayer.getPositionEyes(1.0F), point, reach);
     }
 
     private static boolean withinFov(Minecraft client, Vec3 point, Vec3 look) {
         return MathUtils.withinFov(
-                MathUtils.viewAngle(client.player.getEyePosition(), look, point), FOV.get());
+                MathUtils.viewAngle(client.thePlayer.getPositionEyes(1.0F), look, point),
+                FOV.get());
     }
 
     public static boolean isBusy() {
@@ -986,7 +1008,7 @@ public final class AutoLava {
     }
 
     private static void reset(Minecraft client) {
-        var currentPlayer = client == null ? null : client.player;
+        var currentPlayer = client == null ? null : client.thePlayer;
         if (isBusy()) SilentPacketRotation.reset();
         boolean deferredForCurrentCycle =
                 returnSwitchScheduled
@@ -996,7 +1018,7 @@ public final class AutoLava {
                 && currentPlayer != null
                 && originalSlot >= 0
                 && bucketSlot >= 0
-                && currentPlayer.getInventory().getSelectedSlot() == bucketSlot
+                && currentPlayer.inventory.currentItem == bucketSlot
                 && !deferredForCurrentCycle) {
             selectSlot(client, originalSlot);
         }
@@ -1198,7 +1220,7 @@ public final class AutoLava {
         GROUND
     }
 
-    private record PlacementPlan(BlockPos lavaPos, BlockHitResult hit) {}
+    private record PlacementPlan(BlockPos lavaPos, MovingObjectPosition hit) {}
 
     /** End this feature's pending work without changing its configured toggle. */
     public static void shutdown(Minecraft client) {

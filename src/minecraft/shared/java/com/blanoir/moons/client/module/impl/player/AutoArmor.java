@@ -1,6 +1,8 @@
 package com.blanoir.moons.client.module.impl.player;
 
 import com.blanoir.moons.client.access.MinecraftClientAccess;
+import com.blanoir.moons.client.compat.input.InputConstants;
+import com.blanoir.moons.client.compat.math.VecMath;
 import com.blanoir.moons.client.config.Settings;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.IntSetting;
@@ -12,13 +14,12 @@ import com.blanoir.moons.client.module.impl.player.invmanager.*;
 import com.blanoir.moons.client.utils.client.ClientReady;
 import com.blanoir.moons.client.utils.inventory.InventoryClickFailure;
 import com.blanoir.moons.client.utils.inventory.InventoryClicks;
+import com.blanoir.moons.client.utils.inventory.LegacyItems;
 import com.blanoir.moons.client.utils.world.placement.PlacementCoordinator;
-import com.mojang.blaze3d.platform.InputConstants;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.screens.inventory.InventoryScreen;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
+import net.minecraft.client.gui.inventory.GuiInventory;
+import net.minecraft.item.ItemStack;
 
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
@@ -35,8 +36,7 @@ public final class AutoArmor {
                     "enabled",
                     Settings.getBoolean("invmanager.enabled", false)
                             && Settings.getBoolean("invmanager.autoArmor", false));
-    private static final BooleanSetting KEEP_ELYTRA =
-            flag("keepElytra", Settings.getBoolean("invmanager.keepElytra", true));
+
     private static final BooleanSetting PROTECT_SPECIAL =
             flag("protectSpecial", Settings.getBoolean("invmanager.protectSpecial", true));
     private static final List<BooleanSetting> LOCKS =
@@ -46,7 +46,7 @@ public final class AutoArmor {
     private static final IntSetting DELAY_MIN = delay("delayMinMs", 100);
     private static final IntSetting DELAY_MAX = delay("delayMaxMs", 150);
     private static InventorySession session = new InventorySession();
-    private static InventoryScreen screen;
+    private static GuiInventory screen;
     private static final Set<Integer> mouseHeld = new HashSet<>();
     private static long nextActionAt, combatUntil;
     private static String status = "Open inventory to equip armor";
@@ -83,20 +83,21 @@ public final class AutoArmor {
         EventBus.ATTACK_ENTITY_POST.register(
                 "AutoArmor.combat",
                 event -> {
-                    if (event.attacker() == Minecraft.getInstance().player)
+                    if (event.attacker() == Minecraft.getMinecraft().thePlayer)
                         combatUntil = System.nanoTime() + 500_000_000L;
                 });
         EventBus.KEY_INPUT.register(
                 "AutoArmor.key",
                 event -> {
                     if (!event.isCancelled() && event.action() != InputConstants.RELEASE)
-                        manualInput(Minecraft.getInstance());
+                        manualInput(Minecraft.getMinecraft());
                 });
         EventBus.MOUSE_BUTTON.register(
                 "AutoArmor.mouse",
                 event -> {
-                    Minecraft client = Minecraft.getInstance();
-                    if (!(MinecraftClientAccess.screen(client) instanceof InventoryScreen)) return;
+                    Minecraft client = Minecraft.getMinecraft();
+                    if (!(MinecraftClientAccess.currentScreen(client) instanceof GuiInventory))
+                        return;
                     if (!event.isCancelled()) manualInput(client);
                     if (event.action() == InputConstants.RELEASE)
                         mouseHeld.remove(event.button().button());
@@ -114,7 +115,7 @@ public final class AutoArmor {
         lastStatus = "";
     }
 
-    private static void enter(InventoryScreen current, long now) {
+    private static void enter(GuiInventory current, long now) {
         if (current == screen) return;
         FAILURE.reset();
         screen = current;
@@ -126,8 +127,8 @@ public final class AutoArmor {
     private static void manualInput(Minecraft client) {
         if (!enabled()
                 || !ClientReady.interaction(client)
-                || !(MinecraftClientAccess.screen(client) instanceof InventoryScreen current)
-                || client.player.containerMenu != client.player.inventoryMenu) return;
+                || !(MinecraftClientAccess.currentScreen(client) instanceof GuiInventory current)
+                || client.thePlayer.openContainer != client.thePlayer.inventoryContainer) return;
         long now = System.nanoTime();
         enter(current, now);
         session.manualInput(snapshot(client), now, MANUAL_DELAY.get());
@@ -136,8 +137,8 @@ public final class AutoArmor {
     private static void tick(Minecraft client) {
         long now = System.nanoTime();
         if (!ClientReady.interaction(client)
-                || !(MinecraftClientAccess.screen(client) instanceof InventoryScreen current)
-                || client.player.containerMenu != client.player.inventoryMenu) {
+                || !(MinecraftClientAccess.currentScreen(client) instanceof GuiInventory current)
+                || client.thePlayer.openContainer != client.thePlayer.inventoryContainer) {
             if (screen != null) {
                 String previous = status;
                 reset();
@@ -149,26 +150,25 @@ public final class AutoArmor {
         if (!enabled()) return;
         var snapshot = snapshot(client);
         session.observe(snapshot, now);
-        if (!client.isWindowActive() || !mouseHeld.isEmpty() || session.paused(now)) {
+        if (!client.inGameHasFocus || !mouseHeld.isEmpty() || session.paused(now)) {
             status = "Paused · manual input";
             return;
         }
-        if (!client.player.inventoryMenu.getCarried().isEmpty()) {
+        if (!LegacyItems.empty(LegacyItems.carried(client.thePlayer.inventoryContainer))) {
             status = "Paused · cursor holds an item";
             return;
         }
-        if (AutoTotem.inventoryBusy()
-                || InventoryClicks.busyExcept(null)
+        if (InventoryClicks.busyExcept(null)
                 || InventoryClicks.recentlyBusy(now)
                 || HotbarLease.isHeld()
                 || PlacementCoordinator.busy()) {
             status = "Paused · another inventory action";
             return;
         }
-        if (client.player.isDeadOrDying()
-                || client.player.isSpectator()
-                || client.player.isUsingItem()
-                || client.gameMode.isDestroying()
+        if (client.thePlayer.isDead
+                || client.thePlayer.isSpectator()
+                || client.thePlayer.isUsingItem()
+                || client.playerController.getIsHittingBlock()
                 || now < combatUntil
                 || moving(client)) {
             status = "Paused · movement or combat";
@@ -187,18 +187,18 @@ public final class AutoArmor {
         }
         var action = actions.getFirst();
         status = action.reason();
-        var menu = client.player.inventoryMenu;
+        var menu = client.thePlayer.inventoryContainer;
         int source = snapshot.menuSlot(action.source());
         int target = snapshot.menuSlot(action.target());
         boolean hotbar = action.source() < 9;
         // QUICK_MOVE needs somewhere to put the old piece. Never drop it to make room.
         if (!hotbar
-                && !action.beforeTarget().isEmpty()
+                && !LegacyItems.empty(action.beforeTarget())
                 && !InventoryClicks.hasEmptyStorage(client, menu, action.beforeTarget())) {
             status = "Paused · free one inventory slot to change armor";
             return;
         }
-        int clickSlot = hotbar || !action.beforeTarget().isEmpty() ? target : source;
+        int clickSlot = hotbar || !LegacyItems.empty(action.beforeTarget()) ? target : source;
         if (FAILURE.beforeClick(client, menu, clickSlot, null)) {
             status = "Misclick · retrying";
             nextActionAt = now + Math.max(50, nextDelay()) * 1_000_000L;
@@ -220,28 +220,29 @@ public final class AutoArmor {
                             action.source(),
                             action.beforeTarget(),
                             action.beforeSource());
-        } else if (!action.beforeTarget().isEmpty()) {
+        } else if (!LegacyItems.empty(action.beforeTarget())) {
             changed = InventoryClicks.quickMove(client, menu, target, action.beforeTarget());
         } else {
             changed = InventoryClicks.quickMove(client, menu, source, action.beforeSource());
-            changed &= ItemStack.matches(menu.getSlot(target).getItem(), action.beforeSource());
+            changed &= LegacyItems.matches(menu.getSlot(target).getStack(), action.beforeSource());
         }
         status = changed ? "Armor updated" : "Inventory changed · waiting to retry";
         nextActionAt = now + (changed ? Math.max(50, nextDelay()) : 1000) * 1_000_000L;
     }
 
     private static boolean moving(Minecraft client) {
-        return !client.player.onGround()
-                || client.player.getDeltaMovement().horizontalDistanceSqr() > .0001
-                || client.options.keyUp.isDown()
-                || client.options.keyDown.isDown()
-                || client.options.keyLeft.isDown()
-                || client.options.keyRight.isDown()
-                || client.options.keyJump.isDown();
+        return !client.thePlayer.onGround
+                || VecMath.horizontalDistanceSqr(VecMath.motion(client.thePlayer)) > .0001
+                || client.gameSettings.keyBindForward.isKeyDown()
+                || client.gameSettings.keyBindBack.isKeyDown()
+                || client.gameSettings.keyBindLeft.isKeyDown()
+                || client.gameSettings.keyBindRight.isKeyDown()
+                || client.gameSettings.keyBindJump.isKeyDown();
     }
 
     private static InventorySnapshot snapshot(Minecraft client) {
-        return InventorySnapshot.capture(client.player.inventoryMenu, client.player.getInventory());
+        return InventorySnapshot.capture(
+                client.thePlayer.inventoryContainer, client.thePlayer.inventory);
     }
 
     private static List<InventoryAction> plan(Minecraft client, InventorySnapshot snapshot) {
@@ -253,30 +254,28 @@ public final class AutoArmor {
         var blocked = session.protectedSlots();
         var locks = new BitSet(4);
         for (int i = 0; i < 4; i++) if (LOCKS.get(i).get()) locks.set(i);
-        for (int i = 0; i < 41; i++) {
+        for (int i = 0; i < 40; i++) {
             int slot = snapshot.menuSlot(i);
-            if (slot < 0 || !client.player.inventoryMenu.getSlot(slot).mayPickup(client.player))
-                blocked.set(i);
+            if (slot < 0
+                    || !client.thePlayer
+                            .inventoryContainer
+                            .getSlot(slot)
+                            .canTakeStack(client.thePlayer)) blocked.set(i);
         }
         return InventoryArmor.plan(
-                        snapshot,
-                        blocked,
-                        InvManagerConfig.roles(),
-                        protectSpecial,
-                        KEEP_ELYTRA.get(),
-                        locks)
+                        snapshot, blocked, InvManagerConfig.roles(), protectSpecial, locks)
                 .stream()
                 .filter(
                         action -> {
                             var source =
-                                    client.player.inventoryMenu.getSlot(
+                                    client.thePlayer.inventoryContainer.getSlot(
                                             snapshot.menuSlot(action.source()));
                             var target =
-                                    client.player.inventoryMenu.getSlot(
+                                    client.thePlayer.inventoryContainer.getSlot(
                                             snapshot.menuSlot(action.target()));
-                            return target.mayPlace(action.beforeSource())
-                                    && (action.beforeTarget().isEmpty()
-                                            || source.mayPlace(action.beforeTarget()));
+                            return target.isItemValid(action.beforeSource())
+                                    && (LegacyItems.empty(action.beforeTarget())
+                                            || source.isItemValid(action.beforeTarget()));
                         })
                 .toList();
     }
@@ -287,7 +286,7 @@ public final class AutoArmor {
         var result = new ArrayList<ArmorView>();
         for (int index = 39; index >= 36; index--) {
             final int target = index;
-            ItemStack item = snapshot == null ? ItemStack.EMPTY : snapshot.item(index);
+            ItemStack item = snapshot == null ? LegacyItems.EMPTY : snapshot.item(index);
             var action =
                     actions.stream().filter(candidate -> candidate.target() == target).findFirst();
             String reason =
@@ -297,35 +296,30 @@ public final class AutoArmor {
                                     ? "Locked"
                                     : session.protectedSlots().get(index)
                                             ? "Manually placed this session"
-                                            : KEEP_ELYTRA.get() && item.is(Items.ELYTRA)
-                                                    ? "Keeping elytra"
-                                                    : PROTECT_SPECIAL.get()
-                                                                    && !InventoryItems.protection(
-                                                                                    item)
-                                                                            .isEmpty()
-                                                            ? InventoryItems.protection(item)
-                                                            : snapshot != null
-                                                                            && snapshot.menuSlot(
-                                                                                            index)
-                                                                                    >= 0
-                                                                            && !client.player
-                                                                                    .inventoryMenu
-                                                                                    .getSlot(
-                                                                                            snapshot
-                                                                                                    .menuSlot(
-                                                                                                            index))
-                                                                                    .mayPickup(
-                                                                                            client.player)
-                                                                    ? "Cannot remove this armor"
-                                                                    : action.isPresent()
-                                                                            ? action.get().reason()
-                                                                            : "No better available armor";
+                                            : PROTECT_SPECIAL.get()
+                                                            && !InventoryItems.protection(item)
+                                                                    .isEmpty()
+                                                    ? InventoryItems.protection(item)
+                                                    : snapshot != null
+                                                                    && snapshot.menuSlot(index) >= 0
+                                                                    && !client.thePlayer
+                                                                            .inventoryContainer
+                                                                            .getSlot(
+                                                                                    snapshot
+                                                                                            .menuSlot(
+                                                                                                    index))
+                                                                            .canTakeStack(
+                                                                                    client.thePlayer)
+                                                            ? "Cannot remove this armor"
+                                                            : action.isPresent()
+                                                                    ? action.get().reason()
+                                                                    : "No better available armor";
             result.add(
                     new ArmorView(
                             index,
-                            item.copy(),
+                            LegacyItems.copy(item),
                             action.map(InventoryAction::beforeSource)
-                                    .orElse(ItemStack.EMPTY)
+                                    .orElse(LegacyItems.EMPTY)
                                     .copy(),
                             reason,
                             locked(index)));
@@ -336,14 +330,6 @@ public final class AutoArmor {
     public static ModuleRegistry.Setting[] settings() {
         var result = new ArrayList<ModuleRegistry.Setting>();
         result.add(FAILURE.setting());
-        result.add(
-                KEEP_ELYTRA.describe(
-                        "keep_elytra",
-                        "Keep elytra",
-                        (client, value) -> {
-                            KEEP_ELYTRA.set(value);
-                            return 1;
-                        }));
         result.add(
                 PROTECT_SPECIAL.describe(
                         "protect_special",

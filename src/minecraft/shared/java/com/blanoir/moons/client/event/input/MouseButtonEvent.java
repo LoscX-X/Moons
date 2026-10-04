@@ -1,26 +1,24 @@
 package com.blanoir.moons.client.event.input;
 
+import com.blanoir.moons.client.compat.input.MouseButtonInfo;
 import com.blanoir.moons.client.event.Cancellable;
-
-import net.minecraft.client.MouseHandler;
-import net.minecraft.client.input.MouseButtonInfo;
 
 /** Raw mouse-button callback, before vanilla handles the button state. */
 public final class MouseButtonEvent implements Cancellable {
-    private final MouseHandler handler;
+    private final Object handler;
     private final long window;
     private final MouseButtonInfo button;
     private final int action;
     private boolean cancelled;
 
-    public MouseButtonEvent(MouseHandler handler, long window, MouseButtonInfo button, int action) {
+    public MouseButtonEvent(Object handler, long window, MouseButtonInfo button, int action) {
         this.handler = handler;
         this.window = window;
         this.button = button;
         this.action = action;
     }
 
-    public MouseHandler handler() {
+    public Object handler() {
         return handler;
     }
 

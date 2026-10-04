@@ -1,33 +1,36 @@
 package com.blanoir.moons.client.module.impl.player.invmanager;
 
-import net.minecraft.world.item.Item;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
+import com.blanoir.moons.client.utils.inventory.LegacyItems;
+
+import net.minecraft.init.Items;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
 
 import java.util.Locale;
 
 /** A slot has one role; multiple slots may deliberately request the same role. */
 public enum InventoryRole {
-    FREE("Free", Items.AIR),
-    LOCKED("Locked", Items.BARRIER),
-    CUSTOM("Custom items", Items.CHEST),
-    SWORD("Sword", Items.IRON_SWORD),
-    PICKAXE("Plain pickaxe", Items.IRON_PICKAXE),
-    SILK_PICKAXE("Silk pickaxe", Items.DIAMOND_PICKAXE),
-    FORTUNE_PICKAXE("Fortune pickaxe", Items.DIAMOND_PICKAXE),
-    AXE("Axe", Items.IRON_AXE),
-    SHOVEL("Shovel", Items.IRON_SHOVEL),
-    BOW("Bow", Items.BOW),
-    CROSSBOW("Crossbow", Items.CROSSBOW),
-    BLOCK("Blocks", Items.COBBLESTONE),
-    FOOD("Food", Items.COOKED_BEEF),
-    GOLDEN_APPLE("Golden apple", Items.GOLDEN_APPLE),
-    PEARL("Pearls", Items.ENDER_PEARL),
-    THROWABLE("Throwables", Items.SNOWBALL),
-    WATER("Water", Items.WATER_BUCKET),
-    LAVA("Lava", Items.LAVA_BUCKET),
-    SHIELD("Shield", Items.SHIELD),
-    TOTEM("Totem", Items.TOTEM_OF_UNDYING);
+    FREE("Free", null),
+    LOCKED("Locked", net.minecraft.item.Item.getItemFromBlock(net.minecraft.init.Blocks.barrier)),
+    CUSTOM(
+            "Custom items",
+            net.minecraft.item.Item.getItemFromBlock(net.minecraft.init.Blocks.chest)),
+    SWORD("Sword", Items.iron_sword),
+    PICKAXE("Plain pickaxe", Items.iron_pickaxe),
+    SILK_PICKAXE("Silk pickaxe", Items.diamond_pickaxe),
+    FORTUNE_PICKAXE("Fortune pickaxe", Items.diamond_pickaxe),
+    AXE("Axe", Items.iron_axe),
+    SHOVEL("Shovel", Items.iron_shovel),
+    BOW("Bow", Items.bow),
+    BLOCK(
+            "Blocks",
+            net.minecraft.item.Item.getItemFromBlock(net.minecraft.init.Blocks.cobblestone)),
+    FOOD("Food", Items.cooked_beef),
+    GOLDEN_APPLE("Golden apple", Items.golden_apple),
+    PEARL("Pearls", Items.ender_pearl),
+    THROWABLE("Throwables", Items.snowball),
+    WATER("Water", Items.water_bucket),
+    LAVA("Lava", Items.lava_bucket);
 
     private final String label;
     private final Item icon;
@@ -46,7 +49,7 @@ public enum InventoryRole {
     }
 
     public ItemStack icon() {
-        return icon == Items.AIR ? ItemStack.EMPTY : new ItemStack(icon);
+        return icon == null ? LegacyItems.EMPTY : new ItemStack(icon);
     }
 
     public boolean managed() {

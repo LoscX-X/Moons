@@ -1,10 +1,11 @@
 package com.blanoir.moons.client.utils.rotation.aim;
 
+import com.blanoir.moons.client.compat.math.Mth;
+import com.blanoir.moons.client.compat.math.VecMath;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 import com.blanoir.moons.client.utils.rotation.quantize.QuantizerA;
 
-import net.minecraft.util.Mth;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.util.Vec3;
 
 /**
  * E: Existing Scaffold point-to-angle arithmetic and relative-yaw quantization.
@@ -18,10 +19,10 @@ public final class AimSolverE {
     public static Rotation solve(
             Vec3 eye, Vec3 point, Rotation base, QuantizerA.Adapter quantizer) {
         Vec3 delta = point.subtract(eye);
-        double horizontal = Math.hypot(delta.x, delta.z);
-        if (delta.lengthSqr() < 1.0E-8D) return null;
-        float rawYaw = (float) Math.toDegrees(Math.atan2(delta.z, delta.x)) - 90.0F;
-        float rawPitch = (float) -Math.toDegrees(Math.atan2(delta.y, horizontal));
+        double horizontal = Math.hypot(delta.xCoord, delta.zCoord);
+        if (VecMath.lengthSqr(delta) < 1.0E-8D) return null;
+        float rawYaw = (float) Math.toDegrees(Math.atan2(delta.zCoord, delta.xCoord)) - 90.0F;
+        float rawPitch = (float) -Math.toDegrees(Math.atan2(delta.yCoord, horizontal));
         return quantizer.relative(base, new Rotation(rawYaw, rawPitch));
     }
 

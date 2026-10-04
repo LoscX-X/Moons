@@ -1,13 +1,14 @@
 package com.blanoir.moons.client.utils.rotation.aim;
 
+import com.blanoir.moons.client.compat.math.Mth;
+import com.blanoir.moons.client.compat.math.VecMath;
 import com.blanoir.moons.client.utils.entity.EntityDistance;
 import com.blanoir.moons.client.utils.raytrace.RaytraceUtils;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.util.Mth;
-import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.util.AxisAlignedBB;
+import net.minecraft.util.Vec3;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -29,21 +30,21 @@ public final class AimPointsC {
 
     public static Vec3 findVisibleAimPoint(
             Minecraft client,
-            LivingEntity entity,
+            EntityLivingBase entity,
             Vec3 preferredAimPoint,
             double range,
             double hysteresis) {
-        var currentPlayer = client == null ? null : client.player;
-        if (client == null || currentPlayer == null || client.level == null || entity == null) {
+        var currentPlayer = client == null ? null : client.thePlayer;
+        if (client == null || currentPlayer == null || client.theWorld == null || entity == null) {
             return null;
         }
-        Vec3 eyePos = currentPlayer.getEyePosition();
+        Vec3 eyePos = currentPlayer.getPositionEyes(1F);
 
-        Vec3 look = currentPlayer.getLookAngle();
+        Vec3 look = currentPlayer.getLook(1F);
 
-        AABB box = entity.getBoundingBox();
+        AxisAlignedBB box = entity.getEntityBoundingBox();
 
-        Optional<Vec3> onBody = box.clip(eyePos, eyePos.add(look.scale(range)));
+        Optional<Vec3> onBody = VecMath.clip(box, eyePos, eyePos.add(VecMath.scale(look, range)));
 
         if (onBody.isPresent()) {
             Vec3 point = onBody.get();
@@ -80,7 +81,7 @@ public final class AimPointsC {
         return bestPoint;
     }
 
-    public static boolean hasVisiblePoint(Minecraft client, LivingEntity entity, double range) {
+    public static boolean hasVisiblePoint(Minecraft client, EntityLivingBase entity, double range) {
         return findVisibleAimPoint(client, entity, null, range, 0.0D) != null;
     }
 
@@ -90,7 +91,7 @@ public final class AimPointsC {
      */
     public static Vec3 findBestVisibleSurfacePoint(
             Minecraft client,
-            AABB box,
+            AxisAlignedBB box,
             Vec3 referenceLook,
             double range,
             double preferredHeight,
@@ -101,29 +102,29 @@ public final class AimPointsC {
 
     public static Vec3 findBestVisibleSurfacePoint(
             Minecraft client,
-            AABB box,
+            AxisAlignedBB box,
             Vec3 referenceLook,
             double range,
             double preferredHeight,
             boolean precise,
             boolean throughBlocks) {
-        var currentPlayer = client == null ? null : client.player;
+        var currentPlayer = client == null ? null : client.thePlayer;
         if (client == null
                 || currentPlayer == null
-                || client.level == null
+                || client.theWorld == null
                 || box == null
                 || !Double.isFinite(range)
                 || range <= 0.0D) {
             return null;
         }
-        Vec3 eye = currentPlayer.getEyePosition();
-        if (box.contains(eye)) {
-            return box.getCenter();
+        Vec3 eye = currentPlayer.getPositionEyes(1F);
+        if (VecMath.contains(box, eye)) {
+            return VecMath.center(box);
         }
         Vec3 look =
-                referenceLook != null && referenceLook.lengthSqr() > 1.0E-9D
+                referenceLook != null && VecMath.lengthSqr(referenceLook) > 1.0E-9D
                         ? referenceLook.normalize()
-                        : currentPlayer.getViewVector(1.0F);
+                        : currentPlayer.getLook(1.0F);
         return findBestSurfacePoint(
                 box,
                 eye,
@@ -136,7 +137,7 @@ public final class AimPointsC {
 
     /** Evaluate in the original order, without retaining up to 867 temporary points in a list. */
     static Vec3 findBestSurfacePoint(
-            AABB box,
+            AxisAlignedBB box,
             Vec3 eye,
             Vec3 look,
             double range,
@@ -144,7 +145,7 @@ public final class AimPointsC {
             boolean precise,
             Predicate<Vec3> visible) {
         SurfaceSearch search = new SurfaceSearch(box, eye, look, range, preferredHeight, visible);
-        box.clip(eye, eye.add(look.scale(range))).ifPresent(search::consider);
+        VecMath.clip(box, eye, eye.add(VecMath.scale(look, range))).ifPresent(search::consider);
         Vec3 closest = EntityDistance.closestPoint(eye, box);
         surfacePoint(eye, closest, box).ifPresent(search::consider);
         search.consider(closest);
@@ -175,7 +176,7 @@ public final class AimPointsC {
         private double bestScore = Double.POSITIVE_INFINITY;
 
         private SurfaceSearch(
-                AABB box,
+                AxisAlignedBB box,
                 Vec3 eye,
                 Vec3 look,
                 double range,
@@ -185,16 +186,16 @@ public final class AimPointsC {
             this.look = look;
             this.rangeSquared = range * range;
             this.preferredY = Mth.lerp(Mth.clamp(preferredHeight, 0.0D, 1.0D), box.minY, box.maxY);
-            this.height = Math.max(box.getYsize(), 0.1D);
+            this.height = Math.max((box.maxY - box.minY), 0.1D);
             this.visible = visible;
         }
 
         private void consider(Vec3 point) {
-            double distanceSquared = eye.distanceToSqr(point);
+            double distanceSquared = eye.squareDistanceTo(point);
             if (distanceSquared > rangeSquared || !visible.test(point)) return;
             Vec3 direction = point.subtract(eye).normalize();
-            double angularCost = 1.0D - Mth.clamp(look.dot(direction), -1.0D, 1.0D);
-            double lowAimPenalty = Math.max(0.0D, preferredY - point.y) / height;
+            double angularCost = 1.0D - Mth.clamp(look.dotProduct(direction), -1.0D, 1.0D);
+            double lowAimPenalty = Math.max(0.0D, preferredY - point.yCoord) / height;
             double score = angularCost * 32.0D + distanceSquared * 0.002D + lowAimPenalty * 1.35D;
             if (score < bestScore) {
                 bestScore = score;
@@ -203,16 +204,16 @@ public final class AimPointsC {
         }
     }
 
-    private static Optional<Vec3> surfacePoint(Vec3 eye, Vec3 desired, AABB box) {
+    private static Optional<Vec3> surfacePoint(Vec3 eye, Vec3 desired, AxisAlignedBB box) {
         Vec3 difference = desired.subtract(eye);
-        return difference.lengthSqr() < 1.0E-9D
+        return VecMath.lengthSqr(difference) < 1.0E-9D
                 ? Optional.empty()
-                : box.clip(eye, eye.add(difference.scale(2.0D)));
+                : VecMath.clip(box, eye, eye.add(VecMath.scale(difference, 2.0D)));
     }
 
     private static Vec3 bestVisibleSample(
-            Minecraft client, LivingEntity entity, Vec3 eyePos, double range) {
-        AABB box = entity.getBoundingBox();
+            Minecraft client, EntityLivingBase entity, Vec3 eyePos, double range) {
+        AxisAlignedBB box = entity.getEntityBoundingBox();
 
         Vec3 bestPoint = null;
         double bestAngle = Double.MAX_VALUE;
@@ -236,20 +237,20 @@ public final class AimPointsC {
 
     private static boolean isUsableAimPoint(
             Minecraft client, Vec3 eyePos, Vec3 point, double range) {
-        return eyePos.distanceToSqr(point) <= range * range
+        return eyePos.squareDistanceTo(point) <= range * range
                 && RaytraceUtils.canRayTraceTo(client, eyePos, point);
     }
 
-    public static List<Vec3> aimPoints(AABB box) {
+    public static List<Vec3> aimPoints(AxisAlignedBB box) {
         List<Vec3> points = new ArrayList<>(30);
 
-        Vec3 center = box.getCenter();
+        Vec3 center = VecMath.center(box);
 
         points.add(center);
 
-        points.add(new Vec3(center.x, Mth.lerp(0.75D, box.minY, box.maxY), center.z));
+        points.add(new Vec3(center.xCoord, Mth.lerp(0.75D, box.minY, box.maxY), center.zCoord));
 
-        points.add(new Vec3(center.x, Mth.lerp(0.35D, box.minY, box.maxY), center.z));
+        points.add(new Vec3(center.xCoord, Mth.lerp(0.35D, box.minY, box.maxY), center.zCoord));
 
         double insetX = Math.min((box.maxX - box.minX) * 0.15D, 0.1D);
 
@@ -267,11 +268,11 @@ public final class AimPointsC {
         double maxZ = box.maxZ - insetZ;
 
         for (int ix = 0; ix < 3; ix++) {
-            double x = ix == 0 ? minX : ix == 1 ? center.x : maxX;
+            double x = ix == 0 ? minX : ix == 1 ? center.xCoord : maxX;
             for (int iy = 0; iy < 3; iy++) {
-                double y = iy == 0 ? minY : iy == 1 ? center.y : maxY;
+                double y = iy == 0 ? minY : iy == 1 ? center.yCoord : maxY;
                 for (int iz = 0; iz < 3; iz++) {
-                    double z = iz == 0 ? minZ : iz == 1 ? center.z : maxZ;
+                    double z = iz == 0 ? minZ : iz == 1 ? center.zCoord : maxZ;
                     points.add(new Vec3(x, y, z));
                 }
             }

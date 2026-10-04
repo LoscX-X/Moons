@@ -1,27 +1,26 @@
 package com.blanoir.moons.client.module.impl.world.structure;
 
-import net.minecraft.world.level.block.AmethystClusterBlock;
-import net.minecraft.world.level.block.state.BlockState;
+import com.blanoir.moons.client.utils.world.LegacyWorld;
+
+import net.minecraft.block.state.IBlockState;
 
 import java.util.Arrays;
 
 /** Immutable block occupancy. Coarse probes share the same data as the final voxel check. */
 final class CavitySnapshot {
-    static final int MIN_Y = -64, MAX_Y = 64;
+    static final int MIN_Y = 0, MAX_Y = 64;
     static final byte UNKNOWN = 0, AIR = 1, WALL = 2, OTHER = 3, DECORATION = 4;
 
     static boolean open(byte cell) {
         return cell == AIR || cell == DECORATION;
     }
 
-    static byte classify(BlockState state) {
-        if (state.isAir()) return AIR;
-        if (state.isSolidRender()) return WALL;
+    static byte classify(IBlockState state) {
+        if (LegacyWorld.air(state)) return AIR;
+        if (state.getBlock().isOpaqueCube()) return WALL;
         // Crystal growth occupies part of a geode's air pocket. Plants, fences and other
         // non-opaque blocks are not evidence of an empty chamber.
-        return state.getBlock() instanceof AmethystClusterBlock && state.getFluidState().isEmpty()
-                ? DECORATION
-                : OTHER;
+        return OTHER;
     }
 
     final int chunkX, chunkZ;

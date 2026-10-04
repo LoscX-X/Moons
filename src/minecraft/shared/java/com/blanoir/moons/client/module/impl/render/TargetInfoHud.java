@@ -15,9 +15,8 @@ import com.blanoir.moons.client.utils.player.PlayerHealthResolver;
 import com.blanoir.moons.client.utils.time.FrameClock;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.phys.EntityHitResult;
+import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.entity.player.EntityPlayer;
 
 import java.util.Locale;
 import java.util.UUID;
@@ -43,7 +42,7 @@ public final class TargetInfoHud {
                     .build();
 
     private final FrameClock frameClock = new FrameClock();
-    private Player retainedTarget;
+    private EntityPlayer retainedTarget;
     private UUID animatedTargetId;
     private long lastTargetNanos;
     private double visibility;
@@ -64,10 +63,10 @@ public final class TargetInfoHud {
     }
 
     private Snapshot createSnapshot(boolean editing) {
-        Minecraft client = Minecraft.getInstance();
-        var currentPlayer = client == null ? null : client.player;
+        Minecraft client = Minecraft.getMinecraft();
+        var currentPlayer = client == null ? null : client.thePlayer;
         if (currentPlayer == null
-                || client.level == null
+                || client.theWorld == null
                 || (!editing && !ENABLED.get())
                 || (!editing
                         && MinecraftClientAccess.screen(client) instanceof MoonsComposeScreen)) {
@@ -76,7 +75,7 @@ public final class TargetInfoHud {
         }
 
         double seconds = frameClock.nextDeltaSeconds();
-        Player liveTarget = editing ? currentPlayer : findTarget(client);
+        EntityPlayer liveTarget = editing ? currentPlayer : findTarget(client);
         long now = System.nanoTime();
         if (liveTarget != null) retain(liveTarget, now);
 
@@ -85,7 +84,7 @@ public final class TargetInfoHud {
         visibility =
                 editing ? 1.0D : Animation.approach(visibility, targetVisibility, seconds, 9.5D);
 
-        Player shown = editing ? currentPlayer : retainedTarget;
+        EntityPlayer shown = editing ? currentPlayer : retainedTarget;
         if (shown == null || visibility < 0.004D) {
             if (!editing && targetVisibility == 0.0D) resetHiddenState();
             return Snapshot.HIDDEN;
@@ -95,9 +94,9 @@ public final class TargetInfoHud {
         float maxHealth = PlayerHealthResolver.max(shown);
         if (editing
                 || animatedTargetId == null
-                || !animatedTargetId.equals(shown.getUUID())
+                || !animatedTargetId.equals(shown.getUniqueID())
                 || !Double.isFinite(displayedHealth)) {
-            animatedTargetId = shown.getUUID();
+            animatedTargetId = shown.getUniqueID();
             displayedHealth = resolvedHealth;
         } else {
             displayedHealth = Animation.approach(displayedHealth, resolvedHealth, seconds, 7.5D);
@@ -115,7 +114,7 @@ public final class TargetInfoHud {
         return new Snapshot(
                 true,
                 bounds,
-                shown.getName().getString(),
+                shown.getName(),
                 healthText(maxHealth),
                 PlayerHitEstimator.text(client, shown, resolvedHealth),
                 ratio,
@@ -143,8 +142,8 @@ public final class TargetInfoHud {
         frameClock.reset();
     }
 
-    private void retain(Player player, long now) {
-        if (retainedTarget == null || !retainedTarget.getUUID().equals(player.getUUID())) {
+    private void retain(EntityPlayer player, long now) {
+        if (retainedTarget == null || !retainedTarget.getUniqueID().equals(player.getUniqueID())) {
             retainedTarget = player;
             animatedTargetId = null;
             displayedHealth = Double.NaN;
@@ -154,13 +153,13 @@ public final class TargetInfoHud {
         lastTargetNanos = now;
     }
 
-    private static Player findTarget(Minecraft client) {
-        LivingEntity auraTarget = SilentAura.currentTarget(client);
-        if (auraTarget instanceof Player player && Targeting.isEnemyPlayer(client, player)) {
+    private static EntityPlayer findTarget(Minecraft client) {
+        EntityLivingBase auraTarget = SilentAura.currentTarget(client);
+        if (auraTarget instanceof EntityPlayer player && Targeting.isEnemyPlayer(client, player)) {
             return player;
         }
-        if (client.hitResult instanceof EntityHitResult hit
-                && hit.getEntity() instanceof Player player
+        if (client.objectMouseOver != null
+                && client.objectMouseOver.entityHit instanceof EntityPlayer player
                 && Targeting.isEnemyPlayer(client, player)) {
             return player;
         }
@@ -188,20 +187,26 @@ public final class TargetInfoHud {
     }
 
     public static Bounds currentBounds() {
-        Minecraft client = Minecraft.getInstance();
+        Minecraft client = Minecraft.getMinecraft();
         double scale = scale();
         double width = WIDTH * scale;
         double height = HEIGHT * scale;
         double left =
                 Math.max(
                         0.0D,
-                        Math.min(POSITION_X.get(), client.getWindow().getGuiScaledWidth() - width));
+                        Math.min(
+                                POSITION_X.get(),
+                                new net.minecraft.client.gui.ScaledResolution(client)
+                                                .getScaledWidth()
+                                        - width));
         double top =
                 Math.max(
                         0.0D,
                         Math.min(
                                 POSITION_Y.get(),
-                                client.getWindow().getGuiScaledHeight() - height));
+                                new net.minecraft.client.gui.ScaledResolution(client)
+                                                .getScaledHeight()
+                                        - height));
         return new Bounds(left, top, width, height);
     }
 
@@ -237,7 +242,11 @@ public final class TargetInfoHud {
     }
 
     private static double crispScale(double requested) {
-        int guiScale = Math.max(1, Minecraft.getInstance().getWindow().getGuiScale());
+        int guiScale =
+                Math.max(
+                        1,
+                        new net.minecraft.client.gui.ScaledResolution(Minecraft.getMinecraft())
+                                .getScaleFactor());
         double physicalScale = Math.max(1.0D, Math.rint(requested * guiScale));
         return Math.min(2.0D, physicalScale / guiScale);
     }

@@ -21,7 +21,7 @@ def runtimeJar = tasks.register("runtimeJar", Jar) {
 def uiDependenciesJar = tasks.register("uiDependenciesJar", moonsPluginTypes.shadowJar) {
     archiveFileName = "moons-ui-runtime.jar"
     destinationDirectory = layout.buildDirectory.dir("dist/dependencies")
-    configurations = [project.configurations.composeEmbedded]
+    configurations = [project.configurations.composeEmbedded, project.configurations.legacyRuntimeSupport]
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     mergeServiceFiles()
     exclude "META-INF/INDEX.LIST"
@@ -29,13 +29,20 @@ def uiDependenciesJar = tasks.register("uiDependenciesJar", moonsPluginTypes.sha
     exclude "META-INF/versions/*/module-info.class", "module-info.class"
 }
 
-def featuresJar = tasks.register("featuresJar", Jar) {
+def featuresNamedJar = tasks.register("featuresNamedJar", Jar) {
     archiveFileName = "moons-core-features.jar"
-    destinationDirectory = layout.buildDirectory.dir(versionedPayloadDirectory)
+    destinationDirectory = layout.buildDirectory.dir('named/' + versionedPayloadDirectory)
     dependsOn tasks.named("clientClasses")
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     from sourceSets.features.output
     from sourceSets.client.output
+}
+def remapFeatures = registerMinecraft189Remap('remapFeatures189', featuresNamedJar, 'remapped/moons-core-features.jar')
+def featuresJar = tasks.register('featuresJar', Jar) {
+    dependsOn remapFeatures
+    archiveFileName = 'moons-core-features.jar'
+    destinationDirectory = layout.buildDirectory.dir(versionedPayloadDirectory)
+    from({ zipTree(layout.buildDirectory.file('remapped/moons-core-features.jar').get().asFile) })
 }
 
 tasks.register("moonsJar", Jar) {

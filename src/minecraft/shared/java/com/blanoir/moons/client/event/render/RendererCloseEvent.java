@@ -1,6 +1,6 @@
 package com.blanoir.moons.client.event.render;
 
-import net.minecraft.client.renderer.GameRenderer;
+import net.minecraft.client.renderer.EntityRenderer;
 
-/** GameRenderer close completion boundary on the render thread. */
-public record RendererCloseEvent(GameRenderer renderer) {}
+/** EntityRenderer close completion boundary on the render thread. */
+public record RendererCloseEvent(EntityRenderer renderer) {}

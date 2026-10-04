@@ -4,14 +4,14 @@ import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.world.effect.MobEffects;
+import net.minecraft.client.entity.EntityPlayerSP;
+import net.minecraft.potion.Potion;
 
 /**
  * Automatic sprint control.
  *
- * The sprint decision is forced inside {@code LocalPlayer#aiStep} (see
- * LocalPlayer sprint-decision hooks), so sprint re-engages automatically after a screen
+ * The sprint decision is forced inside {@code EntityPlayerSP#aiStep} (see
+ * EntityPlayerSP sprint-decision hooks), so sprint re-engages automatically after a screen
  * closes instead of relying on a sticky sprint-key state that vanilla resets
  * when a GUI (e.g. the inventory) opens.
  */
@@ -26,24 +26,23 @@ public final class Sprint {
     }
 
     /** Whether the local player should be sprinting during this movement tick. */
-    public static boolean shouldSprint(LocalPlayer player) {
+    public static boolean shouldSprint(EntityPlayerSP player) {
         if (!ENABLED.get() || player == null) {
             return false;
         }
 
-        if (player.isPassenger()
-                || player.getAbilities().flying
-                || player.isFallFlying()
-                || player.isShiftKeyDown()
+        if (player.isRiding()
+                || player.capabilities.isFlying
+                || player.isSneaking()
                 || player.isUsingItem()
-                || player.isInShallowWater()
-                || player.hasEffect(MobEffects.BLINDNESS)
-                || player.getFoodData().getFoodLevel() <= 6
-                || (player.horizontalCollision && !player.minorHorizontalCollision)) {
+                || player.isInWater()
+                || player.isPotionActive(Potion.blindness)
+                || player.getFoodStats().getFoodLevel() <= 6
+                || player.isCollidedHorizontally) {
             return false;
         }
 
-        return player.input.hasForwardImpulse();
+        return player.movementInput.moveForward >= 0.8F;
     }
 
     public static int setEnabled(Minecraft client, boolean newEnabled) {

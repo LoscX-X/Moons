@@ -1,28 +1,26 @@
 package com.blanoir.moons.client.management.targeting;
 
 import com.blanoir.moons.client.chat.ClientChat;
+import com.blanoir.moons.client.compat.item.EquipmentSlot;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.utils.combat.CombatReach;
 import com.blanoir.moons.client.utils.entity.EntityDistance;
 import com.blanoir.moons.client.utils.entity.EntityTypeIds;
 import com.blanoir.moons.client.utils.raytrace.RaytraceUtils;
 
-import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
-import net.minecraft.core.component.DataComponents;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.network.chat.TextColor;
-import net.minecraft.resources.Identifier;
-import net.minecraft.tags.ItemTags;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.EquipmentSlot;
-import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.Mob;
-import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.component.DyedItemColor;
-import net.minecraft.world.phys.EntityHitResult;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.EntityLiving;
+import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.item.ItemArmor;
+import net.minecraft.item.ItemAxe;
+import net.minecraft.item.ItemStack;
+import net.minecraft.item.ItemSword;
+import net.minecraft.util.EnumChatFormatting;
+import net.minecraft.util.MovingObjectPosition;
+import net.minecraft.util.ResourceLocation;
+import net.minecraft.util.Vec3;
 
 import java.util.Collection;
 import java.util.Set;
@@ -39,41 +37,41 @@ public final class Targeting {
     private Targeting() {}
 
     public static boolean isEnemyPlayer(Minecraft client, Entity entity) {
-        if (client == null || client.player == null || entity == null) {
+        if (client == null || client.thePlayer == null || entity == null) {
             return false;
         }
 
-        if (!(entity instanceof Player target)) {
+        if (!(entity instanceof EntityPlayer target)) {
             return false;
         }
 
         return isValidTargetPlayer(client, target);
     }
 
-    public static boolean isValidTargetPlayer(Minecraft client, Player target) {
-        var currentPlayer = client == null ? null : client.player;
+    public static boolean isValidTargetPlayer(Minecraft client, EntityPlayer target) {
+        var currentPlayer = client == null ? null : client.thePlayer;
         if (client == null || currentPlayer == null || target == null) {
             return false;
         }
 
         return target != currentPlayer
-                && !target.isRemoved()
-                && target.isAlive()
-                && target.isAttackable()
+                && !target.isDead
+                && target.isEntityAlive()
+                && target.canAttackWithItem()
                 && !target.isSpectator()
                 && !ignoreCheck.test(target)
-                && (!target.isInvisibleTo(currentPlayer) || hasExposedEquipment(target))
+                && (!target.isInvisibleToPlayer(currentPlayer) || hasExposedEquipment(target))
                 && (!TEAM_CHECK_ENABLED.get() || !isSameTeam(client, target));
     }
 
-    private static boolean hasExposedEquipment(Player target) {
+    private static boolean hasExposedEquipment(EntityPlayer target) {
         // Read current equipment every time so equipping or stowing it takes effect immediately.
         for (EquipmentSlot slot : ARMOR_SLOTS) {
-            if (!target.getItemBySlot(slot).isEmpty()) {
+            if (target.inventory.armorInventory[slot.index()] != null) {
                 return true;
             }
         }
-        return !target.getMainHandItem().isEmpty() || !target.getOffhandItem().isEmpty();
+        return target.getHeldItem() != null;
     }
 
     public static boolean isTeamCheckEnabled() {
@@ -90,8 +88,8 @@ public final class Targeting {
     }
 
     public static boolean isValidTargetPlayerWithinRange(
-            Minecraft client, Player target, double range) {
-        if (client.player == null) {
+            Minecraft client, EntityPlayer target, double range) {
+        if (client.thePlayer == null) {
             return false;
         }
         if (!isValidTargetPlayer(client, target)) {
@@ -108,7 +106,7 @@ public final class Targeting {
      * large entities and underestimates it for small ones.
      */
     public static boolean isWithinInteractionRange(Minecraft client, Entity target) {
-        var currentPlayer = client == null ? null : client.player;
+        var currentPlayer = client == null ? null : client.thePlayer;
         if (client == null || currentPlayer == null || target == null) {
             return false;
         }
@@ -131,7 +129,7 @@ public final class Targeting {
             Minecraft client,
             boolean targetPlayers,
             boolean targetMobs,
-            Collection<Identifier> entityTypes,
+            Collection<ResourceLocation> entityTypes,
             boolean throughBlocks) {
         return findTargetOnViewRay(
                 client,
@@ -160,39 +158,39 @@ public final class Targeting {
             Entity entity,
             boolean targetPlayers,
             boolean targetMobs,
-            Collection<Identifier> entityTypes) {
-        var currentPlayer = client == null ? null : client.player;
+            Collection<ResourceLocation> entityTypes) {
+        var currentPlayer = client == null ? null : client.thePlayer;
         if (client == null
                 || currentPlayer == null
-                || !(entity instanceof LivingEntity living)
+                || !(entity instanceof EntityLivingBase living)
                 || living == currentPlayer
-                || !living.isAlive()
-                || !living.isAttackable()
-                || living.isSpectator()) {
+                || !living.isEntityAlive()
+                || !living.canAttackWithItem()
+                || living instanceof EntityPlayer p && p.isSpectator()) {
             return false;
         }
-        if (living instanceof Player player) {
+        if (living instanceof EntityPlayer player) {
             return targetPlayers && isValidTargetPlayer(client, player);
         }
-        Identifier id = BuiltInRegistries.ENTITY_TYPE.getKey(living.getType());
-        return targetMobs && living instanceof Mob
+        ResourceLocation id = EntityTypeIds.id(living);
+        return targetMobs && living instanceof EntityLiving
                 || entityTypes != null && entityTypes.contains(id);
     }
 
-    public static Identifier parseEntityTypeId(String rawId) {
+    public static ResourceLocation parseEntityTypeId(String rawId) {
         return EntityTypeIds.parse(rawId);
     }
 
-    public static Set<Identifier> parseEntityTypeIds(String stored) {
+    public static Set<ResourceLocation> parseEntityTypeIds(String stored) {
         return EntityTypeIds.parseKnown(stored);
     }
 
-    public static String serializeEntityTypeIds(Collection<Identifier> entityTypes) {
+    public static String serializeEntityTypeIds(Collection<ResourceLocation> entityTypes) {
         return EntityTypeIds.serialize(entityTypes);
     }
 
     public static String configuredTargetStatus(
-            boolean targetPlayers, boolean targetMobs, Collection<Identifier> entityTypes) {
+            boolean targetPlayers, boolean targetMobs, Collection<ResourceLocation> entityTypes) {
         String categories =
                 targetPlayers
                         ? (targetMobs ? "player,mob" : "player")
@@ -205,67 +203,71 @@ public final class Targeting {
         if (!isEnemyPlayer(client, target) || !isWithinInteractionRange(client, target)) {
             return false;
         }
-        if (client.hitResult instanceof EntityHitResult hit && hit.getEntity() == target) {
+        if (client.objectMouseOver != null
+                && client.objectMouseOver.typeOfHit == MovingObjectPosition.MovingObjectType.ENTITY
+                && client.objectMouseOver.entityHit == target) {
             return true;
         }
         return throughBlock && findEnemyPlayerOnViewRay(client) == target;
     }
 
     public static boolean isHoldingTriggerWeapon(Minecraft client) {
-        var currentPlayer = client == null ? null : client.player;
+        var currentPlayer = client == null ? null : client.thePlayer;
         if (client == null || currentPlayer == null) {
             return false;
         }
 
-        ItemStack stack = currentPlayer.getMainHandItem();
-        if (stack.isEmpty()) {
+        ItemStack stack = currentPlayer.getHeldItem();
+        if (stack == null) {
             return false;
         }
 
-        return stack.is(ItemTags.SWORDS) || stack.is(ItemTags.AXES);
+        return stack.getItem() instanceof ItemSword || stack.getItem() instanceof ItemAxe;
     }
 
     public static void setIgnoreCheck(Predicate<Entity> check) {
         ignoreCheck = check == null ? entity -> false : check;
     }
 
-    private static boolean isSameTeam(Minecraft client, Player target) {
-        var currentPlayer = client == null ? null : client.player;
+    private static boolean isSameTeam(Minecraft client, EntityPlayer target) {
+        var currentPlayer = client == null ? null : client.thePlayer;
         if (client == null || currentPlayer == null || target == null) {
             return false;
         }
 
-        Player player = currentPlayer;
+        EntityPlayer player = currentPlayer;
         return isScoreboardTeammate(player, target)
                 || hasSameNameColor(player, target)
                 || hasSameDisplayNamePrefix(player, target)
                 || hasMatchingArmorColor(player, target);
     }
 
-    private static boolean isScoreboardTeammate(Player player, Player target) {
-        return player.isAlliedTo(target) || target.isAlliedTo(player);
+    private static boolean isScoreboardTeammate(EntityPlayer player, EntityPlayer target) {
+        return player.isOnSameTeam(target) || target.isOnSameTeam(player);
     }
 
-    private static boolean hasSameNameColor(Player player, Player target) {
-        TextColor playerColor = player.getDisplayName().getStyle().getColor();
-        TextColor targetColor = target.getDisplayName().getStyle().getColor();
+    private static boolean hasSameNameColor(EntityPlayer player, EntityPlayer target) {
+        EnumChatFormatting playerColor = player.getDisplayName().getChatStyle().getColor();
+        EnumChatFormatting targetColor = target.getDisplayName().getChatStyle().getColor();
 
         return playerColor != null && targetColor != null && playerColor.equals(targetColor);
     }
 
-    private static boolean hasSameDisplayNamePrefix(Player player, Player target) {
+    private static boolean hasSameDisplayNamePrefix(EntityPlayer player, EntityPlayer target) {
         String playerPrefix = firstDisplayNamePart(player);
         String targetPrefix = firstDisplayNamePart(target);
 
         return playerPrefix != null && playerPrefix.equals(targetPrefix);
     }
 
-    private static String firstDisplayNamePart(Player player) {
+    private static String firstDisplayNamePart(EntityPlayer player) {
         if (player.getDisplayName() == null) {
             return null;
         }
 
-        String strippedName = ChatFormatting.stripFormatting(player.getDisplayName().getString());
+        String strippedName =
+                EnumChatFormatting.getTextWithoutFormattingCodes(
+                        player.getDisplayName().getUnformattedText());
         if (strippedName == null) {
             return null;
         }
@@ -274,7 +276,7 @@ public final class Targeting {
         return parts.length > 1 ? parts[0] : null;
     }
 
-    private static boolean hasMatchingArmorColor(Player player, Player target) {
+    private static boolean hasMatchingArmorColor(EntityPlayer player, EntityPlayer target) {
         for (EquipmentSlot slot : ARMOR_SLOTS) {
             Integer playerColor = armorColor(player, slot);
             if (playerColor == null) {
@@ -290,8 +292,10 @@ public final class Targeting {
         return false;
     }
 
-    private static Integer armorColor(Player player, EquipmentSlot slot) {
-        DyedItemColor dyedColor = player.getItemBySlot(slot).get(DataComponents.DYED_COLOR);
-        return dyedColor == null ? null : dyedColor.rgb();
+    private static Integer armorColor(EntityPlayer player, EquipmentSlot slot) {
+        ItemStack stack = player.inventory.armorInventory[slot.index()];
+        return stack != null && stack.getItem() instanceof ItemArmor armor && armor.hasColor(stack)
+                ? armor.getColor(stack)
+                : null;
     }
 }

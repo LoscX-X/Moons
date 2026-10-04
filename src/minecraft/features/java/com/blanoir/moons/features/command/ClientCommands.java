@@ -26,7 +26,7 @@ public final class ClientCommands {
         if (!command.startsWith(".")) return false;
         command = command.substring(1).trim();
         if (command.isEmpty()) {
-            ClientChat.send(Minecraft.getInstance(), "未知指令: .");
+            ClientChat.send(Minecraft.getMinecraft(), "未知指令: .");
             return true;
         }
         String[] root = command.split("\\s+", 2);
@@ -44,20 +44,20 @@ public final class ClientCommands {
             case "nbtparser" -> NbtParserCommand.handle(tail);
             case "nickname", "nick" -> handleNickname(tail);
             default -> {
-                ClientChat.send(Minecraft.getInstance(), "未知指令: ." + root[0]);
+                ClientChat.send(Minecraft.getMinecraft(), "未知指令: ." + root[0]);
                 yield true;
             }
         };
     }
 
     private static boolean unload() {
-        ClientChat.send(Minecraft.getInstance(), "正在卸载 Moons…");
+        ClientChat.send(Minecraft.getMinecraft(), "正在卸载 Moons…");
         AgentBridge.requestUnload();
         return true;
     }
 
     private static boolean handleTeam(String tail) {
-        Minecraft client = Minecraft.getInstance();
+        Minecraft client = Minecraft.getMinecraft();
         if (tail.equalsIgnoreCase("on") || tail.equalsIgnoreCase("off")) {
             Targeting.setTeamCheckEnabled(client, tail.equalsIgnoreCase("on"));
         } else if (!tail.isEmpty()) {
@@ -69,7 +69,7 @@ public final class ClientCommands {
     }
 
     private static boolean handleNickname(String tail) {
-        Minecraft client = Minecraft.getInstance();
+        Minecraft client = Minecraft.getMinecraft();
         if (tail.isEmpty()) {
             Nickname.commandStatus(client);
         } else if (tail.equalsIgnoreCase("reset")) {
@@ -85,7 +85,7 @@ public final class ClientCommands {
     }
 
     private static boolean handleMoons(String tail) {
-        Minecraft client = Minecraft.getInstance();
+        Minecraft client = Minecraft.getMinecraft();
         if (tail.isEmpty()) {
             ModuleGui.toggle(client);
             return true;

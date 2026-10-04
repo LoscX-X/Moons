@@ -1,10 +1,11 @@
 package com.blanoir.moons.client.utils.math;
 
+import com.blanoir.moons.client.compat.math.Mth;
+import com.blanoir.moons.client.compat.math.VecMath;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 
-import net.minecraft.util.Mth;
-import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.util.AxisAlignedBB;
+import net.minecraft.util.Vec3;
 
 /** Pure geometry, distance, and angle calculations shared by client features. */
 public final class MathUtils {
@@ -12,36 +13,38 @@ public final class MathUtils {
 
     private MathUtils() {}
 
-    public static Vec3 closestPoint(Vec3 point, AABB box) {
+    public static Vec3 closestPoint(Vec3 point, AxisAlignedBB box) {
         if (point == null || box == null) {
-            return Vec3.ZERO;
+            return VecMath.ZERO;
         }
         return new Vec3(
-                Mth.clamp(point.x, box.minX, box.maxX),
-                Mth.clamp(point.y, box.minY, box.maxY),
-                Mth.clamp(point.z, box.minZ, box.maxZ));
+                Mth.clamp(point.xCoord, box.minX, box.maxX),
+                Mth.clamp(point.yCoord, box.minY, box.maxY),
+                Mth.clamp(point.zCoord, box.minZ, box.maxZ));
     }
 
-    public static double squaredDistanceToBox(Vec3 point, AABB box) {
+    public static double squaredDistanceToBox(Vec3 point, AxisAlignedBB box) {
         if (point == null || box == null) {
             return Double.MAX_VALUE;
         }
-        return point.distanceToSqr(
-                Mth.clamp(point.x, box.minX, box.maxX),
-                Mth.clamp(point.y, box.minY, box.maxY),
-                Mth.clamp(point.z, box.minZ, box.maxZ));
+        return VecMath.distanceToSqr(
+                point,
+                Mth.clamp(point.xCoord, box.minX, box.maxX),
+                Mth.clamp(point.yCoord, box.minY, box.maxY),
+                Mth.clamp(point.zCoord, box.minZ, box.maxZ));
     }
 
-    public static AABB inset(AABB box, double requestedInset, double maxSizeFraction) {
+    public static AxisAlignedBB inset(
+            AxisAlignedBB box, double requestedInset, double maxSizeFraction) {
         if (box == null) {
             return null;
         }
         double amount = Math.max(0.0D, requestedInset);
         double fraction = Mth.clamp(maxSizeFraction, 0.0D, 0.499D);
-        double x = Math.min(amount, box.getXsize() * fraction);
-        double y = Math.min(amount, box.getYsize() * fraction);
-        double z = Math.min(amount, box.getZsize() * fraction);
-        return new AABB(
+        double x = Math.min(amount, (box.maxX - box.minX) * fraction);
+        double y = Math.min(amount, (box.maxY - box.minY) * fraction);
+        double z = Math.min(amount, (box.maxZ - box.minZ) * fraction);
+        return new AxisAlignedBB(
                 box.minX + x, box.minY + y, box.minZ + z, box.maxX - x, box.maxY - y, box.maxZ - z);
     }
 
@@ -49,9 +52,9 @@ public final class MathUtils {
         if (from == null || to == null) {
             return new Rotation(0.0F, 0.0F);
         }
-        double deltaX = to.x - from.x;
-        double deltaY = to.y - from.y;
-        double deltaZ = to.z - from.z;
+        double deltaX = to.xCoord - from.xCoord;
+        double deltaY = to.yCoord - from.yCoord;
+        double deltaZ = to.zCoord - from.zCoord;
         double horizontal = Math.hypot(deltaX, deltaZ);
         float yaw = (float) Math.toDegrees(Math.atan2(deltaZ, deltaX)) - 90.0F;
         float pitch = (float) -Math.toDegrees(Math.atan2(deltaY, horizontal));
@@ -101,11 +104,11 @@ public final class MathUtils {
     public static double angleBetween(Vec3 first, Vec3 second) {
         if (first == null
                 || second == null
-                || first.lengthSqr() < EPSILON
-                || second.lengthSqr() < EPSILON) {
+                || VecMath.lengthSqr(first) < EPSILON
+                || VecMath.lengthSqr(second) < EPSILON) {
             return 0.0D;
         }
-        double dot = first.normalize().dot(second.normalize());
+        double dot = first.normalize().dotProduct(second.normalize());
         return Math.toDegrees(Math.acos(Mth.clamp(dot, -1.0D, 1.0D)));
     }
 
@@ -137,12 +140,15 @@ public final class MathUtils {
             return Double.MAX_VALUE;
         }
         Vec3 direction =
-                rayDirection.lengthSqr() > EPSILON
+                VecMath.lengthSqr(rayDirection) > EPSILON
                         ? rayDirection.normalize()
                         : new Vec3(0.0D, 0.0D, 1.0D);
         double along =
-                Mth.clamp(point.subtract(rayStart).dot(direction), 0.0D, Math.max(0.0D, rayLength));
-        return point.distanceToSqr(rayStart.add(direction.scale(along)));
+                Mth.clamp(
+                        point.subtract(rayStart).dotProduct(direction),
+                        0.0D,
+                        Math.max(0.0D, rayLength));
+        return point.squareDistanceTo(rayStart.add(VecMath.scale(direction, along)));
     }
 
     public static float smoothWrappedAngle(float current, float target, double response) {

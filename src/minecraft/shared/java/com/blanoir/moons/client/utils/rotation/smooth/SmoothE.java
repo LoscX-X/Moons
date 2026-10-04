@@ -1,8 +1,7 @@
 package com.blanoir.moons.client.utils.rotation.smooth;
 
+import com.blanoir.moons.client.compat.math.Mth;
 import com.blanoir.moons.client.utils.rotation.Rotation;
-
-import net.minecraft.util.Mth;
 
 /** E: Exponential frame interpolation of a presented angle. Tick interpolation is SmoothH; body integration is SmoothI. */
 public final class SmoothE {

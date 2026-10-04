@@ -1,22 +1,23 @@
 package com.blanoir.moons.client.utils.world.placement;
 
+import com.blanoir.moons.client.compat.math.VecMath;
 import com.blanoir.moons.client.config.Settings;
 import com.blanoir.moons.client.management.rotation.SilentPacketRotation;
 import com.blanoir.moons.client.utils.rotation.Rotation;
+import com.blanoir.moons.client.utils.world.LegacyRay;
+import com.blanoir.moons.client.utils.world.LegacyWorld;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
-import net.minecraft.world.level.BlockGetter;
-import net.minecraft.world.level.ClipContext;
-import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.BlockHitResult;
-import net.minecraft.world.phys.HitResult;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.util.AxisAlignedBB;
+import net.minecraft.util.BlockPos;
+import net.minecraft.util.EnumFacing;
+import net.minecraft.util.MovingObjectPosition;
+import net.minecraft.util.Vec3;
+import net.minecraft.world.IBlockAccess;
 
 /** Per-feature ray policy. Destination collision and item placement rules remain with vanilla. */
 public final class PlacementRaycast {
-    private static final ThreadLocal<BlockHitResult> ITEM_RAY = new ThreadLocal<>();
+    private static final ThreadLocal<MovingObjectPosition> ITEM_RAY = new ThreadLocal<>();
     private final String throughEntityKey;
     private final String legacyThroughEntityKey;
     private final String throughBlocksKey;
@@ -38,159 +39,165 @@ public final class PlacementRaycast {
 
     public boolean entityBlocked(Minecraft client, Vec3 eye, Vec3 end) {
         if (throughEntity()) return false;
-        double distance = eye.distanceToSqr(end);
+        double distance = eye.squareDistanceTo(end);
         for (var entity :
-                client.level.getEntities(
-                        client.player,
-                        new AABB(eye, end).inflate(1.0),
-                        e -> !e.isSpectator() && e.isPickable())) {
-            AABB box = entity.getBoundingBox().inflate(entity.getPickRadius());
+                client.theWorld.getEntitiesInAABBexcluding(
+                        client.thePlayer,
+                        LegacyWorld.inflate(LegacyWorld.box(eye, end), 1.0),
+                        e ->
+                                !(e instanceof net.minecraft.entity.player.EntityPlayer player
+                                                && player.isSpectator())
+                                        && e.canBeCollidedWith())) {
+            AxisAlignedBB box =
+                    LegacyWorld.inflate(
+                            entity.getEntityBoundingBox(), entity.getCollisionBorderSize());
             if (blocksSegment(box, eye, end, distance)) return true;
         }
         return false;
     }
 
-    static boolean blocksSegment(AABB box, Vec3 eye, Vec3 end, double distanceSquared) {
-        return box.contains(eye)
-                || box.clip(eye, end)
-                        .map(point -> eye.distanceToSqr(point) + 1.0E-7 < distanceSquared)
+    static boolean blocksSegment(AxisAlignedBB box, Vec3 eye, Vec3 end, double distanceSquared) {
+        return box.isVecInside(eye)
+                || LegacyWorld.intercept(box, eye, end)
+                        .map(point -> eye.squareDistanceTo(point) + 1.0E-7 < distanceSquared)
                         .orElse(false);
     }
 
     /** Trace just the specified target shape when wall traversal is enabled. */
-    public BlockHitResult clip(
-            Minecraft client, Vec3 eye, Vec3 end, ClipContext.Fluid fluid, BlockPos target) {
-        ClipContext context =
-                new ClipContext(eye, end, ClipContext.Block.OUTLINE, fluid, client.player);
-        BlockHitResult hit = clipBlocks(client.level, context, target, throughBlocks());
-        if (hit == null || entityBlocked(client, eye, hit.getLocation())) {
-            return BlockHitResult.miss(end, Direction.UP, BlockPos.containing(end));
+    public MovingObjectPosition clip(
+            Minecraft client, Vec3 eye, Vec3 end, LegacyRay.Fluid fluid, BlockPos target) {
+        LegacyRay context =
+                new LegacyRay(eye, end, LegacyRay.Block.OUTLINE, fluid, client.thePlayer);
+        MovingObjectPosition hit = clipBlocks(client.theWorld, context, target, throughBlocks());
+        if (hit == null || entityBlocked(client, eye, hit.hitVec)) {
+            return LegacyWorld.miss(end, EnumFacing.UP, new BlockPos(end));
         }
         return hit;
     }
 
-    static BlockHitResult clipBlocks(
-            BlockGetter level, ClipContext context, BlockPos target, boolean throughBlocks) {
+    static MovingObjectPosition clipBlocks(
+            IBlockAccess level, LegacyRay context, BlockPos target, boolean throughBlocks) {
         Vec3 eye = context.getFrom();
         Vec3 end = context.getTo();
-        BlockHitResult hit;
+        MovingObjectPosition hit;
         if (throughBlocks && target != null) {
             var state = level.getBlockState(target);
             hit = context.getBlockShape(state, level, target).clip(eye, end, target);
-            BlockHitResult liquid =
-                    context.getFluidShape(state.getFluidState(), level, target)
+            MovingObjectPosition liquid =
+                    context.getFluidShape(LegacyWorld.fluid(state), level, target)
                             .clip(eye, end, target);
             if (liquid != null
                     && (hit == null
-                            || eye.distanceToSqr(liquid.getLocation())
-                                    < eye.distanceToSqr(hit.getLocation()))) hit = liquid;
+                            || eye.squareDistanceTo(liquid.hitVec)
+                                    < eye.squareDistanceTo(hit.hitVec))) hit = liquid;
         } else {
-            hit = level.clip(context);
+            hit = LegacyWorld.clip(level, context);
         }
-        return hit == null ? BlockHitResult.miss(end, Direction.UP, BlockPos.containing(end)) : hit;
+        return hit == null ? LegacyWorld.miss(end, EnumFacing.UP, new BlockPos(end)) : hit;
     }
 
-    public BlockHitResult visibleFaceHit(
+    public MovingObjectPosition visibleFaceHit(
             Minecraft client,
             Vec3 eye,
             BlockPos support,
-            Direction face,
+            EnumFacing face,
             Vec3 requested,
             double epsilon) {
         Vec3 end =
-                requested.add(
-                        -face.getStepX() * epsilon,
-                        -face.getStepY() * epsilon,
-                        -face.getStepZ() * epsilon);
-        BlockHitResult hit = clip(client, eye, end, ClipContext.Fluid.NONE, support);
+                requested.addVector(
+                        -face.getFrontOffsetX() * epsilon,
+                        -face.getFrontOffsetY() * epsilon,
+                        -face.getFrontOffsetZ() * epsilon);
+        MovingObjectPosition hit = clip(client, eye, end, LegacyRay.Fluid.NONE, support);
         return BlockPlacementUtils.matchesFace(hit, support, face) ? hit : null;
     }
 
-    public BlockHitResult traceFace(
+    public MovingObjectPosition traceFace(
             Minecraft client,
             Vec3 eye,
             float yaw,
             float pitch,
             double range,
             BlockPos support,
-            Direction face) {
-        BlockHitResult hit =
+            EnumFacing face) {
+        MovingObjectPosition hit =
                 traceOutline(
                         client,
                         eye,
-                        Vec3.directionFromRotation(pitch, yaw),
+                        VecMath.directionFromRotation(pitch, yaw),
                         range,
-                        ClipContext.Fluid.NONE,
+                        LegacyRay.Fluid.NONE,
                         support);
         return BlockPlacementUtils.matchesFace(hit, support, face) ? hit : null;
     }
 
-    public BlockHitResult traceOutline(
+    public MovingObjectPosition traceOutline(
             Minecraft client,
             Vec3 eye,
             Vec3 look,
             double range,
-            ClipContext.Fluid fluid,
+            LegacyRay.Fluid fluid,
             BlockPos target) {
-        return clip(client, eye, eye.add(look.scale(range)), fluid, target);
+        return clip(client, eye, eye.add(VecMath.scale(look, range)), fluid, target);
     }
 
-    public BlockHitResult traceOutline(
+    public MovingObjectPosition traceOutline(
             Minecraft client,
             Rotation rotation,
             double range,
-            ClipContext.Fluid fluid,
+            LegacyRay.Fluid fluid,
             BlockPos target) {
         return traceOutline(
                 client,
-                client.player.getEyePosition(1.0F),
-                Vec3.directionFromRotation(rotation.pitch(), rotation.yaw()),
+                client.thePlayer.getPositionEyes(1.0F),
+                VecMath.directionFromRotation(rotation.pitch(), rotation.yaw()),
                 range,
                 fluid,
                 target);
     }
 
-    public boolean canUse(Minecraft client, BlockHitResult planned) {
+    public boolean canUse(Minecraft client, MovingObjectPosition planned) {
         if (planned == null
                 || !BlockPlacementUtils.withinReach(
-                        client.player.getEyePosition(),
-                        planned.getLocation(),
-                        client.player.blockInteractionRange())) return false;
+                        client.thePlayer.getPositionEyes(1.0F),
+                        planned.hitVec,
+                        Minecraft.getMinecraft().playerController.getBlockReachDistance()))
+            return false;
         return visibleFaceHit(
                         client,
-                        client.player.getEyePosition(),
+                        client.thePlayer.getPositionEyes(1.0F),
                         planned.getBlockPos(),
-                        planned.getDirection(),
-                        planned.getLocation(),
+                        planned.sideHit,
+                        planned.hitVec,
                         1.0E-4)
                 != null;
     }
 
-    public boolean invokeUseInPlayerUpdate(Minecraft client, BlockHitResult hit) {
+    public boolean invokeUseInPlayerUpdate(Minecraft client, MovingObjectPosition hit) {
         return invokeUseInPlayerUpdate(client, hit, true);
     }
 
     public boolean invokeUseInPlayerUpdate(
-            Minecraft client, BlockHitResult hit, boolean requireSent) {
+            Minecraft client, MovingObjectPosition hit, boolean requireSent) {
         if (hit == null) return false;
-        boolean placement = hit.getType() == HitResult.Type.BLOCK;
-        BlockHitResult actual =
+        boolean placement = hit.typeOfHit == MovingObjectPosition.MovingObjectType.BLOCK;
+        MovingObjectPosition actual =
                 traceOutline(
                         client,
-                        client.player.getEyePosition(),
+                        client.thePlayer.getPositionEyes(1.0F),
                         SilentPacketRotation.getInteractionLookVector(client),
-                        client.player.blockInteractionRange(),
-                        placement ? ClipContext.Fluid.NONE : ClipContext.Fluid.SOURCE_ONLY,
+                        Minecraft.getMinecraft().playerController.getBlockReachDistance(),
+                        placement ? LegacyRay.Fluid.NONE : LegacyRay.Fluid.SOURCE_ONLY,
                         hit.getBlockPos());
         if (!BlockPlacementUtils.matchesBlock(actual, hit.getBlockPos())
-                || placement && actual.getDirection() != hit.getDirection()) return false;
+                || placement && actual.sideHit != hit.sideHit) return false;
         return SilentPacketRotation.invokeUseInPlayerUpdate(
                 client, hit, requireSent, throughBlocks() ? actual : null);
     }
 
     /** The item ray is active only while the matching vanilla use invocation is on the stack. */
-    public static void withItemRay(BlockHitResult hit, Runnable use) {
-        BlockHitResult previous = ITEM_RAY.get();
+    public static void withItemRay(MovingObjectPosition hit, Runnable use) {
+        MovingObjectPosition previous = ITEM_RAY.get();
         if (hit == null) ITEM_RAY.remove();
         else ITEM_RAY.set(hit);
         try {
@@ -206,7 +213,7 @@ public final class PlacementRaycast {
     }
 
     public static Object itemRay(Object original) {
-        BlockHitResult hit = ITEM_RAY.get();
+        MovingObjectPosition hit = ITEM_RAY.get();
         return hit == null ? original : hit;
     }
 }

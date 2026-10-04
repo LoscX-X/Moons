@@ -3,8 +3,8 @@ package com.blanoir.moons.client.utils.rotation.aim;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.util.Vec3;
 
 /**
  * A: AimAssist point-to-angle solution with the original camera error and point distance.
@@ -14,14 +14,14 @@ public final class AimSolverA {
     private AimSolverA() {}
 
     public record Result(
-            LivingEntity entity,
+            EntityLivingBase entity,
             Vec3 aimPoint,
             Rotation rotation,
             double angle,
             double distanceSquared) {}
 
-    public static Result solve(Minecraft client, LivingEntity entity, Vec3 aimPoint) {
-        Vec3 eyePos = client.player.getEyePosition();
+    public static Result solve(Minecraft client, EntityLivingBase entity, Vec3 aimPoint) {
+        Vec3 eyePos = client.thePlayer.getPositionEyes(1F);
 
         Rotation rotation = AimSolverD.rotationTo(eyePos, aimPoint);
 
@@ -30,7 +30,7 @@ public final class AimSolverA {
                 aimPoint,
                 rotation,
                 AimSolverD.angleBetween(
-                        client.player.getYRot(), client.player.getXRot(), rotation),
-                eyePos.distanceToSqr(aimPoint));
+                        client.thePlayer.rotationYaw, client.thePlayer.rotationPitch, rotation),
+                eyePos.squareDistanceTo(aimPoint));
     }
 }

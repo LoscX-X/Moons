@@ -4,8 +4,8 @@ import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.config.Settings;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.multiplayer.PlayerInfo;
-import net.minecraft.network.chat.Component;
+import net.minecraft.client.network.NetworkPlayerInfo;
+import net.minecraft.util.IChatComponent;
 
 import java.util.List;
 import java.util.Locale;
@@ -69,24 +69,25 @@ public final class ChatFilter {
      * classifies it using the live player list plus common structural chat
      * separators, rather than matching a server-specific rank prefix.
      */
-    public static boolean shouldHideServerSystemMessage(Component message) {
+    public static boolean shouldHideServerSystemMessage(IChatComponent message) {
         if (!isEnabled() || message == null) return false;
         return switch (mode()) {
             case "all_server" -> true;
-            case "smart" -> looksLikePlayerChat(Minecraft.getInstance(), message.getString());
+            case "smart" ->
+                    looksLikePlayerChat(Minecraft.getMinecraft(), message.getUnformattedText());
             default -> false;
         };
     }
 
     static boolean looksLikePlayerChat(Minecraft client, String rawText) {
-        var connectionSnapshot = client == null ? null : client.getConnection();
+        var connectionSnapshot = client == null ? null : client.getNetHandler();
         if (client == null || connectionSnapshot == null || rawText == null) return false;
         String text = normalizeText(rawText);
         if (text.isEmpty()) return false;
         String lower = text.toLowerCase(Locale.ROOT);
 
-        for (PlayerInfo info : connectionSnapshot.getOnlinePlayers()) {
-            String name = info.getProfile().name();
+        for (NetworkPlayerInfo info : connectionSnapshot.getPlayerInfoMap()) {
+            String name = info.getGameProfile().getName();
             if (name == null || name.isBlank()) continue;
             String loweredName = name.toLowerCase(Locale.ROOT);
             int from = 0;

@@ -2,25 +2,25 @@ package com.blanoir.moons.client.event.network;
 
 import com.blanoir.moons.client.event.Cancellable;
 
-import net.minecraft.network.Connection;
-import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.NetworkManager;
+import net.minecraft.network.Packet;
 
 public final class PacketSendEvent {
     private PacketSendEvent() {}
 
     public static final class Pre implements Cancellable {
-        private final Connection connection;
+        private final NetworkManager connection;
         private final Packet<?> packet;
         private final PacketThread thread;
         private boolean cancelled;
 
-        public Pre(Connection connection, Packet<?> packet, PacketThread thread) {
+        public Pre(NetworkManager connection, Packet<?> packet, PacketThread thread) {
             this.connection = connection;
             this.packet = packet;
             this.thread = thread;
         }
 
-        public Connection connection() {
+        public NetworkManager connection() {
             return connection;
         }
 
@@ -43,5 +43,5 @@ public final class PacketSendEvent {
         }
     }
 
-    public record Post(Connection connection, Packet<?> packet, PacketThread thread) {}
+    public record Post(NetworkManager connection, Packet<?> packet, PacketThread thread) {}
 }

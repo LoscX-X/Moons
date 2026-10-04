@@ -10,7 +10,7 @@ import com.blanoir.moons.client.ui.clickgui.MoonsComposeScreen;
 import com.blanoir.moons.client.ui.layout.Bounds;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.world.item.ItemStack;
+import net.minecraft.item.ItemStack;
 
 /** Inventory data and editor settings for the independent final-frame Skia HUD. */
 public final class InventorySee {
@@ -54,8 +54,8 @@ public final class InventorySee {
 
     /** Copies only changed inventory contents. Snapshots are never modified by the renderer. */
     public static Snapshot snapshot(boolean editing) {
-        Minecraft client = Minecraft.getInstance();
-        if (client == null || client.player == null || client.level == null) {
+        Minecraft client = Minecraft.getMinecraft();
+        if (client == null || client.thePlayer == null || client.theWorld == null) {
             previous = java.util.List.of();
             return Snapshot.HIDDEN;
         }
@@ -64,15 +64,21 @@ public final class InventorySee {
                         || MinecraftClientAccess.isHudHidden(client)
                         || MinecraftScreenAccess.current(client) instanceof MoonsComposeScreen))
             return Snapshot.HIDDEN;
-        var inventory = client.player.getInventory();
+        var inventory = client.thePlayer.inventory;
         boolean changed = previous.size() != 27;
         for (int slot = 0; !changed && slot < 27; slot++) {
-            changed = !ItemStack.matches(previous.get(slot), inventory.getItem(9 + slot));
+            changed =
+                    !ItemStack.areItemStacksEqual(
+                            previous.get(slot), inventory.getStackInSlot(9 + slot));
         }
         if (changed) {
             var next = new java.util.ArrayList<ItemStack>(27);
-            for (int slot = 9; slot < 36; slot++) next.add(inventory.getItem(slot).copy());
-            previous = java.util.List.copyOf(next);
+            for (int slot = 9; slot < 36; slot++)
+                next.add(
+                        inventory.getStackInSlot(slot) == null
+                                ? null
+                                : inventory.getStackInSlot(slot).copy());
+            previous = java.util.Collections.unmodifiableList(next);
         }
         return new Snapshot(true, currentBounds(), scale(), previous);
     }
@@ -88,20 +94,26 @@ public final class InventorySee {
     }
 
     public static Bounds currentBounds() {
-        Minecraft client = Minecraft.getInstance();
+        Minecraft client = Minecraft.getMinecraft();
         double scale = scale();
         double width = WIDTH * scale;
         double height = HEIGHT * scale;
         double left =
                 Math.max(
                         0.0D,
-                        Math.min(POSITION_X.get(), client.getWindow().getGuiScaledWidth() - width));
+                        Math.min(
+                                POSITION_X.get(),
+                                new net.minecraft.client.gui.ScaledResolution(client)
+                                                .getScaledWidth()
+                                        - width));
         double top =
                 Math.max(
                         0.0D,
                         Math.min(
                                 POSITION_Y.get(),
-                                client.getWindow().getGuiScaledHeight() - height));
+                                new net.minecraft.client.gui.ScaledResolution(client)
+                                                .getScaledHeight()
+                                        - height));
         return new Bounds(left, top, width, height);
     }
 
@@ -137,7 +149,11 @@ public final class InventorySee {
     }
 
     private static double crispScale(double requested) {
-        int guiScale = Math.max(1, Minecraft.getInstance().getWindow().getGuiScale());
+        int guiScale =
+                Math.max(
+                        1,
+                        new net.minecraft.client.gui.ScaledResolution(Minecraft.getMinecraft())
+                                .getScaleFactor());
         double physicalScale = Math.max(1.0D, Math.rint(requested * guiScale));
         return Math.min(2.0D, physicalScale / guiScale);
     }

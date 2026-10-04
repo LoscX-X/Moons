@@ -7,7 +7,7 @@ import com.blanoir.moons.client.module.impl.combat.critical.mode.PredictMode;
 import com.blanoir.moons.client.utils.combat.CombatDecisionEngine;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.world.entity.Entity;
+import net.minecraft.entity.Entity;
 
 import java.util.LinkedHashMap;
 import java.util.List;

@@ -4,16 +4,13 @@ import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.module.framework.ModuleRegistry;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.core.Holder;
-import net.minecraft.world.effect.MobEffect;
-import net.minecraft.world.effect.MobEffects;
+import net.minecraft.potion.Potion;
 
 /** Filters effect rendering; never removes an effect or changes its remaining duration. */
 public final class AntiDebuff {
     private static final BooleanSetting ENABLED = flag("enabled", false);
     private static final BooleanSetting BLINDNESS = flag("blindness", true);
     private static final BooleanSetting NAUSEA = flag("nausea", true);
-    private static final BooleanSetting DARKNESS = flag("darkness", true);
 
     private AntiDebuff() {}
 
@@ -26,11 +23,10 @@ public final class AntiDebuff {
         return 1;
     }
 
-    public static boolean suppress(Holder<MobEffect> effect) {
+    public static boolean suppress(Potion effect) {
         return enabled()
-                && (effect.equals(MobEffects.BLINDNESS) && BLINDNESS.get()
-                        || effect.equals(MobEffects.NAUSEA) && NAUSEA.get()
-                        || effect.equals(MobEffects.DARKNESS) && DARKNESS.get());
+                && (effect == Potion.blindness && BLINDNESS.get()
+                        || effect == Potion.confusion && NAUSEA.get());
     }
 
     public static ModuleRegistry.Setting[] settings() {
@@ -47,13 +43,6 @@ public final class AntiDebuff {
                     "Nausea",
                     (client, value) -> {
                         NAUSEA.set(value);
-                        return 1;
-                    }),
-            DARKNESS.describe(
-                    "darkness",
-                    "Darkness",
-                    (client, value) -> {
-                        DARKNESS.set(value);
                         return 1;
                     })
         };

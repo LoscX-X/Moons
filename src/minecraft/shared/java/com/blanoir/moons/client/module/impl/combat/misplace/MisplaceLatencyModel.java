@@ -1,7 +1,9 @@
 package com.blanoir.moons.client.module.impl.combat.misplace;
 
-import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.Vec3;
+import com.blanoir.moons.client.compat.math.VecMath;
+
+import net.minecraft.util.AxisAlignedBB;
+import net.minecraft.util.Vec3;
 
 /** Short-horizon server-distance model. It predicts geometry, not an anticheat verdict. */
 public final class MisplaceLatencyModel {
@@ -33,7 +35,7 @@ public final class MisplaceLatencyModel {
             long sentAt,
             Vec3 eye,
             Vec3 visiblePosition,
-            AABB visibleBox,
+            AxisAlignedBB visibleBox,
             Network network,
             double reach,
             long now) {}
@@ -84,7 +86,7 @@ public final class MisplaceLatencyModel {
         if (observation.sampleSpanMs() < 2 * sampleTimeError)
             return unavailable(Verdict.WARMUP, visible);
         double timingSpeedError =
-                observation.velocity().length()
+                observation.velocity().lengthVector()
                         * sampleTimeError
                         / (observation.sampleSpanMs() - sampleTimeError);
         // Snapshot downlink + attack uplink = OWN RTT. Target uplink is already
@@ -105,14 +107,18 @@ public final class MisplaceLatencyModel {
                 return new Estimate(
                         Verdict.KNOCKBACK_TRANSITION, visible, Double.NaN, Double.NaN, low, high);
         }
-        AABB rawBox =
-                query.visibleBox().move(observation.position().subtract(query.visiblePosition()));
+        AxisAlignedBB rawBox =
+                VecMath.move(
+                        query.visibleBox(),
+                        observation.position().subtract(query.visiblePosition()));
         double minimum = Double.POSITIVE_INFINITY, maximum = 0;
         // Distance to a translated box is convex along constant-velocity motion.
         for (int i = 0; i <= 8; i++) {
             double seconds = (low + (high - low) * i / 8.0) / 1000;
             double nominal =
-                    distance(query.sentEye(), rawBox.move(observation.velocity().scale(seconds)));
+                    distance(
+                            query.sentEye(),
+                            VecMath.move(rawBox, VecMath.scale(observation.velocity(), seconds)));
             // Explicit assumption: residual speed plus <= 8 blocks/s^2 acceleration.
             // This envelope is not a calibrated probability or an anticheat guarantee.
             double error =
@@ -123,7 +129,8 @@ public final class MisplaceLatencyModel {
             minimum = Math.min(minimum, Math.max(0, nominal - error));
             maximum = Math.max(maximum, nominal + error);
         }
-        minimum = Math.max(0, minimum - observation.velocity().length() * (high - low) / 16000);
+        minimum =
+                Math.max(0, minimum - observation.velocity().lengthVector() * (high - low) / 16000);
         Verdict verdict =
                 maximum <= query.reach()
                         ? Verdict.IN_RANGE
@@ -132,30 +139,33 @@ public final class MisplaceLatencyModel {
     }
 
     /** Never make the displayed box closer than the largest supported server distance. */
-    public static double pull(Estimate estimate, Vec3 eye, AABB box, double maximum) {
+    public static double pull(Estimate estimate, Vec3 eye, AxisAlignedBB box, double maximum) {
         if (!estimate.hasBounds() || estimate.maximumDistance() >= estimate.visibleDistance())
             return 0;
-        Vec3 center = box.getCenter();
+        Vec3 center = VecMath.center(box);
         Vec3 direction = MisplaceMotion.toward(eye, center);
         double cap =
                 Math.min(
                         Math.max(0, maximum),
-                        Math.max(0, Math.hypot(center.x - eye.x, center.z - eye.z) - .8));
+                        Math.max(
+                                0,
+                                Math.hypot(center.xCoord - eye.xCoord, center.zCoord - eye.zCoord)
+                                        - .8));
         double low = 0, high = cap;
         for (int i = 0; i < 16; i++) {
             double middle = (low + high) * .5;
-            if (distance(eye, box.move(direction.scale(-middle))) >= estimate.maximumDistance())
-                low = middle;
+            if (distance(eye, VecMath.move(box, VecMath.scale(direction, -middle)))
+                    >= estimate.maximumDistance()) low = middle;
             else high = middle;
         }
         return low;
     }
 
-    public static double distance(Vec3 point, AABB box) {
+    public static double distance(Vec3 point, AxisAlignedBB box) {
         if (!finite(point) || box == null) return Double.NaN;
-        double dx = Math.max(box.minX - point.x, Math.max(0, point.x - box.maxX));
-        double dy = Math.max(box.minY - point.y, Math.max(0, point.y - box.maxY));
-        double dz = Math.max(box.minZ - point.z, Math.max(0, point.z - box.maxZ));
+        double dx = Math.max(box.minX - point.xCoord, Math.max(0, point.xCoord - box.maxX));
+        double dy = Math.max(box.minY - point.yCoord, Math.max(0, point.yCoord - box.maxY));
+        double dz = Math.max(box.minZ - point.zCoord, Math.max(0, point.zCoord - box.maxZ));
         return Math.sqrt(dx * dx + dy * dy + dz * dz);
     }
 
@@ -165,8 +175,8 @@ public final class MisplaceLatencyModel {
 
     static boolean finite(Vec3 value) {
         return value != null
-                && Double.isFinite(value.x)
-                && Double.isFinite(value.y)
-                && Double.isFinite(value.z);
+                && Double.isFinite(value.xCoord)
+                && Double.isFinite(value.yCoord)
+                && Double.isFinite(value.zCoord);
     }
 }

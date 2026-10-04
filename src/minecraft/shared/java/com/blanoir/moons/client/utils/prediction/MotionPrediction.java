@@ -1,6 +1,8 @@
 package com.blanoir.moons.client.utils.prediction;
 
-import net.minecraft.world.phys.Vec3;
+import com.blanoir.moons.client.compat.math.VecMath;
+
+import net.minecraft.util.Vec3;
 
 import java.util.Objects;
 
@@ -9,10 +11,10 @@ public final class MotionPrediction {
     private final Parameters parameters;
     private int observedTick = Integer.MIN_VALUE;
     private Vec3 position;
-    private Vec3 velocity = Vec3.ZERO;
-    private Vec3 acceleration = Vec3.ZERO;
-    private Vec3 measuredVelocity = Vec3.ZERO;
-    private Vec3 measuredAcceleration = Vec3.ZERO;
+    private Vec3 velocity = VecMath.ZERO;
+    private Vec3 acceleration = VecMath.ZERO;
+    private Vec3 measuredVelocity = VecMath.ZERO;
+    private Vec3 measuredAcceleration = VecMath.ZERO;
     private double measuredTurnRate;
     private double turnRate;
     private double measuredSpeedAcceleration;
@@ -46,51 +48,51 @@ public final class MotionPrediction {
                 || (long) tick - observedTick > parameters.maxObservationGapTicks()) {
             velocity = bounded(initialVelocity, parameters.maxSpeed());
             measuredVelocity = velocity;
-            acceleration = Vec3.ZERO;
-            measuredAcceleration = Vec3.ZERO;
+            acceleration = VecMath.ZERO;
+            measuredAcceleration = VecMath.ZERO;
             resetTurning();
         } else {
             double elapsed = (long) tick - observedTick;
             Vec3 travel = currentPosition.subtract(position);
-            Vec3 measured = travel.scale(1.0D / elapsed);
-            if (!finite(measured) || measured.length() > parameters.maxSpeed()) {
+            Vec3 measured = VecMath.scale(travel, 1.0D / elapsed);
+            if (!finite(measured) || measured.lengthVector() > parameters.maxSpeed()) {
                 // Teleports/discontinuities must not become a long predicted sweep.
-                velocity = acceleration = Vec3.ZERO;
-                measuredVelocity = measuredAcceleration = Vec3.ZERO;
+                velocity = acceleration = VecMath.ZERO;
+                measuredVelocity = measuredAcceleration = VecMath.ZERO;
                 resetTurning();
             } else {
                 // A forward strafe can reverse X while Y/Z still dominate the dot
                 // product. Update each axis independently to discard stale lead.
                 Vec3 nextVelocity =
                         new Vec3(
-                                trackVelocity(velocity.x, measured.x, elapsed),
-                                trackVelocity(velocity.y, measured.y, elapsed),
-                                trackVelocity(velocity.z, measured.z, elapsed));
+                                trackVelocity(velocity.xCoord, measured.xCoord, elapsed),
+                                trackVelocity(velocity.yCoord, measured.yCoord, elapsed),
+                                trackVelocity(velocity.zCoord, measured.zCoord, elapsed));
                 Vec3 nextAcceleration =
                         elapsed == 1.0D
                                 ? bounded(
                                         measured.subtract(measuredVelocity),
                                         parameters.maxAcceleration())
-                                : Vec3.ZERO;
+                                : VecMath.ZERO;
                 // Filter catch-up is not physical acceleration. Extrapolate only
                 // a trend seen in two consecutive measured velocity changes.
                 acceleration =
                         new Vec3(
                                 confirmedAcceleration(
-                                        velocity.x,
-                                        measured.x,
-                                        nextAcceleration.x,
-                                        measuredAcceleration.x),
+                                        velocity.xCoord,
+                                        measured.xCoord,
+                                        nextAcceleration.xCoord,
+                                        measuredAcceleration.xCoord),
                                 confirmedAcceleration(
-                                        velocity.y,
-                                        measured.y,
-                                        nextAcceleration.y,
-                                        measuredAcceleration.y),
+                                        velocity.yCoord,
+                                        measured.yCoord,
+                                        nextAcceleration.yCoord,
+                                        measuredAcceleration.yCoord),
                                 confirmedAcceleration(
-                                        velocity.z,
-                                        measured.z,
-                                        nextAcceleration.z,
-                                        measuredAcceleration.z));
+                                        velocity.zCoord,
+                                        measured.zCoord,
+                                        nextAcceleration.zCoord,
+                                        measuredAcceleration.zCoord));
                 observeTurning(measured, elapsed);
                 velocity = bounded(nextVelocity, parameters.maxSpeed());
                 measuredVelocity = measured;
@@ -102,7 +104,7 @@ public final class MotionPrediction {
     }
 
     public Vec3 displacement(double horizonTicks) {
-        if (!Double.isFinite(horizonTicks)) return Vec3.ZERO;
+        if (!Double.isFinite(horizonTicks)) return VecMath.ZERO;
         double horizon = Math.clamp(horizonTicks, 0.0D, parameters.maxHorizonTicks());
         // Acceleration confidence fades with the forecast horizon; noisy remote
         // interpolation should never dominate the measured velocity.
@@ -110,18 +112,30 @@ public final class MotionPrediction {
         Vec3 horizontal =
                 turnRate == 0.0D
                         ? new Vec3(
-                                forecast(velocity.x, acceleration.x, horizon, accelerationWeight),
+                                forecast(
+                                        velocity.xCoord,
+                                        acceleration.xCoord,
+                                        horizon,
+                                        accelerationWeight),
                                 0.0D,
-                                forecast(velocity.z, acceleration.z, horizon, accelerationWeight))
+                                forecast(
+                                        velocity.zCoord,
+                                        acceleration.zCoord,
+                                        horizon,
+                                        accelerationWeight))
                         : turningDisplacement(horizon, accelerationWeight);
         Vec3 travel =
                 bounded(
                         new Vec3(
-                                horizontal.x,
-                                forecast(velocity.y, acceleration.y, horizon, accelerationWeight),
-                                horizontal.z),
+                                horizontal.xCoord,
+                                forecast(
+                                        velocity.yCoord,
+                                        acceleration.yCoord,
+                                        horizon,
+                                        accelerationWeight),
+                                horizontal.zCoord),
                         parameters.maxSpeed() * horizon);
-        return new Vec3(travel.x, travel.y * parameters.verticalScale(), travel.z);
+        return new Vec3(travel.xCoord, travel.yCoord * parameters.verticalScale(), travel.zCoord);
     }
 
     public Vec3 velocity() {
@@ -131,8 +145,8 @@ public final class MotionPrediction {
     public void reset() {
         observedTick = Integer.MIN_VALUE;
         position = null;
-        velocity = acceleration = Vec3.ZERO;
-        measuredVelocity = measuredAcceleration = Vec3.ZERO;
+        velocity = acceleration = VecMath.ZERO;
+        measuredVelocity = measuredAcceleration = VecMath.ZERO;
         resetTurning();
     }
 
@@ -156,9 +170,11 @@ public final class MotionPrediction {
     }
 
     private void observeTurning(Vec3 measured, double elapsed) {
-        double previousSpeed = Math.hypot(measuredVelocity.x, measuredVelocity.z);
-        double currentSpeed = Math.hypot(measured.x, measured.z);
-        double dot = measuredVelocity.x * measured.x + measuredVelocity.z * measured.z;
+        double previousSpeed = Math.hypot(measuredVelocity.xCoord, measuredVelocity.zCoord);
+        double currentSpeed = Math.hypot(measured.xCoord, measured.zCoord);
+        double dot =
+                measuredVelocity.xCoord * measured.xCoord
+                        + measuredVelocity.zCoord * measured.zCoord;
         if (parameters.maxTurnRateDegreesPerTick() == 0.0D
                 || parameters.maxTurnAngleDegrees() == 0.0D
                 || elapsed != 1.0D
@@ -170,7 +186,10 @@ public final class MotionPrediction {
             return;
         }
         double nextRate =
-                Math.atan2(measuredVelocity.x * measured.z - measuredVelocity.z * measured.x, dot);
+                Math.atan2(
+                        measuredVelocity.xCoord * measured.zCoord
+                                - measuredVelocity.zCoord * measured.xCoord,
+                        dot);
         turnRate =
                 nextRate * measuredTurnRate > 0.0D
                         ? Math.copySign(
@@ -192,8 +211,8 @@ public final class MotionPrediction {
     }
 
     private Vec3 turningDisplacement(double horizon, double accelerationWeight) {
-        double speed = Math.hypot(velocity.x, velocity.z);
-        if (speed < 1.0E-4D) return Vec3.ZERO;
+        double speed = Math.hypot(velocity.xCoord, velocity.zCoord);
+        if (speed < 1.0E-4D) return VecMath.ZERO;
         double angleLimit = Math.toRadians(parameters.maxTurnAngleDegrees());
         double angle = Math.clamp(turnRate * horizon, -angleLimit, angleLimit);
         double halfAngle = angle * 0.5D;
@@ -205,9 +224,9 @@ public final class MotionPrediction {
         double cos = Math.cos(halfAngle);
         double sin = Math.sin(halfAngle);
         return new Vec3(
-                (velocity.x * cos - velocity.z * sin) * scale,
+                (velocity.xCoord * cos - velocity.zCoord * sin) * scale,
                 0.0D,
-                (velocity.x * sin + velocity.z * cos) * scale);
+                (velocity.xCoord * sin + velocity.zCoord * cos) * scale);
     }
 
     private void resetTurning() {
@@ -231,16 +250,16 @@ public final class MotionPrediction {
     }
 
     private static Vec3 bounded(Vec3 vector, double maximum) {
-        if (!finite(vector)) return Vec3.ZERO;
-        double length = vector.length();
-        return length > maximum ? vector.scale(maximum / length) : vector;
+        if (!finite(vector)) return VecMath.ZERO;
+        double length = vector.lengthVector();
+        return length > maximum ? VecMath.scale(vector, maximum / length) : vector;
     }
 
     private static boolean finite(Vec3 vector) {
         return vector != null
-                && Double.isFinite(vector.x)
-                && Double.isFinite(vector.y)
-                && Double.isFinite(vector.z);
+                && Double.isFinite(vector.xCoord)
+                && Double.isFinite(vector.yCoord)
+                && Double.isFinite(vector.zCoord);
     }
 
     /**

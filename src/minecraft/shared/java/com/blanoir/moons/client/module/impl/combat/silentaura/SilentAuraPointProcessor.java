@@ -1,9 +1,10 @@
 package com.blanoir.moons.client.module.impl.combat.silentaura;
 
+import com.blanoir.moons.client.compat.math.VecMath;
 import com.blanoir.moons.client.utils.rotation.aim.AimGeometry;
 
-import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.util.AxisAlignedBB;
+import net.minecraft.util.Vec3;
 
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.DoubleSupplier;
@@ -28,12 +29,12 @@ final class SilentAuraPointProcessor {
     private Object world;
     private Object target;
     private Parameters parameters;
-    private AABB lastBox;
+    private AxisAlignedBB lastBox;
     private int lastTick = Integer.MIN_VALUE;
     private long nextSampleTick;
     private Vec3 heldFractions;
-    private Vec3 offset = Vec3.ZERO;
-    private Vec3 targetOffset = Vec3.ZERO;
+    private Vec3 offset = VecMath.ZERO;
+    private Vec3 targetOffset = VecMath.ZERO;
 
     SilentAuraPointProcessor() {
         this(() -> ThreadLocalRandom.current().nextGaussian());
@@ -52,7 +53,7 @@ final class SilentAuraPointProcessor {
             Object world,
             Object target,
             int tick,
-            AABB box,
+            AxisAlignedBB box,
             Vec3 preferred,
             Parameters parameters,
             Predicate<Vec3> usable) {
@@ -66,7 +67,8 @@ final class SilentAuraPointProcessor {
                 || !parameters.equals(this.parameters)
                 || elapsed < 0
                 || elapsed > 20
-                || lastBox != null && lastBox.getCenter().distanceToSqr(box.getCenter()) > 64.0D) {
+                || lastBox != null
+                        && VecMath.center(lastBox).squareDistanceTo(VecMath.center(box)) > 64.0D) {
             reset();
             this.world = world;
             this.target = target;
@@ -79,7 +81,7 @@ final class SilentAuraPointProcessor {
             if (held == null
                     || !usable.test(held)
                     || newTick
-                            && held.distanceToSqr(preferred)
+                            && held.squareDistanceTo(preferred)
                                     >= parameters.lazyThreshold() * parameters.lazyThreshold()) {
                 heldFractions = fractions(box, preferred);
                 held = preferred;
@@ -97,7 +99,7 @@ final class SilentAuraPointProcessor {
             }
             long ticks = lastTick == Integer.MIN_VALUE ? 1 : Math.max(1L, (long) tick - lastTick);
             double blend = 1.0D - Math.pow(1.0D - parameters.response(), ticks);
-            offset = offset.lerp(targetOffset, blend);
+            offset = VecMath.lerp(offset, targetOffset, blend);
         }
         lastTick = tick;
         lastBox = box;
@@ -120,7 +122,7 @@ final class SilentAuraPointProcessor {
         lastTick = Integer.MIN_VALUE;
         nextSampleTick = 0L;
         heldFractions = null;
-        offset = targetOffset = Vec3.ZERO;
+        offset = targetOffset = VecMath.ZERO;
     }
 
     private double sample(double deviation) {
@@ -129,21 +131,21 @@ final class SilentAuraPointProcessor {
         return Math.clamp(gaussianSample.getAsDouble(), -3.0D, 3.0D) * deviation;
     }
 
-    private static Vec3 fractions(AABB box, Vec3 point) {
+    private static Vec3 fractions(AxisAlignedBB box, Vec3 point) {
         return new Vec3(
-                AimGeometry.fraction(point.x, box.minX, box.maxX),
-                AimGeometry.fraction(point.y, box.minY, box.maxY),
-                AimGeometry.fraction(point.z, box.minZ, box.maxZ));
+                AimGeometry.fraction(point.xCoord, box.minX, box.maxX),
+                AimGeometry.fraction(point.yCoord, box.minY, box.maxY),
+                AimGeometry.fraction(point.zCoord, box.minZ, box.maxZ));
     }
 
-    private static Vec3 project(AABB box, Vec3 fractions) {
-        return AimGeometry.localPoint(box, fractions.x, fractions.y, fractions.z);
+    private static Vec3 project(AxisAlignedBB box, Vec3 fractions) {
+        return AimGeometry.localPoint(box, fractions.xCoord, fractions.yCoord, fractions.zCoord);
     }
 
-    private static Vec3 clamp(AABB box, Vec3 point) {
+    private static Vec3 clamp(AxisAlignedBB box, Vec3 point) {
         return new Vec3(
-                Math.clamp(point.x, box.minX, box.maxX),
-                Math.clamp(point.y, box.minY, box.maxY),
-                Math.clamp(point.z, box.minZ, box.maxZ));
+                Math.clamp(point.xCoord, box.minX, box.maxX),
+                Math.clamp(point.yCoord, box.minY, box.maxY),
+                Math.clamp(point.zCoord, box.minZ, box.maxZ));
     }
 }

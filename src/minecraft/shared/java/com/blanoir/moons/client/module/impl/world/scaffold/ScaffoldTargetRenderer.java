@@ -2,10 +2,10 @@ package com.blanoir.moons.client.module.impl.world.scaffold;
 
 import com.blanoir.moons.client.render.WorldOverlayRenderer.ColoredBox;
 
-import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
-import net.minecraft.world.phys.BlockHitResult;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.util.BlockPos;
+import net.minecraft.util.EnumFacing;
+import net.minecraft.util.MovingObjectPosition;
+import net.minecraft.util.Vec3;
 
 import java.util.List;
 
@@ -77,14 +77,13 @@ final class ScaffoldTargetRenderer {
     }
 
     /** The marker lies on the traced support face, including side and underside placements. */
-    static void hit(List<ColoredBox> boxes, BlockHitResult hit) {
-        Direction face = hit.getDirection();
+    static void hit(List<ColoredBox> boxes, MovingObjectPosition hit) {
+        EnumFacing face = hit.sideHit;
         Vec3 point =
-                hit.getLocation()
-                        .add(
-                                face.getStepX() * 0.004D,
-                                face.getStepY() * 0.004D,
-                                face.getStepZ() * 0.004D);
+                hit.hitVec.addVector(
+                        face.getFrontOffsetX() * 0.004D,
+                        face.getFrontOffsetY() * 0.004D,
+                        face.getFrontOffsetZ() * 0.004D);
         double radius = 0.055D;
         double width = 0.006D;
         facePatch(
@@ -133,7 +132,7 @@ final class ScaffoldTargetRenderer {
     private static void facePatch(
             List<ColoredBox> boxes,
             Vec3 point,
-            Direction.Axis axis,
+            EnumFacing.Axis axis,
             double minU,
             double minV,
             double maxU,
@@ -145,34 +144,34 @@ final class ScaffoldTargetRenderer {
             case X ->
                     box(
                             boxes,
-                            point.x - depth,
-                            point.y + minU,
-                            point.z + minV,
-                            point.x + depth,
-                            point.y + maxU,
-                            point.z + maxV,
+                            point.xCoord - depth,
+                            point.yCoord + minU,
+                            point.zCoord + minV,
+                            point.xCoord + depth,
+                            point.yCoord + maxU,
+                            point.zCoord + maxV,
                             color,
                             alpha);
             case Y ->
                     box(
                             boxes,
-                            point.x + minU,
-                            point.y - depth,
-                            point.z + minV,
-                            point.x + maxU,
-                            point.y + depth,
-                            point.z + maxV,
+                            point.xCoord + minU,
+                            point.yCoord - depth,
+                            point.zCoord + minV,
+                            point.xCoord + maxU,
+                            point.yCoord + depth,
+                            point.zCoord + maxV,
                             color,
                             alpha);
             case Z ->
                     box(
                             boxes,
-                            point.x + minU,
-                            point.y + minV,
-                            point.z - depth,
-                            point.x + maxU,
-                            point.y + maxV,
-                            point.z + depth,
+                            point.xCoord + minU,
+                            point.yCoord + minV,
+                            point.zCoord - depth,
+                            point.xCoord + maxU,
+                            point.yCoord + maxV,
+                            point.zCoord + depth,
                             color,
                             alpha);
         }

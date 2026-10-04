@@ -1,6 +1,6 @@
 package com.blanoir.moons.client.management.rotation;
 
-import net.minecraft.util.Mth;
+import com.blanoir.moons.client.compat.math.Mth;
 
 /** Nearest keyboard direction, with two degrees of hysteresis for unchanged physical input. */
 public final class MovementInputCorrection {

@@ -1,8 +1,9 @@
 package com.blanoir.moons.client.utils.rotation.aim;
 
-import net.minecraft.util.Mth;
-import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.Vec3;
+import com.blanoir.moons.client.compat.math.Mth;
+
+import net.minecraft.util.AxisAlignedBB;
+import net.minecraft.util.Vec3;
 
 /** A: Existing hitbox-constrained spatial aim jitter. Explicit time/seed inputs; no owned history. */
 public final class AimNoiseA {
@@ -11,7 +12,7 @@ public final class AimNoiseA {
     public static Vec3 insideHitbox(
             Vec3 eye,
             Vec3 base,
-            AABB box,
+            AxisAlignedBB box,
             double seconds,
             int targetId,
             double strength,
@@ -30,7 +31,7 @@ public final class AimNoiseA {
     public static Vec3 insideHitbox(
             Vec3 eye,
             Vec3 base,
-            AABB box,
+            AxisAlignedBB box,
             double seconds,
             long seed,
             double strength,
@@ -40,9 +41,9 @@ public final class AimNoiseA {
 
         // Inset must vanish with strength too. Otherwise, 0 -> epsilon snaps a
         // surface point inward by 0.1 blocks even though the noise is tiny.
-        double insetX = Math.min(box.getXsize() * 0.18D, 0.10D) * amount;
-        double insetY = Math.min(box.getYsize() * 0.15D, 0.20D) * amount;
-        double insetZ = Math.min(box.getZsize() * 0.18D, 0.10D) * amount;
+        double insetX = Math.min((box.maxX - box.minX) * 0.18D, 0.10D) * amount;
+        double insetY = Math.min((box.maxY - box.minY) * 0.15D, 0.20D) * amount;
+        double insetZ = Math.min((box.maxZ - box.minZ) * 0.18D, 0.10D) * amount;
         double minX = box.minX + insetX;
         double maxX = box.maxX - insetX;
         double minY = box.minY + insetY;
@@ -52,23 +53,24 @@ public final class AimNoiseA {
 
         Vec3 safeBase =
                 new Vec3(
-                        Mth.clamp(base.x, minX, maxX),
-                        Mth.clamp(base.y, minY, maxY),
-                        Mth.clamp(base.z, minZ, maxZ));
+                        Mth.clamp(base.xCoord, minX, maxX),
+                        Mth.clamp(base.yCoord, minY, maxY),
+                        Mth.clamp(base.zCoord, minZ, maxZ));
         double time = seconds * Mth.clamp(speed, 0.1D, 3.0D);
-        double horizontalSize = Math.min(box.getXsize(), box.getZsize());
+        double horizontalSize = Math.min((box.maxX - box.minX), (box.maxZ - box.minZ));
         double lateralAmplitude =
                 Math.min(
                         horizontalSize * 0.105D * amount,
                         Math.min(maxX - minX, maxZ - minZ) * 0.18D);
         // Keep pitch almost level. Vertical motion is intentionally tiny because
         // even a small world-space Y offset is prominent in sent head pitch.
-        double amplitudeY = Math.min(box.getYsize() * 0.0035D * amount, (maxY - minY) * 0.008D);
+        double amplitudeY =
+                Math.min((box.maxY - box.minY) * 0.0035D * amount, (maxY - minY) * 0.008D);
 
         // Use a view-relative right vector. World-axis X/Z noise can turn into
         // mostly depth movement from some camera angles and become invisible.
-        double viewX = safeBase.x - eye.x;
-        double viewZ = safeBase.z - eye.z;
+        double viewX = safeBase.xCoord - eye.xCoord;
+        double viewZ = safeBase.zCoord - eye.zCoord;
         double horizontalLength = Math.hypot(viewX, viewZ);
         double rightX = horizontalLength < 1.0E-6D ? 1.0D : -viewZ / horizontalLength;
         double rightZ = horizontalLength < 1.0E-6D ? 0.0D : viewX / horizontalLength;
@@ -84,8 +86,8 @@ public final class AimNoiseA {
         double vertical = AimNoiseB.sample(time * 0.58D, seed ^ 0xD1B54A32D192ED03L) * amplitudeY;
 
         return new Vec3(
-                Mth.clamp(safeBase.x + rightX * lateral + forwardX * depth, minX, maxX),
-                Mth.clamp(safeBase.y + vertical, minY, maxY),
-                Mth.clamp(safeBase.z + rightZ * lateral + forwardZ * depth, minZ, maxZ));
+                Mth.clamp(safeBase.xCoord + rightX * lateral + forwardX * depth, minX, maxX),
+                Mth.clamp(safeBase.yCoord + vertical, minY, maxY),
+                Mth.clamp(safeBase.zCoord + rightZ * lateral + forwardZ * depth, minZ, maxZ));
     }
 }

@@ -1,36 +1,101 @@
 package com.blanoir.moons.features;
 
+import com.blanoir.moons.client.compat.math.Mth;
 import com.blanoir.moons.client.management.rotation.SilentPacketRotation;
 import com.blanoir.moons.client.module.impl.combat.SilentAura;
 import com.blanoir.moons.client.module.impl.world.scaffold.Scaffold;
+import com.blanoir.moons.client.render.VisualModelCapture;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 import com.blanoir.moons.client.utils.rotation.smooth.SmoothH;
 import com.blanoir.moons.client.utils.rotation.smooth.SmoothI;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.entity.state.AvatarRenderState;
-import net.minecraft.util.Mth;
-import net.minecraft.world.entity.Avatar;
+import net.minecraft.entity.EntityLivingBase;
 
+import java.util.ArrayDeque;
 import java.util.Collections;
+import java.util.Deque;
 import java.util.Map;
 import java.util.WeakHashMap;
 
 /**
  * Owns silent body and head interpolation for one runtime event adapter.
  *
- * <p>Changes only the render state. Packet rotations and feature selection remain
+ * <p>Temporarily changes render rotation fields and restores them at the render exit. Packet rotations and feature selection remain
  * with their existing owners. State is scoped to the adapter; weak keys avoid
  * retaining avatars after their world is released.
  */
 final class RenderRotationController {
-    private final Map<Avatar, BodyRotationState> bodyRotations =
+    private final Map<EntityLivingBase, BodyRotationState> bodyRotations =
             Collections.synchronizedMap(new WeakHashMap<>());
 
-    void apply(Avatar avatar, AvatarRenderState state, float partialTick) {
-        Minecraft client = Minecraft.getInstance();
-        var player = client.player;
-        if (player == null || avatar.getId() != player.getId()) return;
+    private final ThreadLocal<Deque<Capture>> captures = ThreadLocal.withInitial(ArrayDeque::new);
+
+    void begin(EntityLivingBase entity, float partialTick) {
+        Deque<Capture> stack = captures.get();
+        Capture capture = new Capture(entity);
+        stack.push(capture);
+        if (VisualModelCapture.active() || entity != Minecraft.getMinecraft().thePlayer) return;
+        RenderPose pose = new RenderPose();
+        pose.bodyRot = interpolate(entity.prevRenderYawOffset, entity.renderYawOffset, partialTick);
+        pose.yRot =
+                Mth.wrapDegrees(
+                        interpolate(entity.prevRotationYawHead, entity.rotationYawHead, partialTick)
+                                - pose.bodyRot);
+        pose.xRot =
+                entity.prevRotationPitch
+                        + (entity.rotationPitch - entity.prevRotationPitch) * partialTick;
+        apply(entity, pose, partialTick);
+        entity.prevRenderYawOffset = entity.renderYawOffset = pose.bodyRot;
+        entity.prevRotationYawHead = entity.rotationYawHead = pose.bodyRot + pose.yRot;
+        entity.prevRotationPitch = entity.rotationPitch = pose.xRot;
+    }
+
+    void end(EntityLivingBase entity) {
+        Deque<Capture> stack = captures.get();
+        if (stack.isEmpty()) return;
+        Capture capture = stack.peek();
+        if (capture.entity != entity)
+            throw new IllegalStateException("Unbalanced living render boundary");
+        stack.pop().restore();
+    }
+
+    private static float interpolate(float previous, float current, float partialTick) {
+        return previous + Mth.wrapDegrees(current - previous) * partialTick;
+    }
+
+    private static final class RenderPose {
+        float bodyRot, yRot, xRot;
+    }
+
+    private static final class Capture {
+        final EntityLivingBase entity;
+        final float body, previousBody, head, previousHead, pitch, previousPitch;
+
+        Capture(EntityLivingBase entity) {
+            this.entity = entity;
+            body = entity.renderYawOffset;
+            previousBody = entity.prevRenderYawOffset;
+            head = entity.rotationYawHead;
+            previousHead = entity.prevRotationYawHead;
+            pitch = entity.rotationPitch;
+            previousPitch = entity.prevRotationPitch;
+        }
+
+        void restore() {
+            entity.renderYawOffset = body;
+            entity.prevRenderYawOffset = previousBody;
+            entity.rotationYawHead = head;
+            entity.prevRotationYawHead = previousHead;
+            entity.rotationPitch = pitch;
+            entity.prevRotationPitch = previousPitch;
+        }
+    }
+
+    void apply(EntityLivingBase avatar, RenderPose state, float partialTick) {
+        Minecraft client = Minecraft.getMinecraft();
+        var player = client.thePlayer;
+        if (player == null || avatar.getEntityId() != player.getEntityId()) return;
 
         BodyRotationState rotation =
                 bodyRotations.computeIfAbsent(avatar, ignored -> new BodyRotationState());
@@ -64,7 +129,7 @@ final class RenderRotationController {
                         silentPitch,
                         vanillaHeadYaw,
                         state.xRot,
-                        player.tickCount,
+                        player.ticksExisted,
                         partialTick);
                 silentYaw = rotation.fullLockRenderYaw;
                 silentPitch = rotation.fullLockRenderPitch;

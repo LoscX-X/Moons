@@ -2,11 +2,10 @@ package com.blanoir.moons.client.utils.rotation.smooth;
 
 import static com.blanoir.moons.client.utils.math.MathUtils.approach;
 
+import com.blanoir.moons.client.compat.math.Mth;
 import com.blanoir.moons.client.utils.math.MathUtils;
 import com.blanoir.moons.client.utils.math.Smoothing;
 import com.blanoir.moons.client.utils.rotation.Rotation;
-
-import net.minecraft.util.Mth;
 
 /**
  * A: Existing frame pursuit with optional velocity inertia. Used by Lock/Balance and return.

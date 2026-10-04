@@ -1,6 +1,6 @@
 package com.blanoir.moons.client.utils.prediction;
 
-import net.minecraft.util.Mth;
+import com.blanoir.moons.client.compat.math.Mth;
 
 /** Attack-charge and overcharge timing in ticks; callers own attack policy. */
 public final class CooldownPrediction {

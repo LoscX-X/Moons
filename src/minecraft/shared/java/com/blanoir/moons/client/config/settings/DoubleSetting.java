@@ -1,9 +1,8 @@
 package com.blanoir.moons.client.config.settings;
 
+import com.blanoir.moons.client.compat.math.Mth;
 import com.blanoir.moons.client.config.Settings;
 import com.blanoir.moons.client.module.framework.ModuleRegistry;
-
-import net.minecraft.util.Mth;
 
 public final class DoubleSetting {
     private final String key;

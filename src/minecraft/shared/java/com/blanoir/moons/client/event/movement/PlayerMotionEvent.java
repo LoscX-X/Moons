@@ -1,13 +1,13 @@
 package com.blanoir.moons.client.event.movement;
 
-import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.entity.EntityPlayerSP;
 
 /** Effective camera and outgoing rotation around LocalPlayer.sendPosition. */
 public final class PlayerMotionEvent {
     private PlayerMotionEvent() {}
 
     public record Pre(
-            LocalPlayer player,
+            EntityPlayerSP player,
             float cameraYaw,
             float cameraPitch,
             float outgoingYaw,
@@ -15,7 +15,7 @@ public final class PlayerMotionEvent {
             boolean overridden) {}
 
     public record Post(
-            LocalPlayer player,
+            EntityPlayerSP player,
             float cameraYaw,
             float cameraPitch,
             float outgoingYaw,

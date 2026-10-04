@@ -2,10 +2,9 @@ package com.blanoir.moons.client.utils.rotation.smooth;
 
 import static com.blanoir.moons.client.utils.math.MathUtils.approach;
 
+import com.blanoir.moons.client.compat.math.Mth;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 import com.blanoir.moons.client.utils.rotation.smooth.SmoothA.Motion;
-
-import net.minecraft.util.Mth;
 
 /** B: Accelerated fixed-point pursuit with overshoot handling. Cubic return is SmoothG. */
 public final class SmoothB {

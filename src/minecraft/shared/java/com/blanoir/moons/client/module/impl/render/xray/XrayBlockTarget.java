@@ -1,30 +1,20 @@
 package com.blanoir.moons.client.module.impl.render.xray;
 
-import com.blanoir.moons.client.access.MinecraftClientAccess;
 import com.blanoir.moons.client.config.Settings;
 
-import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.block.Block;
+import net.minecraft.block.state.IBlockState;
+import net.minecraft.init.Blocks;
 
 import java.util.Arrays;
 
 public enum XrayBlockTarget implements XrayTarget {
-    DIAMOND("diamond", true, 0, 220, 255, Blocks.DIAMOND_ORE, Blocks.DEEPSLATE_DIAMOND_ORE),
-    GOLD(
-            "gold",
-            true,
-            255,
-            105,
-            180,
-            Blocks.GOLD_ORE,
-            Blocks.DEEPSLATE_GOLD_ORE,
-            Blocks.NETHER_GOLD_ORE),
-    LAPIS("lapis", true, 0, 0, 139, Blocks.LAPIS_ORE, Blocks.DEEPSLATE_LAPIS_ORE),
-    COPPER_BLOCK("copper_block", false, 184, 115, 51, MinecraftClientAccess.copperBlocks()),
-    BOOK_SHELF("book_shelf", false, 255, 0, 0, Blocks.BOOKSHELF),
-    END_PORTAL_FRAME("end_portal_frame", true, 255, 215, 0, Blocks.END_PORTAL_FRAME),
-    CHEST("chest", true, 255, 215, 0, Blocks.CHEST, Blocks.TRAPPED_CHEST);
+    DIAMOND("diamond", true, 0, 220, 255, Blocks.diamond_ore),
+    GOLD("gold", true, 255, 105, 180, Blocks.gold_ore),
+    LAPIS("lapis", true, 0, 0, 139, Blocks.lapis_ore),
+    BOOK_SHELF("book_shelf", false, 255, 0, 0, Blocks.bookshelf),
+    END_PORTAL_FRAME("end_portal_frame", true, 255, 215, 0, Blocks.end_portal_frame),
+    CHEST("chest", true, 255, 215, 0, Blocks.chest, Blocks.trapped_chest);
 
     private final String commandName;
     private final Block[] blocks;
@@ -114,7 +104,7 @@ public enum XrayBlockTarget implements XrayTarget {
         return enabled ? "enabled" : "disabled";
     }
 
-    public static XrayTarget findEnabledTarget(BlockState state) {
+    public static XrayTarget findEnabledTarget(IBlockState state) {
         XrayTarget plugin = PluginXrayTargets.find(state);
         if (plugin != null) return plugin;
         if (PluginXrayTargets.blocksVanillaFallback(state)) return null;

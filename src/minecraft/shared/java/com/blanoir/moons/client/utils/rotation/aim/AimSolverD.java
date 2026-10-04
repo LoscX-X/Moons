@@ -4,8 +4,8 @@ import com.blanoir.moons.client.utils.math.MathUtils;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.client.entity.EntityPlayerSP;
+import net.minecraft.util.Vec3;
 
 /** D: Point-to-angle, angular-distance and continuous-yaw geometry only.
  * No tracking history. Convenience overloads read the camera; numeric overloads
@@ -18,10 +18,10 @@ public final class AimSolverD {
     }
 
     public static double angleFromView(Minecraft client, Vec3 point) {
-        LocalPlayer player = client == null ? null : client.player;
+        EntityPlayerSP player = client == null ? null : client.thePlayer;
         if (player == null) return Double.POSITIVE_INFINITY;
-        Rotation rotation = rotationTo(player.getEyePosition(), point);
-        return angleBetween(player.getYRot(), player.getXRot(), rotation);
+        Rotation rotation = rotationTo(player.getPositionEyes(1F), point);
+        return angleBetween(player.rotationYaw, player.rotationPitch, rotation);
     }
 
     public static double angleBetween(float yaw, float pitch, Rotation target) {

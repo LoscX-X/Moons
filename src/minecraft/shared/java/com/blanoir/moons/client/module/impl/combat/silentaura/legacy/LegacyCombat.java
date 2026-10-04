@@ -11,7 +11,7 @@ import com.blanoir.moons.client.utils.combat.ClickScheduler;
 
 import net.minecraft.client.Minecraft;
 
-/** CPS and block phases are independent of Latest's cooldown and Critical reservations. */
+/** CPS scheduling and the use/release/attack/reblock lifecycle. */
 public final class LegacyCombat {
     private static final ClickScheduler CLICKS = new ClickScheduler();
 
@@ -24,9 +24,8 @@ public final class LegacyCombat {
             return "hitselect " + HitSelect.statusTag();
         if (!CLICKS.ready(System.nanoTime())) return "cps";
         if (!LegacyBlock.beforeAttack(client)) return "unblocking";
-        if (client.player.isUsingItem()) return "using item";
+        if (client.thePlayer.isUsingItem()) return "using item";
         // Use the installed client's native attack -> swing path before its movement packet.
-        // Selecting Legacy changes combat timing, never the wire protocol or packet order.
         boolean attacked =
                 Critical.withoutSilentAuraCritical(
                         () -> CombatInputController.attackTargetNow(client, ray.hit(), true));

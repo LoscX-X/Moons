@@ -1,19 +1,19 @@
 package com.blanoir.moons.client.management.rotation;
 
+import com.blanoir.moons.client.compat.input.InputSnapshot;
+import com.blanoir.moons.client.compat.math.Mth;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.ModeSetting;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.util.Mth;
-import net.minecraft.world.entity.player.Input;
+import net.minecraft.client.entity.EntityPlayerSP;
 
 import java.util.List;
 
 /**
  * One tick-domain movement view for every server-only rotation producer.
  *
- * <p>Input remapping, moveRelative, jump impulse and minor-collision detection must use the same owner and
+ * <p>InputSnapshot remapping, moveRelative, jump impulse and minor-collision detection must use the same owner and
  * yaw. Resolving those independently allowed a higher-priority block action to
  * preempt SilentAura between hooks, producing a locally valid direction that
  * the server simulated against a different packet yaw.
@@ -25,7 +25,7 @@ public final class MoveFix {
         }
     }
 
-    private static LocalPlayer sampledPlayer;
+    private static EntityPlayerSP sampledPlayer;
     private static State sampled = State.inactive(Integer.MIN_VALUE);
     private static final MovementInputCorrection INPUT_CORRECTION = new MovementInputCorrection();
     private static final BooleanSetting ENABLED =
@@ -71,7 +71,7 @@ public final class MoveFix {
 
     /** Samples the final owner immediately after vanilla rebuilds keyboard input. */
     public static State capture(Minecraft client) {
-        LocalPlayer player = client == null ? null : client.player;
+        EntityPlayerSP player = client == null ? null : client.thePlayer;
         if (player == null) {
             INPUT_CORRECTION.reset();
             sampledPlayer = null;
@@ -80,16 +80,16 @@ public final class MoveFix {
         }
         if (sampledPlayer != player) INPUT_CORRECTION.reset();
         sampledPlayer = player;
-        sampled = resolve(player.tickCount);
+        sampled = resolve(player.ticksExisted);
         if (!sampled.active()) INPUT_CORRECTION.reset();
         return sampled;
     }
 
     /** Returns the keyboard sample for this tick, or creates one for non-input movement. */
     public static State current(Minecraft client) {
-        LocalPlayer player = client == null ? null : client.player;
+        EntityPlayerSP player = client == null ? null : client.thePlayer;
         if (player == null) return State.inactive(Integer.MIN_VALUE);
-        if (sampledPlayer == player && sampled.playerTick() == player.tickCount) {
+        if (sampledPlayer == player && sampled.playerTick() == player.ticksExisted) {
             return sampled;
         }
         return capture(client);
@@ -112,7 +112,7 @@ public final class MoveFix {
         sampled = State.inactive(Integer.MIN_VALUE);
     }
 
-    public static Input correctInput(Input input, float cameraYaw, State state) {
+    public static InputSnapshot correctInput(InputSnapshot input, float cameraYaw, State state) {
         if (!state.active()) return input;
         int forward = input.forward() == input.backward() ? 0 : input.forward() ? 1 : -1;
         int sideways = input.left() == input.right() ? 0 : input.left() ? 1 : -1;
@@ -134,7 +134,7 @@ public final class MoveFix {
                             Math.round(forward * Mth.cos(radians) + sideways * Mth.sin(radians)),
                             Math.round(sideways * Mth.cos(radians) - forward * Mth.sin(radians)));
         }
-        return new Input(
+        return new InputSnapshot(
                 direction.forward() > 0,
                 direction.forward() < 0,
                 direction.sideways() > 0,

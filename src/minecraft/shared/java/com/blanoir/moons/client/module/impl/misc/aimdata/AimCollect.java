@@ -2,6 +2,7 @@ package com.blanoir.moons.client.module.impl.misc.aimdata;
 
 import com.blanoir.moons.client.access.PacketAccess;
 import com.blanoir.moons.client.chat.ClientChat;
+import com.blanoir.moons.client.compat.math.VecMath;
 import com.blanoir.moons.client.config.Settings;
 import com.blanoir.moons.client.config.settings.IntSetting;
 import com.blanoir.moons.client.event.EventBus;
@@ -9,19 +10,17 @@ import com.blanoir.moons.client.event.EventPriority;
 import com.blanoir.moons.client.event.network.PacketReceiveEvent;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.multiplayer.ClientLevel;
-import net.minecraft.network.protocol.Packet;
-import net.minecraft.network.protocol.game.ClientboundAnimatePacket;
-import net.minecraft.network.protocol.game.ClientboundDamageEventPacket;
-import net.minecraft.network.protocol.game.ClientboundEntityPositionSyncPacket;
-import net.minecraft.network.protocol.game.ClientboundMoveEntityPacket;
-import net.minecraft.network.protocol.game.ClientboundRemoveEntitiesPacket;
-import net.minecraft.network.protocol.game.ClientboundRotateHeadPacket;
-import net.minecraft.network.protocol.game.ClientboundTeleportEntityPacket;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.PositionMoveRotation;
-import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.client.multiplayer.WorldClient;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.network.Packet;
+import net.minecraft.network.play.server.S0BPacketAnimation;
+import net.minecraft.network.play.server.S13PacketDestroyEntities;
+import net.minecraft.network.play.server.S14PacketEntity;
+import net.minecraft.network.play.server.S18PacketEntityTeleport;
+import net.minecraft.network.play.server.S19PacketEntityHeadLook;
+import net.minecraft.network.play.server.S19PacketEntityStatus;
+import net.minecraft.util.Vec3;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -58,7 +57,7 @@ public final class AimCollect {
     private static final Map<Integer, State> STATES = new HashMap<>();
     private static volatile boolean listening;
     private static AimDatasetWriter writer;
-    private static ClientLevel level;
+    private static WorldClient level;
     private static Object connection;
     private static long sequence;
     private static boolean terminalReported;
@@ -190,72 +189,76 @@ public final class AimCollect {
             }
             writer = null;
         }
-        if (!enabled || client.level == null || client.player == null) {
+        if (!enabled || client.theWorld == null || client.thePlayer == null) {
             if (level != null) shutdown();
             return;
         }
-        if (level != null && (level != client.level || connection != client.getConnection()))
+        if (level != null && (level != client.theWorld || connection != client.getNetHandler()))
             shutdown();
         if (writer != null && writer.closing()) return;
         if (writer == null) {
             writer = new AimDatasetWriter(directory());
-            level = client.level;
-            connection = client.getConnection();
+            level = client.theWorld;
+            connection = client.getNetHandler();
             sequence = 0;
             terminalReported = false;
             restartRequested = false;
             listening = true;
         }
         // Limit retained state and seed candidates once per tick, never invent packet samples.
-        List<? extends Player> nearby = nearby(client);
-        STATES.keySet().removeIf(id -> nearby.stream().noneMatch(player -> player.getId() == id));
-        for (Player player : nearby) state(player);
+        List<? extends EntityPlayer> nearby = nearby(client);
+        STATES.keySet()
+                .removeIf(id -> nearby.stream().noneMatch(player -> player.getEntityId() == id));
+        for (EntityPlayer player : nearby) state(player);
         capture.retain(
                 STATES.values().stream().map(state -> state.uuid).collect(Collectors.toSet()),
                 System.nanoTime());
     }
 
-    private static List<? extends Player> nearby(Minecraft client) {
+    private static List<? extends EntityPlayer> nearby(Minecraft client) {
         double range = RANGE.get() + TARGET_RANGE.get();
-        return client.level.players().stream()
+        return client.theWorld.playerEntities.stream()
                 .filter(
                         player ->
-                                player.isAlive()
+                                player.isEntityAlive()
                                         && !player.isSpectator()
-                                        && player.distanceToSqr(client.player) <= range * range)
-                .sorted(Comparator.comparingDouble(player -> player.distanceToSqr(client.player)))
+                                        && player.getDistanceSqToEntity(client.thePlayer)
+                                                <= range * range)
+                .sorted(
+                        Comparator.comparingDouble(
+                                player -> player.getDistanceSqToEntity(client.thePlayer)))
                 .limit(MAX_PLAYERS)
                 .toList();
     }
 
-    private static State state(Player player) {
-        State state = STATES.get(player.getId());
-        if (state == null || !state.uuid.equals(player.getUUID().toString())) {
+    private static State state(EntityPlayer player) {
+        State state = STATES.get(player.getEntityId());
+        if (state == null || !state.uuid.equals(player.getUniqueID().toString())) {
             state = new State(player);
-            STATES.put(player.getId(), state);
+            STATES.put(player.getEntityId(), state);
         }
         return state;
     }
 
     private static boolean supported(Packet<?> packet) {
-        return packet instanceof ClientboundMoveEntityPacket
-                || packet instanceof ClientboundRotateHeadPacket
-                || packet instanceof ClientboundEntityPositionSyncPacket
-                || packet instanceof ClientboundTeleportEntityPacket
-                || packet instanceof ClientboundAnimatePacket
-                || packet instanceof ClientboundDamageEventPacket;
+        return packet instanceof S14PacketEntity
+                || packet instanceof S19PacketEntityHeadLook
+                || packet instanceof S18PacketEntityTeleport
+                || packet instanceof S18PacketEntityTeleport
+                || packet instanceof S0BPacketAnimation
+                || packet instanceof S19PacketEntityStatus;
     }
 
     private static void apply(PacketReceiveEvent.Apply event) {
-        Minecraft client = Minecraft.getInstance();
+        Minecraft client = Minecraft.getMinecraft();
         if (!listening
                 || writer == null
                 || writer.closing()
-                || client.level != level
+                || client.theWorld != level
                 || event.listener() != connection
-                || client.player == null) return;
+                || client.thePlayer == null) return;
         Packet<?> packet = event.packet();
-        if (packet instanceof ClientboundRemoveEntitiesPacket remove) {
+        if (packet instanceof S13PacketDestroyEntities remove) {
             PacketAccess.removedEntityIds(remove).forEach(STATES::remove);
             return;
         }
@@ -266,69 +269,66 @@ public final class AimCollect {
         }
         long now = System.nanoTime();
         long wall = System.currentTimeMillis();
-        // A swing alone is not evidence of combat. Only server-reported PvP damage arms recording.
-        if (packet instanceof ClientboundDamageEventPacket damage) {
-            Entity attacker = level.getEntity(damage.sourceCauseId());
-            Entity victim = level.getEntity(damage.entityId());
-            if (attacker instanceof Player a && victim instanceof Player v && a != v) {
-                if (STATES.containsKey(a.getId()) && STATES.containsKey(v.getId()))
-                    capture.combat(
-                            a.getUUID().toString(),
-                            a.getId(),
-                            v.getUUID().toString(),
-                            v.getId(),
-                            now,
-                            COMBAT_SECONDS.get() * 1_000_000_000L,
-                            writer::offer);
+        // 1.8 has no damage-source packet. A hurt status only opens a nearby combat window;
+        // it never labels a particular player as the confirmed attacker in the dataset.
+        if (packet instanceof S19PacketEntityStatus damage && damage.getOpCode() == 2) {
+            Entity victim = damage.getEntity(level);
+            if (victim instanceof EntityPlayer v && STATES.containsKey(v.getEntityId())) {
+                for (EntityPlayer nearby : level.playerEntities)
+                    if (nearby != v
+                            && STATES.containsKey(nearby.getEntityId())
+                            && nearby.getDistanceSqToEntity(v) <= 16
+                            && nearby.isSwingInProgress) {
+                        capture.combat(
+                                nearby.getUniqueID().toString(),
+                                nearby.getEntityId(),
+                                v.getUniqueID().toString(),
+                                v.getEntityId(),
+                                now,
+                                COMBAT_SECONDS.get() * 1_000_000_000L,
+                                writer::offer);
+                    }
             }
+            return;
         }
         Entity entity;
-        if (packet instanceof ClientboundMoveEntityPacket p) entity = p.getEntity(level);
-        else if (packet instanceof ClientboundRotateHeadPacket p) entity = p.getEntity(level);
-        else if (packet instanceof ClientboundEntityPositionSyncPacket p)
-            entity = level.getEntity(p.id());
-        else if (packet instanceof ClientboundTeleportEntityPacket p)
-            entity = level.getEntity(p.id());
-        else if (packet instanceof ClientboundAnimatePacket p) entity = level.getEntity(p.getId());
-        else if (packet instanceof ClientboundDamageEventPacket p)
-            entity = level.getEntity(p.sourceCauseId());
+        if (packet instanceof S14PacketEntity p) entity = p.getEntity(level);
+        else if (packet instanceof S19PacketEntityHeadLook p) entity = p.getEntity(level);
+        else if (packet instanceof S18PacketEntityTeleport p)
+            entity = level.getEntityByID(p.getEntityId());
+        else if (packet instanceof S0BPacketAnimation p)
+            entity = level.getEntityByID(p.getEntityID());
         else return;
-        if (!(entity instanceof Player player) || !player.isAlive() || player.isSpectator()) return;
-        if (!STATES.containsKey(player.getId())) return;
+        if (!(entity instanceof EntityPlayer player)
+                || !player.isEntityAlive()
+                || player.isSpectator()) return;
+        if (!STATES.containsKey(player.getEntityId())) return;
         State state = state(player);
         boolean position = false, rotation = false, head = false, discontinuity = false;
         int action = -1, damageTarget = -1;
-        if (packet instanceof ClientboundMoveEntityPacket p) {
-            position = p.hasPosition();
-            rotation = p.hasRotation();
+        if (packet instanceof S14PacketEntity p) {
+            position =
+                    p instanceof S14PacketEntity.S15PacketEntityRelMove
+                            || p instanceof S14PacketEntity.S17PacketEntityLookMove;
+            rotation = p.func_149060_h();
             // APPLY precedes vanilla's mutation; use its exact packet codec base, not render lerp.
-            if (position)
-                state.position = PacketAccess.decodeEntityDelta(p, player.getPositionCodec());
+            if (position) state.position = PacketAccess.decodeEntityDelta(p, player);
             if (rotation) {
-                state.yaw = p.getYRot();
-                state.pitch = p.getXRot();
+                state.yaw = p.func_149066_f() * 360F / 256F;
+                state.pitch = p.func_149063_g() * 360F / 256F;
             }
-            state.ground = p.isOnGround();
-        } else if (packet instanceof ClientboundRotateHeadPacket p) {
-            state.head = p.getYHeadRot();
+            state.ground = p.getOnGround();
+        } else if (packet instanceof S19PacketEntityHeadLook p) {
+            state.head = p.getYaw() * 360F / 256F;
             head = true;
-        } else if (packet instanceof ClientboundEntityPositionSyncPacket p) {
+        } else if (packet instanceof S18PacketEntityTeleport p) {
             state.position = PacketAccess.syncPosition(p);
             state.yaw = PacketAccess.syncYaw(p);
             state.pitch = PacketAccess.syncPitch(p);
-            state.ground = p.onGround();
+            state.ground = p.getOnGround();
             position = rotation = discontinuity = true;
-        } else if (packet instanceof ClientboundTeleportEntityPacket p) {
-            PositionMoveRotation value =
-                    PositionMoveRotation.calculateAbsolute(
-                            PositionMoveRotation.of(player), p.change(), p.relatives());
-            state.position = value.position();
-            state.yaw = value.yRot();
-            state.pitch = value.xRot();
-            state.ground = p.onGround();
-            position = rotation = discontinuity = true;
-        } else if (packet instanceof ClientboundAnimatePacket p) action = p.getAction();
-        else if (packet instanceof ClientboundDamageEventPacket p) damageTarget = p.entityId();
+
+        } else if (packet instanceof S0BPacketAnimation p) action = p.getAnimationType();
         if (position) state.positionNanos = now;
         if (discontinuity) {
             state.headKnown = false;
@@ -342,21 +342,23 @@ public final class AimCollect {
             state.headNanos = now;
             state.headKnown = true;
         }
-        if (player == client.player
-                || state.position.distanceToSqr(client.player.position())
+        if (player == client.thePlayer
+                || state.position.squareDistanceTo(VecMath.position(client.thePlayer))
                         > RANGE.get() * RANGE.get()) return;
         var observer = snapshot(client, player, state);
         List<AimGeometry.Actor> candidates = new ArrayList<>();
         for (State candidate : STATES.values()) {
-            Entity target = level.getEntity(candidate.id);
-            if (!(target instanceof Player other)
+            Entity target = level.getEntityByID(candidate.id);
+            if (!(target instanceof EntityPlayer other)
                     || other == player
-                    || !other.isAlive()
+                    || !other.isEntityAlive()
                     || other.isSpectator()) continue;
-            Vec3 targetPosition = other == client.player ? other.position() : candidate.position;
-            if (targetPosition.distanceToSqr(state.position) > Math.pow(TARGET_RANGE.get() + 2, 2))
-                continue;
-            if (other == client.player) candidates.add(snapshot(client, other, new State(other)));
+            Vec3 targetPosition =
+                    other == client.thePlayer ? VecMath.position(other) : candidate.position;
+            if (targetPosition.squareDistanceTo(state.position)
+                    > Math.pow(TARGET_RANGE.get() + 2, 2)) continue;
+            if (other == client.thePlayer)
+                candidates.add(snapshot(client, other, new State(other)));
             else candidates.add(snapshot(client, other, candidate));
         }
         capture.observe(
@@ -366,7 +368,7 @@ public final class AimCollect {
                         now,
                         receipt == null ? -1 : receipt.epochMillis,
                         wall,
-                        level.getGameTime(),
+                        level.getTotalWorldTime(),
                         0,
                         -1,
                         -1,
@@ -386,19 +388,20 @@ public final class AimCollect {
                 writer::offer);
     }
 
-    private static AimGeometry.Actor snapshot(Minecraft client, Player player, State state) {
+    private static AimGeometry.Actor snapshot(Minecraft client, EntityPlayer player, State state) {
         Vec3 pos = state.position;
-        if (player == client.player) pos = player.position();
-        var box = player.getBoundingBox().move(pos.subtract(player.position()));
+        if (player == client.thePlayer) pos = VecMath.position(player);
+        var box =
+                VecMath.move(player.getEntityBoundingBox(), pos.subtract(VecMath.position(player)));
         var info =
-                client.getConnection() == null
+                client.getNetHandler() == null
                         ? null
-                        : client.getConnection().getPlayerInfo(player.getUUID());
+                        : client.getNetHandler().getPlayerInfo(player.getUniqueID());
         return new AimGeometry.Actor(
-                player.getId(),
+                player.getEntityId(),
                 state.uuid,
                 point(pos),
-                point(pos.add(0, player.getEyeHeight(), 0)),
+                point(pos.addVector(0, player.getEyeHeight(), 0)),
                 new AimGeometry.Box(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ),
                 state.yaw,
                 state.pitch,
@@ -409,15 +412,17 @@ public final class AimCollect {
                 state.rotationNanos,
                 state.headNanos,
                 state.ground,
-                player.isCrouching(),
+                player.isSneaking(),
                 player.isSprinting(),
-                player.getPose().name(),
-                player == client.player,
-                info == null ? -1 : info.getLatency());
+                player.isSneaking()
+                        ? "CROUCHING"
+                        : player.isPlayerSleeping() ? "SLEEPING" : "STANDING",
+                player == client.thePlayer,
+                info == null ? -1 : info.getResponseTime());
     }
 
     private static AimGeometry.Point point(Vec3 value) {
-        return new AimGeometry.Point(value.x, value.y, value.z);
+        return new AimGeometry.Point(value.xCoord, value.yCoord, value.zCoord);
     }
 
     private record Receipt(long nanos, long epochMillis) {}
@@ -430,14 +435,18 @@ public final class AimCollect {
         boolean ground, rotationKnown, headKnown;
         long positionNanos = -1, rotationNanos = -1, headNanos = -1;
 
-        State(Player player) {
-            id = player.getId();
-            uuid = player.getUUID().toString();
-            position = player.getPositionCodec().getBase();
-            yaw = player.getYRot();
-            pitch = player.getXRot();
-            head = player.getYHeadRot();
-            ground = player.onGround();
+        State(EntityPlayer player) {
+            id = player.getEntityId();
+            uuid = player.getUniqueID().toString();
+            position =
+                    new Vec3(
+                            player.serverPosX / 32D,
+                            player.serverPosY / 32D,
+                            player.serverPosZ / 32D);
+            yaw = player.rotationYaw;
+            pitch = player.rotationPitch;
+            head = player.rotationYawHead;
+            ground = player.onGround;
         }
     }
 }

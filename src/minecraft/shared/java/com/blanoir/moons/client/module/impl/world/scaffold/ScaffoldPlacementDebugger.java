@@ -1,19 +1,21 @@
 package com.blanoir.moons.client.module.impl.world.scaffold;
 
 import com.blanoir.moons.client.access.PacketAccess;
+import com.blanoir.moons.client.compat.math.VecMath;
 import com.blanoir.moons.client.event.network.PacketSendEvent;
 import com.blanoir.moons.client.management.rotation.RotationManager;
 import com.blanoir.moons.client.utils.math.RandomMath;
 import com.blanoir.moons.client.utils.rotation.Rotation;
+import com.blanoir.moons.client.utils.world.LegacyWorld;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
-import net.minecraft.network.protocol.game.ClientboundSystemChatPacket;
-import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
-import net.minecraft.network.protocol.game.ServerboundUseItemOnPacket;
-import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.network.play.client.C03PacketPlayer;
+import net.minecraft.network.play.client.C08PacketPlayerBlockPlacement;
+import net.minecraft.network.play.server.S02PacketChat;
+import net.minecraft.util.AxisAlignedBB;
+import net.minecraft.util.BlockPos;
+import net.minecraft.util.EnumFacing;
+import net.minecraft.util.Vec3;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -49,11 +51,11 @@ final class ScaffoldPlacementDebugger {
     private static String selection = "support=-";
     private static String movement = "next MOVE: waiting";
     private static BlockPos previousSupport;
-    private static Direction previousFace;
+    private static EnumFacing previousFace;
     private static Attempt attempt;
     private static int captureAfterAlert;
 
-    private record Attempt(long id, BlockPos support, Direction face, Rotation planned) {}
+    private record Attempt(long id, BlockPos support, EnumFacing face, Rotation planned) {}
 
     private record Use(
             int sequence,
@@ -83,7 +85,7 @@ final class ScaffoldPlacementDebugger {
         selection = "support=-";
         movement = "next MOVE: waiting";
         captureAfterAlert = 0;
-        add("START player=" + client.player.getName().getString());
+        add("START player=" + client.thePlayer.getName());
     }
 
     static synchronized void context(Minecraft client) {
@@ -95,14 +97,14 @@ final class ScaffoldPlacementDebugger {
 
     static synchronized void state(Minecraft client, String state) {
         if (!active) return;
-        add("TICK t=" + client.player.tickCount + " " + state);
+        add("TICK t=" + client.thePlayer.ticksExisted + " " + state);
         if (captureAfterAlert > 0 && --captureAfterAlert == 0) save(client, "after-alert");
     }
 
     static synchronized void begin(
-            Minecraft client, BlockPos support, Direction face, Vec3 hit, Rotation planned) {
+            Minecraft client, BlockPos support, EnumFacing face, Vec3 hit, Rotation planned) {
         if (!active) return;
-        attempt = new Attempt(++counter, support.immutable(), face, planned);
+        attempt = new Attempt(++counter, new BlockPos(support), face, planned);
         boolean changed =
                 previousSupport != null
                         && (!previousSupport.equals(support) || previousFace != face);
@@ -112,7 +114,7 @@ final class ScaffoldPlacementDebugger {
                 "ATTEMPT id="
                         + counter
                         + " t="
-                        + client.player.tickCount
+                        + client.thePlayer.ticksExisted
                         + " "
                         + selection
                         + " previous="
@@ -120,13 +122,16 @@ final class ScaffoldPlacementDebugger {
                         + "/"
                         + previousFace
                         + " place="
-                        + pos(support.relative(face))
+                        + pos(support.offset(face))
                         + " hit="
                         + vec(hit)
                         + " block="
-                        + client.level.getBlockState(support)
+                        + client.theWorld.getBlockState(support)
                         + " camera="
-                        + angle(new Rotation(client.player.getYRot(), client.player.getXRot()))
+                        + angle(
+                                new Rotation(
+                                        client.thePlayer.rotationYaw,
+                                        client.thePlayer.rotationPitch))
                         + " planned="
                         + angle(planned)
                         + " sent="
@@ -135,7 +140,7 @@ final class ScaffoldPlacementDebugger {
                         + sent.tick()
                         + " sentIndex="
                         + sent.sequence());
-        previousSupport = support.immutable();
+        previousSupport = new BlockPos(support);
         previousFace = face;
     }
 
@@ -159,37 +164,40 @@ final class ScaffoldPlacementDebugger {
             PacketSendEvent.Post event,
             Vec3 lastSentPosition,
             boolean positionKnown) {
-        if (!active || event.connection() != client.player.connection.getConnection()) return;
+        if (!active || event.connection() != client.getNetHandler().getNetworkManager()) return;
         long now = System.nanoTime();
         // A replay can run off-thread. Do not ray trace or read mutable world/player state there.
-        if (!client.isSameThread()) {
+        if (!client.isCallingFromMinecraftThread()) {
             add(
                     "SEND_OFF_THREAD "
                             + event.packet().getClass().getSimpleName()
                             + " (geometry/correlation unavailable)");
             return;
         }
-        if (event.packet() instanceof ServerboundUseItemOnPacket use) {
+        if (event.packet() instanceof C08PacketPlayerBlockPlacement use) {
             var hit = PacketAccess.useOnHit(use);
+            if (hit == null) return;
             boolean own =
                     attempt != null
                             && attempt.support().equals(hit.getBlockPos())
-                            && attempt.face() == hit.getDirection();
+                            && attempt.face() == hit.sideHit;
             Rotation planned = own ? attempt.planned() : null;
-            Vec3 eye = client.player.getEyePosition();
+            Vec3 eye = client.thePlayer.getPositionEyes(1.0F);
             Vec3 sentEye =
-                    positionKnown ? lastSentPosition.add(0, eye.y - client.player.getY(), 0) : null;
+                    positionKnown
+                            ? lastSentPosition.addVector(0, eye.yCoord - client.thePlayer.posY, 0)
+                            : null;
             var sent = RotationManager.latest();
-            double reach = client.player.blockInteractionRange();
+            double reach = Minecraft.getMinecraft().playerController.getBlockReachDistance();
             add(
                     "USE_ON seq="
-                            + PacketAccess.useOnSequence(use)
+                            + (int) counter
                             + " id="
                             + (own ? attempt.id() : "external/replayed")
                             + " support="
                             + pos(hit.getBlockPos())
                             + "/"
-                            + hit.getDirection()
+                            + hit.sideHit
                             + " eye="
                             + vec(eye)
                             + " lastSentEye="
@@ -197,7 +205,7 @@ final class ScaffoldPlacementDebugger {
                             + " reach="
                             + reach
                             + " ground="
-                            + client.player.onGround()
+                            + client.thePlayer.onGround
                             + " sent="
                             + (sent.valid() ? angle(sent.rotation()) : "unknown")
                             + " planned="
@@ -217,30 +225,34 @@ final class ScaffoldPlacementDebugger {
             }
             PENDING.addLast(
                     new Use(
-                            PacketAccess.useOnSequence(use),
+                            (int) counter,
                             now,
                             eye,
                             sentEye,
                             reach,
-                            hit.getBlockPos().immutable(),
+                            new BlockPos(hit.getBlockPos()),
                             planned));
-        } else if (event.packet() instanceof ServerboundMovePlayerPacket move) {
+        } else if (event.packet() instanceof C03PacketPlayer move) {
             RotationManager.Sent sent = RotationManager.latest();
             Rotation actual = sent.valid() ? sent.rotation() : null;
             add(
                     "MOVE t="
-                            + client.player.tickCount
+                            + client.thePlayer.ticksExisted
                             + " look="
-                            + move.hasRotation()
+                            + move.getRotating()
                             + " position="
-                            + move.hasPosition()
+                            + move.isMoving()
                             + " angle="
                             + angle(actual)
                             + " previousPos="
                             + (positionKnown ? vec(lastSentPosition) : "unknown")
                             + " packetPos="
-                            + (move.hasPosition()
-                                    ? vec(new Vec3(move.getX(0), move.getY(0), move.getZ(0)))
+                            + (move.isMoving()
+                                    ? vec(
+                                            new Vec3(
+                                                    move.getPositionX(),
+                                                    move.getPositionY(),
+                                                    move.getPositionZ()))
                                     : "unchanged"));
             while (!PENDING.isEmpty()) {
                 Use use = PENDING.removeFirst();
@@ -253,7 +265,7 @@ final class ScaffoldPlacementDebugger {
                                 Locale.ROOT,
                                 "seq=%d nextLook=%s gap=%.2fms match=%s",
                                 use.sequence(),
-                                move.hasRotation(),
+                                move.getRotating(),
                                 (now - use.nanos()) / 1_000_000.0,
                                 matches);
                 add(
@@ -269,11 +281,11 @@ final class ScaffoldPlacementDebugger {
         }
     }
 
-    static synchronized void alert(Minecraft client, ClientboundSystemChatPacket packet) {
+    static synchronized void alert(Minecraft client, S02PacketChat packet) {
         if (!active) return;
         String message =
-                packet.content()
-                        .getString()
+                packet.getChatComponent()
+                        .getUnformattedText()
                         .replaceAll("§.", "")
                         .replace('\n', ' ')
                         .replace('\r', ' ');
@@ -306,7 +318,7 @@ final class ScaffoldPlacementDebugger {
 
     private static void save(Minecraft client, String reason) {
         Path file =
-                client.gameDirectory
+                client.mcDataDir
                         .toPath()
                         .resolve("logs/moons/scaffold-" + session + "-" + reason + ".log");
         String content =
@@ -318,7 +330,7 @@ final class ScaffoldPlacementDebugger {
                         + PENDING.size()
                         + "\n"
                         + "Times are local send-observer times, NOT server processing gaps.\n"
-                        + "box = support unit-AABB intersection at local eye height; NOT Grim's full ray/pose history.\n"
+                        + "box = support unit-AxisAlignedBB intersection at local eye height; NOT Grim's full ray/pose history.\n"
                         + "lastSentEye is a local estimate, NOT acknowledged server position.\n"
                         + "Alerts are received text, may refer to another player; no server packet sequence is inferred.\n"
                         + String.join("\n", HISTORY.snapshot())
@@ -352,10 +364,14 @@ final class ScaffoldPlacementDebugger {
 
     private static String box(Vec3 eye, BlockPos support, Rotation rotation, double reach) {
         if (eye == null || rotation == null) return "unknown";
-        AABB bounds = new AABB(support);
+        AxisAlignedBB bounds = LegacyWorld.box(support);
         Vec3 end =
-                eye.add(Vec3.directionFromRotation(rotation.pitch(), rotation.yaw()).scale(reach));
-        return Boolean.toString(bounds.contains(eye) || bounds.clip(eye, end).isPresent());
+                eye.add(
+                        VecMath.scale(
+                                VecMath.directionFromRotation(rotation.pitch(), rotation.yaw()),
+                                reach));
+        return Boolean.toString(
+                bounds.isVecInside(eye) || LegacyWorld.intercept(bounds, eye, end).isPresent());
     }
 
     private static String pos(BlockPos pos) {
@@ -365,7 +381,7 @@ final class ScaffoldPlacementDebugger {
     private static String vec(Vec3 vec) {
         return vec == null
                 ? "unknown"
-                : String.format(Locale.ROOT, "%.5f,%.5f,%.5f", vec.x, vec.y, vec.z);
+                : String.format(Locale.ROOT, "%.5f,%.5f,%.5f", vec.xCoord, vec.yCoord, vec.zCoord);
     }
 
     private static String angle(Rotation rotation) {

@@ -4,10 +4,9 @@ import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.event.network.PacketThread;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.network.protocol.game.ServerboundContainerClickPacket;
-import net.minecraft.world.inventory.AbstractContainerMenu;
-import net.minecraft.world.inventory.ContainerInput;
-import net.minecraft.world.item.ItemStack;
+import net.minecraft.inventory.Container;
+import net.minecraft.item.ItemStack;
+import net.minecraft.network.play.client.C0EPacketClickWindow;
 
 /** Native, cursor-free inventory operations plus observation of competing inventory activity. */
 public final class InventoryClicks {
@@ -33,12 +32,12 @@ public final class InventoryClicks {
         EventBus.PACKET_SEND_POST.register(
                 "InventoryClicks.observe",
                 event -> {
-                    Minecraft client = Minecraft.getInstance();
+                    Minecraft client = Minecraft.getMinecraft();
                     if (!executing
                             && event.thread() == PacketThread.CLIENT
-                            && event.packet() instanceof ServerboundContainerClickPacket
-                            && client.getConnection() != null
-                            && event.connection() == client.getConnection().getConnection()) {
+                            && event.packet() instanceof C0EPacketClickWindow
+                            && client.getNetHandler() != null
+                            && event.connection() == client.getNetHandler().getNetworkManager()) {
                         foreignClickAt = System.nanoTime();
                         activityVersion++;
                     }
@@ -51,20 +50,19 @@ public final class InventoryClicks {
 
     /** A harmless automated misclick. It must never be mistaken for manual inventory input. */
     public static boolean clickEmpty(
-            Minecraft client, AbstractContainerMenu menu, int slotIndex, Object requester) {
-        if (client.player == null
-                || client.gameMode == null
+            Minecraft client, Container menu, int slotIndex, Object requester) {
+        if (client.thePlayer == null
+                || client.playerController == null
                 || busyExcept(requester)
-                || client.player.containerMenu != menu
-                || !menu.getCarried().isEmpty()
+                || client.thePlayer.openContainer != menu
+                || !LegacyItems.empty(LegacyItems.carried(menu))
                 || slotIndex < 0
-                || slotIndex >= menu.slots.size()) return false;
+                || slotIndex >= menu.inventorySlots.size()) return false;
         var slot = menu.getSlot(slotIndex);
-        if (!slot.isActive() || slot.hasItem()) return false;
+        if (!slot.canBeHovered() || slot.getHasStack()) return false;
         executing = true;
         try {
-            client.gameMode.handleContainerInput(
-                    menu.containerId, slotIndex, 0, ContainerInput.QUICK_MOVE, client.player);
+            client.playerController.windowClick(menu.windowId, slotIndex, 0, 1, client.thePlayer);
         } finally {
             executing = false;
             activityVersion++;
@@ -104,150 +102,143 @@ public final class InventoryClicks {
     /** A cursor operation must belong to the active transaction and match its expected state. */
     public static boolean pickup(
             Minecraft client,
-            AbstractContainerMenu menu,
+            Container menu,
             Object requester,
             int slotIndex,
             ItemStack expectedSlot,
             ItemStack expectedCursor) {
         if (owner != requester
-                || client.player == null
-                || client.gameMode == null
-                || client.player.containerMenu != menu
-                || client.player.inventoryMenu != menu
+                || client.thePlayer == null
+                || client.playerController == null
+                || client.thePlayer.openContainer != menu
+                || client.thePlayer.inventoryContainer != menu
                 || slotIndex < 0
-                || slotIndex >= menu.slots.size()) return false;
-        var slot = menu.slots.get(slotIndex);
-        if (!ItemStack.matches(slot.getItem(), expectedSlot)
-                || !ItemStack.matches(menu.getCarried(), expectedCursor)
-                || !expectedSlot.isEmpty() && !slot.mayPickup(client.player)
-                || !expectedCursor.isEmpty() && !slot.mayPlace(expectedCursor)) return false;
+                || slotIndex >= menu.inventorySlots.size()) return false;
+        var slot = menu.inventorySlots.get(slotIndex);
+        if (!LegacyItems.matches(slot.getStack(), expectedSlot)
+                || !LegacyItems.matches(LegacyItems.carried(menu), expectedCursor)
+                || !LegacyItems.empty(expectedSlot) && !slot.canTakeStack(client.thePlayer)
+                || !LegacyItems.empty(expectedCursor) && !slot.isItemValid(expectedCursor))
+            return false;
         executing = true;
         try {
-            client.gameMode.handleContainerInput(
-                    menu.containerId, slotIndex, 0, ContainerInput.PICKUP, client.player);
+            client.playerController.windowClick(menu.windowId, slotIndex, 0, 0, client.thePlayer);
         } finally {
             executing = false;
             activityVersion++;
         }
-        return ItemStack.matches(slot.getItem(), expectedCursor)
-                && ItemStack.matches(menu.getCarried(), expectedSlot);
+        return LegacyItems.matches(slot.getStack(), expectedCursor)
+                && LegacyItems.matches(LegacyItems.carried(menu), expectedSlot);
     }
 
     /** Local prediction is checked here; it is not a server acknowledgement. */
     public static boolean swap(
             Minecraft client,
-            AbstractContainerMenu menu,
+            Container menu,
             int sourceMenuSlot,
             int targetMenuSlot,
             int hotbarButton,
             ItemStack beforeSource,
             ItemStack beforeTarget) {
         if (owner != null
-                || client.player == null
-                || client.gameMode == null
-                || client.player.containerMenu != menu
-                || client.player.inventoryMenu != menu
-                || !menu.getCarried().isEmpty()
+                || client.thePlayer == null
+                || client.playerController == null
+                || client.thePlayer.openContainer != menu
+                || client.thePlayer.inventoryContainer != menu
+                || !LegacyItems.empty(LegacyItems.carried(menu))
                 || sourceMenuSlot < 0
                 || targetMenuSlot < 0
-                || sourceMenuSlot >= menu.slots.size()
-                || targetMenuSlot >= menu.slots.size()
+                || sourceMenuSlot >= menu.inventorySlots.size()
+                || targetMenuSlot >= menu.inventorySlots.size()
                 || sourceMenuSlot == targetMenuSlot
-                || hotbarButton != 40 && (hotbarButton < 0 || hotbarButton > 8)) return false;
-        var source = menu.slots.get(sourceMenuSlot);
-        var target = menu.slots.get(targetMenuSlot);
-        if (source.container != client.player.getInventory()
-                || target.container != source.container
-                || target.getContainerSlot() != hotbarButton
-                || !source.mayPickup(client.player)
-                || !target.mayPickup(client.player)
-                || !target.mayPlace(beforeSource)
-                || !beforeTarget.isEmpty() && !source.mayPlace(beforeTarget)
-                || !ItemStack.matches(source.getItem(), beforeSource)
-                || !ItemStack.matches(target.getItem(), beforeTarget)) return false;
+                || (hotbarButton < 0 || hotbarButton > 8)) return false;
+        var source = menu.inventorySlots.get(sourceMenuSlot);
+        var target = menu.inventorySlots.get(targetMenuSlot);
+        if (source.inventory != client.thePlayer.inventory
+                || target.inventory != source.inventory
+                || LegacyItems.slotIndex(target) != hotbarButton
+                || !source.canTakeStack(client.thePlayer)
+                || !target.canTakeStack(client.thePlayer)
+                || !target.isItemValid(beforeSource)
+                || !LegacyItems.empty(beforeTarget) && !source.isItemValid(beforeTarget)
+                || !LegacyItems.matches(source.getStack(), beforeSource)
+                || !LegacyItems.matches(target.getStack(), beforeTarget)) return false;
         executing = true;
         try {
-            client.gameMode.handleContainerInput(
-                    menu.containerId,
-                    sourceMenuSlot,
-                    hotbarButton,
-                    ContainerInput.SWAP,
-                    client.player);
+            client.playerController.windowClick(
+                    menu.windowId, sourceMenuSlot, hotbarButton, 2, client.thePlayer);
         } finally {
             executing = false;
             activityVersion++;
         }
-        return menu.getCarried().isEmpty()
-                && ItemStack.matches(source.getItem(), beforeTarget)
-                && ItemStack.matches(target.getItem(), beforeSource);
+        return LegacyItems.empty(LegacyItems.carried(menu))
+                && LegacyItems.matches(source.getStack(), beforeTarget)
+                && LegacyItems.matches(target.getStack(), beforeSource);
     }
 
-    public static boolean hasEmptyStorage(
-            Minecraft client, AbstractContainerMenu menu, ItemStack item) {
-        return menu.slots.stream()
+    public static boolean hasEmptyStorage(Minecraft client, Container menu, ItemStack item) {
+        return menu.inventorySlots.stream()
                 .anyMatch(
                         slot ->
-                                slot.container == client.player.getInventory()
-                                        && slot.getContainerSlot() >= 0
-                                        && slot.getContainerSlot() < 36
-                                        && slot.getItem().isEmpty()
-                                        && slot.mayPlace(item)
-                                        && slot.getMaxStackSize(item) >= item.getCount());
+                                slot.inventory == client.thePlayer.inventory
+                                        && LegacyItems.slotIndex(slot) >= 0
+                                        && LegacyItems.slotIndex(slot) < 36
+                                        && LegacyItems.empty(slot.getStack())
+                                        && slot.isItemValid(item)
+                                        && slot.getItemStackLimit(item) >= item.stackSize);
     }
 
     /** A single shift-click never puts an item on the cursor. Replan after each move. */
     public static boolean quickMove(
-            Minecraft client, AbstractContainerMenu menu, int menuSlot, ItemStack expected) {
+            Minecraft client, Container menu, int menuSlot, ItemStack expected) {
         if (owner != null
-                || client.player == null
-                || client.gameMode == null
-                || client.player.containerMenu != menu
-                || client.player.inventoryMenu != menu
-                || !menu.getCarried().isEmpty()
-                || expected.isEmpty()
+                || client.thePlayer == null
+                || client.playerController == null
+                || client.thePlayer.openContainer != menu
+                || client.thePlayer.inventoryContainer != menu
+                || !LegacyItems.empty(LegacyItems.carried(menu))
+                || LegacyItems.empty(expected)
                 || menuSlot < 0
-                || menuSlot >= menu.slots.size()) return false;
+                || menuSlot >= menu.inventorySlots.size()) return false;
         var slot = menu.getSlot(menuSlot);
-        if (slot.container != client.player.getInventory()
-                || !slot.mayPickup(client.player)
-                || !ItemStack.matches(slot.getItem(), expected)) return false;
+        if (slot.inventory != client.thePlayer.inventory
+                || !slot.canTakeStack(client.thePlayer)
+                || !LegacyItems.matches(slot.getStack(), expected)) return false;
         executing = true;
         try {
-            client.gameMode.handleContainerInput(
-                    menu.containerId, menuSlot, 0, ContainerInput.QUICK_MOVE, client.player);
+            client.playerController.windowClick(menu.windowId, menuSlot, 0, 1, client.thePlayer);
         } finally {
             executing = false;
             activityVersion++;
         }
-        return slot.getItem().isEmpty() && menu.getCarried().isEmpty();
+        return LegacyItems.empty(slot.getStack()) && LegacyItems.empty(LegacyItems.carried(menu));
     }
 
     /** Drop one complete player-inventory stack only when it still matches the planned item. */
     public static boolean dropStack(
-            Minecraft client, AbstractContainerMenu menu, int menuSlot, ItemStack expected) {
+            Minecraft client, Container menu, int menuSlot, ItemStack expected) {
         if (owner != null
-                || client.player == null
-                || client.gameMode == null
-                || client.player.containerMenu != menu
-                || client.player.inventoryMenu != menu
-                || !menu.getCarried().isEmpty()
-                || expected.isEmpty()
+                || client.thePlayer == null
+                || client.playerController == null
+                || client.thePlayer.openContainer != menu
+                || client.thePlayer.inventoryContainer != menu
+                || !LegacyItems.empty(LegacyItems.carried(menu))
+                || LegacyItems.empty(expected)
                 || menuSlot < 0
-                || menuSlot >= menu.slots.size()) return false;
-        var slot = menu.slots.get(menuSlot);
-        if (slot.container != client.player.getInventory()
-                || slot.getContainerSlot() < 0
-                || slot.getContainerSlot() >= 36
-                || !slot.mayPickup(client.player)
-                || !ItemStack.matches(slot.getItem(), expected)) return false;
+                || menuSlot >= menu.inventorySlots.size()) return false;
+        var slot = menu.inventorySlots.get(menuSlot);
+        if (slot.inventory != client.thePlayer.inventory
+                || LegacyItems.slotIndex(slot) < 0
+                || LegacyItems.slotIndex(slot) >= 36
+                || !slot.canTakeStack(client.thePlayer)
+                || !LegacyItems.matches(slot.getStack(), expected)) return false;
         executing = true;
         try {
-            client.gameMode.handleContainerInput(
-                    menu.containerId, menuSlot, 1, ContainerInput.THROW, client.player);
+            client.playerController.windowClick(menu.windowId, menuSlot, 1, 4, client.thePlayer);
         } finally {
             executing = false;
             activityVersion++;
         }
-        return slot.getItem().isEmpty() && menu.getCarried().isEmpty();
+        return LegacyItems.empty(slot.getStack()) && LegacyItems.empty(LegacyItems.carried(menu));
     }
 }

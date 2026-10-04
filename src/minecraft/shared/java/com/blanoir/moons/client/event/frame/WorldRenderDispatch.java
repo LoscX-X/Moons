@@ -1,17 +1,10 @@
 package com.blanoir.moons.client.event.frame;
 
 import com.blanoir.moons.client.event.EventBus;
+import com.blanoir.moons.client.render.LegacyPoseStack;
 import com.blanoir.moons.client.render.VisualRenderTargets;
-import com.mojang.blaze3d.vertex.PoseStack;
 
-/**
- * Emits the custom world overlay once per game-renderer frame.
- *
- * <p>Sodium renders its terrain through a redirected chunk-layer call. A host
- * can consequently remove the vanilla instruction used by the regular
- * world-render hook. Both boundaries feed this dispatcher, so whichever one
- * survives in the active renderer supplies the event without drawing twice.</p>
- */
+/** Emits the custom world overlay once per renderer frame, before the hand projection. */
 public final class WorldRenderDispatch {
     private static long frame;
     private static long renderedFrame = -1L;
@@ -24,7 +17,7 @@ public final class WorldRenderDispatch {
         VisualRenderTargets.beginFrame();
     }
 
-    public static void post(PoseStack poseStack, float tickDelta) {
+    public static void post(LegacyPoseStack poseStack, float tickDelta) {
         if (poseStack == null || renderedFrame == frame) {
             return;
         }

@@ -2,16 +2,17 @@ package com.blanoir.moons.client.module.impl.render;
 
 import com.blanoir.moons.client.access.MinecraftClientAccess;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
+import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.render.VisualModelCapture;
 import com.blanoir.moons.client.render.model.ModelOverlayRenderer;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.entity.state.AvatarRenderState;
-import net.minecraft.world.entity.player.Player;
+import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.util.Vec3;
 
 import java.util.function.BiPredicate;
 
-/** Player highlighting policy. GPU capture and additional models belong to the visual backend. */
+/** EntityPlayer highlighting policy. GPU capture and additional models belong to the visual backend. */
 public final class Chams {
     public static final float CHAMS_RED = 1.0f;
     public static final float CHAMS_GREEN = 0.56f;
@@ -24,7 +25,7 @@ public final class Chams {
                     .build();
     private static final BooleanSetting CHAMS_ENABLED =
             new BooleanSetting.Builder().name("chams.players.enabled").defaultValue(true).build();
-    private static BiPredicate<Minecraft, Player> playerFilter = (client, player) -> false;
+    private static BiPredicate<Minecraft, EntityPlayer> playerFilter = (client, player) -> false;
 
     static {
         ModelOverlayRenderer.setNormalEnabled(CHAMS_ENABLED.get());
@@ -32,26 +33,37 @@ public final class Chams {
 
     private Chams() {}
 
-    public static void bindPlayerFilter(BiPredicate<Minecraft, Player> filter) {
+    public static void bindPlayerFilter(BiPredicate<Minecraft, EntityPlayer> filter) {
         playerFilter = filter;
+        EventBus.WORLD_RENDER.register(
+                "Chams.worldRender",
+                event -> {
+                    var client = Minecraft.getMinecraft();
+                    if (client.theWorld == null) return;
+                    float partial = event.tickDelta();
+                    for (var player : client.theWorld.playerEntities) {
+                        if (!shouldRenderEntityChamsFor(player)) continue;
+                        Vec3 at =
+                                new Vec3(
+                                        player.lastTickPosX
+                                                + (player.posX - player.lastTickPosX) * partial,
+                                        player.lastTickPosY
+                                                + (player.posY - player.lastTickPosY) * partial,
+                                        player.lastTickPosZ
+                                                + (player.posZ - player.lastTickPosZ) * partial);
+                        ModelOverlayRenderer.render(player, at, partial, 0xffff8fd6, 1, true);
+                    }
+                });
     }
 
-    public static boolean shouldRenderEntityChamsFor(AvatarRenderState state) {
-        if (VisualModelCapture.active()) return !state.isSpectator;
-        if (!CHAMS_ENABLED.get() || state.isSpectator) return false;
-        Minecraft client = Minecraft.getInstance();
-        if (client == null
-                || client.level == null
-                || client.player == null
-                || MinecraftClientAccess.isHudHidden(client)) return false;
-        var entity = client.level.getEntity(state.id);
-        return entity != client.player
-                && entity instanceof Player player
+    public static boolean shouldRenderEntityChamsFor(EntityPlayer player) {
+        var client = Minecraft.getMinecraft();
+        return !VisualModelCapture.active()
+                && CHAMS_ENABLED.get()
+                && client.thePlayer != null
+                && client.theWorld != null
+                && !MinecraftClientAccess.isHudHidden(client)
                 && playerFilter.test(client, player);
-    }
-
-    public static void beginPlayerChams(AvatarRenderState state) {
-        ModelOverlayRenderer.beginPlayer(shouldRenderEntityChamsFor(state));
     }
 
     public static void setHighlighterEnabled(boolean value) {

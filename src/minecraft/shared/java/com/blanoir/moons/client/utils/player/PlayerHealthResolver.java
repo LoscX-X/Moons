@@ -2,16 +2,15 @@ package com.blanoir.moons.client.utils.player;
 
 import com.blanoir.moons.client.access.MinecraftClientAccess;
 
-import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.multiplayer.PlayerInfo;
-import net.minecraft.network.chat.Component;
-import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.scores.DisplaySlot;
-import net.minecraft.world.scores.Objective;
-import net.minecraft.world.scores.ReadOnlyScoreInfo;
-import net.minecraft.world.scores.Scoreboard;
-import net.minecraft.world.scores.criteria.ObjectiveCriteria;
+import net.minecraft.client.network.NetworkPlayerInfo;
+import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.scoreboard.IScoreObjectiveCriteria;
+import net.minecraft.scoreboard.Score;
+import net.minecraft.scoreboard.ScoreObjective;
+import net.minecraft.scoreboard.Scoreboard;
+import net.minecraft.util.EnumChatFormatting;
+import net.minecraft.util.IChatComponent;
 
 import java.util.Locale;
 import java.util.regex.Matcher;
@@ -26,12 +25,12 @@ public final class PlayerHealthResolver {
 
     private PlayerHealthResolver() {}
 
-    public static float resolve(Player player) {
+    public static float resolve(EntityPlayer player) {
         if (player == null) {
             return 0.0F;
         }
 
-        Minecraft client = Minecraft.getInstance();
+        Minecraft client = Minecraft.getMinecraft();
         Float scoreboardHealth = tabScoreboardHealth(client, player);
         if (scoreboardHealth != null) {
             return scoreboardHealth;
@@ -46,7 +45,7 @@ public final class PlayerHealthResolver {
         return Float.isFinite(health) ? Math.max(0.0F, health) : 0.0F;
     }
 
-    public static float max(Player player) {
+    public static float max(EntityPlayer player) {
         if (player == null) {
             return 20.0F;
         }
@@ -54,74 +53,79 @@ public final class PlayerHealthResolver {
         return Float.isFinite(max) && max > 0.0F ? max : 20.0F;
     }
 
-    private static Float tabScoreboardHealth(Minecraft client, Player player) {
-        var currentLevel = client == null ? null : client.level;
+    private static Float tabScoreboardHealth(Minecraft client, EntityPlayer player) {
+        var currentLevel = client == null ? null : client.theWorld;
         if (client == null || currentLevel == null) {
             return null;
         }
 
         Scoreboard scoreboard = currentLevel.getScoreboard();
-        Objective objective = scoreboard.getDisplayObjective(DisplaySlot.LIST);
+        ScoreObjective objective = scoreboard.getObjectiveInDisplaySlot(0);
         if (objective == null || !isHealthObjective(client, objective)) {
             return null;
         }
 
-        ReadOnlyScoreInfo score = scoreboard.getPlayerScoreInfo(player, objective);
-        return score == null ? null : validHealth(score.value(), player, false);
+        Score score =
+                scoreboard.entityHasObjective(player.getName(), objective)
+                        ? scoreboard.getValueFromObjective(player.getName(), objective)
+                        : null;
+        return score == null ? null : validHealth(score.getScorePoints(), player, false);
     }
 
-    private static boolean isHealthObjective(Minecraft client, Objective objective) {
-        if (objective.getRenderType() == ObjectiveCriteria.RenderType.HEARTS) {
+    private static boolean isHealthObjective(Minecraft client, ScoreObjective objective) {
+        if (objective.getRenderType() == IScoreObjectiveCriteria.EnumRenderType.HEARTS) {
             return true;
         }
         String id = objective.getName();
-        String display = objective.getDisplayName().getString();
+        String display = objective.getDisplayName();
         return HEALTH_WORD.matcher(id + " " + display).find() || isHoplite(client);
     }
 
     private static boolean isHoplite(Minecraft client) {
-        var server = client == null ? null : client.getCurrentServer();
+        var server = client == null ? null : client.getCurrentServerData();
         if (server == null) {
             return false;
         }
-        return server.ip.toLowerCase(Locale.ROOT).contains("hoplite");
+        return server.serverIP.toLowerCase(Locale.ROOT).contains("hoplite");
     }
 
-    private static Float tabSuffixHealth(Minecraft client, Player player) {
-        var connectionSnapshot = client == null ? null : client.getConnection();
+    private static Float tabSuffixHealth(Minecraft client, EntityPlayer player) {
+        var connectionSnapshot = client == null ? null : client.getNetHandler();
         if (client == null || connectionSnapshot == null) {
             return null;
         }
 
-        PlayerInfo info = connectionSnapshot.getPlayerInfo(player.getUUID());
+        NetworkPlayerInfo info = connectionSnapshot.getPlayerInfo(player.getUniqueID());
         if (info == null) {
             return null;
         }
 
-        String profileName = info.getProfile().name();
+        String profileName = info.getGameProfile().getName();
         Float health =
                 numberAfterName(
-                        MinecraftClientAccess.tabList(client).getNameForDisplay(info),
+                        new net.minecraft.util.ChatComponentText(
+                                MinecraftClientAccess.tabList(client).getPlayerName(info)),
                         profileName,
                         player);
         if (health != null) {
             return health;
         }
 
-        health = numberAfterName(info.getTabListDisplayName(), profileName, player);
+        health = numberAfterName(info.getDisplayName(), profileName, player);
         if (health != null) {
             return health;
         }
 
-        var team = info.getTeam();
-        return team == null ? null : firstValidNumber(team.getPlayerSuffix().getString(), player);
+        var team = info.getPlayerTeam();
+        return team == null ? null : firstValidNumber(team.getColorSuffix(), player);
     }
 
-    private static Float numberAfterName(Component component, String profileName, Player player) {
+    private static Float numberAfterName(
+            IChatComponent component, String profileName, EntityPlayer player) {
         if (component == null || profileName == null || profileName.isBlank()) {
             return null;
         }
-        String visible = strip(component.getString());
+        String visible = strip(component.getUnformattedText());
         int nameIndex =
                 visible.toLowerCase(Locale.ROOT).indexOf(profileName.toLowerCase(Locale.ROOT));
         if (nameIndex < 0) {
@@ -130,7 +134,7 @@ public final class PlayerHealthResolver {
         return firstValidNumber(visible.substring(nameIndex + profileName.length()), player);
     }
 
-    private static Float firstValidNumber(String text, Player player) {
+    private static Float firstValidNumber(String text, EntityPlayer player) {
         if (text == null || text.isBlank()) {
             return null;
         }
@@ -148,7 +152,7 @@ public final class PlayerHealthResolver {
         return null;
     }
 
-    private static Float validHealth(float value, Player player, boolean strict) {
+    private static Float validHealth(float value, EntityPlayer player, boolean strict) {
         if (!Float.isFinite(value) || value < 0.0F) {
             return null;
         }
@@ -158,7 +162,7 @@ public final class PlayerHealthResolver {
     }
 
     private static String strip(String text) {
-        String stripped = ChatFormatting.stripFormatting(text);
+        String stripped = EnumChatFormatting.getTextWithoutFormattingCodes(text);
         return stripped == null ? text : stripped;
     }
 }

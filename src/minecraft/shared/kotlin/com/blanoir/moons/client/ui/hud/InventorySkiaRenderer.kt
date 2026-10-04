@@ -1,4 +1,5 @@
 package com.blanoir.moons.client.ui.hud
+import com.blanoir.moons.client.utils.render.isEmpty
 
 import com.blanoir.moons.client.module.impl.render.InventorySee
 import com.blanoir.moons.client.utils.render.ItemIconImages
@@ -27,7 +28,7 @@ internal object InventorySkiaRenderer {
     }
 
     fun draw(canvas: Canvas, snapshot: InventorySee.Snapshot, font: Font, paint: Paint): Rect {
-        val guiScale = Minecraft.getInstance().window.guiScale.coerceAtLeast(1).toFloat()
+        val guiScale = net.minecraft.client.gui.ScaledResolution(Minecraft.getMinecraft()).scaleFactor.coerceAtLeast(1).toFloat()
         val scale = guiScale * snapshot.scale().toFloat()
         val x = snapshot.bounds().x().toFloat() * guiScale
         val y = snapshot.bounds().y().toFloat() * guiScale
@@ -48,22 +49,22 @@ internal object InventorySkiaRenderer {
                     val image = icons.get(stack)
                     if (image != null)
                         canvas.drawImageRect(image, Rect.makeXYWH(left + 1, top + 1, 16f, 16f))
-                    if (stack.isBarVisible) {
+                    if (stack.isItemDamaged) {
                         paint.color = 0xff000000.toInt()
                         canvas.drawRect(Rect.makeXYWH(left + 3, top + 14, 13f, 2f), paint)
-                        paint.color = 0xff000000.toInt() or stack.barColor
+                        paint.color = 0xff000000.toInt() or java.awt.Color.HSBtoRGB((1f - stack.itemDamage.toFloat() / stack.maxDamage.coerceAtLeast(1)) / 3f, 1f, 1f)
                         canvas.drawRect(
                             Rect.makeXYWH(
                                 left + 3,
                                 top + 14,
-                                stack.barWidth.coerceIn(0, 13).toFloat(),
+                                (13f * (1f - stack.itemDamage.toFloat() / stack.maxDamage.coerceAtLeast(1))).coerceIn(0f, 13f),
                                 1f,
                             ),
                             paint,
                         )
                     }
-                    if (stack.count > 1) {
-                        val count = stack.count.toString()
+                    if (stack.stackSize > 1) {
+                        val count = stack.stackSize.toString()
                         val textX = left + 18 - font.measureTextWidth(count)
                         paint.color = 0xff000000.toInt()
                         canvas.drawString(count, textX + 0.75f, top + 17.75f, font, paint)

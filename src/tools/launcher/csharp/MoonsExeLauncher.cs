@@ -32,12 +32,7 @@ namespace Moons.WindowsLauncher
         private static readonly Color Muted = Color.FromArgb(139, 143, 148);
         private static readonly Color Accent = Color.FromArgb(145, 116, 255);
         private static readonly Color AccentHover = Color.FromArgb(161, 137, 255);
-        private const string Payload26_1Resource = "Moons.Payload.26_1.jar";
-        private const string Payload26_2PatchResource = "Moons.Payload.26_2.patch";
-        private const string Payload26_3PatchResource = "Moons.Payload.26_3.patch";
-        private const string Payload26_4PatchResource = "Moons.Payload.26_4.patch";
-        private const string FeaturesJarEntry =
-            "META-INF/moons/modules/moons-core-features.jar";
+        private const string Payload189Resource = "Moons.Payload.1_8.jar";
         private const string BootstrapApiResource = "Moons.Api.jar";
         private const string BridgeResource = "Moons.Bridge.dll";
 
@@ -146,7 +141,7 @@ namespace Moons.WindowsLauncher
             }
             if (Contains(arguments, "--install-ysm-only"))
             {
-                Console.Error.WriteLine("Run moon-install.exe to install or update dependencies.");
+                Console.Error.WriteLine("Run Moons-install.exe to install or update dependencies.");
                 return 1;
             }
             if (Contains(arguments, "--extract-only"))
@@ -155,10 +150,7 @@ namespace Moons.WindowsLauncher
                 {
                     string home = ResolveHome();
                     DependencyRuntime.Verify(home);
-                    ExtractPayload(home, "26.1");
-                    ExtractPayload(home, "26.2");
-                    ExtractPayload(home, "26.3");
-                    ExtractPayload(home, "26.4-snapshot-1");
+                    ExtractPayload(home, "1.8.9");
                     ExtractBootstrapApi(home);
                     ExtractBridge(home);
                     HardwareIdGenerator.Generate();
@@ -216,48 +208,21 @@ namespace Moons.WindowsLauncher
 
         private static int SelfTestVersionDetection()
         {
-            bool passed = true;
-            passed &= String.Equals(MatchSupportedVersion(
-                "net.minecraft.client.main.Main --version 26.1.2"),
-                "26.1", StringComparison.Ordinal);
-            passed &= String.Equals(MatchSupportedVersion(
-                @"C:\Games\Minecraft\versions\26.2\client.jar"),
-                "26.2", StringComparison.Ordinal);
-            passed &= String.Equals(NormalizeConfiguredVersion("26.1"),
-                "26.1", StringComparison.Ordinal);
-            passed &= String.Equals(NormalizeConfiguredVersion("26.1.2"),
-                "26.1", StringComparison.Ordinal);
-            passed &= NormalizeConfiguredVersion("26.1.3") == null;
-            passed &= String.Equals(NormalizeConfiguredVersion("26.3"), "26.3", StringComparison.Ordinal);
-            passed &= String.Equals(MatchSupportedVersion("net.minecraft.client.main.Main --version 26.3"), "26.3", StringComparison.Ordinal);
-            passed &= String.Equals(MatchSupportedVersion(@"C:\Users\coffe\AppData\Roaming\.minecraft\versions\26.3\26.3.jar"), "26.3", StringComparison.Ordinal);
-            passed &= String.Equals(MatchSupportedVersion("26.3.jar"), "26.3", StringComparison.Ordinal);
-            passed &= String.Equals(NormalizeConfiguredVersion("26.4-snapshot-1"), "26.4-snapshot-1", StringComparison.Ordinal);
-            passed &= String.Equals(MatchSupportedVersion("net.minecraft.client.main.Main --version 26.4-snapshot-1"), "26.4-snapshot-1", StringComparison.Ordinal);
-            passed &= String.Equals(MatchSupportedVersion(@"C:\Users\coffe\AppData\Roaming\.minecraft\versions\26.4-snapshot-1\26.4-snapshot-1.jar"), "26.4-snapshot-1", StringComparison.Ordinal);
-            foreach (string unsupported in new[] { "26.4", "26.4-snapshot-2", "26.4-snapshot-10", "26.4-pre-1", "126.4-snapshot-1", "26.4-snapshot-1-custom" })
+            bool passed = NormalizeConfiguredVersion("1.8.9") == "1.8.9";
+            foreach (string evidence in new[] { "net.minecraft.client.main.Main --version 1.8.9",
+                @"C:\Games\Minecraft\versions\1.8.9\1.8.9.jar", "Minecraft 1.8.9", "1.8.9.jar" })
+                passed &= MatchSupportedVersion(evidence) == "1.8.9";
+            foreach (string unsupported in new[] { "1.8", "1.8.8", "1.8.90", "11.8.9", "1.8.9-custom",
+                "1.8.9.1", "1.8.9_pre", "26.1.2", "26.2", "26.3", "26.4-snapshot-1", "1.21.5" })
             {
                 passed &= NormalizeConfiguredVersion(unsupported) == null;
                 passed &= MatchSupportedVersion(unsupported) == null;
             }
-            foreach (string unsupported in new[] { "26.3-pre-3", "26.3-rc-1", "26.3-rc-2", "26.3-rc-3",
-                "26.3-rc-30", "26.3-snapshot", "26.3-custom", "26.3.1", "126.3", "26.30", "26.3_custom" })
-            {
-                passed &= NormalizeConfiguredVersion(unsupported) == null;
-                passed &= MatchSupportedVersion(unsupported) == null;
-                passed &= MatchSupportedVersion(@"C:\Games\Minecraft\versions\" + unsupported + @"\" + unsupported + ".jar") == null;
-            }
-            passed &= MatchSupportedVersion("26.2 and 26.3") == null;
-            passed &= MatchSupportedVersion("26.3 and 26.4-snapshot-1") == null;
-            passed &= MatchSupportedVersion("Minecraft 1.21.5") == null;
-            passed &= MatchSupportedVersion("26.1.2 and 26.2") == null;
-            passed &= IsMinecraftTargetEvidence(
-                @"C:\Users\player\.lunarclient\jre\runtime\bin\javaw.exe", "", "");
-            passed &= IsMinecraftTargetEvidence(
-                @"C:\Program Files\Java\jdk-25\bin\java.exe", "",
-                "net.minecraft.client.main.Main --version 26.1.2");
-            passed &= !IsMinecraftTargetEvidence(
-                @"C:\Program Files\Java\jdk-25\bin\java.exe", "", "");
+            passed &= IsMinecraftTargetEvidence(@"C:\Program Files\Java\jdk-25\bin\javaw.exe", "",
+                "net.minecraft.client.main.Main --version 1.8.9");
+            passed &= !IsMinecraftTargetEvidence(@"C:\Program Files\Java\jdk-25\bin\java.exe", "", "");
+            passed &= MatchSupportedVersion("--version 1.12.2 -cp C:\\cache\\1.8.9\\client.jar") == null;
+            passed &= MatchSupportedVersion("--version \"1.8.9\"") == "1.8.9";
             return passed ? 0 : 3;
         }
 
@@ -1005,7 +970,7 @@ namespace Moons.WindowsLauncher
                 {
                     throw new InvalidOperationException(
                         "Unsupported --minecraft-version value: " + configured
-                        + ". Expected 26.1, 26.1.2, 26.2, 26.3, 26.4-snapshot-1.");
+                        + ". Expected 1.8.9.");
                 }
                 return selected;
             }
@@ -1025,55 +990,31 @@ namespace Moons.WindowsLauncher
 
             throw new InvalidOperationException(
                 "Unable to identify whether PID " + target.Pid
-                + " is Minecraft 26.1.2, 26.2, 26.3, 26.4-snapshot-1. Load was cancelled to avoid loading "
+                + " is Minecraft 1.8.9. Load was cancelled to avoid loading "
                 + "the wrong mappings.\r\n\r\n"
                 + "Start the game normally so its command line contains --version, or run "
-                + DisplayName + " with --minecraft-version 26.1/26.1.2/26.2/26.3/26.4-snapshot-1.");
+                + DisplayName + " with --minecraft-version 1.8.9.");
         }
 
         private static string NormalizeConfiguredVersion(string configured)
         {
-            string value = configured == null ? String.Empty : configured.Trim();
-            if (String.Equals(value, "26.1", StringComparison.OrdinalIgnoreCase)
-                || String.Equals(value, "26.1.2", StringComparison.OrdinalIgnoreCase))
-            {
-                return "26.1";
-            }
-            if (String.Equals(value, "26.3", StringComparison.OrdinalIgnoreCase))
-            {
-                return "26.3";
-            }
-            if (String.Equals(value, "26.4-snapshot-1", StringComparison.OrdinalIgnoreCase))
-            {
-                return "26.4-snapshot-1";
-            }
-            return String.Equals(value, "26.2", StringComparison.OrdinalIgnoreCase)
-                ? "26.2" : null;
+            return String.Equals(configured == null ? "" : configured.Trim(), "1.8.9", StringComparison.Ordinal)
+                ? "1.8.9" : null;
         }
 
         private static string MatchSupportedVersion(string evidence)
         {
-            if (String.IsNullOrWhiteSpace(evidence))
-            {
-                return null;
-            }
-            bool is26_1 = Regex.IsMatch(evidence,
-                @"(?<![0-9.])26\.1\.2(?![0-9.])",
+            if (String.IsNullOrWhiteSpace(evidence)) return null;
+            // An explicit launch version takes precedence over an incidental cache path.
+            Match argument = Regex.Match(evidence,
+                "(?:^|\\s)--version(?:=|\\s+)(?:\"([^\"]+)\"|'([^']+)'|([^\\s]+))",
                 RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-            bool is26_2 = Regex.IsMatch(evidence,
-                @"(?<![0-9.])26\.2(?![0-9.])",
-                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-            bool is26_3 = Regex.IsMatch(evidence,
-                @"(?<![0-9A-Za-z_.\-])26\.3(?=\.jar(?:$|[^0-9A-Za-z_.\-])|$|[^0-9A-Za-z_.\-])",
-                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-            bool is26_4 = Regex.IsMatch(evidence,
-                @"(?<![0-9A-Za-z_.\-])26\.4-snapshot-1(?=\.jar(?:$|[^0-9A-Za-z_.\-])|$|[^0-9A-Za-z_.\-])",
-                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-            if ((is26_1 ? 1 : 0) + (is26_2 ? 1 : 0) + (is26_3 ? 1 : 0) + (is26_4 ? 1 : 0) != 1)
-            {
-                return null;
-            }
-            return is26_4 ? "26.4-snapshot-1" : is26_3 ? "26.3" : is26_2 ? "26.2" : "26.1";
+            if (argument.Success)
+                return NormalizeConfiguredVersion(argument.Groups[1].Success ? argument.Groups[1].Value
+                    : argument.Groups[2].Success ? argument.Groups[2].Value : argument.Groups[3].Value);
+            return Regex.IsMatch(evidence,
+                @"(?<![0-9A-Za-z_.\-])1\.8\.9(?=\.jar(?:$|[^0-9A-Za-z_.\-])|$|[^0-9A-Za-z_.\-])",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant) ? "1.8.9" : null;
         }
 
         private static string ReadProcessCommandLine(int pid)
@@ -1276,169 +1217,9 @@ namespace Moons.WindowsLauncher
 
         private static string ExtractPayload(string home, string version)
         {
-            if (String.Equals(version, "26.1", StringComparison.Ordinal))
-            {
-                return ExtractResource(home, Payload26_1Resource, "moons-26.1.jar");
-            }
-            if (String.Equals(version, "26.2", StringComparison.Ordinal))
-            {
-                return ExtractPatchedPayload(home, Payload26_2PatchResource, "moons-26.2.jar");
-            }
-            if (String.Equals(version, "26.3", StringComparison.Ordinal))
-            {
-                return ExtractPatchedPayload(home, Payload26_3PatchResource, "moons-26.3.jar");
-            }
-            if (String.Equals(version, "26.4-snapshot-1", StringComparison.Ordinal))
-            {
-                return ExtractPatchedPayload(home, Payload26_4PatchResource, "moons-26.4-snapshot-1.jar");
-            }
+            if (String.Equals(version, "1.8.9", StringComparison.Ordinal))
+                return ExtractResource(home, Payload189Resource, "moons-1.8.9.jar");
             throw new InvalidOperationException("No embedded payload for Minecraft " + version + ".");
-        }
-
-        private static string ExtractPatchedPayload(string home, string patchResource, string fileName)
-        {
-            byte[] basePayload = ReadResourceBytes(Payload26_1Resource);
-            byte[] patch = ReadResourceBytes(patchResource);
-            string identity = Hashing.Sha256(Encoding.UTF8.GetBytes(
-                Hashing.Sha256(basePayload) + ":" + Hashing.Sha256(patch)));
-            string directory = Path.Combine(home, "cache", "launcher", identity);
-            string target = Path.Combine(directory, fileName);
-            Directory.CreateDirectory(directory);
-            if (File.Exists(target))
-            {
-                CacheMaintenance.Touch(target);
-                return target;
-            }
-
-            StagedFile.Write(target, temporary => RebuildPatchedPayload(basePayload, patch, temporary));
-            return target;
-        }
-
-        private static void RebuildPatchedPayload(
-            byte[] basePayload,
-            byte[] patchBytes,
-            string target)
-        {
-            using (MemoryStream baseStream = new MemoryStream(basePayload, false))
-            using (MemoryStream patchStream = new MemoryStream(patchBytes, false))
-            using (ZipArchive baseArchive = new ZipArchive(
-                baseStream, ZipArchiveMode.Read, false))
-            using (ZipArchive patchArchive = new ZipArchive(
-                patchStream, ZipArchiveMode.Read, false))
-            using (FileStream targetStream = new FileStream(
-                target, FileMode.Create, FileAccess.Write, FileShare.None))
-            using (ZipArchive targetArchive = new ZipArchive(
-                targetStream, ZipArchiveMode.Create, false))
-            {
-                HashSet<string> outerDeletes = ReadDeletionList(
-                    patchArchive, "META-INF/moons-patch/outer-deletions.txt");
-                HashSet<string> featureDeletes = ReadDeletionList(
-                    patchArchive, "META-INF/moons-patch/feature-deletions.txt");
-                Dictionary<string, ZipArchiveEntry> outerChanges = ReadChanges(
-                    patchArchive, "outer/");
-                Dictionary<string, ZipArchiveEntry> featureChanges = ReadChanges(
-                    patchArchive, "features/");
-
-                ZipArchiveEntry baseFeatures = baseArchive.GetEntry(FeaturesJarEntry);
-                if (baseFeatures == null)
-                {
-                    throw new InvalidDataException(
-                        "The embedded base payload has no feature module.");
-                }
-                byte[] rebuiltFeatures = RebuildFeatures(
-                    baseFeatures, featureDeletes, featureChanges);
-
-                foreach (ZipArchiveEntry entry in baseArchive.Entries)
-                {
-                    if (ZipEntries.IsDirectory(entry)
-                        || outerDeletes.Contains(entry.FullName)
-                        || outerChanges.ContainsKey(entry.FullName))
-                    {
-                        continue;
-                    }
-                    if (String.Equals(entry.FullName, FeaturesJarEntry,
-                        StringComparison.Ordinal))
-                    {
-                        ZipEntries.Write(targetArchive, entry.FullName, rebuiltFeatures);
-                    }
-                    else
-                    {
-                        ZipEntries.Copy(entry, targetArchive, entry.FullName);
-                    }
-                }
-                foreach (KeyValuePair<string, ZipArchiveEntry> change in outerChanges)
-                {
-                    ZipEntries.Copy(change.Value, targetArchive, change.Key);
-                }
-            }
-        }
-
-        private static byte[] RebuildFeatures(
-            ZipArchiveEntry baseFeatures,
-            HashSet<string> deletes,
-            Dictionary<string, ZipArchiveEntry> changes)
-        {
-            byte[] baseBytes = ZipEntries.ReadBytes(baseFeatures);
-            using (MemoryStream input = new MemoryStream(baseBytes, false))
-            using (ZipArchive baseArchive = new ZipArchive(input, ZipArchiveMode.Read, false))
-            using (MemoryStream output = new MemoryStream())
-            {
-                using (ZipArchive targetArchive = new ZipArchive(
-                    output, ZipArchiveMode.Create, true))
-                {
-                    foreach (ZipArchiveEntry entry in baseArchive.Entries)
-                    {
-                        if (ZipEntries.IsDirectory(entry)
-                            || deletes.Contains(entry.FullName)
-                            || changes.ContainsKey(entry.FullName))
-                        {
-                            continue;
-                        }
-                        ZipEntries.Copy(entry, targetArchive, entry.FullName);
-                    }
-                    foreach (KeyValuePair<string, ZipArchiveEntry> change in changes)
-                    {
-                        ZipEntries.Copy(change.Value, targetArchive, change.Key);
-                    }
-                }
-                return output.ToArray();
-            }
-        }
-
-        private static Dictionary<string, ZipArchiveEntry> ReadChanges(
-            ZipArchive archive,
-            string prefix)
-        {
-            Dictionary<string, ZipArchiveEntry> result =
-                new Dictionary<string, ZipArchiveEntry>(StringComparer.Ordinal);
-            foreach (ZipArchiveEntry entry in archive.Entries)
-            {
-                if (!ZipEntries.IsDirectory(entry)
-                    && entry.FullName.StartsWith(prefix, StringComparison.Ordinal))
-                {
-                    result.Add(entry.FullName.Substring(prefix.Length), entry);
-                }
-            }
-            return result;
-        }
-
-        private static HashSet<string> ReadDeletionList(
-            ZipArchive archive,
-            string name)
-        {
-            HashSet<string> result = new HashSet<string>(StringComparer.Ordinal);
-            ZipArchiveEntry entry = archive.GetEntry(name);
-            if (entry == null)
-            {
-                throw new InvalidDataException("Payload patch metadata is missing: " + name);
-            }
-            string text = Encoding.UTF8.GetString(ZipEntries.ReadBytes(entry));
-            foreach (string line in text.Split(new[] { '\r', '\n' },
-                StringSplitOptions.RemoveEmptyEntries))
-            {
-                result.Add(line);
-            }
-            return result;
         }
 
         private static string ExtractBootstrapApi(string home)

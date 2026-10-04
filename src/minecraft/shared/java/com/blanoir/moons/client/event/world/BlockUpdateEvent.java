@@ -1,23 +1,23 @@
 package com.blanoir.moons.client.event.world;
 
-import net.minecraft.client.multiplayer.ClientLevel;
-import net.minecraft.core.BlockPos;
-import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.block.state.IBlockState;
+import net.minecraft.client.multiplayer.WorldClient;
+import net.minecraft.util.BlockPos;
 
 /** Client-world block mutation boundaries. These events are observational. */
 public final class BlockUpdateEvent {
     private BlockUpdateEvent() {}
 
     public record Pre(
-            ClientLevel level,
+            WorldClient level,
             BlockPos position,
-            BlockState previousState,
-            BlockState requestedState) {}
+            IBlockState previousState,
+            IBlockState requestedState) {}
 
     public record Post(
-            ClientLevel level,
+            WorldClient level,
             BlockPos position,
-            BlockState previousState,
-            BlockState requestedState,
+            IBlockState previousState,
+            IBlockState requestedState,
             boolean applied) {}
 }

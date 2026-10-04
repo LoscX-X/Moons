@@ -1,8 +1,7 @@
 package com.blanoir.moons.client.utils.rotation.quantize;
 
+import com.blanoir.moons.client.compat.math.Mth;
 import com.blanoir.moons.client.utils.rotation.Rotation;
-
-import net.minecraft.util.Mth;
 
 /**
  * A: Mouse-angle quantization only. Pure methods retain sensitivity clamping, vanilla

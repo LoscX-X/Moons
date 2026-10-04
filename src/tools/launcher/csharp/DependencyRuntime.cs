@@ -14,7 +14,7 @@ namespace Moons.WindowsLauncher
         internal const string UiMetadataResource = "Moons.UiRuntime.properties";
         internal const string YsmMetadataResource = "Moons.Ysm.properties";
         internal const string ReleaseMetadataResource = "Moons.Release.properties";
-        internal const string InstallHint = "Run the matching moon-install.exe to install or update dependencies.";
+        internal const string InstallHint = "Run the matching Moons-install.exe to install or update dependencies.";
 
         internal static string ResolveHome()
         {
@@ -81,9 +81,7 @@ namespace Moons.WindowsLauncher
 
         internal static readonly string[] YsmPackageNames = {
             "libraries/moons-ysm-core.jar", "libraries/moons-ysm-codecs.jar",
-            "libraries/moons-ysm-images.jar", "modules/moons-ysm-26.1.2.jar",
-            "modules/moons-ysm-26.2.jar", "modules/moons-ysm-26.3.jar",
-            "modules/moons-ysm-26.4-snapshot-1.jar"
+            "libraries/moons-ysm-images.jar", "modules/moons-ysm-1.8.9.jar"
         };
 
         internal static void PublishUiRuntime(string home)

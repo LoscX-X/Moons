@@ -2,22 +2,23 @@ package com.blanoir.moons.client.module.impl.player.invmanager;
 
 import com.blanoir.moons.client.access.MinecraftClientAccess;
 import com.blanoir.moons.client.chat.ClientChat;
+import com.blanoir.moons.client.compat.input.InputConstants;
+import com.blanoir.moons.client.compat.math.VecMath;
 import com.blanoir.moons.client.config.Settings;
 import com.blanoir.moons.client.event.EventBus;
 import com.blanoir.moons.client.event.EventPriority;
 import com.blanoir.moons.client.management.lease.HotbarLease;
 import com.blanoir.moons.client.module.framework.ModuleKeybinds;
-import com.blanoir.moons.client.module.impl.player.AutoTotem;
 import com.blanoir.moons.client.ui.clickgui.MoonsComposeScreen;
 import com.blanoir.moons.client.utils.client.ClientReady;
 import com.blanoir.moons.client.utils.inventory.InventoryClickFailure;
 import com.blanoir.moons.client.utils.inventory.InventoryClicks;
+import com.blanoir.moons.client.utils.inventory.LegacyItems;
 import com.blanoir.moons.client.utils.world.placement.PlacementCoordinator;
-import com.mojang.blaze3d.platform.InputConstants;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.screens.inventory.InventoryScreen;
-import net.minecraft.world.item.ItemStack;
+import net.minecraft.client.gui.inventory.GuiInventory;
+import net.minecraft.item.ItemStack;
 
 import java.util.ArrayList;
 import java.util.BitSet;
@@ -38,7 +39,7 @@ public final class InvManager {
 
     public record View(String status, List<SlotView> slots, List<String> plan) {}
 
-    private static InventoryScreen screen;
+    private static GuiInventory screen;
     private static InventorySession session = new InventorySession();
     private static final Set<Integer> mouseHeld = new HashSet<>();
     private static boolean once;
@@ -54,25 +55,25 @@ public final class InvManager {
         InventoryClicks.init();
         InventoryEditorInput.init();
         ModuleKeybinds.registerAction(
-                "invmanager_once", () -> organizeOnce(Minecraft.getInstance()));
+                "invmanager_once", () -> organizeOnce(Minecraft.getMinecraft()));
         EventBus.CLIENT_CONTEXT_CHANGED.register("InvManager.context", event -> reset());
-        // AutoTotem gets the first opportunity to reserve its cursor/offhand transaction.
+        // Preserve the shared inventory transaction priority before planning a new action.
         EventBus.TICK.register(
                 "InvManager.tick", EventPriority.LOWEST, event -> tick(event.client()));
         EventBus.ATTACK_ENTITY_POST.register(
                 "InvManager.combat",
                 event -> {
-                    if (event.attacker() == Minecraft.getInstance().player)
+                    if (event.attacker() == Minecraft.getMinecraft().thePlayer)
                         combatUntil = System.nanoTime() + 500_000_000L;
                 });
         EventBus.KEY_INPUT.register(
                 "InvManager.key",
                 EventPriority.HIGHEST,
                 event -> {
-                    Minecraft client = Minecraft.getInstance();
+                    Minecraft client = Minecraft.getMinecraft();
                     var key = ModuleKeybinds.fromEvent(event.key());
                     if (bindingScreen != null
-                            && bindingScreen != MinecraftClientAccess.screen(client))
+                            && bindingScreen != MinecraftClientAccess.currentScreen(client))
                         bindingScreen = null;
                     if (bindingScreen != null && event.action() == InputConstants.PRESS) {
                         if (key.getValue() == InputConstants.KEY_ESCAPE) bindingScreen = null;
@@ -87,7 +88,8 @@ public final class InvManager {
                         event.cancel();
                         return;
                     }
-                    if (!(MinecraftClientAccess.screen(client) instanceof InventoryScreen)) return;
+                    if (!(MinecraftClientAccess.currentScreen(client) instanceof GuiInventory))
+                        return;
                     // The global module binding router intentionally ignores open screens. This one
                     // action is explicitly usable inside the player's inventory as well.
                     if (event.action() == InputConstants.PRESS
@@ -102,8 +104,9 @@ public final class InvManager {
         EventBus.MOUSE_BUTTON.register(
                 "InvManager.mouse",
                 event -> {
-                    Minecraft client = Minecraft.getInstance();
-                    if (!(MinecraftClientAccess.screen(client) instanceof InventoryScreen)) return;
+                    Minecraft client = Minecraft.getMinecraft();
+                    if (!(MinecraftClientAccess.currentScreen(client) instanceof GuiInventory))
+                        return;
                     if (!event.isCancelled()) manualInput(client);
                     if (event.action() == InputConstants.RELEASE)
                         mouseHeld.remove(event.button().button());
@@ -123,27 +126,27 @@ public final class InvManager {
             status = "Join a world first";
             return;
         }
-        Object current = MinecraftClientAccess.screen(client);
+        Object current = MinecraftClientAccess.currentScreen(client);
         if (current != null
-                && !(current instanceof InventoryScreen)
+                && !(current instanceof GuiInventory)
                 && !(current instanceof MoonsComposeScreen)) {
             status = "Close the other screen first";
             return;
         }
-        if (client.player.containerMenu != client.player.inventoryMenu
-                || !client.player.inventoryMenu.getCarried().isEmpty()) {
+        if (client.thePlayer.openContainer != client.thePlayer.inventoryContainer
+                || !LegacyItems.empty(LegacyItems.carried(client.thePlayer.inventoryContainer))) {
             status = "Finish the current inventory action first";
             return;
         }
-        if (!(current instanceof InventoryScreen))
-            MinecraftClientAccess.setScreen(client, new InventoryScreen(client.player));
+        if (!(current instanceof GuiInventory))
+            MinecraftClientAccess.setScreen(client, new GuiInventory(client.thePlayer));
         once = true;
         session.retry();
         status = "Organize once queued";
     }
 
     public static void beginKeyBinding() {
-        Object current = MinecraftClientAccess.screen(Minecraft.getInstance());
+        Object current = MinecraftClientAccess.currentScreen(Minecraft.getMinecraft());
         if (current instanceof MoonsComposeScreen) bindingScreen = current;
     }
 
@@ -172,7 +175,7 @@ public final class InvManager {
         lastStatus = "";
     }
 
-    private static void enter(InventoryScreen current, long now) {
+    private static void enter(GuiInventory current, long now) {
         if (screen == current) return;
         FAILURE.reset();
         screen = current;
@@ -184,19 +187,19 @@ public final class InvManager {
     private static void manualInput(Minecraft client) {
         if ((!InvManagerConfig.enabled() && !once)
                 || !ClientReady.interaction(client)
-                || !(MinecraftClientAccess.screen(client) instanceof InventoryScreen current)
-                || client.player.containerMenu != client.player.inventoryMenu) return;
+                || !(MinecraftClientAccess.currentScreen(client) instanceof GuiInventory current)
+                || client.thePlayer.openContainer != client.thePlayer.inventoryContainer) return;
         long now = System.nanoTime();
         enter(current, now);
         session.manualInput(snapshot(client), now, InvManagerConfig.manualDelay());
     }
 
     private static void tick(Minecraft client) {
-        if (bindingScreen != null && bindingScreen != MinecraftClientAccess.screen(client))
+        if (bindingScreen != null && bindingScreen != MinecraftClientAccess.currentScreen(client))
             bindingScreen = null;
         if (!ClientReady.interaction(client)
-                || !(MinecraftClientAccess.screen(client) instanceof InventoryScreen current)
-                || client.player.containerMenu != client.player.inventoryMenu) {
+                || !(MinecraftClientAccess.currentScreen(client) instanceof GuiInventory current)
+                || client.thePlayer.openContainer != client.thePlayer.inventoryContainer) {
             if (screen != null) {
                 lastStatus = status;
                 screen = null;
@@ -238,7 +241,10 @@ public final class InvManager {
         InventoryAction action = plan.getFirst();
         status = action.reason();
         if (FAILURE.beforeClick(
-                client, client.player.inventoryMenu, snapshot.menuSlot(action.source()), null)) {
+                client,
+                client.thePlayer.inventoryContainer,
+                snapshot.menuSlot(action.source()),
+                null)) {
             status = "Misclick · retrying";
             nextActionAt = now + Math.max(50, InvManagerConfig.nextDelay()) * 1_000_000L;
             return;
@@ -246,7 +252,7 @@ public final class InvManager {
         if (!session.reserve(action)
                 || !InventoryClicks.swap(
                         client,
-                        client.player.inventoryMenu,
+                        client.thePlayer.inventoryContainer,
                         snapshot.menuSlot(action.source()),
                         snapshot.menuSlot(action.target()),
                         action.target(),
@@ -261,35 +267,35 @@ public final class InvManager {
 
     private static String waitReason(Minecraft client, long now) {
         if (!InventoryRules.error().isEmpty()) return InventoryRules.error();
-        if (!client.isWindowActive()) return "Paused · window unfocused";
-        if (!client.player.inventoryMenu.getCarried().isEmpty())
+        if (!client.inGameHasFocus) return "Paused · window unfocused";
+        if (!LegacyItems.empty(LegacyItems.carried(client.thePlayer.inventoryContainer)))
             return "Paused · cursor holds an item";
         if (!mouseHeld.isEmpty() || session.paused(now)) return "Paused · manual input";
-        if (AutoTotem.inventoryBusy()
-                || InventoryClicks.busyExcept(null)
-                || InventoryClicks.recentlyBusy(now)) return "Paused · another inventory action";
+        if (InventoryClicks.busyExcept(null) || InventoryClicks.recentlyBusy(now))
+            return "Paused · another inventory action";
         if (HotbarLease.isHeld() || PlacementCoordinator.busy()) return "Paused · hotbar in use";
-        if (client.player.isDeadOrDying() || client.player.isSpectator())
+        if (client.thePlayer.isDead || client.thePlayer.isSpectator())
             return "Paused · player unavailable";
-        if (client.player.isUsingItem() || client.gameMode.isDestroying() || now < combatUntil)
-            return "Paused · combat or item use";
-        if (!client.player.onGround()
-                || client.player.getDeltaMovement().horizontalDistanceSqr() > .0001
-                || client.options.keyUp.isDown()
-                || client.options.keyDown.isDown()
-                || client.options.keyLeft.isDown()
-                || client.options.keyRight.isDown()
-                || client.options.keyJump.isDown()) return "Paused · moving";
+        if (client.thePlayer.isUsingItem()
+                || client.playerController.getIsHittingBlock()
+                || now < combatUntil) return "Paused · combat or item use";
+        if (!client.thePlayer.onGround
+                || VecMath.horizontalDistanceSqr(VecMath.motion(client.thePlayer)) > .0001
+                || client.gameSettings.keyBindForward.isKeyDown()
+                || client.gameSettings.keyBindBack.isKeyDown()
+                || client.gameSettings.keyBindLeft.isKeyDown()
+                || client.gameSettings.keyBindRight.isKeyDown()
+                || client.gameSettings.keyBindJump.isKeyDown()) return "Paused · moving";
         return "";
     }
 
     private static InventorySnapshot snapshot(Minecraft client) {
-        return InventorySnapshot.capture(client.player.inventoryMenu, client.player.getInventory());
+        return InventorySnapshot.capture(
+                client.thePlayer.inventoryContainer, client.thePlayer.inventory);
     }
 
     private static BitSet protectedSlots() {
         BitSet blocked = session.protectedSlots();
-        if (AutoTotem.reservesOffhand()) blocked.set(40);
         return blocked;
     }
 
@@ -300,10 +306,14 @@ public final class InvManager {
     private static List<InventoryAction> plan(
             Minecraft client, InventorySnapshot snapshot, boolean protectSpecial) {
         var blocked = protectedSlots();
-        for (int i = 0; i < 41; i++) {
+        for (int i = 0; i < 40; i++) {
             int slot = snapshot.menuSlot(i);
-            if (slot < 0 || !client.player.inventoryMenu.slots.get(slot).mayPickup(client.player))
-                blocked.set(i);
+            if (slot < 0
+                    || !client.thePlayer
+                            .inventoryContainer
+                            .inventorySlots
+                            .get(slot)
+                            .canTakeStack(client.thePlayer)) blocked.set(i);
         }
         var result = new ArrayList<InventoryAction>();
         result.addAll(
@@ -318,14 +328,14 @@ public final class InvManager {
                 .filter(
                         action -> {
                             var source =
-                                    client.player.inventoryMenu.getSlot(
+                                    client.thePlayer.inventoryContainer.getSlot(
                                             snapshot.menuSlot(action.source()));
                             var target =
-                                    client.player.inventoryMenu.getSlot(
+                                    client.thePlayer.inventoryContainer.getSlot(
                                             snapshot.menuSlot(action.target()));
-                            return target.mayPlace(action.beforeSource())
-                                    && (action.beforeTarget().isEmpty()
-                                            || source.mayPlace(action.beforeTarget()));
+                            return target.isItemValid(action.beforeSource())
+                                    && (LegacyItems.empty(action.beforeTarget())
+                                            || source.isItemValid(action.beforeTarget()));
                         })
                 .toList();
     }
@@ -335,16 +345,15 @@ public final class InvManager {
         var roles = InvManagerConfig.roles();
         var views = new ArrayList<SlotView>();
         InventorySnapshot snapshot = ClientReady.interaction(client) ? snapshot(client) : null;
-        for (int i = 0; i < 10; i++) {
-            int slot = i == 9 ? 40 : i;
-            var item = snapshot == null ? ItemStack.EMPTY : snapshot.item(slot);
+        for (int i = 0; i < 9; i++) {
+            int slot = i;
+            var item = snapshot == null ? LegacyItems.EMPTY : snapshot.item(slot);
             String protection = roles.get(i) == InventoryRole.LOCKED ? "Locked slot" : "";
             if (session.protectedSlots().get(slot)) protection = "Manually placed this session";
             if (!InventoryRules.resolve(i, roles.get(i))
                     .mayMove(item, InvManagerConfig.protectSpecial()))
                 protection = InventoryItems.protection(item);
-            if (slot == 40 && AutoTotem.reservesOffhand()) protection = "Reserved by AutoTotem";
-            views.add(new SlotView(i, roles.get(i), item.copy(), protection));
+            views.add(new SlotView(i, roles.get(i), LegacyItems.copy(item), protection));
         }
         var actions = snapshot == null ? List.<InventoryAction>of() : plan(client, snapshot);
         return new View(

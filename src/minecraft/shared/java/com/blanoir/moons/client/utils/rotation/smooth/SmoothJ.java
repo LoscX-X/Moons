@@ -1,10 +1,9 @@
 package com.blanoir.moons.client.utils.rotation.smooth;
 
+import com.blanoir.moons.client.compat.math.Mth;
 import com.blanoir.moons.client.utils.math.MathUtils;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 import com.blanoir.moons.client.utils.rotation.quantize.QuantizerA;
-
-import net.minecraft.util.Mth;
 
 /**
  * J: Existing FullLock angle-cap stepping and smoothing scale.

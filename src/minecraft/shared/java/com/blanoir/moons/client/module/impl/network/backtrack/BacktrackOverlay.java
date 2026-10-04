@@ -1,28 +1,17 @@
 package com.blanoir.moons.client.module.impl.network.backtrack;
 
 import com.blanoir.moons.client.access.MinecraftClientAccess;
+import com.blanoir.moons.client.compat.math.Mth;
 import com.blanoir.moons.client.config.Settings;
 import com.blanoir.moons.client.event.frame.WorldRenderEvent;
 import com.blanoir.moons.client.module.impl.misc.antibot.AntiBot;
-import com.blanoir.moons.client.render.VisualModelCapture;
 import com.blanoir.moons.client.render.model.ModelOverlayRenderer;
 import com.blanoir.moons.client.utils.render.ColorCodec;
-import com.mojang.blaze3d.vertex.PoseStack;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.SubmitNodeCollector;
-import net.minecraft.client.renderer.entity.EntityRenderer;
-import net.minecraft.client.renderer.entity.state.EntityRenderState;
-import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
-import net.minecraft.client.renderer.state.level.CameraRenderState;
-import net.minecraft.client.renderer.state.level.LevelRenderState;
-import net.minecraft.util.LightCoordsUtil;
-import net.minecraft.util.Mth;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.EntityDimensions;
-import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.Vec3;
+import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.util.AxisAlignedBB;
+import net.minecraft.util.Vec3;
 
 /** Smoothed real-position presentation; rendering never changes packet history. */
 final class BacktrackOverlay {
@@ -46,43 +35,47 @@ final class BacktrackOverlay {
         renderPosition = null;
     }
 
-    void frame(LivingEntity target, Vec3 real, double deltaSeconds) {
+    void frame(EntityLivingBase target, Vec3 real, double deltaSeconds) {
         if (target == null || config.espMode() == BacktrackConfig.EspMode.NONE) {
             reset();
             return;
         }
-        if (renderPosition == null || renderPosition.distanceToSqr(real) > 4.0) {
+        if (renderPosition == null || renderPosition.squareDistanceTo(real) > 4.0) {
             renderPosition = real;
             return;
         }
         double response = 1.0 - Math.exp(-28.0 * Mth.clamp(deltaSeconds, 0.0, 0.05));
-        renderPosition = renderPosition.add(real.subtract(renderPosition).scale(response));
+        renderPosition =
+                new Vec3(
+                        renderPosition.xCoord + (real.xCoord - renderPosition.xCoord) * response,
+                        renderPosition.yCoord + (real.yCoord - renderPosition.yCoord) * response,
+                        renderPosition.zCoord + (real.zCoord - renderPosition.zCoord) * response);
     }
 
-    void renderEsp(WorldRenderEvent event, LivingEntity target, Vec3 real) {
+    void renderEsp(WorldRenderEvent event, EntityLivingBase target, Vec3 real) {
         if (!visible(target, real)
                 || (config.espMode() != BacktrackConfig.EspMode.BOX
                         && config.espMode() != BacktrackConfig.EspMode.WIREFRAME)) return;
-        Minecraft client = Minecraft.getInstance();
+        Minecraft client = Minecraft.getMinecraft();
         Vec3 camera = MinecraftClientAccess.camera(client).position();
         Vec3 at = renderPosition == null ? real : renderPosition;
-        PoseStack poses = event.poseStack();
+        com.blanoir.moons.client.render.LegacyPoseStack poses = event.poseStack();
         poses.pushPose();
         try {
-            poses.translate(-camera.x, -camera.y, -camera.z);
+            poses.translate(-camera.xCoord, -camera.yCoord, -camera.zCoord);
             if (config.espMode() == BacktrackConfig.EspMode.BOX) {
-                EntityDimensions dimensions = target.getDimensions(target.getPose());
-                double halfWidth = dimensions.width() / 2.0;
-                AABB box =
-                        new AABB(
+
+                double halfWidth = target.width / 2.0;
+                AxisAlignedBB box =
+                        new AxisAlignedBB(
                                         -halfWidth,
                                         0,
                                         -halfWidth,
                                         halfWidth,
-                                        dimensions.height(),
+                                        target.height,
                                         halfWidth)
-                                .inflate(0.015)
-                                .move(at);
+                                .expand(0.015, 0.015, 0.015)
+                                .offset(at.xCoord, at.yCoord, at.zCoord);
                 BacktrackRenderer.renderBox(
                         poses,
                         box,
@@ -91,10 +84,13 @@ final class BacktrackOverlay {
                         "backtrack box");
             } else {
                 if (wireframe == null) wireframe = new BacktrackWireframePlayer();
-                poses.translate(at.x, at.y, at.z);
-                wireframe.setRotation(target.getXRot(), target.getYRot());
-                wireframe.setPose(target.getPose());
-                wireframe.setSwimAmount(target.getSwimAmount(0.0F));
+                poses.translate(at.xCoord, at.yCoord, at.zCoord);
+                wireframe.setRotation(target.rotationPitch, target.rotationYaw);
+                wireframe.setPose(
+                        target.isSneaking()
+                                ? BacktrackWireframePlayer.Pose.CROUCHING
+                                : BacktrackWireframePlayer.Pose.STANDING);
+
                 wireframe.render(
                         poses,
                         BacktrackVisual.fill(wireFill),
@@ -105,70 +101,27 @@ final class BacktrackOverlay {
         }
     }
 
-    void renderModel(
-            PoseStack poses,
-            LevelRenderState levelState,
-            SubmitNodeCollector collector,
-            LivingEntity target,
-            Vec3 real) {
+    void renderModel(float partialTicks, EntityLivingBase target, Vec3 real) {
         if (config.espMode() != BacktrackConfig.EspMode.MODEL || !visible(target, real)) return;
-        Minecraft client = Minecraft.getInstance();
-        Entity entity = target;
-        EntityRenderer<? super Entity, ?> renderer =
-                client.getEntityRenderDispatcher().getRenderer(entity);
-        EntityRenderState state = renderer.createRenderState(entity, 0.0F);
-        // Extra models cannot submit into the game's nameplate/outline/shadow passes.
-        state.outlineColor = 0;
-        state.nameTag = null;
-        state.shadowPieces.clear();
-        state.displayFireAnimation = false;
-        state.leashStates = java.util.List.of();
-        Vec3 at = renderPosition == null ? real : renderPosition;
-        state.x = at.x;
-        state.y = at.y;
-        state.z = at.z;
-        CameraRenderState camera = levelState.cameraRenderState;
-        state.distanceToCameraSq = camera.pos.distanceToSqr(state.x, state.y, state.z);
-        state.lightCoords =
-                LightCoordsUtil.pack(
-                        Mth.clamp(
-                                Math.round(LightCoordsUtil.block(state.lightCoords) * modelLight),
-                                0,
-                                15),
-                        Mth.clamp(
-                                Math.round(LightCoordsUtil.sky(state.lightCoords) * modelLight),
-                                0,
-                                15));
-        if (state instanceof LivingEntityRenderState living) {
-            living.bodyRot = target.getYRot();
-            living.yRot = 0.0F;
-            living.xRot = target.getXRot();
-        }
-        VisualModelCapture.submit(
-                collector,
+        ModelOverlayRenderer.render(
+                target,
+                renderPosition == null ? real : renderPosition,
+                partialTicks,
                 modelOutline,
-                ModelOverlayRenderer::remapOverlayModel,
-                isolated ->
-                        client.getEntityRenderDispatcher()
-                                .submit(
-                                        state,
-                                        camera,
-                                        state.x - camera.pos.x,
-                                        state.y - camera.pos.y,
-                                        state.z - camera.pos.z,
-                                        poses,
-                                        isolated));
+                modelLight,
+                true);
     }
 
-    private static boolean visible(LivingEntity target, Vec3 real) {
+    private static boolean visible(EntityLivingBase target, Vec3 real) {
         if (target == null
                 || AntiBot.shouldHide(target)
-                || real.distanceToSqr(target.position()) < 0.0025) return false;
-        Minecraft client = Minecraft.getInstance();
+                || real.squareDistanceTo(new Vec3(target.posX, target.posY, target.posZ)) < 0.0025)
+            return false;
+        Minecraft client = Minecraft.getMinecraft();
         return client != null
-                && client.player != null
-                && client.level != null
-                && client.level.getEntity(target.getId()) == target;
+                && client.thePlayer != null
+                && client.theWorld != null
+                && client.theWorld.getEntityByID(target.getEntityId()) == target;
     }
 
     private static int color(String suffix, int fallback) {

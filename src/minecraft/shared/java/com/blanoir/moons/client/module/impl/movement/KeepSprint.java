@@ -9,7 +9,7 @@ import com.blanoir.moons.client.management.combat.AttackSlowdownTracker;
 import com.blanoir.moons.client.utils.math.RandomMath;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.world.entity.player.Player;
+import net.minecraft.entity.player.EntityPlayer;
 
 /** Attack slowdown control. */
 public final class KeepSprint {
@@ -74,8 +74,8 @@ public final class KeepSprint {
                 "KeepSprint.tickEnd",
                 event -> {
                     Minecraft client = event.client();
-                    if (client.player != null) {
-                        sprinting = client.player.isSprinting();
+                    if (client.thePlayer != null) {
+                        sprinting = client.thePlayer.isSprinting();
                     }
                 });
     }
@@ -89,8 +89,8 @@ public final class KeepSprint {
             return 0.6D;
         }
 
-        Minecraft client = Minecraft.getInstance();
-        var currentPlayer = client == null ? null : client.player;
+        Minecraft client = Minecraft.getMinecraft();
+        var currentPlayer = client == null ? null : client.thePlayer;
         int hurtTime = currentPlayer == null ? 0 : currentPlayer.hurtTime;
         boolean hurt = hurtTime >= HURT_TIME_MIN.get() && hurtTime <= HURT_TIME_MAX.get();
         double min = hurt ? HURT_MOTION_MIN.get() : MOTION_MIN.get();
@@ -98,17 +98,17 @@ public final class KeepSprint {
         return RandomMath.between(min, max) / 100.0D;
     }
 
-    /** Called immediately around vanilla Player.causeExtraKnockback. */
+    /** Called immediately around vanilla EntityPlayer.causeExtraKnockback. */
     public static void beginAttackSlowdown(Object owner) {
-        Minecraft client = Minecraft.getInstance();
-        if (ENABLED.get() && owner instanceof Player player && client.player == player) {
+        Minecraft client = Minecraft.getMinecraft();
+        if (ENABLED.get() && owner instanceof EntityPlayer player && client.thePlayer == player) {
             AttackSlowdownTracker.capture(player);
         }
     }
 
     /** Replaces vanilla's 0.6 horizontal multiplier and sprint reset. */
     public static void finishAttackSlowdown(Object owner) {
-        if (!(owner instanceof Player player)) return;
+        if (!(owner instanceof EntityPlayer player)) return;
         if (!ENABLED.get()) {
             AttackSlowdownTracker.discard(player);
             return;

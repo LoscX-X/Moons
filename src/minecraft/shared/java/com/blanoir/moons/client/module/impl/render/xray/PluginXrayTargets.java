@@ -12,10 +12,10 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
+import net.minecraft.block.Block;
+import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.Minecraft;
-import net.minecraft.server.packs.PackResources;
-import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.client.resources.IResourcePack;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -33,14 +33,14 @@ public final class PluginXrayTargets {
     private static final Map<String, LinkedHashMap<String, ManualTarget>> SAVED =
             new LinkedHashMap<>();
     private static boolean legacyMigrated;
-    private static volatile Map<BlockState, StateTarget> compiled = Map.of();
+    private static volatile Map<IBlockState, StateTarget> compiled = Map.of();
     private static String currentScope = "";
     private static Object modelSet;
-    private static List<PackResources> packs = List.of();
+    private static List<IResourcePack> packs = List.of();
     private static PluginModelIndex indexing;
-    private static volatile Map<BlockState, PluginModelIndex.Appearance> automatic = Map.of();
+    private static volatile Map<IBlockState, PluginModelIndex.Appearance> automatic = Map.of();
     private static PluginBlockCatalog catalog = new PluginBlockCatalog();
-    private static volatile Map<BlockState, String> appearanceIds = Map.of();
+    private static volatile Map<IBlockState, String> appearanceIds = Map.of();
     private static long revision;
     private static String configurationProblem = "";
 
@@ -72,16 +72,16 @@ public final class PluginXrayTargets {
         refresh(client);
     }
 
-    public static XrayTarget find(BlockState state) {
+    public static XrayTarget find(IBlockState state) {
         return compiled.get(state);
     }
 
-    public static boolean isRecognized(BlockState state) {
+    public static boolean isRecognized(IBlockState state) {
         return enabled && appearanceIds.containsKey(state);
     }
 
     /** Local appearance packs must not suppress explicitly selected vanilla ores. */
-    public static boolean blocksVanillaFallback(BlockState state) {
+    public static boolean blocksVanillaFallback(IBlockState state) {
         var appearance = automatic.get(state);
         return enabled && appearance != null && appearance.serverProvided();
     }
@@ -98,10 +98,10 @@ public final class PluginXrayTargets {
         updateContext(client);
         if (!enabled
                 || client == null
-                || client.level == null
+                || client.theWorld == null
                 || MinecraftClientAccess.hasOverlay(client)) return;
-        Object currentModels = client.getModelManager().getBlockStateModelSet();
-        List<PackResources> currentPacks = client.getResourceManager().listPacks().toList();
+        Object currentModels = client.getBlockRendererDispatcher().getBlockModelShapes();
+        List<IResourcePack> currentPacks = resourcePacks(client);
         if (modelSet != currentModels || !packs.equals(currentPacks)) {
             modelSet = currentModels;
             packs = currentPacks;
@@ -121,7 +121,7 @@ public final class PluginXrayTargets {
         }
         if (indexing != null && indexing.advance(2)) {
             automatic = indexing.snapshot();
-            Map<BlockState, String> bindings = new HashMap<>();
+            Map<IBlockState, String> bindings = new HashMap<>();
             automatic.forEach(
                     (state, appearance) ->
                             bindings.put(
@@ -148,6 +148,15 @@ public final class PluginXrayTargets {
         }
     }
 
+    private static List<IResourcePack> resourcePacks(Minecraft client) {
+        var result = new ArrayList<IResourcePack>();
+        for (var entry : client.getResourcePackRepository().getRepositoryEntries())
+            result.add(entry.getResourcePack());
+        var server = client.getResourcePackRepository().getResourcePackInstance();
+        if (server != null) result.add(server);
+        return List.copyOf(result);
+    }
+
     public static int automaticCount() {
         return automatic.size();
     }
@@ -170,17 +179,17 @@ public final class PluginXrayTargets {
             String detail,
             boolean enabled,
             int rgb,
-            BlockState preview,
+            IBlockState preview,
             int stateCount) {}
 
     /** Immutable UI snapshot; persisted entries remain visible while their models are unavailable. */
     public static List<BlockEntry> blocks() {
-        Map<String, List<BlockState>> states = new HashMap<>();
+        Map<String, List<IBlockState>> states = new HashMap<>();
         appearanceIds.forEach(
                 (state, id) -> states.computeIfAbsent(id, ignored -> new ArrayList<>()).add(state));
         List<BlockEntry> result = new ArrayList<>();
         for (var entry : catalog.entries()) {
-            List<BlockState> matching =
+            List<IBlockState> matching =
                     states.getOrDefault(entry.id(), List.of()).stream()
                             .sorted(
                                     Comparator.comparing(
@@ -197,11 +206,11 @@ public final class PluginXrayTargets {
                             matching.size()));
         }
         for (var target : SAVED.getOrDefault(currentScope, new LinkedHashMap<>()).values()) {
-            BlockState preview = null;
+            IBlockState preview = null;
             try {
                 var selector = PluginBlockSelector.parse(target.selector());
                 preview =
-                        selector.block().getStateDefinition().getPossibleStates().stream()
+                        selector.block().getBlockState().getValidStates().stream()
                                 .filter(selector::matches)
                                 .findFirst()
                                 .orElse(null);
@@ -259,7 +268,7 @@ public final class PluginXrayTargets {
         }
     }
 
-    public static String describe(BlockState state) {
+    public static String describe(IBlockState state) {
         var appearance = automatic.get(state);
         return appearance == null
                 ? "No custom model mapping detected."
@@ -359,7 +368,7 @@ public final class PluginXrayTargets {
 
     private static void rebuild() {
         compiled.values().forEach(target -> target.active = false);
-        Map<BlockState, StateTarget> next = new HashMap<>();
+        Map<IBlockState, StateTarget> next = new HashMap<>();
         Map<String, ManualTarget> saved = SAVED.get(currentScope);
         if (enabled && saved != null) {
             List<StateTarget> targets = new ArrayList<>();
@@ -380,8 +389,7 @@ public final class PluginXrayTargets {
                     Comparator.comparingInt((StateTarget target) -> target.selector.specificity())
                             .reversed());
             for (StateTarget target : targets) {
-                for (BlockState state :
-                        target.selector.block().getStateDefinition().getPossibleStates()) {
+                for (IBlockState state : target.selector.block().getBlockState().getValidStates()) {
                     if (target.matches(state)) next.putIfAbsent(state, target);
                 }
             }
@@ -537,7 +545,7 @@ public final class PluginXrayTargets {
         }
 
         @Override
-        public boolean matches(BlockState state) {
+        public boolean matches(IBlockState state) {
             return selector.matches(state);
         }
 

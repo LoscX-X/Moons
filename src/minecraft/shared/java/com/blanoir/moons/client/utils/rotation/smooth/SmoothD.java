@@ -1,8 +1,7 @@
 package com.blanoir.moons.client.utils.rotation.smooth;
 
+import com.blanoir.moons.client.compat.math.Mth;
 import com.blanoir.moons.client.utils.rotation.Rotation;
-
-import net.minecraft.util.Mth;
 
 /**
  * D: Existing bounded Scaffold placement and return steps.

@@ -1,9 +1,9 @@
 package com.blanoir.moons.features.command;
 
 import com.blanoir.moons.client.chat.ClientChat;
+import com.blanoir.moons.client.compat.input.InputConstants;
 import com.blanoir.moons.client.module.framework.ModuleKeybinds;
 import com.blanoir.moons.client.module.framework.ModuleRegistry;
-import com.mojang.blaze3d.platform.InputConstants;
 
 import net.minecraft.client.Minecraft;
 
@@ -14,7 +14,7 @@ public final class BindCommand {
     private BindCommand() {}
 
     public static boolean handle(String tail) {
-        Minecraft client = Minecraft.getInstance();
+        Minecraft client = Minecraft.getMinecraft();
         String[] parts = tail.trim().split("\\s+");
         if (tail.isBlank() || parts.length != 2) {
             ClientChat.send(client, "用法：.bind <功能ID> <按键|none>，例如 .bind scaffold r");
@@ -79,7 +79,7 @@ public final class BindCommand {
         try {
             InputConstants.Key key = InputConstants.getKey(name);
             return ModuleKeybinds.isValid(key)
-                            && (key.getType() == InputConstants.Type.MOUSE || key.getValue() <= 348)
+                            && (key.getType() == InputConstants.Type.MOUSE || key.getValue() < 256)
                     ? key
                     : InputConstants.UNKNOWN;
         } catch (RuntimeException ignored) {

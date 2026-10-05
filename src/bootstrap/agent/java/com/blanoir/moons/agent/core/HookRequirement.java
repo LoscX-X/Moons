@@ -1,6 +1,6 @@
 package com.blanoir.moons.agent.core;
 
-/** Startup hooks block readiness; other required hooks are checked when their class is observed. */
+/** Startup matching blocks readiness; other hook misses remain diagnostics as in legacy loaders. */
 public enum HookRequirement {
     STARTUP,
     REQUIRED_WHEN_LOADED,

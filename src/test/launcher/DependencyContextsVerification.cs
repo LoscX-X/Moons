@@ -46,9 +46,44 @@ internal static class DependencyContextsVerification
         CacheMaintenance.Prune(home, Path.Combine(home, "legacy-cache"), () => false);
         Check(File.Exists(firstUi), "GC removed UI retained by an older context");
         DependencyRuntime.Resolve(home, profile, first.Item1, first.Item2);
+        var selectedA = InstallSelected(home, profile, "selected-A");
+        var selectedB = InstallSelected(home, VersionCatalog.Profiles[1], "selected-B");
+        var independentA = DependencyRuntime.Resolve(home, profile, selectedA.Item1, selectedA.Item2);
+        var independentB = DependencyRuntime.Resolve(home, VersionCatalog.Profiles[1], selectedB.Item1, selectedB.Item2);
+        Check(independentA.Path.Contains("libraries\\latest\\" + profile.GameId), "Latest package is not grouped by game version");
+        Check(!File.Exists(Path.Combine(DependencyRuntime.SelectedRoot(home, profile, selectedA.Item1, selectedA.Item2), VersionCatalog.Profiles[1].YsmModuleName)), "Unselected adapter installed");
+        var legacyProfile = new SupportProfile("1_8_9", "1.8.9", "1.8.9", "legacy", "", "^$", new[] { "1.8.9" }, 8);
+        var selectedLegacy = InstallSelected(home, legacyProfile, "java8-legacy");
+        var legacyContext = DependencyRuntime.Resolve(home, legacyProfile, selectedLegacy.Item1, selectedLegacy.Item2);
+        Check(legacyContext.Path.Contains("libraries\\legacy\\1.8.9\\") && File.ReadAllText(legacyContext.Path).Contains("java.minimum=8"), "Legacy library layout/Java version lost");
+        Check(selectedA.Item1["sha256"] != selectedLegacy.Item1["sha256"], "Fixture failed to distinguish incompatible UI dependencies");
+        byte[] originalManifest = File.ReadAllBytes(independentA.Path);
+        Check(!DependencyRuntime.Retire(home, profile.GameId, () => true), "Busy version was retired");
+        Check(DependencyRuntime.Retire(home, profile.GameId, () => false), "Idle version could not be retired");
+        var retired = DependencyRuntime.Resolve(home, profile, selectedA.Item1, selectedA.Item2);
+        Check(retired.Path.Contains("libraries\\legacy\\" + profile.GameId) && retired.Hash == independentA.Hash
+            && Hashing.Sha256(originalManifest) == Hashing.Sha256(retired.Path), "Retirement rewrote dependency manifests");
+        DependencyRuntime.Resolve(home, VersionCatalog.Profiles[1], selectedB.Item1, selectedB.Item2);
         string handoff = Path.Combine(args[0], "dependency-fixture.properties");
-        File.WriteAllText(handoff, "home=" + home + "\nmanifest=" + b.Path + "\nhash=" + b.Hash + "\nprofile=" + profile.GameId + "\n", new UTF8Encoding(false));
-        Console.WriteLine("MOONS_DEPENDENCY_CONTEXTS_VERIFIED A-B-A profile-closure corruption-repair old-ui-retention unicode");
+        File.WriteAllText(handoff, "home=" + home + "\nmanifest=" + retired.Path + "\nhash=" + retired.Hash + "\nprofile=" + profile.GameId + "\n", new UTF8Encoding(false));
+        Console.WriteLine("MOONS_DEPENDENCY_CONTEXTS_VERIFIED A-B-A profile-closure corruption-repair old-ui-retention unicode independent-selected legacy-java8 immutable-retirement");
+    }
+
+    private static Tuple<Dictionary<string,string>, Dictionary<string,string>> InstallSelected(string home, SupportProfile profile, string version)
+    {
+        var ui = new Dictionary<string,string>();
+        byte[] bytes = Encoding.UTF8.GetBytes("selected UI " + version);
+        ui["sha256"] = Hashing.Sha256(bytes);
+        var ysm = new Dictionary<string,string>();
+        foreach (string name in DependencyRuntime.RequiredYsm(profile)) ysm[name] = Hashing.Sha256(Encoding.UTF8.GetBytes(name + " " + version));
+        string root = DependencyRuntime.SelectedRoot(home, profile, ui, ysm);
+        DependencyRuntime.PublishObject(home, Path.Combine(root, "ui", "moons-ui-runtime.jar"), ui["sha256"], temporary => File.WriteAllBytes(temporary, bytes));
+        foreach (string name in DependencyRuntime.RequiredYsm(profile)) {
+            byte[] content = Encoding.UTF8.GetBytes(name + " " + version);
+            DependencyRuntime.PublishObject(home, Path.Combine(root, name), ysm[name], temporary => File.WriteAllBytes(temporary, content));
+        }
+        DependencyRuntime.PublishSelected(home, profile, ui, ysm);
+        return Tuple.Create(ui, ysm);
     }
 
     private static Tuple<Dictionary<string,string>, Dictionary<string,string>> Install(string home, string version)

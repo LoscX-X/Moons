@@ -11,6 +11,25 @@ namespace Moons.Shared
     internal static class DirectoryJunction
     {
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern bool CreateHardLink(string name, string existing, IntPtr security);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool GetFileInformationByHandle(SafeFileHandle handle, [Out] uint[] information);
+
+        internal static bool TryHardLink(string name, string existing)
+        {
+            return CreateHardLink(name, existing, IntPtr.Zero);
+        }
+
+        internal static bool SameFile(string first, string second)
+        {
+            using (var left = CreateFile(first, 0, 7, IntPtr.Zero, 3, 0, IntPtr.Zero))
+            using (var right = CreateFile(second, 0, 7, IntPtr.Zero, 3, 0, IntPtr.Zero)) {
+                var a = new uint[13]; var b = new uint[13];
+                return !left.IsInvalid && !right.IsInvalid && GetFileInformationByHandle(left, a)
+                    && GetFileInformationByHandle(right, b) && a[7] == b[7] && a[11] == b[11] && a[12] == b[12];
+            }
+        }
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         private static extern SafeFileHandle CreateFile(string name, uint access, uint share,
             IntPtr security, uint creation, uint flags, IntPtr template);
         [DllImport("kernel32.dll", SetLastError = true)]

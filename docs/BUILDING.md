@@ -43,7 +43,7 @@ Set-Location E:\McEnv\moons
 - `Experiment` 发布为预发布版，不覆盖 GitHub 的 Latest；稳定后使用 `Release` 发布为正式版并标记 Latest。版本号和提交 SHA 一起标识本次构建，旧版冻结制品的版本名保持不变。
 - 依赖版本由 UI 和全部 YSM 文件的哈希生成，界面显示前 12 位。
 - 两个 EXE 显示客户端/依赖版本，Windows 文件属性包含客户端版本，`--version` 输出详细元数据。
-- 依赖版本记录位于 `MOONS_HOME/libraries/moons-dependencies.properties`。
+- 每个游戏版本的依赖清单和版本记录位于其独立依赖包中。
 - CI 以 `GITHUB_SHA` 标识构建，本地默认为 `local`，可用 `-Pmoons_build_id=<id>` 指定。
 - CI 摘要和构建日志显示客户端版本、实际检出的 commit；打包后补充依赖、UI 和 YSM 编号。Release 标题包含版本和短 commit，说明及 `moons-build-info` 产物保留完整构建信息。
 
@@ -55,28 +55,11 @@ CI 下载附件和 Release 中的 EXE 命名为 `moon-<load_version>-<8位commit
 
 依赖版本不变且已安装文件完好时，只需更新加载器。依赖内容变化或文件损坏时，运行匹配的安装器。
 
-## YSM 库与热更新
+## 构建后运行
 
-`moon-install.exe` 安装匹配的文件；内容相同的文件跳过，更新失败时回滚。`MOONS_HOME` 默认是 `%APPDATA%\.moons`，也可通过同名环境变量指定。
+运行匹配的安装器，选择游戏版本安装，再启动加载器。
 
-```text
-MOONS_HOME/
-  libraries/
-    moons-ysm-core.jar
-    moons-ysm-codecs.jar
-    moons-ysm-images.jar
-  modules/
-    moons-ysm-26.1.2.jar
-    moons-ysm-26.2.jar
-    moons-ysm-26.3.jar
-    moons-ysm-26.4-snapshot-1.jar
-```
-
-根目录的库和模块布局用于旧协议兼容。将 `moons-ysm-all.zip` 解压至 `MOONS_HOME` 可供旧协议使用；新加载器需要匹配安装器发布完整上下文。运行 `build\dist\moon-install.exe --install-only` 可无界面安装全部依赖，退出码 0 表示成功。使用 `moon.exe --verify-dependencies --minecraft-version 26.2` 检查选定版本；不指定版本时检查旧兼容布局。
-
-更新前先归档已安装的旧布局；`MOONS_HOME/legacy/<标识>/` 保存旧 UI 指针、库与模块，`view.sha256` 保存完整身份，data 目录通过 Windows junction 指向原有用户数据。旧 EXE 使用该视图作为 MOONS_HOME 即可读取自己的库和同一份配置。匹配加载器的 `--legacy-view` 输出已校验的视图路径；不要在视图内运行其他发行的安装器。正常新协议加载仍使用原 MOONS_HOME。
-
-外部扩展模块仍可通过模块重载更新。安装器管理的 YSM 使用上下文中的冻结库和适配模块，根目录旧布局的更新不会替换正在运行的冻结版本。修改 bootstrap API、宿主渲染钩子或注入位置后，需要重新构建 EXE、重启游戏并重新注入。
+外部扩展模块可通过模块重载更新；安装器管理的 YSM 使用固定依赖包。修改 bootstrap API、宿主渲染钩子或注入位置后，需要重新构建 EXE、重启游戏并重新注入。
 
 查看构建产物路径和时间，并运行加载器：
 
@@ -84,23 +67,6 @@ MOONS_HOME/
 Get-Item .\build\dist\moon.exe | Select-Object FullName, LastWriteTime, Length
 & .\build\dist\moon.exe
 ```
-
-## 缓存限制
-
-加载器启动、安装器成功完成更新时会尝试清理可再生成的缓存。存在 `java` / `javaw` 进程时延后到之后运行，避免删除延迟加载仍需使用的 JAR；文件被占用、访问受限或路径含目录链接时也会跳过。
-
-| 类别 | 保留上限 | 体积上限 | 过期时间 |
-| --- | --- | --- | --- |
-| 未被安装视图引用的 UI runtime | 当前版本及一个旧版本 | 256 MiB | 旧版本 30 天 |
-| 载荷 / DLL / API 缓存 | 12 份 | 128 MiB | 30 天 |
-| 模块和库副本 | 32 份 | 256 MiB | 30 天 |
-| 宿主 runtime 副本 | 8 份 | 64 MiB | 30 天 |
-| 失败安装留下的 YSM 备份 | 2 份 | 64 MiB | 7 天 |
-| 旧 `%TEMP%/moons` runtime 缓存 | 8 份 | 64 MiB | 7 天 |
-
-YSM 临时备份在更新成功后删除。缓存清理保留当前及各安装上下文引用的 UI 版本和写入不足 10 分钟的文件，超量时优先移除较旧条目；无法读取上下文时暂停 UI 清理。冻结安装视图不由缓存预算删除，受保护或被占用的文件可能使缓存暂时超过上限。
-
-Runtime 缓存位于 `MOONS_HOME/cache/runtime`。配置、模型、预设和 `MOONS_HOME/modules` 中的正式模块不属于缓存清理范围。
 
 ## 按需验证
 

@@ -111,7 +111,10 @@ std::wstring reload_event_name() {
 
 void log_line(const std::string& line) {
     std::lock_guard<std::mutex> guard(g_log_mutex);
-    std::ofstream output(data_directory() / L"bridge-dll.log", std::ios::app);
+    std::error_code ignored;
+    const auto directory = data_directory() / L"logs";
+    std::filesystem::create_directories(directory, ignored);
+    std::ofstream output(directory / L"bridge-dll.log", std::ios::app);
     if (!output) return;
     SYSTEMTIME now{};
     GetLocalTime(&now);
@@ -169,10 +172,11 @@ jstring new_utf8_string(JNIEnv* env, const std::string& value) {
 BridgeConfig read_config() {
     BridgeConfig config;
     const DWORD pid = GetCurrentProcessId();
-    std::filesystem::path path = data_directory()
+    std::filesystem::path path = data_directory() / L"cache" / L"bridge"
             / (L"bridge-" + std::to_wstring(pid) + L".conf");
     if (!std::filesystem::is_regular_file(path)) {
-        path = data_directory() / L"bridge.conf";
+        path = data_directory() / (L"bridge-" + std::to_wstring(pid) + L".conf");
+        if (!std::filesystem::is_regular_file(path)) path = data_directory() / L"bridge.conf";
     }
     std::ifstream input(path);
     std::string line;

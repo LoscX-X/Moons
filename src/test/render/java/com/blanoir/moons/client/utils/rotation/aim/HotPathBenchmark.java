@@ -4,14 +4,17 @@ import com.blanoir.moons.client.module.impl.combat.silentaura.LearnedAimModel;
 import com.blanoir.moons.client.render.WorldOverlayRenderer.ColoredBox;
 import com.blanoir.moons.client.render.world.OverlayGeometry;
 import com.blanoir.moons.client.render.world.ReferenceOverlayGeometry;
+import com.blanoir.moons.client.utils.entity.EntityDistance;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 
+import net.minecraft.util.Mth;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 import org.joml.Matrix4f;
 
 import java.lang.management.ManagementFactory;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Locale;
 import java.util.function.IntConsumer;
@@ -19,6 +22,10 @@ import java.util.function.Predicate;
 
 /** CPU/allocation comparisons only; no GPU, world raycasting or FPS claims. */
 public final class HotPathBenchmark {
+    private static final double[] COARSE = {.1, .3, .5, .7, .9};
+    private static final double[] PRECISE = {
+        .015, .05, .15, .25, .35, .45, .55, .65, .75, .85, .95, .985
+    };
     private static volatile Object sink;
     private static volatile float vertexSink;
     private static final com.sun.management.ThreadMXBean ALLOCATIONS = allocations();
@@ -36,10 +43,7 @@ public final class HotPathBenchmark {
                 "surface-reference",
                 2000,
                 5000,
-                i ->
-                        sink =
-                                AimSearchPerformanceVerification.reference(
-                                        boxes[i & 31], eye, look, 6, .72, true, visible));
+                i -> sink = referenceSurfacePoint(boxes[i & 31], eye, look, 6, .72, true, visible));
         measure(
                 "surface-optimized",
                 2000,
@@ -77,6 +81,55 @@ public final class HotPathBenchmark {
         var workspace = new LearnedAimModel.Workspace();
         measure("inference-fresh", 300, 1000, i -> sink = model.predict(input));
         measure("inference-reused", 300, 1000, i -> sink = model.predict(input, workspace));
+    }
+
+    /** Frozen list-based traversal for the benchmark's allocation and CPU comparison. */
+    private static Vec3 referenceSurfacePoint(
+            AABB box,
+            Vec3 eye,
+            Vec3 look,
+            double range,
+            double height,
+            boolean precise,
+            Predicate<Vec3> visible) {
+        var points = new ArrayList<Vec3>(156);
+        box.clip(eye, eye.add(look.scale(range))).ifPresent(points::add);
+        Vec3 closest = EntityDistance.closestPoint(eye, box);
+        Vec3 difference = closest.subtract(eye);
+        if (difference.lengthSqr() >= 1.0E-9D)
+            box.clip(eye, eye.add(difference.scale(2.0D))).ifPresent(points::add);
+        points.add(closest);
+        for (double a : precise ? PRECISE : COARSE)
+            for (double b : precise ? PRECISE : COARSE) {
+                double x = Mth.lerp(a, box.minX, box.maxX);
+                double y = Mth.lerp(a, box.minY, box.maxY);
+                double z = Mth.lerp(b, box.minZ, box.maxZ);
+                double xb = Mth.lerp(b, box.minX, box.maxX);
+                double yb = Mth.lerp(b, box.minY, box.maxY);
+                points.add(new Vec3(box.minX, y, z));
+                points.add(new Vec3(box.maxX, y, z));
+                points.add(new Vec3(x, box.minY, z));
+                points.add(new Vec3(x, box.maxY, z));
+                points.add(new Vec3(xb, yb, box.minZ));
+                points.add(new Vec3(xb, yb, box.maxZ));
+            }
+        Vec3 best = null;
+        double bestScore = Double.POSITIVE_INFINITY;
+        double preferredY = Mth.lerp(Mth.clamp(height, 0.0D, 1.0D), box.minY, box.maxY);
+        for (Vec3 point : points) {
+            if (eye.distanceToSqr(point) > range * range || !visible.test(point)) continue;
+            Vec3 direction = point.subtract(eye).normalize();
+            double angularCost = 1.0D - Mth.clamp(look.dot(direction), -1.0D, 1.0D);
+            double lowAimPenalty =
+                    Math.max(0.0D, preferredY - point.y) / Math.max(box.getYsize(), .1D);
+            double score =
+                    angularCost * 32.0D + eye.distanceToSqr(point) * .002D + lowAimPenalty * 1.35D;
+            if (score < bestScore) {
+                bestScore = score;
+                best = point;
+            }
+        }
+        return best;
     }
 
     private static void measure(String name, int warmup, int count, IntConsumer operation) {

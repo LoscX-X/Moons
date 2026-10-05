@@ -23,11 +23,14 @@ public final class PayloadCacheVerification {
             throw new AssertionError(
                     "Runtime extraction escaped MOONS_HOME or changed the payload");
         }
-        var timestamp = Files.getLastModifiedTime(cached);
+        var identity = Files.readAttributes(cached, java.nio.file.attribute.BasicFileAttributes.class).fileKey();
+        Files.setLastModifiedTime(cached, java.nio.file.attribute.FileTime.from(java.time.Instant.EPOCH));
         if (!cached.equals(PayloadCache.extract(outer, home, "runtime.jar", "moons-runtime.jar"))
-                || !timestamp.equals(Files.getLastModifiedTime(cached))) {
+                || !java.util.Objects.equals(identity, Files.readAttributes(cached, java.nio.file.attribute.BasicFileAttributes.class).fileKey())
+                || !Arrays.equals(content, Files.readAllBytes(cached))
+                || Files.getLastModifiedTime(cached).toInstant().equals(java.time.Instant.EPOCH)) {
             throw new AssertionError("Unchanged runtime cache was recreated");
         }
-        System.out.println("PAYLOAD_CACHE_VERIFIED home-local extraction and cache reuse");
+        System.out.println("PAYLOAD_CACHE_VERIFIED home-local extraction cache reuse identity and latest-use timestamp");
     }
 }

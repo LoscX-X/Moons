@@ -200,6 +200,7 @@ def packageCheckExe = tasks.register('ysmPackageVerificationExe', Exec) {
     onlyIf { moonsBuild.windowsHost }
     def sources = files('src/tools/launcher/csharp/YsmPackage.cs',
             'src/tools/launcher/csharp/CacheMaintenance.cs',
+            'src/tools/launcher/csharp/ProcessEvidenceCache.cs',
             'src/tools/launcher/csharp/DependencyRuntime.cs',
             'src/tools/launcher/csharp/VersionCatalog.cs', moonsVersions.launcherSource, 'src/tools/launcher/csharp/RuntimeMetadata.cs',
             'src/tools/shared/StagedFile.cs', 'src/tools/shared/DirectoryJunction.cs',
@@ -211,7 +212,7 @@ def packageCheckExe = tasks.register('ysmPackageVerificationExe', Exec) {
     doFirst {
         output.get().asFile.parentFile.mkdirs()
         executable moonsToolchains.locateCSharpCompiler().absolutePath
-        args '/nologo', '/target:exe', '/reference:System.IO.Compression.dll',
+        args '/nologo', '/target:exe', '/reference:System.IO.Compression.dll', '/reference:System.Management.dll',
                 "/out:${output.get().asFile.absolutePath}"
         args sources.files.collect { it.absolutePath }.sort()
     }

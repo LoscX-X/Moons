@@ -88,8 +88,95 @@ final class TransformReceiptVerification {
         late[0] = new MoonsTransformer(new MappingService(List.of(resets)));
         late[0].transform(first, name, fixture(name));
         require(late[0].receipts(first).isEmpty(), "Old transform was credited to new attempt");
+        verifyLegacyMatching(first);
         System.out.println(
-                "MOONS_TRANSFORM_RECEIPT_VERIFIED serialization loader-identity attempt-reset late-result jvm-rejection descriptors");
+                "MOONS_TRANSFORM_RECEIPT_VERIFIED serialization loader-identity attempt-reset late-result jvm-rejection descriptors legacy-matching");
+    }
+
+    private static void verifyLegacyMatching(ClassLoader loader) {
+        String tickClass = "fixture/Startup";
+        String renderClass = "fixture/Renderer";
+        var tick =
+                new TargetMethod(
+                        "client.tick",
+                        List.of(tickClass),
+                        List.of("tick"),
+                        "()V",
+                        TargetMethod.HookKind.VOID_HEAD);
+        var world =
+                new TargetMethod(
+                        "client.world-render",
+                        List.of(renderClass),
+                        List.of("tick"),
+                        "()V",
+                        TargetMethod.HookKind.WORLD_RENDER);
+        var hud =
+                new TargetMethod(
+                        "client.hud",
+                        List.of(tickClass),
+                        List.of("missingHud"),
+                        "()V",
+                        TargetMethod.HookKind.HUD);
+        var transformer = new MoonsTransformer(new MappingService(List.of(tick, world, hud)));
+        transformer.transform(loader, tickClass, fixture(tickClass));
+        transformer.accepted(loader, tickClass, true);
+        require(
+                transformer.transform(loader, renderClass, fixture(renderClass)) == null,
+                "Missing render anchors unexpectedly generated a hook");
+        transformer.accepted(loader, renderClass, true);
+        String status = transformer.readiness(loader, true);
+        require(
+                status.startsWith("READY:")
+                        && status.contains("client.world-render:load-point-not-found")
+                        && status.contains("client.hud:target-not-found"),
+                "Legacy hook misses blocked startup or lost diagnostics: " + status);
+        require(
+                transformer.installedHooks().equals(java.util.Set.of("client.tick"))
+                        && transformer
+                                .failedHooks()
+                                .contains("client.world-render:load-point-not-found"),
+                "Unavailable hook was reported installed or its failure was hidden");
+        transformer.accepted(loader, renderClass, false);
+        require(
+                transformer.readiness(loader, true).startsWith("FAILED:transform:"),
+                "Runtime hook tolerance concealed JVM rejection");
+        transformer.accepted(loader, renderClass, true);
+        transformer.deliveryFailed(loader, renderClass);
+        require(
+                transformer.readiness(loader, true).startsWith("FAILED:transform:"),
+                "Runtime hook tolerance concealed failed native delivery");
+
+        // Use an unmatched startup signature, even when the runtime reports a first tick.
+        var unmatchedTick =
+                new TargetMethod(
+                        "client.tick",
+                        List.of(tickClass),
+                        List.of("missingTick"),
+                        "()V",
+                        TargetMethod.HookKind.VOID_HEAD);
+        var missingTick = new MoonsTransformer(new MappingService(List.of(unmatchedTick)));
+        missingTick.transform(loader, tickClass, fixture(tickClass));
+        missingTick.accepted(loader, tickClass, true);
+        require(
+                missingTick
+                        .readiness(loader, true)
+                        .equals("FAILED:hook:client.tick:target-not-found"),
+                "Missing startup hook was tolerated");
+        var noTickAnchor =
+                new TargetMethod(
+                        "client.tick",
+                        List.of(tickClass),
+                        List.of("tick"),
+                        "()V",
+                        TargetMethod.HookKind.WORLD_RENDER);
+        missingTick = new MoonsTransformer(new MappingService(List.of(noTickAnchor)));
+        missingTick.transform(loader, tickClass, fixture(tickClass));
+        missingTick.accepted(loader, tickClass, true);
+        require(
+                missingTick
+                        .readiness(loader, true)
+                        .equals("FAILED:hook:client.tick:load-point-not-found"),
+                "Missing startup anchor was tolerated");
     }
 
     private static byte[] fixture(String name) {

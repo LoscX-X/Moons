@@ -19,6 +19,7 @@ internal static class LoadSessionVerification
                 File.WriteAllText(log, "[" + session.Attempt + "] hard failure stale\n");
                 session.Prepare(root, "payload.jar", "api.jar", Path.Combine(root, "home"), "fixture", "test", "中文 context.properties", new string('a', 64));
                 string config = File.ReadAllText(Path.Combine(root, "bridge-" + pid + ".conf"));
+                Check(File.ReadAllText(Path.Combine(root, "cache", "bridge", "bridge-" + pid + ".conf")) == config, "New and legacy one-shot handoffs differ");
                 Check(config.Contains("attempt=" + session.Attempt) && config.Contains("payload=payload.jar"), "One session owns its config token");
                 Check(config.Contains("dependencies=中文 context.properties") && config.Contains("dependencies.sha256=" + new string('a', 64)), "Exact dependency context was lost in the UTF-8 native handoff");
                 Expect<InvalidOperationException>(() => session.Prepare(root, "", "", root, "", ""));
@@ -40,6 +41,10 @@ internal static class LoadSessionVerification
                 File.AppendAllText(log, "[other] hard failure unrelated\n[" + session.Attempt + "] initial retransformation complete\n[" + session.Attempt + "] core ready: READY:core-features-active;first-client-tick\n", new UTF8Encoding(false));
                 session.WaitForReady(IntPtr.Zero);
             }
+            Check(!File.Exists(Path.Combine(root, "bridge-" + pid + ".conf"))
+                && !File.Exists(Path.Combine(root, "cache", "bridge", "bridge-" + pid + ".conf")), "Completed attempt left one-shot configs at the root");
+            Directory.CreateDirectory(Path.Combine(root, "logs"));
+            log = Path.Combine(root, "logs", "bridge-dll.log");
             using (LoadSession session = LoadSession.Acquire(pid, () => false))
             {
                 session.Prepare(root, "payload.jar", "api.jar", root, "fixture", "test");

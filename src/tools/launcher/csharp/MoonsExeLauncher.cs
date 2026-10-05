@@ -135,6 +135,16 @@ namespace Moons.WindowsLauncher
             {
                 return SelfTestVersionDetection();
             }
+            if (Contains(arguments, "--clean-cache"))
+            {
+                try {
+                    bool idle = CacheMaintenance.Run(ResolveHome());
+                    Console.WriteLine(idle
+                        ? "Working-file cleanup pass completed. Installed dependencies, models and configs are retained."
+                        : "Cleanup deferred: a Java process or dependency update is active, or storage is unavailable.");
+                    return idle ? 0 : 2;
+                } catch (Exception error) { Console.Error.WriteLine(error.Message); return 1; }
+            }
             if (Contains(arguments, "--legacy-view")) {
                 try {
                     string home = ResolveHome();
@@ -166,8 +176,8 @@ namespace Moons.WindowsLauncher
             {
                 try {
                     string version = OptionArgument(arguments, "--minecraft-version");
-                    if (version == null) DependencyRuntime.Verify(ResolveHome());
-                    else DependencyRuntime.Resolve(ResolveHome(), VersionCatalog.FindArtifact(VersionCatalog.Normalize(version)));
+                    DependencyRuntime.Resolve(ResolveHome(), version == null ? VersionCatalog.BaseProfile
+                        : VersionCatalog.FindArtifact(VersionCatalog.Normalize(version)));
                     return 0;
                 }
                 catch (Exception error) { Console.Error.WriteLine(error.Message); return 1; }
@@ -182,8 +192,11 @@ namespace Moons.WindowsLauncher
                 try
                 {
                     string home = ResolveHome();
-                    DependencyRuntime.Verify(home);
-                    foreach (var profile in VersionCatalog.Profiles) ExtractPayload(home, profile.ArtifactId);
+                    string version = OptionArgument(arguments, "--minecraft-version");
+                    var profile = version == null ? VersionCatalog.BaseProfile
+                        : VersionCatalog.FindArtifact(VersionCatalog.Normalize(version));
+                    DependencyRuntime.Resolve(home, profile);
+                    ExtractPayload(home, profile.ArtifactId);
                     ExtractBootstrapApi(home);
                     ExtractBridge(home);
                     HardwareIdGenerator.Generate();
@@ -575,8 +588,13 @@ namespace Moons.WindowsLauncher
             var dependencies = DependencyRuntime.Resolve(home, VersionCatalog.FindArtifact(detectedVersion));
             string payload = ExtractPayload(home, detectedVersion);
             progress(48, "Loaded embedded Minecraft " + detectedVersion + " payload");
+            DateTime runStarted = DateTime.UtcNow;
             LoadBridge(bridge, payload, bootstrapApi, home, hardwareId,
                 target.Pid, progress, cancelled, dependencies);
+            try { CacheMaintenance.RecordRun(home, VersionCatalog.FindArtifact(detectedVersion).GameId,
+                runStarted, payload, bootstrapApi, bridge); }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
         }
 
         private sealed class LoaderForm : Form

@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Collections.Generic;
 
 namespace Moons.WindowsLauncher
 {
@@ -15,7 +16,8 @@ namespace Moons.WindowsLauncher
         private readonly int processId;
         private readonly Func<bool> cancelled;
         private string dataDirectory;
-        private long initialOffset;
+        private readonly List<LogCursor> logs = new List<LogCursor>();
+        private readonly List<string> configurations = new List<string>();
         internal readonly string Attempt = Guid.NewGuid().ToString("N");
 
         private LoadSession(Mutex mutex, int processId, Func<bool> cancelled)
@@ -67,8 +69,10 @@ namespace Moons.WindowsLauncher
             if (dataDirectory != null) throw new InvalidOperationException("Load attempt already prepared.");
             Directory.CreateDirectory(directory);
             Directory.CreateDirectory(home);
-            string configPath = Path.Combine(directory, "bridge-" + processId + ".conf");
-            File.WriteAllText(configPath,
+            string transport = Path.Combine(directory, "cache", "bridge");
+            Directory.CreateDirectory(transport);
+            string name = "bridge-" + processId + ".conf";
+            string content =
                 "payload=" + payload + Environment.NewLine
                 + "bootstrap=" + bootstrapApi + Environment.NewLine
                 + "home=" + home + Environment.NewLine
@@ -77,8 +81,14 @@ namespace Moons.WindowsLauncher
                 + "attempt=" + Attempt
                 + (dependencyContext == null ? String.Empty : Environment.NewLine
                     + "dependencies=" + dependencyContext + Environment.NewLine
-                    + "dependencies.sha256=" + dependencyHash), new UTF8Encoding(false));
-            initialOffset = CaptureOffset(directory);
+                    + "dependencies.sha256=" + dependencyHash);
+            // The root copy supports a bridge already loaded by an older launcher.
+            foreach (string configPath in new[] { Path.Combine(transport, name), Path.Combine(directory, name) }) {
+                File.WriteAllText(configPath, content, new UTF8Encoding(false));
+                configurations.Add(configPath);
+            }
+            foreach (string path in new[] { Path.Combine(directory, "logs", "bridge-dll.log"), Path.Combine(directory, "bridge-dll.log") })
+                logs.Add(new LogCursor { Path = path, Offset = CaptureOffset(path) });
             dataDirectory = directory;
         }
 
@@ -87,6 +97,11 @@ namespace Moons.WindowsLauncher
             if (owned)
             {
                 owned = false;
+                foreach (string config in configurations) {
+                    try {
+                        if (File.Exists(config) && File.ReadAllText(config).Contains("attempt=" + Attempt)) File.Delete(config);
+                    } catch (IOException) { } catch (UnauthorizedAccessException) { }
+                }
                 mutex.ReleaseMutex();
             }
             mutex.Dispose();
@@ -97,9 +112,8 @@ namespace Moons.WindowsLauncher
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern uint WaitForSingleObject(IntPtr handle, uint milliseconds);
 
-        private static long CaptureOffset(string dataDirectory)
+        private static long CaptureOffset(string log)
         {
-            string log = Path.Combine(dataDirectory, "bridge-dll.log");
             try
             {
                 return File.Exists(log) ? new FileInfo(log).Length : 0L;
@@ -118,11 +132,9 @@ namespace Moons.WindowsLauncher
         {
             if (!owned) throw new ObjectDisposedException("LoadSession");
             if (dataDirectory == null) throw new InvalidOperationException("Load attempt is not prepared.");
-            string log = Path.Combine(dataDirectory, "bridge-dll.log");
+            string log = Path.Combine(dataDirectory, "logs", "bridge-dll.log");
             string marker = "[" + Attempt + "]";
             DateTime deadline = DateTime.UtcNow.AddSeconds(20);
-            long offset = Math.Max(0L, initialOffset);
-            string pending = String.Empty;
             bool retransformed = false;
             bool coreReady = false;
 
@@ -145,16 +157,17 @@ namespace Moons.WindowsLauncher
                         "Unable to monitor the target JVM process");
                 }
 
+                foreach (var cursor in logs) {
                 string appended;
-                if (TryReadAppended(log, ref offset, out appended)
+                if (TryReadAppended(cursor.Path, ref cursor.Offset, out appended)
                     && appended.Length > 0)
                 {
-                    pending += appended;
+                    cursor.Pending += appended;
                     int newline;
-                    while ((newline = pending.IndexOf('\n')) >= 0)
+                    while ((newline = cursor.Pending.IndexOf('\n')) >= 0)
                     {
-                        string line = pending.Substring(0, newline).TrimEnd('\r');
-                        pending = pending.Substring(newline + 1);
+                        string line = cursor.Pending.Substring(0, newline).TrimEnd('\r');
+                        cursor.Pending = cursor.Pending.Substring(newline + 1);
                         if (line.IndexOf(marker, StringComparison.Ordinal) < 0)
                         {
                             continue;
@@ -169,12 +182,19 @@ namespace Moons.WindowsLauncher
                         if (retransformed && coreReady) return;
                     }
                 }
+                }
                 Thread.Sleep(75);
             }
 
             throw new TimeoutException(
                 "The bridge loaded, but required hooks, first client tick and core startup "
                 + "did not complete. Check " + log);
+        }
+
+        private sealed class LogCursor
+        {
+            internal string Path, Pending = String.Empty;
+            internal long Offset;
         }
 
         private static bool TryReadAppended(

@@ -7,13 +7,19 @@ using Moons.Shared;
 
 namespace Moons.WindowsLauncher
 {
-    /// <summary>Installs one shared runtime and all adapters from moon-install.exe.</summary>
+    /// <summary>Validates the source bundle and installs only the selected dependency closure.</summary>
     internal static class YsmPackage
     {
         internal static readonly string[] Files = DependencyRuntime.YsmPackageNames;
 
         internal static void Install(string home, byte[] package)
         {
+            Install(home, package, Files);
+        }
+
+        internal static void Install(string home, byte[] package, string[] selected, string[] expected = null, IDictionary<string, string> hashes = null, string workingHome = null)
+        {
+            if (expected == null) expected = Files;
             // Fully validate the embedded archive before touching the installation.
             var contents = new Dictionary<string, byte[]>(StringComparer.Ordinal);
             using (var memory = new MemoryStream(package, false))
@@ -22,14 +28,25 @@ namespace Moons.WindowsLauncher
                 foreach (var entry in archive.Entries)
                 {
                     if (ZipEntries.IsDirectory(entry)) continue;
-                    if (Array.IndexOf(Files, entry.FullName) < 0
+                    if (Array.IndexOf(expected, entry.FullName) < 0
                         || contents.ContainsKey(entry.FullName) || entry.Length == 0)
                         throw new InvalidDataException("Invalid YSM package entry: " + entry.FullName);
-                    contents.Add(entry.FullName, ZipEntries.ReadBytes(entry));
+                    byte[] bytes = ZipEntries.ReadBytes(entry);
+                    string hash;
+                    if (hashes != null && (!hashes.TryGetValue(entry.FullName, out hash)
+                        || !String.Equals(Hashing.Sha256(bytes), hash, StringComparison.OrdinalIgnoreCase)))
+                        throw new InvalidDataException("YSM package SHA-256 mismatch: " + entry.FullName);
+                    contents.Add(entry.FullName, bytes);
                 }
             }
-            if (contents.Count != Files.Length)
+            if (contents.Count != expected.Length)
                 throw new InvalidDataException("The YSM package is incomplete.");
+            var filtered = new Dictionary<string, byte[]>(StringComparer.Ordinal);
+            foreach (string name in selected) {
+                if (!contents.ContainsKey(name) || filtered.ContainsKey(name))
+                    throw new InvalidDataException("Invalid selected YSM dependency: " + name);
+                filtered.Add(name, contents[name]);
+            }
 
             home = Path.GetFullPath(home);
             string identity = Hashing.Sha256(System.Text.Encoding.UTF8.GetBytes(
@@ -42,22 +59,22 @@ namespace Moons.WindowsLauncher
                     try { acquired = mutex.WaitOne(TimeSpan.FromSeconds(30)); }
                     catch (AbandonedMutexException) { acquired = true; }
                     if (!acquired) throw new IOException("Another installer is updating YSM. Try again shortly.");
-                    InstallLocked(home, contents);
+                    InstallLocked(home, filtered, workingHome ?? home);
                 }
                 finally { if (acquired) mutex.ReleaseMutex(); }
             }
         }
 
-        private static void InstallLocked(string home, Dictionary<string, byte[]> contents)
+        private static void InstallLocked(string home, Dictionary<string, byte[]> contents, string workingHome)
         {
             string attempt = Guid.NewGuid().ToString("N");
-            string backupRoot = Path.Combine(home, "cache", "ysm-install", attempt);
+            string backupRoot = Path.Combine(workingHome, "cache", "ysm-install", attempt);
             var pending = new List<Replacement>();
             var committed = new List<Replacement>();
             bool completed = false;
             try
             {
-                foreach (string name in Files)
+                foreach (string name in contents.Keys)
                 {
                     string target = Path.Combine(home, name.Replace('/', Path.DirectorySeparatorChar));
                     byte[] bytes = contents[name];
@@ -110,7 +127,7 @@ namespace Moons.WindowsLauncher
             {
                 foreach (var replacement in pending)
                     if (File.Exists(replacement.Temporary)) File.Delete(replacement.Temporary);
-                if (completed) CacheMaintenance.DiscardCompletedBackup(home, backupRoot);
+                if (completed) CacheMaintenance.DiscardCompletedBackup(workingHome, backupRoot);
             }
         }
 

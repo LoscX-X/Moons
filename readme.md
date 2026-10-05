@@ -21,11 +21,15 @@ Supports **26.1.2**, **26.2**, **26.3**, and **26.4-snapshot-1**.
 
 ## Version Support
 
-Moons maintains the stable releases listed above and the listed 26.4 preview build.
+The main distribution maintains four Minecraft version profiles: **26.1.2**, **26.2**, **26.3**, and **26.4-snapshot-1**. As new profiles are added, older profiles leave this maintenance window.
 
-Development builds such as snapshots, pre-releases and release candidates are only supported for the newest upcoming Minecraft version.
+Snapshots, pre-releases and release candidates are supported only for the newest upcoming Minecraft version, using the exact build listed above. Support for one preview build does not imply support for other previews.
 
 Older preview builds and retired Minecraft versions may remain available through historical releases or CI artifacts, but receive no further fixes or compatibility updates.
+
+Minecraft **1.8.9** is developed separately on [`legacy/1.8.9`](https://github.com/LoscX-X/Moons/tree/legacy/1.8.9), pending game testing. It is outside the four-profile window and is not included in the main installer or loader.
+
+Moons client versions use **`X.Y.Z.x-Experiment`** or **`X.Y.Z.x-Release`**, for example `1.0.0.0-Experiment`. The first three numbers identify the release baseline; the fourth is the patch sequence. `Experiment` builds are prereleases and do not replace GitHub's Latest release. `Release` builds are stable releases marked Latest. The commit suffix distinguishes builds; it does not replace the patch sequence. Minecraft version numbers and Moons client version numbers are separate.
 
 ## Risk and Responsibility Notice
 
@@ -39,11 +43,13 @@ Older preview builds and retired Minecraft versions may remain available through
 ## How to Use
 
 1. Download `moon-install-<version>-<commit>.exe` and `moon-<version>-<commit>.exe` from the same [release](https://github.com/LoscX-X/Moons/releases).
-2. Run the installer to install or update dependencies.
+2. Run the installer, select your Minecraft version, and click **Install** to install its dependencies.
 3. Start a supported Minecraft version, then run the loader to select the game and load Moons.
 4. Press **Right Shift** to open ClickGUI (default binding).
 
 If the dependency version is unchanged and the installed files are intact, only the loader needs updating. Otherwise, run the matching installer. The installer includes the complete UI runtime and YSM dependencies and works offline. Development builds are available from [Actions](https://github.com/LoscX-X/Moons/actions).
+
+Dependencies are isolated under `libraries/latest/<game-version>` or `libraries/legacy/<game-version>`. The installer installs only the selected version; the cache retains the latest successful run.
 
 ## How to Save a Config
 

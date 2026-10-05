@@ -114,9 +114,10 @@ def releaseLock = tasks.register('moonsReleaseLock') {
         def document = [schema: 1, releaseId: "${project.version}-${buildId}".toString(),
                 catalogSha256: fileDigest(moonsVersions.catalogFile), activeWindow: moonsVersions.activeWindow,
                 declaredSupport: moonsVersions.catalogProfiles, profiles: declaredProfiles,
-                protocol: [dependencyMetadata: 2, launchContext: 'attempt-scoped-sha256-context', manifestAwareRuntime: true,
+                protocol: [dependencyMetadata: 3, readableDependencyMetadata: [2, 3], launchContext: 'attempt-scoped-sha256-context', manifestAwareRuntime: true,
                            readiness: 'required-hooks-jvm-acceptance-first-tick-core-active',
-                           legacyLayout: 'compatibility-current-pointer', userData: 'shared-home-data'],
+                           dependencyLayout: 'libraries/latest-or-legacy/game-version/immutable-package',
+                           legacyLayout: 'version-specific-frozen-home', cacheRetention: 'latest-successful-run', userData: 'shared-home-data'],
                 components: components]
         byte[] bytes = (groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(document)) + '\n').getBytes('UTF-8')
         def lockHash = digest(bytes)

@@ -45,6 +45,11 @@ public final class PayloadCache {
                     Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
                 }
             }
+            try {
+                Files.setLastModifiedTime(target, java.nio.file.attribute.FileTime.from(java.time.Instant.now()));
+            } catch (IOException ignored) {
+                // Cache retention is best effort; a read-only cache must still load.
+            }
             return target;
         }
     }

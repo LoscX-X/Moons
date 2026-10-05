@@ -75,7 +75,9 @@ public final class NativeTransformerBridge {
         }
         if (!status.startsWith("READY:")) return status;
         String hooks = TRANSFORMER.readiness(runtimeGameLoader, true);
-        return hooks.startsWith("READY:") ? status : hooks;
+        if (!hooks.startsWith("READY:")) return hooks;
+        int diagnostics = hooks.indexOf(';');
+        return diagnostics < 0 ? status : status + hooks.substring(diagnostics);
     }
 
     private NativeTransformerBridge() {}
@@ -227,9 +229,9 @@ public final class NativeTransformerBridge {
 
     private static void log(Path home, String line) {
         try {
-            Files.createDirectories(home);
+            Files.createDirectories(home.resolve("logs"));
             Files.writeString(
-                    home.resolve("bridge.log"),
+                    home.resolve("logs/bridge.log"),
                     line + System.lineSeparator(),
                     StandardCharsets.UTF_8,
                     StandardOpenOption.CREATE,

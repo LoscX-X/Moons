@@ -34,7 +34,8 @@ public final class DependencyContextVerification {
                 java.util.List.of(
                         original + "format=2\n",
                         original.replace("java.minimum=25", "java.minimum=999"),
-                        original.replace("ui=libraries/", "ui=../../libraries/"))) {
+                        original.replace("ui=", "ui=../../../../"),
+                        original.replace("root=.\n", "root=../\n"))) {
             Files.writeString(file, changed, StandardCharsets.UTF_8);
             reject(() -> DependencyContext.resolve(home, manifest, digest(changed), game));
         }

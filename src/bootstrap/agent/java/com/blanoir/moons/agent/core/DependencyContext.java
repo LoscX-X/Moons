@@ -15,7 +15,9 @@ record DependencyContext(Path ui, Path root, Path module) {
             throws Exception {
         Path realHome = home.toRealPath();
         Path context = Path.of(manifest).toRealPath();
-        if (!context.startsWith(realHome.resolve("installations")))
+        if (!context.startsWith(realHome.resolve("installations"))
+                && !context.startsWith(realHome.resolve("libraries/latest"))
+                && !context.startsWith(realHome.resolve("libraries/legacy")))
             throw new IOException("Dependency context is outside installation views");
         byte[] bytes = Files.readAllBytes(context);
         verifyHash(bytes, expectedHash, context);
@@ -27,15 +29,27 @@ record DependencyContext(Path ui, Path root, Path module) {
                     || values.putIfAbsent(line.substring(0, equal), line.substring(equal + 1))
                             != null) throw new IOException("Invalid dependency context line");
         }
-        if (!"2".equals(values.get("format")) || !gameId.equals(values.get("profile")))
+        boolean selected = "3".equals(values.get("format"));
+        if ((!selected && !"2".equals(values.get("format"))) || !gameId.equals(values.get("profile")))
             throw new IOException("Dependency context profile does not match " + gameId);
         int minimum = Integer.parseInt(required(values, "java.minimum"));
         if (minimum < 1 || Runtime.version().feature() < minimum)
             throw new IOException("Dependency profile requires Java " + minimum);
-        Path root = beneath(realHome, required(values, "root"));
-        if (!root.startsWith(realHome.resolve("installations")) || !context.startsWith(root))
+        if (selected && (!".".equals(required(values, "root"))
+                || !gameId.matches("[0-9]+(?:\\.[0-9]+)+(?:-(?:snapshot|pre|rc)-[0-9]+)?")))
+            throw new IOException("Invalid selected dependency root/profile");
+        Path root = selected ? context.getParent().getParent().toRealPath()
+                : beneath(realHome, required(values, "root"));
+        Path area = selected
+                ? (root.startsWith(realHome.resolve("libraries/latest"))
+                        ? realHome.resolve("libraries/latest").resolve(gameId)
+                        : realHome.resolve("libraries/legacy").resolve(gameId))
+                : realHome.resolve("installations");
+        if (!root.startsWith(area) || !context.startsWith(root))
             throw new IOException("Dependency context does not belong to its installation view");
-        Path ui = beneath(realHome, required(values, "ui"));
+        Path ui = beneath(selected ? root : realHome, required(values, "ui"));
+        if (selected && !ui.startsWith(root))
+            throw new IOException("Dependency UI does not belong to its selected package");
         verifyHash(Files.readAllBytes(ui), required(values, "ui.sha256"), ui);
         String moduleName = required(values, "module");
         if (!moduleName.matches("modules/moons-ysm-[A-Za-z0-9._-]+\\.jar"))

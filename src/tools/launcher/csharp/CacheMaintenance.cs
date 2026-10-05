@@ -10,14 +10,14 @@ using Moons.Shared;
 
 namespace Moons.WindowsLauncher
 {
-    /// <summary>Best-effort retention of regenerable files, never user data or live JVM caches.</summary>
+    /// <summary>Retains the latest successful run, never removes user data or live JVM files.</summary>
     internal static class CacheMaintenance
     {
         private const long MiB = 1024L * 1024L;
         private static readonly TimeSpan Grace = TimeSpan.FromMinutes(10);
         private static readonly Regex Hash = new Regex("^[0-9a-f]{64}$");
 
-        internal static void Run(string home)
+        internal static bool Run(string home)
         {
             try
             {
@@ -31,7 +31,9 @@ namespace Moons.WindowsLauncher
                     {
                         try { acquired = mutex.WaitOne(0); }
                         catch (AbandonedMutexException) { acquired = true; }
-                        if (acquired) Prune(home, Path.Combine(Path.GetTempPath(), "moons"), JavaRunning);
+                        if (!acquired || JavaRunning()) return false;
+                        Prune(home, Path.Combine(Path.GetTempPath(), "moons"), JavaRunning);
+                        return !JavaRunning();
                     }
                     finally { if (acquired) mutex.ReleaseMutex(); }
                 }
@@ -39,24 +41,37 @@ namespace Moons.WindowsLauncher
             catch (IOException) { }
             catch (UnauthorizedAccessException) { }
             catch (SecurityException) { }
+            return false;
         }
 
-        private static bool JavaRunning()
+        internal static bool JavaRunning()
         {
             // Even an unrecognized JVM may hold a lazy classloader. Defer until it exits.
             foreach (string name in new[] { "java", "javaw" })
             {
                 var processes = Process.GetProcessesByName(name);
-                bool running = processes.Length != 0;
-                foreach (var process in processes) process.Dispose();
+                bool running = false;
+                foreach (var process in processes) {
+                    try {
+                        if (!IsBuildJvm(ProcessEvidenceCache.CommandLine(process.Id))) running = true;
+                    } finally { process.Dispose(); }
+                }
                 if (running) return true;
             }
             return false;
         }
 
+        internal static bool IsBuildJvm(string commandLine)
+        {
+            // Only known compiler/Gradle main classes are exempt; unknown Java remains protected.
+            return !String.IsNullOrWhiteSpace(commandLine) && Regex.IsMatch(commandLine,
+                @"(?:^|\s)(?:org\.gradle\.launcher\.daemon\.bootstrap\.GradleDaemon|org\.gradle\.wrapper\.GradleWrapperMain|org\.gradle\.launcher\.GradleMain|org\.jetbrains\.kotlin\.daemon\.KotlinCompileDaemon)(?:\s|$)");
+        }
+
         internal static void Prune(string home, string legacyTemp, Func<bool> busy)
         {
             if (busy()) return;
+            CacheRun run = ReadRun(home);
             string libraries = Path.Combine(home, "libraries");
             string current = null;
             string pointer = Path.Combine(libraries, "moons-ui-runtime.current");
@@ -70,11 +85,90 @@ namespace Moons.WindowsLauncher
             // Installation views retain old releases. An unreadable manifest cannot authorize GC.
             var retained = RetainedUi(home);
             if (current != null && retained != null) Trim(libraries, "ui", 2, 256 * MiB, 30, current, busy, retained);
-            Trim(Path.Combine(home, "cache", "launcher"), "launcher", 12, 128 * MiB, 30, null, busy);
-            Trim(Path.Combine(home, "cache", "modules"), "modules", 32, 256 * MiB, 30, null, busy);
-            Trim(Path.Combine(home, "cache", "runtime"), "runtime", 8, 64 * MiB, 30, null, busy);
-            Trim(Path.Combine(home, "cache", "ysm-install"), "backup", 2, 64 * MiB, 7, null, busy);
-            Trim(legacyTemp, "runtime", 8, 64 * MiB, 7, null, busy);
+            // An invalid receipt cannot authorize deletion. Installed legacy bytes are not caches.
+            if (run != null) {
+                Trim(Path.Combine(home, "cache", "launcher"), "launcher", 0, 0, 0, null, busy, run.Launcher);
+                Trim(Path.Combine(home, "cache", "modules"), "modules", 0, 0, 0, null, busy,
+                    run.Modules);
+                Trim(Path.Combine(home, "cache", "runtime"), "runtime", 0, 0, 0, null, busy,
+                    run.Runtime);
+            }
+            Trim(Path.Combine(home, "cache", "ysm-install"), "backup", 0, 0, 0, null, busy);
+            Trim(legacyTemp, "runtime", 0, 0, 0, null, busy);
+        }
+
+        internal static void RecordRun(string home, string version, DateTime started, params string[] launcherFiles)
+        {
+            string root = Path.Combine(home, "cache", "launcher");
+            var content = new StringBuilder("format=2\nprofile=" + version + "\nstarted=" + started.ToUniversalTime().Ticks + "\n");
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (string file in launcherFiles) {
+                string directory = Path.GetDirectoryName(file);
+                string hash = Path.GetFileName(directory);
+                if (!Safe(root, file) || !Hash.IsMatch(hash) || ReadEntry(root, directory, "launcher") == null)
+                    throw new InvalidDataException("Invalid latest-run launcher cache path.");
+                if (seen.Add(hash)) content.Append("launcher.").Append(seen.Count).Append('=').Append(hash).Append('\n');
+            }
+            int count = 0;
+            foreach (string path in UsedSince(Path.Combine(home, "cache", "modules"), "modules", started))
+                if (Regex.IsMatch(Path.GetFileName(path), "^(?:[0-9a-f]{64}\\.jar|builtin-core-features\\.jar)$"))
+                    content.Append("module.").Append(++count).Append('=').Append(Path.GetFileName(path)).Append('\n');
+            count = 0;
+            foreach (string path in UsedSince(Path.Combine(home, "cache", "runtime"), "runtime", started))
+                content.Append("runtime.").Append(++count).Append('=').Append(Path.GetFileName(path)).Append('\n');
+            string pointer = Path.Combine(home, "cache", "last-run.properties");
+            if (!Safe(home, pointer)) throw new IOException("Latest-run receipt path contains a directory link.");
+            Directory.CreateDirectory(Path.GetDirectoryName(pointer));
+            StagedFile.Write(pointer, temporary => File.WriteAllText(temporary, content.ToString(), new UTF8Encoding(false)));
+        }
+
+        private static CacheRun ReadRun(string home)
+        {
+            string pointer = Path.Combine(home, "cache", "last-run.properties");
+            if (!Safe(home, pointer)) return null;
+            if (!File.Exists(pointer)) return new CacheRun { Started = DateTime.MaxValue };
+            try {
+                var values = RuntimeMetadata.Parse(File.ReadAllText(pointer));
+                string format, started, profile;
+                long ticks;
+                if (!values.TryGetValue("format", out format) || format != "2"
+                    || !values.TryGetValue("profile", out profile)
+                    || !Regex.IsMatch(profile, "^[0-9]+(?:\\.[0-9]+)+(?:-(?:snapshot|pre|rc)-[0-9]+)?$")
+                    || !values.TryGetValue("started", out started) || !Int64.TryParse(started, out ticks)
+                    || ticks <= 0 || ticks > DateTime.UtcNow.Ticks) return null;
+                var result = new CacheRun { Started = new DateTime(ticks, DateTimeKind.Utc) };
+                foreach (var pair in values) if (pair.Key.StartsWith("launcher.", StringComparison.Ordinal)) {
+                    if (!Hash.IsMatch(pair.Value)) return null;
+                    result.Launcher.Add(Path.Combine(home, "cache", "launcher", pair.Value));
+                } else if (pair.Key.StartsWith("module.", StringComparison.Ordinal)) {
+                    if (!Regex.IsMatch(pair.Value, "^(?:[0-9a-f]{64}\\.jar|builtin-core-features\\.jar)$")) return null;
+                    result.Modules.Add(Path.Combine(home, "cache", "modules", pair.Value));
+                } else if (pair.Key.StartsWith("runtime.", StringComparison.Ordinal)) {
+                    if (!Hash.IsMatch(pair.Value)) return null;
+                    result.Runtime.Add(Path.Combine(home, "cache", "runtime", pair.Value));
+                }
+                return result.Launcher.Count == 0 ? null : result;
+            } catch (IOException) { return null; }
+            catch (UnauthorizedAccessException) { return null; }
+        }
+
+        private static ISet<string> UsedSince(string root, string kind, DateTime started)
+        {
+            var retained = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (!Directory.Exists(root) || !Safe(root, root)) return retained;
+            foreach (string path in Directory.GetFileSystemEntries(root)) {
+                Entry entry = ReadEntry(root, path, kind);
+                if (entry != null && entry.Modified >= started) retained.Add(entry.Path);
+            }
+            return retained;
+        }
+
+        private sealed class CacheRun
+        {
+            internal DateTime Started;
+            internal readonly ISet<string> Launcher = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            internal readonly ISet<string> Modules = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            internal readonly ISet<string> Runtime = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         }
 
         private static ISet<string> RetainedUi(string home)
@@ -154,7 +248,7 @@ namespace Moons.WindowsLauncher
             bool directory = Directory.Exists(path);
             if (kind == "modules")
             {
-                if (directory || !Regex.IsMatch(name, "^[0-9a-f]{64}(?:\\.jar|\\.tmp-[0-9]+)$")) return null;
+                if (directory || !Regex.IsMatch(name, "^(?:[0-9a-f]{64}(?:\\.jar|\\.tmp-[0-9]+)|builtin-core-features\\.jar)$")) return null;
             }
             else if (!directory || (kind == "backup" ? !Regex.IsMatch(name, "^[0-9a-f]{32}$") : !Hash.IsMatch(name))) return null;
             var entry = new Entry { Path = path, Modified = Directory.Exists(path)
@@ -177,11 +271,11 @@ namespace Moons.WindowsLauncher
             string name = Path.GetFileName(path);
             if (kind == "ui" && !Regex.IsMatch(name, "^moons-ui-runtime\\.jar(?:\\.tmp-[0-9]+)?$")) return false;
             if (kind == "runtime" && !Regex.IsMatch(name, "^moons-runtime\\.jar(?:\\.tmp-[0-9]+)?$")) return false;
-            if (kind == "launcher" && !Regex.IsMatch(name, "^moons-(?:26\\.[123]\\.jar|api\\.jar|bridge\\.dll)(?:\\.tmp-[0-9]+)?$")) return false;
+            if (kind == "launcher" && !Regex.IsMatch(name, "^moons-(?:[0-9]+(?:\\.[0-9]+)+(?:-(?:snapshot|pre|rc)-[0-9]+)?\\.jar|api\\.jar|bridge\\.dll)(?:\\.tmp-[0-9]+)?$")) return false;
             if (kind == "backup")
             {
                 string relative = path.Substring(top.Length + 1).Replace('\\', '/');
-                if (Array.IndexOf(DependencyRuntime.YsmPackageNames, relative) < 0) return false;
+                if (!Regex.IsMatch(relative, "^(?:libraries/moons-ysm-(?:core|codecs|images)|modules/moons-ysm-[0-9]+(?:\\.[0-9]+)+(?:-(?:snapshot|pre|rc)-[0-9]+)?)\\.jar$")) return false;
             }
             var file = new FileInfo(path);
             entry.Files.Add(path);
@@ -213,7 +307,7 @@ namespace Moons.WindowsLauncher
             finally { foreach (var stream in held) stream.Dispose(); }
         }
 
-        private static bool Safe(string root, string path)
+        internal static bool Safe(string root, string path)
         {
             root = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar);
             path = Path.GetFullPath(path);

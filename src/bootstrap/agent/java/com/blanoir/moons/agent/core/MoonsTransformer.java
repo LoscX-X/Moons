@@ -70,6 +70,7 @@ final class MoonsTransformer {
 
     synchronized String readiness(ClassLoader loader, boolean firstTick) {
         boolean tick = false;
+        var unavailable = new java.util.TreeSet<String>();
         for (var receipt : receipts(loader)) {
             if (mappings.targetsForClass(receipt.className()).stream()
                     .noneMatch(TargetMethod::required)) continue;
@@ -77,7 +78,9 @@ final class MoonsTransformer {
                     || receipt.acceptance() == TransformReceipt.Acceptance.REJECTED)
                 return "FAILED:transform:" + receipt.className();
             for (String failure : receipt.failures()) {
-                if (!failure.startsWith("optional.")) return "FAILED:hook:" + failure;
+                if (failure.startsWith("optional.")) continue;
+                if (runtimeHookMiss(receipt.className(), failure)) unavailable.add(failure);
+                else return "FAILED:hook:" + failure;
             }
             boolean startup =
                     receipt.methods().stream()
@@ -91,7 +94,22 @@ final class MoonsTransformer {
                 tick |= receipt.acceptance() == TransformReceipt.Acceptance.ACCEPTED || firstTick;
             }
         }
-        return tick ? "READY:startup-hooks" : "WAITING:client.tick";
+        if (!tick) return "WAITING:client.tick";
+        return "READY:startup-hooks"
+                + (unavailable.isEmpty()
+                        ? ""
+                        : ";unavailable-hooks=" + String.join(",", unavailable));
+    }
+
+    /** Preserve legacy matching tolerance without concealing transformation or delivery errors. */
+    private boolean runtimeHookMiss(String className, String failure) {
+        return mappings.targetsForClass(className).stream()
+                .anyMatch(
+                        target ->
+                                HookRequirement.of(target) != HookRequirement.STARTUP
+                                        && (failure.equals(target.id() + ":load-point-not-found")
+                                                || failure.equals(
+                                                        target.id() + ":target-not-found")));
     }
 
     private synchronized void record(

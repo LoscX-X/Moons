@@ -291,6 +291,11 @@ public final class ModuleManager implements AutoCloseable {
             Files.write(temporary, bytes);
             Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
         }
+        try {
+            Files.setLastModifiedTime(target, java.nio.file.attribute.FileTime.from(java.time.Instant.now()));
+        } catch (IOException ignored) {
+            // Mark reuse for the latest-run cache policy without changing module loading.
+        }
         return target;
     }
 

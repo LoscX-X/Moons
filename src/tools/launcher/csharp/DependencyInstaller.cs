@@ -23,21 +23,74 @@ namespace Moons.WindowsLauncher
                 Console.WriteLine(DependencyRuntime.VersionDetails());
                 return 0;
             }
+            int retire = Array.IndexOf(arguments, "--retire-version");
+            if (retire >= 0) {
+                try {
+                    if (retire + 1 >= arguments.Length) throw new ArgumentException("--retire-version requires a version.");
+                    string version = arguments[retire + 1];
+                    var profile = VersionCatalog.FindArtifact(VersionCatalog.Normalize(version));
+                    bool completed = DependencyRuntime.Retire(DependencyRuntime.ResolveHome(), profile == null ? version : profile.GameId);
+                    Console.WriteLine(completed ? "Version dependencies moved to legacy unchanged." : "Retirement deferred: a Java process or dependency update is active, or the version is not installed.");
+                    return completed ? 0 : 2;
+                } catch (Exception error) { Console.Error.WriteLine(error.Message); return 1; }
+            }
             if (Array.IndexOf(arguments, "--install-only") >= 0)
             {
-                try { Install(null, delegate { return false; }); return 0; }
+                try {
+                    string frozen = Option(arguments, "--legacy-installer");
+                    Install(SelectedProfile(arguments), null, delegate { return false; },
+                        frozen == null ? null : Assembly.LoadFile(Path.GetFullPath(frozen)));
+                    return 0;
+                }
                 catch (Exception error) { Console.Error.WriteLine(error); return 1; }
             }
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            using (var form = new InstallerForm())
+            SupportProfile selected;
+            try { selected = SelectedProfile(arguments); }
+            catch (Exception error) { Console.Error.WriteLine(error.Message); return 1; }
+            string sourceInstaller = Option(arguments, "--legacy-installer");
+            if (sourceInstaller != null) {
+                Console.Error.WriteLine("Use --install-only with --legacy-installer to install a frozen legacy package."); return 1;
+            }
+            using (var form = new InstallerForm(selected))
             {
                 Application.Run(form);
                 return form.ExitCode;
             }
         }
 
-        private static void Install(Action<int, string> progress, Func<bool> cancelled)
+        private static SupportProfile SelectedProfile(string[] arguments)
+        {
+            int index = Array.IndexOf(arguments, "--minecraft-version");
+            if (index < 0) {
+                if (Option(arguments, "--legacy-installer") != null) throw new ArgumentException("A frozen legacy installer requires --minecraft-version.");
+                return VersionCatalog.BaseProfile;
+            }
+            if (index + 1 >= arguments.Length) throw new ArgumentException("--minecraft-version requires a version.");
+            if (Option(arguments, "--legacy-installer") != null) {
+                string game = arguments[index + 1];
+                if (!Regex.IsMatch(game, "^[0-9]+(?:\\.[0-9]+)+(?:-(?:snapshot|pre|rc)-[0-9]+)?$"))
+                    throw new ArgumentException("Invalid legacy Minecraft version.");
+                int minimum;
+                string java = Option(arguments, "--java-minimum") ?? (game == "1.8.9" ? "8" : "25");
+                if (!Int32.TryParse(java, out minimum) || minimum < 8 || minimum > 99) throw new ArgumentException("Invalid legacy Java version.");
+                return new SupportProfile(game.Replace('.', '_').Replace('-', '_'), game, game, "legacy", "", "^$", new[] { game }, minimum);
+            }
+            var profile = VersionCatalog.FindArtifact(VersionCatalog.Normalize(arguments[index + 1]));
+            if (profile == null) throw new ArgumentException("This installer does not contain dependencies for " + arguments[index + 1] + ". Use its matching legacy installer.");
+            return profile;
+        }
+
+        private static string Option(string[] arguments, string name)
+        {
+            int index = Array.IndexOf(arguments, name);
+            if (index < 0) return null;
+            if (index + 1 >= arguments.Length || arguments[index + 1].StartsWith("--")) throw new ArgumentException(name + " requires a value.");
+            return arguments[index + 1];
+        }
+
+        private static void Install(SupportProfile profile, Action<int, string> progress, Func<bool> cancelled, Assembly frozen = null)
         {
             string home = DependencyRuntime.ResolveHome();
             string identity = Hashing.Sha256(Encoding.UTF8.GetBytes(home.TrimEnd(
@@ -50,15 +103,36 @@ namespace Moons.WindowsLauncher
                     try { acquired = mutex.WaitOne(0); }
                     catch (AbandonedMutexException) { acquired = true; }
                     if (!acquired) throw new IOException("Another installer is updating these dependencies. Try again shortly.");
-                    DependencyRuntime.ArchiveInstalledLegacy(home);
-                    EnsureUiRuntime(home, progress, cancelled);
+                    Assembly bundle = frozen ?? Assembly.GetExecutingAssembly();
+                    var ui = RuntimeMetadata.Parse(Encoding.UTF8.GetString(DependencyRuntime.ReadResourceBytes(bundle, DependencyRuntime.UiMetadataResource)));
+                    var ysm = RuntimeMetadata.Parse(Encoding.UTF8.GetString(DependencyRuntime.ReadResourceBytes(bundle, DependencyRuntime.YsmMetadataResource)));
+                    foreach (string name in ysm.Keys) if (!Regex.IsMatch(name, "^(libraries|modules)/moons-ysm-[A-Za-z0-9._-]+\\.jar$"))
+                        throw new InvalidDataException("Invalid dependency path in source installer.");
+                    foreach (string name in DependencyRuntime.RequiredYsm(profile)) if (!ysm.ContainsKey(name))
+                        throw new InvalidDataException("The source installer does not contain dependencies for " + profile.GameId + ".");
+                    if (frozen != null && ysm.Count != DependencyRuntime.RequiredYsm(profile).Length)
+                        throw new InvalidDataException("Import requires an independent legacy dependency package. Retire newer multi-version packages using --retire-version instead.");
+                    string root = DependencyRuntime.SelectedRoot(home, profile, ui, ysm);
+                    DependencyRuntime.CheckSelectedIdentity(root, profile, ui, ysm);
+                    EnsureUiRuntime(home, root, progress, cancelled, bundle);
                     ThrowIfCancelled(cancelled);
                     if (progress != null) progress(35, "Updating YSM libraries and game adapters");
-                    YsmPackage.Install(home, DependencyRuntime.ReadResourceBytes("Moons.Ysm.zip"));
-                    DependencyRuntime.PublishViews(home);
-                    DependencyRuntime.PublishUiRuntime(home);
-                    DependencyRuntime.Verify(home);
-                    DependencyRuntime.RecordInstalledVersion(home);
+                    var expected = new string[ysm.Count]; ysm.Keys.CopyTo(expected, 0);
+                    YsmPackage.Install(root, DependencyRuntime.ReadResourceBytes(bundle, "Moons.Ysm.zip"), DependencyRuntime.RequiredYsm(profile), expected, ysm, home);
+                    foreach (string name in DependencyRuntime.RequiredYsm(profile)) {
+                        string target = Path.Combine(root, name);
+                        string hash = ysm[name].ToLowerInvariant();
+                        byte[] bytes = File.ReadAllBytes(target);
+                        DependencyRuntime.PublishObject(home, target, hash, temporary => File.WriteAllBytes(temporary, bytes));
+                    }
+                    DependencyRuntime.PublishSelected(home, profile, ui, ysm);
+                    string details = Encoding.UTF8.GetString(DependencyRuntime.ReadResourceBytes(bundle, DependencyRuntime.ReleaseMetadataResource));
+                    DependencyRuntime.RecordInstalledVersion(root, details, ysm);
+                    DependencyRuntime.Resolve(home, profile, ui, ysm);
+                    if (frozen != null) {
+                        DependencyRuntime.PrepareFrozenHome(home, root, profile, ui, ysm);
+                        Console.WriteLine("Legacy MOONS_HOME=" + root);
+                    }
                     CacheMaintenance.Run(home);
                     if (progress != null) progress(100, "Dependencies are up to date. You can now run moon.exe.");
                 }
@@ -72,12 +146,14 @@ namespace Moons.WindowsLauncher
             private readonly Label status = new Label();
             private readonly ProgressBar progress = new ProgressBar();
             private readonly Button close = new Button();
+            private readonly Button install = new Button();
+            private readonly ComboBox selection = new ComboBox();
             internal int ExitCode { get; private set; }
 
-            internal InstallerForm()
+            internal InstallerForm(SupportProfile selected)
             {
                 Text = "Moons Dependency Installer";
-                ClientSize = new Size(520, 195);
+                ClientSize = new Size(520, 235);
                 StartPosition = FormStartPosition.CenterScreen;
                 FormBorderStyle = FormBorderStyle.FixedDialog;
                 MaximizeBox = false;
@@ -87,20 +163,34 @@ namespace Moons.WindowsLauncher
                 versions.SetBounds(20, 12, 480, 25);
                 versions.Text = DependencyRuntime.VersionLabel();
                 Controls.Add(versions);
-                status.SetBounds(20, 45, 480, 60);
-                status.Text = "Checking dependencies...";
-                progress.SetBounds(20, 115, 480, 18);
-                close.SetBounds(400, 150, 100, 28);
+                selection.SetBounds(20, 45, 480, 28);
+                selection.DropDownStyle = ComboBoxStyle.DropDownList;
+                foreach (var profile in VersionCatalog.Profiles) selection.Items.Add(profile.GameId);
+                selection.SelectedIndex = Array.IndexOf(VersionCatalog.Profiles, selected);
+                Controls.Add(selection);
+                status.SetBounds(20, 85, 480, 60);
+                status.Text = "Select the Minecraft version to install.";
+                progress.SetBounds(20, 155, 480, 18);
+                close.SetBounds(400, 190, 100, 28);
                 close.Text = "Close";
-                close.Enabled = false;
+                close.Enabled = true;
                 close.FlatStyle = FlatStyle.Flat;
                 close.Click += delegate { Close(); };
                 Controls.AddRange(new Control[] { status, progress, close });
+                install.SetBounds(280, 190, 100, 28);
+                install.Text = "Install";
+                install.FlatStyle = FlatStyle.Flat;
+                install.Click += delegate {
+                    selection.Enabled = install.Enabled = close.Enabled = false;
+                    progress.Value = 0;
+                    worker.RunWorkerAsync(VersionCatalog.Profiles[selection.SelectedIndex]);
+                };
+                Controls.Add(install);
                 worker.WorkerReportsProgress = true;
                 worker.WorkerSupportsCancellation = true;
-                worker.DoWork += delegate
+                worker.DoWork += delegate(object sender, DoWorkEventArgs e)
                 {
-                    Install((percent, message) => worker.ReportProgress(percent, message),
+                    Install((SupportProfile)e.Argument, (percent, message) => worker.ReportProgress(percent, message),
                         () => worker.CancellationPending);
                 };
                 worker.ProgressChanged += delegate(object sender, ProgressChangedEventArgs e)
@@ -113,8 +203,8 @@ namespace Moons.WindowsLauncher
                     ExitCode = e.Error == null ? 0 : 1;
                     if (e.Error != null) status.Text = e.Error.Message;
                     close.Enabled = true;
+                    selection.Enabled = install.Enabled = true;
                 };
-                Shown += delegate { worker.RunWorkerAsync(); };
                 FormClosing += delegate(object sender, FormClosingEventArgs e)
                 {
                     if (worker.IsBusy)
@@ -133,9 +223,9 @@ namespace Moons.WindowsLauncher
             if (cancelled()) throw new OperationCanceledException("Dependency installation cancelled.");
         }
 
-        private static void EnsureUiRuntime(string home, Action<int, string> progress, Func<bool> cancelled)
+        private static void EnsureUiRuntime(string home, string root, Action<int, string> progress, Func<bool> cancelled, Assembly bundle)
         {
-            var metadata = DependencyRuntime.Metadata(DependencyRuntime.UiMetadataResource);
+            var metadata = RuntimeMetadata.Parse(Encoding.UTF8.GetString(DependencyRuntime.ReadResourceBytes(bundle, DependencyRuntime.UiMetadataResource)));
             string expectedHash;
             string sizeText;
             long expectedSize;
@@ -145,16 +235,16 @@ namespace Moons.WindowsLauncher
                 || !Int64.TryParse(sizeText, out expectedSize) || expectedSize <= 0L)
                 throw new InvalidDataException("The embedded UI runtime metadata is invalid.");
             expectedHash = expectedHash.ToLowerInvariant();
-            string directory = Path.Combine(home, "libraries", expectedHash);
+            string directory = Path.Combine(root, "ui");
             string target = Path.Combine(directory, "moons-ui-runtime.jar");
             ThrowIfCancelled(cancelled);
             if (!IsExpectedFile(target, expectedHash, expectedSize))
             {
                 Directory.CreateDirectory(directory);
                 if (progress != null) progress(6, "Extracting embedded UI runtime");
-                StagedFile.Write(target, temporary =>
+                DependencyRuntime.PublishObject(home, target, expectedHash, temporary =>
                 {
-                    using (Stream source = Assembly.GetExecutingAssembly().GetManifestResourceStream("Moons.UiRuntime.jar"))
+                    using (Stream source = bundle.GetManifestResourceStream("Moons.UiRuntime.jar"))
                     {
                         if (source == null) throw new InvalidDataException("The installer is missing its UI runtime.");
                         using (FileStream output = new FileStream(temporary, FileMode.Create, FileAccess.Write, FileShare.None))

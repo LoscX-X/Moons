@@ -21,11 +21,15 @@ Moons 是面向 Windows 的免费开源 Minecraft Java Edition 注入式客户�
 
 ## 版本支持
 
-Moons 维护上面列出的正式版及 26.4 预览版。
+主发行包维护四个 Minecraft 版本档案：**26.1.2**、**26.2**、**26.3** 和 **26.4-snapshot-1**。新增版本档案时，较旧档案逐步退出这个维护窗口。
 
-快照、预发布版和候选发布版等开发版本，仅支持即将推出的最新 Minecraft 版本。
+快照、预发布版和候选发布版仅支持即将推出的最新 Minecraft 版本，以这里列出的具体构建为准；支持一个预览构建不代表兼容其他预览构建。
 
 较早的预览构建和已停止支持的 Minecraft 版本可能仍可通过历史 Releases 或 CI 产物获取，但不再获得修复或兼容性更新。
+
+Minecraft **1.8.9** 在 [`legacy/1.8.9`](https://github.com/LoscX-X/Moons/tree/legacy/1.8.9) 分支独立开发，等待游戏实测；不占用四版维护窗口，也不包含在主发行包的安装器和加载器中。
+
+Moons 客户端版本使用 **`X.Y.Z.x-Experiment`** 或 **`X.Y.Z.x-Release`**，例如 `1.0.0.0-Experiment`。前三段表示发行基线，第四段表示补丁顺序。`Experiment` 为预发布实验版，不覆盖 GitHub 的 Latest；`Release` 为正式版并标记 Latest。提交哈希后缀用于区分构建，不代替补丁顺序。Minecraft 版本号与 Moons 客户端版本号分别维护。
 
 ## 风险与责任声明
 
@@ -39,11 +43,13 @@ Moons 维护上面列出的正式版及 26.4 预览版。
 ## 如何使用
 
 1. 从同一次 [Release](https://github.com/LoscX-X/Moons/releases) 下载 `moon-install-<版本>-<commit>.exe` 和 `moon-<版本>-<commit>.exe`。
-2. 运行安装器安装或更新依赖。
+2. 运行安装器，选择 Minecraft 版本，点击 **Install** 安装该版本依赖。
 3. 启动受支持版本的 Minecraft，再运行加载器，选择游戏进程并加载 Moons。
 4. 按 **右 Shift** 打开 ClickGUI，这是默认按键。
 
 依赖编号不变且已安装文件完好时，只需更新加载器；依赖有变化时再运行匹配版本的安装器。安装器内置 UI runtime 和 YSM 依赖，支持离线安装。开发构建可从 [Actions](https://github.com/LoscX-X/Moons/actions) 获取。
+
+依赖按游戏版本存于 `libraries/latest/<版本>` 或 `libraries/legacy/<版本>`。安装器只安装所选版本；缓存保留最近一次成功运行。
 
 ## 如何保存配置
 

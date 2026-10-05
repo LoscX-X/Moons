@@ -201,6 +201,7 @@ def registerLauncher = { String taskName, String fileName, boolean installer ->
                 'src/tools/launcher/csharp/RuntimeMetadata.cs',
                 'src/tools/launcher/csharp/VersionCatalog.cs', moonsVersions.launcherSource,
                 'src/tools/launcher/csharp/DependencyRuntime.cs',
+                'src/tools/launcher/csharp/ProcessEvidenceCache.cs',
                 'src/tools/launcher/csharp/CacheMaintenance.cs', assemblyVersionSource)
         if (installer) {
             sources += files('src/tools/launcher/csharp/DependencyInstaller.cs',
@@ -208,7 +209,6 @@ def registerLauncher = { String taskName, String fileName, boolean installer ->
         } else {
             sources += files('src/tools/launcher/csharp/MoonsExeLauncher.cs',
                     'src/tools/shared/HardwareIdGenerator.cs',
-                    'src/tools/launcher/csharp/ProcessEvidenceCache.cs',
                     'src/tools/launcher/csharp/LoadSession.cs', 'src/tools/launcher/csharp/ZipEntries.cs')
         }
         def resources = [

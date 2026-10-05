@@ -64,8 +64,12 @@ namespace Moons.WindowsLauncher
         internal static bool IsBuildJvm(string commandLine)
         {
             // Only known compiler/Gradle main classes are exempt; unknown Java remains protected.
-            return !String.IsNullOrWhiteSpace(commandLine) && Regex.IsMatch(commandLine,
-                @"(?:^|\s)(?:org\.gradle\.launcher\.daemon\.bootstrap\.GradleDaemon|org\.gradle\.wrapper\.GradleWrapperMain|org\.gradle\.launcher\.GradleMain|org\.jetbrains\.kotlin\.daemon\.KotlinCompileDaemon)(?:\s|$)");
+            if (String.IsNullOrWhiteSpace(commandLine)) return false;
+            return Regex.IsMatch(commandLine,
+                @"(?:^|\s)(?:org\.gradle\.launcher\.daemon\.bootstrap\.GradleDaemon|org\.gradle\.wrapper\.GradleWrapperMain|org\.gradle\.launcher\.GradleMain|org\.jetbrains\.kotlin\.daemon\.KotlinCompileDaemon)(?:\s|$)")
+                // Current Gradle wrappers launch with -jar, without a main-class argument.
+                || Regex.IsMatch(commandLine,
+                    "(?:^|\\s)-jar\\s+(?:\"[^\"]*[\\\\/]gradle[\\\\/]wrapper[\\\\/]gradle-wrapper\\.jar\"|[^\\s\"]*[\\\\/]gradle[\\\\/]wrapper[\\\\/]gradle-wrapper\\.jar)(?:\\s|$)");
         }
 
         internal static void Prune(string home, string legacyTemp, Func<bool> busy)

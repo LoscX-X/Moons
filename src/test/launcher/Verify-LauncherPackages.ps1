@@ -17,7 +17,7 @@ function Run-Tool([string]$Executable, [string]$Argument, [int]$Expected) {
     $process = Start-Process -FilePath $Executable -ArgumentList $Argument -WindowStyle Hidden -Wait -PassThru `
         -RedirectStandardOutput ($log + '.out') -RedirectStandardError ($log + '.err')
     if ($process.ExitCode -ne $Expected) {
-        throw "Unexpected exit code $($process.ExitCode), expected ${Expected}: $(Get-Content ($log + '.err') -Raw)"
+        throw "Unexpected exit code $($process.ExitCode), expected ${Expected}: $Executable $Argument`nstdout: $(Get-Content ($log + '.out') -Raw)`nstderr: $(Get-Content ($log + '.err') -Raw)"
     }
 }
 

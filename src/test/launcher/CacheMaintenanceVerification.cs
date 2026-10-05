@@ -12,6 +12,11 @@ internal static class CacheMaintenanceVerification
     {
         Check(CacheMaintenance.IsBuildJvm("java -Xmx1g org.gradle.launcher.daemon.bootstrap.GradleDaemon 9.5.1"), "Gradle blocks idle cleanup");
         Check(CacheMaintenance.IsBuildJvm("java org.jetbrains.kotlin.daemon.KotlinCompileDaemon"), "Kotlin compiler blocks idle cleanup");
+        Check(CacheMaintenance.IsBuildJvm("\"C:\\Program Files\\Java\\bin\\java.exe\" -Xmx64m -jar \"D:\\a\\Moons\\Moons\\gradle\\wrapper\\gradle-wrapper.jar\" moonsPackages verifyLauncherPackages"), "Executable Gradle wrapper blocks retirement");
+        Check(CacheMaintenance.IsBuildJvm("java -jar E:/Moons/gradle/wrapper/gradle-wrapper.jar check"), "Unquoted Gradle wrapper blocks cleanup");
+        Check(!CacheMaintenance.IsBuildJvm("java -jar C:/game/client.jar --label gradle/wrapper/gradle-wrapper.jar")
+            && !CacheMaintenance.IsBuildJvm("java -jar C:/gradle/wrapper/gradle-wrapper.jar.bak")
+            && !CacheMaintenance.IsBuildJvm("java -jar \"C:/gradle/wrapper/gradle-wrapper.jar other.jar\""), "Unrelated JAR lost protection");
         Check(!CacheMaintenance.IsBuildJvm("java net.minecraft.client.main.Main --version 26.2")
             && !CacheMaintenance.IsBuildJvm("java unknown.Main") && !CacheMaintenance.IsBuildJvm(""), "Game or unknown Java lost protection");
         string fixture = Path.GetFullPath(Path.Combine(arguments[0], Guid.NewGuid().ToString("N")));

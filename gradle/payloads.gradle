@@ -29,27 +29,26 @@ def uiDependenciesJar = tasks.register("uiDependenciesJar", moonsPluginTypes.sha
     exclude "META-INF/versions/*/module-info.class", "module-info.class"
 }
 
-def featuresJar = tasks.register("featuresJar", Jar) {
+def clientModuleJar = tasks.register("clientModuleJar", Jar) {
     archiveFileName = "moons-core-features.jar"
     destinationDirectory = layout.buildDirectory.dir(versionedPayloadDirectory)
     dependsOn tasks.named("clientClasses")
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-    from sourceSets.features.output
     from sourceSets.client.output
 }
 
 tasks.register("moonsJar", Jar) {
     group = "build"
     description = "Builds the Java payload loaded by the JNI/JVMTI bridge."
-    dependsOn apiJar, runtimeJar, featuresJar, tasks.named("agentClasses")
+    dependsOn apiJar, runtimeJar, clientModuleJar, tasks.named("loaderClasses")
 
     archiveFileName = "moons.jar"
     destinationDirectory = layout.buildDirectory.dir(moonsJarOutputDirectory)
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 
-    from sourceSets.agent.output
+    from sourceSets.loader.output
     from({
-        configurations.agentRuntimeClasspath
+        configurations.loaderRuntimeClasspath
                 .findAll { it.isFile() }
                 .collect { zipTree(it) }
     }) {
@@ -64,7 +63,7 @@ tasks.register("moonsJar", Jar) {
         from(runtimeJar.flatMap { it.archiveFile })
     }
     into("META-INF/moons/modules") {
-        from(featuresJar.flatMap { it.archiveFile })
+        from(clientModuleJar.flatMap { it.archiveFile })
     }
 
     manifest {

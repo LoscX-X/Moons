@@ -22,7 +22,7 @@ def aliases = []
 profiles.each { profile ->
     def required = ['profileId', 'gameId', 'aliases', 'artifactId', 'status', 'available'].toSet()
     if (profile.available && profile.status == 'legacy') required.add('releaseLock')
-    else if (profile.available) required.addAll(['javaVersion', 'payloadFamily', 'backend', 'evidencePattern', 'overlayBackend'])
+    else if (profile.available) required.addAll(['javaVersion', 'payloadFamily', 'backend', 'evidencePattern'])
     if (profile.keySet() != required) {
         throw new GradleException("Unknown or missing support profile fields: ${profile.profileId}")
     }
@@ -46,7 +46,6 @@ profiles.each { profile ->
     } else if (profile.available) {
         if (profile.javaVersion != 25 || profile.payloadFamily != 'modern'
                 || profile.backend != 'windows-x64-jvmti' || !(profile.evidencePattern instanceof String)
-                || !(profile.overlayBackend in ['gl', 'blaze3d', 'renderpearl'])
                 || !file("src/minecraft/versions/${profile.profileId}").isDirectory()) {
             throw new GradleException("Unimplemented build profile ${profile.profileId}")
         }

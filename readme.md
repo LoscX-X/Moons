@@ -27,7 +27,7 @@ Snapshots, pre-releases and release candidates are supported only for the newest
 
 Older preview builds and retired Minecraft versions may remain available through historical releases or CI artifacts, but receive no further fixes or compatibility updates.
 
-Minecraft **1.8.9** is developed separately on [`legacy/1.8.9`](https://github.com/LoscX-X/Moons/tree/legacy/1.8.9), pending game testing. It is outside the four-profile window and is not included in the main installer or loader.
+Minecraft **1.8.9** is developed separately on [`legacy/1.8.9`](https://github.com/LoscX-X/Moons/tree/legacy/1.8.9), pending game testing. Users must build that branch themselves; see its README and build instructions. It is outside the four-profile window and is not included in the main installer or loader.
 
 Moons client versions use **`X.Y.Z.x-Experiment`** or **`X.Y.Z.x-Release`**, for example `1.0.0.0-Experiment`. The first three numbers identify the release baseline; the fourth is the patch sequence. `Experiment` builds are prereleases and do not replace GitHub's Latest release. `Release` builds are stable releases marked Latest. The commit suffix distinguishes builds; it does not replace the patch sequence. Minecraft version numbers and Moons client version numbers are separate.
 

@@ -22,12 +22,13 @@ sourceSets {
         java.setSrcDirs(["src/bootstrap/api/java"])
         resources.setSrcDirs(["src/bootstrap/api/resources"])
     }
-    agent {
+    loader {
         java.setSrcDirs([
-                "src/bootstrap/agent/java",
-                "src/minecraft/versions/${selectedVersionDirectory}/agent"
+                "src/bootstrap/loader/java",
+                "src/common/asm",
+                "src/minecraft/versions/${selectedVersionDirectory}/loader"
         ])
-        resources.setSrcDirs(["src/bootstrap/agent/resources"])
+        resources.setSrcDirs(["src/bootstrap/loader/resources"])
         compileClasspath += sourceSets.api.output
     }
     runtime {
@@ -35,20 +36,12 @@ sourceSets {
         resources.setSrcDirs(["src/bootstrap/runtime/resources"])
         compileClasspath += sourceSets.api.output
     }
-    features {
-        java.setSrcDirs([
-                "src/minecraft/features/java",
-                "src/minecraft/versions/${selectedVersionDirectory}/features/java"
-        ])
-        resources.setSrcDirs(["src/minecraft/features/resources"])
-        compileClasspath += sourceSets.api.output + sourceSets.runtime.output
-    }
     loaderTest {
         // The mapping verifier reads real Minecraft bytecode through the production transformer.
         java.setSrcDirs(["src/test/loader/java"])
         resources.setSrcDirs(["src/test/loader/resources"])
-        compileClasspath += sourceSets.agent.output + sourceSets.runtime.output + sourceSets.api.output + configurations.agentRuntimeClasspath
-        runtimeClasspath += sourceSets.agent.output + sourceSets.runtime.output + sourceSets.api.output + configurations.agentRuntimeClasspath
+        compileClasspath += sourceSets.loader.output + sourceSets.runtime.output + sourceSets.api.output + configurations.loaderRuntimeClasspath
+        runtimeClasspath += sourceSets.loader.output + sourceSets.runtime.output + sourceSets.api.output + configurations.loaderRuntimeClasspath
     }
 }
 
@@ -68,34 +61,26 @@ configurations.named("clientImplementation") {
 }
 
 sourceSets.client.java.setSrcDirs([
-        "src/minecraft/shared/java",
+        "src/common/java",
         "src/minecraft/versions/${selectedVersionDirectory}/client/java"
 ])
 sourceSets.client.kotlin.setSrcDirs([
-        "src/minecraft/shared/kotlin",
+        "src/common/kotlin",
         "src/minecraft/versions/${selectedVersionDirectory}/client/kotlin"
 ])
-def overlayBackend = moonsVersions.profiles.find { it.profileId == selectedVersionDirectory }.overlayBackend
-if (overlayBackend != 'gl') {
-    sourceSets.client.kotlin.srcDir('src/minecraft/backends/raster/kotlin')
-    sourceSets.client.kotlin.srcDir("src/minecraft/backends/${overlayBackend}/kotlin")
-}
 sourceSets.client.resources.setSrcDirs([
-        "src/minecraft/shared/resources",
+        "src/common/resources",
         "src/minecraft/versions/${selectedVersionDirectory}/client/resources"
 ])
 
 tasks.named("processClientResources") {
-    from(layout.projectDirectory.dir("src/libraries/models/aim")) {
-        include("aim-gru128-epoch7.bin", "aim-gru128-epoch7.json")
-        into("assets/moons/models")
-    }
-}
-
-tasks.named("processFeaturesResources") {
     inputs.property("minecraftVersion", selectedMinecraftVersion)
     filesMatching("META-INF/moons-module.properties") {
         expand(minecraftVersion: selectedMinecraftVersion)
+    }
+    from(layout.projectDirectory.dir("src/libraries/models/aim")) {
+        include("aim-gru128-epoch7.bin", "aim-gru128-epoch7.json")
+        into("assets/moons/models")
     }
 }
 
@@ -116,9 +101,9 @@ dependencies {
 
     // The standalone loader is deliberately isolated from Fabric/Minecraft.
     // Its only non-JDK dependency is ASM, which is folded into moons.jar.
-    agentImplementation "org.ow2.asm:asm:9.10.1"
-    agentImplementation "org.ow2.asm:asm-tree:9.10.1"
-    agentImplementation "org.ow2.asm:asm-util:9.10.1"
+    loaderImplementation "org.ow2.asm:asm:9.10.1"
+    loaderImplementation "org.ow2.asm:asm-tree:9.10.1"
+    loaderImplementation "org.ow2.asm:asm-util:9.10.1"
 }
 
 tasks.withType(JavaCompile).configureEach {
@@ -134,7 +119,7 @@ kotlin {
     }
 }
 
-tasks.named("compileAgentJava", JavaCompile).configure {
+tasks.named("compileLoaderJava", JavaCompile).configure {
     options.compilerArgs.addAll(["--add-modules", "jdk.attach"])
 }
 
@@ -146,8 +131,7 @@ java {
     withSourcesJar()
 }
 
-sourceSets.client.compileClasspath += sourceSets.api.output
-sourceSets.features.compileClasspath += sourceSets.client.output + sourceSets.client.compileClasspath
+sourceSets.client.compileClasspath += sourceSets.api.output + sourceSets.runtime.output
 
 // Compilation-only entry points remain available; CI runs the full version checks by default.
 def versionCompilations = []
@@ -163,7 +147,7 @@ moonsBuild.supportedVersions.each { minecraftVersion, directory ->
         executable moonsToolchains.gradleExecutable.absolutePath
         def nestedBuild = layout.buildDirectory.dir("compilation/${directory}").get().asFile.absolutePath
         args moonsToolchains.nestedGradleArguments([
-                "clientClasses", "featuresClasses", "agentClasses", "ysmClasses",
+                "clientClasses", "loaderClasses", "ysmClasses",
                 "-Pminecraft_version=${minecraftVersion}",
                 "-Pmoons_build_directory=${nestedBuild}"
         ].collect { it.toString() })

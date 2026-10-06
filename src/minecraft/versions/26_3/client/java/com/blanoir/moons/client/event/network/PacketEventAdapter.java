@@ -2,7 +2,7 @@ package com.blanoir.moons.client.event.network;
 
 import com.blanoir.moons.client.access.GameAccess;
 import com.blanoir.moons.client.event.EventBus;
-import com.blanoir.moons.client.management.lease.RotationLease;
+import com.blanoir.moons.client.manager.lease.RotationLease;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.Connection;

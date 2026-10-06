@@ -44,10 +44,6 @@ public final class XrayTerrain {
         RENDERING_BACKGROUND.set(false);
     }
 
-    public static boolean supportsBackgroundTransparency() {
-        return true;
-    }
-
     public static ChunkSectionLayer forceTranslucentLayer(ChunkSectionLayer original) {
         return isRenderingBackground() ? ChunkSectionLayer.TRANSLUCENT : original;
     }

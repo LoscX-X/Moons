@@ -4,7 +4,6 @@
   "profiles": [
     {
       "profileId": "26_1",
-      "overlayBackend": "gl",
       "gameId": "26.1.2",
       "aliases": ["26.1", "26.1.2"],
       "artifactId": "26.1",
@@ -17,7 +16,6 @@
     },
     {
       "profileId": "26_2",
-      "overlayBackend": "blaze3d",
       "gameId": "26.2",
       "aliases": ["26.2"],
       "artifactId": "26.2",
@@ -30,7 +28,6 @@
     },
     {
       "profileId": "26_3",
-      "overlayBackend": "renderpearl",
       "gameId": "26.3",
       "aliases": ["26.3"],
       "artifactId": "26.3",
@@ -43,7 +40,6 @@
     },
     {
       "profileId": "26_4",
-      "overlayBackend": "renderpearl",
       "gameId": "26.4-snapshot-1",
       "aliases": ["26.4-snapshot-1"],
       "artifactId": "26.4-snapshot-1",

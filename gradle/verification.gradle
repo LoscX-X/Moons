@@ -8,9 +8,9 @@ sourceSets {
     renderTest {
         java.setSrcDirs(['src/test/render/java'])
         kotlin.setSrcDirs(['src/test/render/kotlin'])
-        kotlin.exclude('**/compose/RasterFramePipelineVerification.kt')
+        kotlin.exclude('**/frame/RasterFramePipelineVerification.kt')
         resources.setSrcDirs(['src/test/render/resources'])
-        compileClasspath += sourceSets.features.output + sourceSets.client.output + sourceSets.agent.output + sourceSets.runtime.output + sourceSets.api.output + sourceSets.features.compileClasspath + configurations.agentRuntimeClasspath
+        compileClasspath += sourceSets.client.output + sourceSets.client.compileClasspath + sourceSets.loader.output + sourceSets.runtime.output + sourceSets.api.output + configurations.loaderRuntimeClasspath
         runtimeClasspath += compileClasspath
     }
     gameAccessTest {
@@ -23,17 +23,17 @@ sourceSets {
     }
     rasterTest {
         java.setSrcDirs([])
-        kotlin.setSrcDirs(['src/minecraft/shared/kotlin', 'src/test/render/kotlin'])
-        kotlin.include('**/compose/OverlayBackend.kt', '**/compose/RasterFramePipeline.kt',
-                '**/compose/RasterFrameBuffer.kt', '**/compose/RasterRegion.kt',
-                '**/compose/RasterFramePipelineVerification.kt')
+        kotlin.setSrcDirs(['src/common/kotlin', 'src/test/render/kotlin'])
+        kotlin.include('**/frame/RasterFramePipeline.kt',
+                '**/frame/RasterFrameBuffer.kt', '**/frame/RasterRegion.kt',
+                '**/frame/RasterFramePipelineVerification.kt')
         resources.setSrcDirs([])
         compileClasspath += sourceSets.client.compileClasspath
         runtimeClasspath += sourceSets.client.runtimeClasspath
     }
     taskScopeTest {
-        java.setSrcDirs(['src/minecraft/shared/java', 'src/test/render/java'])
-        java.include('**/management/task/*.java')
+        java.setSrcDirs(['src/common/java', 'src/test/render/java'])
+        java.include('**/threads/*.java', '**/lifecycle/ActivationGate.java', '**/lifecycle/CleanupSequence.java')
         kotlin.setSrcDirs([])
         resources.setSrcDirs([])
         compileClasspath += sourceSets.runtime.output + sourceSets.api.output
@@ -62,7 +62,16 @@ tasks.register('verifyTaskScope', JavaExec) {
     description = 'Checks real task termination, bounded admission, stale dispatch and result disposal without a game.'
     dependsOn 'taskScopeTestClasses'
     classpath = sourceSets.taskScopeTest.runtimeClasspath
-    mainClass = 'com.blanoir.moons.client.management.task.TaskScopeVerification'
+    mainClass = 'com.blanoir.moons.client.threads.TaskScopeVerification'
+}
+
+tasks.register('verifyInputBindings', JavaExec) {
+    group = 'verification'
+    description = 'Checks callback/poll deduplication, held activation, focus loss and binding changes without a window.'
+    dependsOn 'renderTestClasses'
+    classpath = sourceSets.renderTest.runtimeClasspath
+    mainClass = 'com.blanoir.moons.client.input.InputBindingVerification'
+    systemProperty 'moons.home', layout.buildDirectory.dir('verification/input-bindings/home').get().asFile.absolutePath
 }
 
 tasks.register('verifyRasterPipeline', JavaExec) {
@@ -70,7 +79,7 @@ tasks.register('verifyRasterPipeline', JavaExec) {
     description = 'Compares real raster pixels and lifecycle behavior through a fake GPU transport.'
     dependsOn 'rasterTestClasses'
     classpath = sourceSets.rasterTest.runtimeClasspath + configurations.minecraftNatives
-    mainClass = 'com.blanoir.moons.client.ui.compose.RasterFramePipelineVerification'
+    mainClass = 'com.blanoir.moons.client.render.frame.RasterFramePipelineVerification'
 }
 
 [
@@ -80,13 +89,13 @@ tasks.register('verifyRasterPipeline', JavaExec) {
         verifyAutoSpearFakeLag: 'com.blanoir.moons.client.module.impl.combat.AutoSpearFakeLagVerification',
         verifyAimCollect: 'com.blanoir.moons.client.module.impl.misc.aimdata.AimCollectVerification',
         verifyStructureLocate: 'com.blanoir.moons.client.module.impl.world.structure.StructureLocateVerification',
-        verifyRemoteConfig: 'com.blanoir.moons.client.web.RemoteConfigVerification',
+        verifyRemoteConfig: 'com.blanoir.moons.client.service.web.RemoteConfigVerification',
         verifySettingsPersistence: 'com.blanoir.moons.client.config.SettingsPersistenceVerification',
         verifySilentAuraPoints: 'com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraPointVerification',
         verifyLearnedAim: 'com.blanoir.moons.client.module.impl.combat.silentaura.LearnedAimVerification',
         verifyBacktrackFlow: 'com.blanoir.moons.client.module.impl.network.backtrack.BacktrackFlowVerification',
         verifyInventoryActions: 'com.blanoir.moons.client.module.impl.player.invmanager.InventoryActionVerification',
-        verifyInventoryFailures: 'com.blanoir.moons.client.utils.inventory.InventoryFailureVerification',
+        verifyInventoryFailures: 'com.blanoir.moons.client.manager.inventory.InventoryFailureVerification',
         verifyGodBridgeSafety: 'com.blanoir.moons.client.module.impl.world.scaffold.GodBridgeSafetyVerification',
         verifyPlacementRays: 'com.blanoir.moons.client.utils.world.placement.PlacementRaycastVerification'
 ].each { taskName, entryPoint ->
@@ -156,7 +165,7 @@ tasks.named('compileRenderTestKotlin', moonsPluginTypes.kotlinCompile) {
 
 tasks.register('verifyGameAccess', JavaExec) {
     group = 'verification'
-    description = 'Resolves private Minecraft members used by the version-specific feature host.'
+    description = 'Resolves private Minecraft members used by the version-specific access bridges.'
     dependsOn 'gameAccessTestClasses'
     // 26.1 overlay descriptors also initialize their native vertex allocators.
     classpath = sourceSets.gameAccessTest.runtimeClasspath + configurations.minecraftNatives
@@ -168,7 +177,7 @@ tasks.register("verifyMinecraftTransformers", JavaExec) {
     description = "Transforms and bytecode-verifies every supported hook against the actual Minecraft JAR."
     dependsOn tasks.named("loaderTestClasses")
     classpath = sourceSets.loaderTest.runtimeClasspath
-    mainClass = "com.blanoir.moons.agent.core.TransformerVerification"
+    mainClass = "com.blanoir.moons.loader.common.asm.transform.TransformerVerification"
     doFirst {
         def minecraftJars = sourceSets.client.compileClasspath.files.findAll {
             it.name.toLowerCase(Locale.ROOT).startsWith("minecraft-")
@@ -197,7 +206,7 @@ tasks.register('verifyNeoForgeTransformers', JavaExec) {
     description = 'Verifies production hooks against an installed NeoForge patched client.'
     dependsOn 'loaderTestClasses'
     classpath = sourceSets.loaderTest.runtimeClasspath
-    mainClass = 'com.blanoir.moons.agent.core.TransformerVerification'
+    mainClass = 'com.blanoir.moons.loader.common.asm.transform.TransformerVerification'
     doFirst {
         args = [neoForgeClientJar().absolutePath]
     }
@@ -254,7 +263,7 @@ tasks.register('verifyNeoForgeYsmRenderSetup', JavaExec) {
 
 
 tasks.named("check").configure {
-    dependsOn "clientClasses", "featuresClasses", "verifyMinecraftTransformers", "verifyGameAccess",
+    dependsOn "clientClasses", "verifyMinecraftTransformers", "verifyGameAccess",
             "verifyLoadSession", "verifyCacheMaintenance", "verifyPayloadCache"
 }
 
@@ -345,7 +354,7 @@ def cacheMaintenanceCheckExe = tasks.register('cacheMaintenanceVerificationExe',
             'src/tools/launcher/csharp/DependencyRuntime.cs',
             'src/tools/launcher/csharp/VersionCatalog.cs', moonsVersions.launcherSource, 'src/tools/launcher/csharp/RuntimeMetadata.cs',
             'src/tools/launcher/csharp/ProcessEvidenceCache.cs',
-            'src/tools/shared/Hashing.cs', 'src/tools/shared/StagedFile.cs', 'src/tools/shared/DirectoryJunction.cs',
+            'src/tools/common/Hashing.cs', 'src/tools/common/StagedFile.cs', 'src/tools/common/DirectoryJunction.cs',
             'src/test/launcher/CacheMaintenanceVerification.cs')
     def output = layout.buildDirectory.file('verification/cache-maintenance.exe')
     inputs.files(sources)
@@ -374,7 +383,7 @@ def dependencyContextsExe = tasks.register('dependencyContextsVerificationExe', 
             'src/tools/launcher/csharp/VersionCatalog.cs', moonsVersions.launcherSource,
             'src/tools/launcher/csharp/RuntimeMetadata.cs', 'src/tools/launcher/csharp/CacheMaintenance.cs',
             'src/tools/launcher/csharp/ProcessEvidenceCache.cs',
-            'src/tools/shared/Hashing.cs', 'src/tools/shared/StagedFile.cs', 'src/tools/shared/DirectoryJunction.cs',
+            'src/tools/common/Hashing.cs', 'src/tools/common/StagedFile.cs', 'src/tools/common/DirectoryJunction.cs',
             'src/test/launcher/DependencyContextsVerification.cs')
     def output = layout.buildDirectory.file('verification/dependency-contexts.exe')
     inputs.files(sources); outputs.file(output)

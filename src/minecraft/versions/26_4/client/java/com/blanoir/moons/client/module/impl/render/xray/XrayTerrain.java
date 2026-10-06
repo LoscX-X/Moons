@@ -4,10 +4,7 @@ import com.blanoir.moons.client.module.impl.render.Caver;
 import com.mojang.blaze3d.vertex.QuadInstance;
 
 import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
-import net.minecraft.core.BlockPos;
 import net.minecraft.util.ARGB;
-import net.minecraft.world.level.BlockGetter;
-import net.minecraft.world.level.block.state.BlockState;
 
 /**
  * Controls the real through-wall terrain X-ray.
@@ -43,10 +40,6 @@ public final class XrayTerrain {
         RENDERING_BACKGROUND.set(false);
     }
 
-    public static boolean supportsBackgroundTransparency() {
-        return true;
-    }
-
     public static ChunkSectionLayer forceTranslucentLayer(ChunkSectionLayer original) {
         return isEnabled() && isRenderingBackground() ? ChunkSectionLayer.TRANSLUCENT : original;
     }
@@ -60,13 +53,5 @@ public final class XrayTerrain {
         for (int i = 0; i < 4; i++) {
             quadInstance.setColor(i, ARGB.multiplyAlpha(quadInstance.getColor(i), alpha));
         }
-    }
-
-    /**
-     * 26.4-snapshot-1 must not cancel tesselateBlock. SectionCompiler owns the output routing
-     * and cancelling here can leave an otherwise valid section with no terrain mesh.
-     */
-    public static boolean shouldSkipBlock(BlockState state, BlockGetter level, BlockPos pos) {
-        return false;
     }
 }

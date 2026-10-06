@@ -1,0 +1,288 @@
+package com.blanoir.moons.client.lifecycle;
+
+import com.blanoir.moons.client.access.MinecraftClientAccess;
+import com.blanoir.moons.client.command.PremiumCheckCommand;
+import com.blanoir.moons.client.config.ConfigProfiles;
+import com.blanoir.moons.client.config.Settings;
+import com.blanoir.moons.client.event.network.PacketEventAdapter;
+import com.blanoir.moons.client.manager.combat.CombatModuleCoordinator;
+import com.blanoir.moons.client.manager.combat.CriticalHitTracker;
+import com.blanoir.moons.client.manager.input.CombatInputController;
+import com.blanoir.moons.client.manager.lease.HotbarLease;
+import com.blanoir.moons.client.manager.rotation.RotationManager;
+import com.blanoir.moons.client.manager.rotation.SilentPacketRotation;
+import com.blanoir.moons.client.manager.time.TimerManager;
+import com.blanoir.moons.client.module.catalog.ModuleCatalog;
+import com.blanoir.moons.client.module.framework.ModuleRegistry;
+import com.blanoir.moons.client.module.impl.combat.AutoBlock;
+import com.blanoir.moons.client.module.impl.combat.AutoClicker;
+import com.blanoir.moons.client.module.impl.combat.AutoMace;
+import com.blanoir.moons.client.module.impl.combat.AutoSpear;
+import com.blanoir.moons.client.module.impl.combat.HitSelect;
+import com.blanoir.moons.client.module.impl.combat.Misplace;
+import com.blanoir.moons.client.module.impl.combat.Reach;
+import com.blanoir.moons.client.module.impl.combat.SilentAura;
+import com.blanoir.moons.client.module.impl.combat.SprintReset;
+import com.blanoir.moons.client.module.impl.combat.TriggerBot;
+import com.blanoir.moons.client.module.impl.combat.Velocity;
+import com.blanoir.moons.client.module.impl.combat.aim.AimAssist;
+import com.blanoir.moons.client.module.impl.combat.critical.Critical;
+import com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraBlock;
+import com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraRuntime;
+import com.blanoir.moons.client.module.impl.misc.AntiNick;
+import com.blanoir.moons.client.module.impl.misc.FreeLook;
+import com.blanoir.moons.client.module.impl.misc.aimdata.AimCollect;
+import com.blanoir.moons.client.module.impl.misc.antibot.AntiBot;
+import com.blanoir.moons.client.module.impl.movement.JumpReset;
+import com.blanoir.moons.client.module.impl.movement.KeepSprint;
+import com.blanoir.moons.client.module.impl.network.Backtrack;
+import com.blanoir.moons.client.module.impl.network.Disabler;
+import com.blanoir.moons.client.module.impl.network.FakeLag;
+import com.blanoir.moons.client.module.impl.network.LowHealthFakeLag;
+import com.blanoir.moons.client.module.impl.network.RandomFakeLag;
+import com.blanoir.moons.client.module.impl.player.AntiLava;
+import com.blanoir.moons.client.module.impl.player.AntiWeb;
+import com.blanoir.moons.client.module.impl.player.AutoArmor;
+import com.blanoir.moons.client.module.impl.player.AutoBed;
+import com.blanoir.moons.client.module.impl.player.AutoHead;
+import com.blanoir.moons.client.module.impl.player.AutoLava;
+import com.blanoir.moons.client.module.impl.player.AutoMLG;
+import com.blanoir.moons.client.module.impl.player.AutoSword;
+import com.blanoir.moons.client.module.impl.player.AutoTotem;
+import com.blanoir.moons.client.module.impl.player.AutoWeb;
+import com.blanoir.moons.client.module.impl.player.InvClear;
+import com.blanoir.moons.client.module.impl.player.RightClick;
+import com.blanoir.moons.client.module.impl.player.blockin.BlockInRuntime;
+import com.blanoir.moons.client.module.impl.player.invmanager.InvManager;
+import com.blanoir.moons.client.module.impl.render.Animations;
+import com.blanoir.moons.client.module.impl.render.Caver;
+import com.blanoir.moons.client.module.impl.render.Chams;
+import com.blanoir.moons.client.module.impl.render.FullBright;
+import com.blanoir.moons.client.module.impl.render.InventorySee;
+import com.blanoir.moons.client.module.impl.render.Nametags;
+import com.blanoir.moons.client.module.impl.render.Nickname;
+import com.blanoir.moons.client.module.impl.render.NicknameShuffle;
+import com.blanoir.moons.client.module.impl.render.Scoreboard;
+import com.blanoir.moons.client.module.impl.render.TargetInfoHud;
+import com.blanoir.moons.client.module.impl.render.UhcFinder;
+import com.blanoir.moons.client.module.impl.render.xray.OreHighlighter;
+import com.blanoir.moons.client.module.impl.render.xray.OreScanner;
+import com.blanoir.moons.client.module.impl.render.xray.XrayDestroyPacketMode;
+import com.blanoir.moons.client.module.impl.world.AutoTool;
+import com.blanoir.moons.client.module.impl.world.ChestStealer;
+import com.blanoir.moons.client.module.impl.world.FastBreak;
+import com.blanoir.moons.client.module.impl.world.FastPlace;
+import com.blanoir.moons.client.module.impl.world.LightningTracker;
+import com.blanoir.moons.client.module.impl.world.scaffold.Scaffold;
+import com.blanoir.moons.client.module.impl.world.scaffold.ScaffoldManager;
+import com.blanoir.moons.client.module.impl.world.structure.StructureLocate;
+import com.blanoir.moons.client.render.WorldOverlayRenderer;
+import com.blanoir.moons.client.service.web.RemoteConfigClient;
+import com.blanoir.moons.client.ui.clickgui.ClickGuiWarmup;
+import com.blanoir.moons.client.ui.clickgui.MoonsComposeScreen;
+import com.blanoir.moons.client.ui.compose.ComposeRenderBridge;
+
+import net.minecraft.client.Minecraft;
+
+/** Starts and stops feature listeners in their established runtime order. */
+final class ClientLifecycle {
+    private static boolean transientReleased;
+
+    private ClientLifecycle() {}
+
+    static void initialize() {
+        Settings.load();
+        ModuleRegistry.installCatalog(ModuleCatalog::register);
+        RotationManager.init();
+        HotbarLease.init();
+        FreeLook.init();
+
+        AutoMLG.init();
+        OreScanner.init();
+        StructureLocate.init();
+        OreHighlighter.init();
+        XrayDestroyPacketMode.init();
+        Nickname.init();
+        PremiumCheckCommand.init();
+        CombatInputController.init();
+        HitSelect.init();
+        AntiBot.init();
+        AntiNick.init();
+        AimAssist.init();
+        JumpReset.init();
+        Velocity.init();
+        Critical.init();
+        Reach.init();
+        TriggerBot.init();
+        AutoClicker.init();
+        RightClick.init();
+        AutoSpear.init();
+        AutoMace.init();
+        SprintReset.init();
+        SilentAura.init();
+        Animations.bindCombatState(
+                () -> AutoBlock.isEnabled() || SilentAuraBlock.isEnabled(),
+                client ->
+                        SilentAuraBlock.controls(client)
+                                ? SilentAuraBlock.shouldRenderBlock(client)
+                                : AutoBlock.shouldRenderBlock(client),
+                () ->
+                        SilentAuraBlock.controls(Minecraft.getInstance())
+                                ? SilentAuraBlock.attackAnimationOnly()
+                                : AutoBlock.attackAnimationOnly(),
+                () ->
+                        SilentAuraBlock.controls(Minecraft.getInstance())
+                                ? SilentAuraBlock.animationProgress()
+                                : AutoBlock.animationProgress(),
+                () ->
+                        SilentAuraBlock.controls(Minecraft.getInstance())
+                                && SilentAuraBlock.attackAnimationOnly());
+        AutoBlock.init();
+        SilentAuraBlock.init();
+        CombatModuleCoordinator.reconcileConfiguredState(Minecraft.getInstance());
+        Scoreboard.init();
+        InventorySee.init();
+        TargetInfoHud.init();
+        Nametags.init();
+        Minecraft client = Minecraft.getInstance();
+        FreeLook.reset(client);
+        if (Caver.isEnabled() && client.level != null) {
+            MinecraftClientAccess.rebuildLevelRenderer(client);
+        }
+        FullBright.init();
+        UhcFinder.init();
+        ChestStealer.init();
+        Scaffold.init();
+        FastPlace.init();
+        Backtrack.init();
+        Misplace.init();
+        KeepSprint.init();
+        AutoTotem.init();
+        InvManager.init();
+        AutoArmor.init();
+        InvClear.init();
+        TimerManager.init();
+        AutoTool.init();
+        AutoSword.init();
+        AutoLava.init();
+        AutoHead.init();
+        AutoBed.init();
+        initializePacketListeners();
+        SilentPacketRotation.init();
+        AntiWeb.init();
+        AntiLava.init();
+        AutoWeb.init();
+        BlockInRuntime.init();
+        LowHealthFakeLag.init();
+        RandomFakeLag.init();
+        FakeLag.init();
+        RemoteConfigClient.init();
+        ConfigProfiles.initialize();
+    }
+
+    static void start() {
+        transientReleased = false;
+        RemoteConfigClient.autoConnect();
+        ClickGuiWarmup.start();
+    }
+
+    static void resume() {
+        transientReleased = false;
+        RemoteConfigClient.resume();
+        ClickGuiWarmup.start();
+    }
+
+    static void suspend() {
+        CleanupSequence.run(
+                "core suspension",
+                ClickGuiWarmup::cancel,
+                RemoteConfigClient::suspend,
+                PremiumCheckCommand::suspend,
+                AntiNick::suspend,
+                StructureLocate::suspend,
+                OreScanner::suspend,
+                () -> releaseTransientState(Minecraft.getInstance()));
+    }
+
+    private static void initializePacketListeners() {
+        // This block stays between Backtrack and SilentPacketRotation registration.
+        // SEND: AutoSpear release filter -> Disabler -> attack snapshot -> lag modes -> FastBreak.
+        // RECEIVE: bundle intent -> Velocity -> lag modes -> Backtrack.
+        // APPLY: scoreboard -> damage confirmation -> JumpReset -> lightning.
+        PacketEventAdapter.initPacketListeners();
+        AimCollect.init();
+        AutoSpear.initPacketListeners();
+        Disabler.initPacketListeners();
+        Scoreboard.initPacketListeners();
+        CriticalHitTracker.initPacketListeners();
+        Velocity.initPacketListeners();
+        FakeLag.initPacketListeners();
+        FastBreak.initPacketListeners();
+        Backtrack.initPacketListeners();
+        JumpReset.initPacketListeners();
+        LightningTracker.initPacketListeners();
+    }
+
+    private static void releaseTransientState(Minecraft client) {
+        CleanupSequence.run(
+                "core transient state",
+                Backtrack::suspend,
+                () -> AimCollect.shutdown(),
+                () -> Disabler.discardPending(),
+                () -> FakeLag.discardPending(),
+                () -> RotationManager.reset(),
+                () -> FreeLook.reset(client),
+                () -> AutoBlock.suspend(client),
+                () -> AutoSpear.suspend(client),
+                () -> AutoMace.reset(client),
+                () -> RightClick.reset(),
+                () -> InvManager.reset(),
+                () -> AutoArmor.reset(),
+                () -> InvClear.reset(),
+                () -> TimerManager.reset(),
+                SilentAuraBlock::suspend,
+                () -> SilentAuraRuntime.reset(client),
+                () -> AutoMLG.shutdown(client),
+                () -> AutoBed.shutdown(client),
+                () -> AutoWeb.shutdown(client),
+                () -> BlockInRuntime.shutdown(client),
+                () -> AutoLava.shutdown(client),
+                () -> AntiLava.shutdown(client),
+                () -> AntiWeb.shutdown(client),
+                () -> ScaffoldManager.shutdown(client),
+                () -> SilentPacketRotation.discard(),
+                () -> HotbarLease.resetAll(client),
+                () -> CombatInputController.reset(client),
+                () -> {
+                    if (MinecraftClientAccess.screen(client) instanceof MoonsComposeScreen)
+                        MinecraftClientAccess.setScreen(client, null);
+                });
+        transientReleased = true;
+    }
+
+    static void shutdown() {
+        Settings.flush();
+        Minecraft client = Minecraft.getInstance();
+        CleanupSequence.run(
+                "core feature shutdown",
+                () -> ClickGuiWarmup.cancel(),
+                () -> {
+                    if (!transientReleased) releaseTransientState(client);
+                },
+                () -> ComposeRenderBridge.close(),
+                () -> com.blanoir.moons.client.ui.render.SmoothGui.close(),
+                () -> RemoteConfigClient.shutdown(),
+                () -> PremiumCheckCommand.shutdown(),
+                () -> AntiNick.shutdown(),
+                () -> NicknameShuffle.reset(),
+                () -> OreScanner.shutdown(),
+                () -> StructureLocate.shutdown(),
+                () -> com.blanoir.moons.client.render.StructureLabelRenderer.close(),
+                () -> OreHighlighter.close(),
+                () -> Chams.close(),
+                () ->
+                        com.blanoir.moons.client.module.impl.network.backtrack.BacktrackRenderer
+                                .close(),
+                () -> WorldOverlayRenderer.close());
+    }
+}

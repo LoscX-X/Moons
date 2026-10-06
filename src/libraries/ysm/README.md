@@ -19,9 +19,9 @@ YSM 通过 Moons 的 JNI/JVMTI 宿主热加载，核心不依赖 Fabric、Mixin�
 | `src/libraries/ysm-codecs` | Java Ogg/Opus 解码，声道混合、pre-skip、输出增益、结尾填充裁剪 |
 | `src/libraries/ysm-images` | WebP 解码与 AVIF 工具封装；Windows x64 AVIF 工具随库携带 |
 | `src/minecraft/versions/{26_1,26_2,26_3,26_4}/ysm/adapter` | 对应版本的状态采样、玩家/手臂/附属实体、纹理与材质、装备图层、原版音频通道和粒子 |
-| `src/minecraft/shared/ysm/adapter` | 各版本共用的完整顶点提交与法线变换 |
+| `src/common/ysm/adapter` | 各版本共用的完整顶点提交与法线变换 |
 | `src/bootstrap/api` 的 `YsmSelector` / `YsmStudio` | 不含游戏类型的选择、编辑与调试接口 |
-| `src/minecraft/shared/.../ui/clickgui` 的 YSM 页面 | 通用 Moons UI，通过快照读取状态和提交编辑 |
+| `src/common/.../ui/clickgui` 的 YSM 页面 | 通用 Moons UI，通过快照读取状态和提交编辑 |
 
 三个 lib jar 在磁盘上各保留一份，供多个版本适配器共用。模块各自使用可关闭 classloader 和带摘要的缓存副本，避免 Windows 文件锁妨碍更新。游戏版本适配器必须严格匹配，宿主根据模块描述中的版本选择适配器。多个版本的模块可以同时放入 `modules`；共享库 API 改动时也需要升级，由启动器自动安装配套文件。不同版本的包若包含不同的共享库，合并构建会直接失败。
 

@@ -53,6 +53,12 @@ namespace Moons.WindowsLauncher
             if (sourceInstaller != null) {
                 Console.Error.WriteLine("Use --install-only with --legacy-installer to install a frozen legacy package."); return 1;
             }
+            string snapshot = Option(arguments, "--self-test-ui-snapshot");
+            if (snapshot != null)
+                return LauncherTheme.SaveSnapshot(new InstallerForm(selected), snapshot);
+            string menuSnapshot = Option(arguments, "--self-test-menu-ui-snapshot");
+            if (menuSnapshot != null)
+                using (var form = new InstallerForm(selected)) return form.SaveMenuSnapshot(menuSnapshot);
             using (var form = new InstallerForm(selected))
             {
                 Application.Run(form);
@@ -140,52 +146,74 @@ namespace Moons.WindowsLauncher
             }
         }
 
-        private sealed class InstallerForm : Form
+        private sealed class InstallerForm : ThemeForm
         {
             private readonly BackgroundWorker worker = new BackgroundWorker();
             private readonly Label status = new Label();
-            private readonly ProgressBar progress = new ProgressBar();
-            private readonly Button close = new Button();
-            private readonly Button install = new Button();
-            private readonly ComboBox selection = new ComboBox();
+            private readonly ThemeProgressBar progress = new ThemeProgressBar();
+            private readonly ThemeButton close = new ThemeButton(false);
+            private readonly ThemeButton install = new ThemeButton(true);
+            private readonly ThemeVersionSelector selection = new ThemeVersionSelector();
+            private readonly Label percentage;
             internal int ExitCode { get; private set; }
 
-            internal InstallerForm(SupportProfile selected)
+            internal int SaveMenuSnapshot(string outputPath) { return selection.SaveMenuSnapshot(outputPath); }
+
+            internal InstallerForm(SupportProfile selected) : base("Moons")
             {
                 Text = "Moons Dependency Installer";
-                ClientSize = new Size(520, 235);
-                StartPosition = FormStartPosition.CenterScreen;
-                FormBorderStyle = FormBorderStyle.FixedDialog;
-                MaximizeBox = false;
-                BackColor = Color.FromArgb(24, 24, 24);
-                ForeColor = Color.White;
-                var versions = new Label();
-                versions.SetBounds(20, 12, 480, 25);
-                versions.Text = DependencyRuntime.VersionLabel();
-                Controls.Add(versions);
-                selection.SetBounds(20, 45, 480, 28);
-                selection.DropDownStyle = ComboBoxStyle.DropDownList;
+                ClientSize = new Size(640, 500);
+                InstallChrome(true, "CLIENT / INSTALLER");
+                Label eyebrow = LauncherTheme.Label(this, "MOONS / SETUP",
+                    new Rectangle(32, 104, 576, 20), 8F, false, LauncherTheme.Muted);
+                Label title = LauncherTheme.Label(this, "Set up your client.",
+                    new Rectangle(30, 130, 578, 48), 28F, true, LauncherTheme.Text);
+                LauncherTheme.Label(this, "Choose Minecraft. Install once, then load Moons.",
+                    new Rectangle(32, 185, 576, 26), 10F, false, LauncherTheme.Muted);
+                EnableDrag(eyebrow);
+                EnableDrag(title);
+                GlassPanel card = new GlassPanel();
+                card.SetBounds(32, 230, 576, 158);
+                Controls.Add(card);
+                LauncherTheme.Label(card, "MINECRAFT VERSION",
+                    new Rectangle(24, 17, 450, 20), 7.5F, false, LauncherTheme.Muted);
+                selection.SetBounds(24, 44, 528, 36);
                 foreach (var profile in VersionCatalog.Profiles) selection.Items.Add(profile.GameId);
                 selection.SelectedIndex = Array.IndexOf(VersionCatalog.Profiles, selected);
-                Controls.Add(selection);
-                status.SetBounds(20, 85, 480, 60);
+                if (selection.SelectedIndex < 0) selection.SelectedIndex = 0;
+                card.Controls.Add(selection);
+                status.SetBounds(24, 96, 462, 24);
                 status.Text = "Select the Minecraft version to install.";
-                progress.SetBounds(20, 155, 480, 18);
-                close.SetBounds(400, 190, 100, 28);
+                status.BackColor = Color.Transparent;
+                status.ForeColor = LauncherTheme.Text;
+                status.AutoEllipsis = true;
+                percentage = LauncherTheme.Label(card, "0%",
+                    new Rectangle(490, 96, 62, 24), 9F, false, LauncherTheme.Muted);
+                percentage.TextAlign = ContentAlignment.TopRight;
+                progress.SetBounds(24, 132, 528, 6);
+                card.Controls.AddRange(new Control[] { status, progress });
+                close.SetBounds(338, 409, 106, 40);
                 close.Text = "Close";
                 close.Enabled = true;
-                close.FlatStyle = FlatStyle.Flat;
                 close.Click += delegate { Close(); };
-                Controls.AddRange(new Control[] { status, progress, close });
-                install.SetBounds(280, 190, 100, 28);
-                install.Text = "Install";
-                install.FlatStyle = FlatStyle.Flat;
+                Controls.Add(close);
+                install.SetBounds(456, 409, 152, 40);
+                install.Text = "Install dependencies";
                 install.Click += delegate {
                     selection.Enabled = install.Enabled = close.Enabled = false;
                     progress.Value = 0;
+                    percentage.Text = "0%";
+                    status.Text = "Preparing installation...";
                     worker.RunWorkerAsync(VersionCatalog.Profiles[selection.SelectedIndex]);
                 };
                 Controls.Add(install);
+                AcceptButton = install;
+                CancelButton = close;
+                LauncherTheme.Label(this, DependencyRuntime.VersionLabel().Split('|')[0].Trim(),
+                    new Rectangle(32, 471, 350, 20), 8F, false, LauncherTheme.Soft);
+                Label footer = LauncherTheme.Label(this, "FREE & OPEN SOURCE",
+                    new Rectangle(403, 471, 205, 20), 7.5F, false, LauncherTheme.Soft);
+                footer.TextAlign = ContentAlignment.TopRight;
                 worker.WorkerReportsProgress = true;
                 worker.WorkerSupportsCancellation = true;
                 worker.DoWork += delegate(object sender, DoWorkEventArgs e)
@@ -196,12 +224,16 @@ namespace Moons.WindowsLauncher
                 worker.ProgressChanged += delegate(object sender, ProgressChangedEventArgs e)
                 {
                     progress.Value = Math.Max(progress.Value, Math.Min(100, e.ProgressPercentage));
+                    percentage.Text = ((int)progress.Value).ToString() + "%";
                     status.Text = (string)e.UserState;
                 };
                 worker.RunWorkerCompleted += delegate(object sender, RunWorkerCompletedEventArgs e)
                 {
                     ExitCode = e.Error == null ? 0 : 1;
-                    if (e.Error != null) status.Text = e.Error.Message;
+                    if (e.Error != null) {
+                        status.Text = "Installation failed. You can try again.";
+                        LauncherTheme.ShowError(this, "Unable to install.", e.Error.Message);
+                    }
                     close.Enabled = true;
                     selection.Enabled = install.Enabled = true;
                 };

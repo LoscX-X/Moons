@@ -27,7 +27,7 @@ Moons 是面向 Windows 的免费开源 Minecraft Java Edition 注入式客户�
 
 较早的预览构建和已停止支持的 Minecraft 版本可能仍可通过历史 Releases 或 CI 产物获取，但不再获得修复或兼容性更新。
 
-Minecraft **1.8.9** 在 [`legacy/1.8.9`](https://github.com/LoscX-X/Moons/tree/legacy/1.8.9) 分支独立开发，等待游戏实测；不占用四版维护窗口，也不包含在主发行包的安装器和加载器中。
+Minecraft **1.8.9** 在 [`legacy/1.8.9`](https://github.com/LoscX-X/Moons/tree/legacy/1.8.9) 分支独立开发，等待游戏实测；**请使用者自行构建该分支**，步骤见该分支 README 和构建说明。不占用四版维护窗口，也不包含在主发行包的安装器和加载器中。
 
 Moons 客户端版本使用 **`X.Y.Z.x-Experiment`** 或 **`X.Y.Z.x-Release`**，例如 `1.0.0.0-Experiment`。前三段表示发行基线，第四段表示补丁顺序。`Experiment` 为预发布实验版，不覆盖 GitHub 的 Latest；`Release` 为正式版并标记 Latest。提交哈希后缀用于区分构建，不代替补丁顺序。Minecraft 版本号与 Moons 客户端版本号分别维护。
 

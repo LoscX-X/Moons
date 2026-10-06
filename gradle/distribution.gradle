@@ -72,8 +72,8 @@ def moonsHwidExe = tasks.register("moonsHwidExe", Exec) {
     description = "Builds the out-of-process Windows hardware ID helper."
 
     def source = layout.projectDirectory.file("src/tools/hwid/csharp/MoonsHardwareId.cs")
-    def generator = layout.projectDirectory.file("src/tools/shared/HardwareIdGenerator.cs")
-    def hashing = layout.projectDirectory.file("src/tools/shared/Hashing.cs")
+    def generator = layout.projectDirectory.file("src/tools/common/HardwareIdGenerator.cs")
+    def hashing = layout.projectDirectory.file("src/tools/common/Hashing.cs")
     def output = layout.buildDirectory.file("dist/moons-hwid.exe")
     inputs.file(source)
     inputs.file(generator)
@@ -197,18 +197,19 @@ def registerLauncher = { String taskName, String fileName, boolean installer ->
         dependsOn launcherVersionMetadata, 'launcherVersionCatalog'
         if (!installer) dependsOn patchTasks, apiJar, bridgeDll, moonsHwidExe
         def sources = files(
-                'src/tools/shared/Hashing.cs', 'src/tools/shared/StagedFile.cs', 'src/tools/shared/DirectoryJunction.cs',
+                'src/tools/common/Hashing.cs', 'src/tools/common/StagedFile.cs', 'src/tools/common/DirectoryJunction.cs',
                 'src/tools/launcher/csharp/RuntimeMetadata.cs',
                 'src/tools/launcher/csharp/VersionCatalog.cs', moonsVersions.launcherSource,
                 'src/tools/launcher/csharp/DependencyRuntime.cs',
                 'src/tools/launcher/csharp/ProcessEvidenceCache.cs',
                 'src/tools/launcher/csharp/CacheMaintenance.cs', assemblyVersionSource)
+        sources += fileTree('src/tools/launcher/csharp/ui') { include '**/*.cs' }
         if (installer) {
             sources += files('src/tools/launcher/csharp/DependencyInstaller.cs',
                     'src/tools/launcher/csharp/YsmPackage.cs', 'src/tools/launcher/csharp/ZipEntries.cs')
         } else {
             sources += files('src/tools/launcher/csharp/MoonsExeLauncher.cs',
-                    'src/tools/shared/HardwareIdGenerator.cs',
+                    'src/tools/common/HardwareIdGenerator.cs',
                     'src/tools/launcher/csharp/LoadSession.cs', 'src/tools/launcher/csharp/ZipEntries.cs')
         }
         def resources = [
@@ -237,7 +238,7 @@ def registerLauncher = { String taskName, String fileName, boolean installer ->
             output.get().asFile.parentFile.mkdirs()
             executable locateCSharpCompiler().absolutePath
             args '/nologo', '/target:winexe', '/optimize+', '/platform:x64',
-                    '/reference:System.Windows.Forms.dll', '/reference:System.Management.dll',
+                    '/reference:System.Windows.Forms.dll', '/reference:System.Management.dll', '/reference:System.Web.Extensions.dll',
                     '/reference:System.IO.Compression.dll', '/reference:System.IO.Compression.FileSystem.dll',
                     "/out:${output.get().asFile.absolutePath}"
             args resources.collect { name, path -> "/resource:${path.get().asFile.absolutePath},${name}" }

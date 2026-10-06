@@ -1,10 +1,10 @@
 package com.blanoir.moons.client.module.impl.world.scaffold;
 
 import com.blanoir.moons.client.utils.rotation.Rotation;
-import com.blanoir.moons.client.utils.rotation.aim.AimPointsH;
 import com.blanoir.moons.client.utils.rotation.aim.BlockTarget;
-import com.blanoir.moons.client.utils.rotation.aim.TargetSelectorD;
-import com.blanoir.moons.client.utils.rotation.quantize.QuantizerA;
+import com.blanoir.moons.client.utils.rotation.aim.GodBridgeFacePoints;
+import com.blanoir.moons.client.utils.rotation.aim.GodBridgeTargetSelector;
+import com.blanoir.moons.client.utils.rotation.quantize.MouseAngleQuantizer;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -71,24 +71,24 @@ public final class GodBridgeSafetyVerification {
 
         AABB feet = new AABB(.6, 1, .6, 1.2, 2.8, 1.2);
         require(
-                TargetSelectorD.cells(feet, new Vec3(.4, 0, .4), 0)
+                GodBridgeTargetSelector.cells(feet, new Vec3(.4, 0, .4), 0)
                         .getFirst()
                         .equals(new BlockPos(1, 0, 1)),
                 "Prioritize the next diagonal footprint over the cell behind");
         require(
-                TargetSelectorD.cells(feet.move(-1.8, 0, -1.8), new Vec3(-.4, 0, -.4), 0)
+                GodBridgeTargetSelector.cells(feet.move(-1.8, 0, -1.8), new Vec3(-.4, 0, -.4), 0)
                         .getFirst()
                         .equals(new BlockPos(-2, 0, -2)),
                 "Negative coordinates retain forward priority");
         BlockTarget target = new BlockTarget(BlockPos.ZERO, Direction.EAST);
         require(
-                !AimPointsH.insideFace(
+                !GodBridgeFacePoints.insideFace(
                         new BlockHitResult(
                                 new Vec3(1, .5, 1), Direction.EAST, BlockPos.ZERO, false),
                         target),
                 "Reject ambiguous shared corners");
         require(
-                AimPointsH.insideFace(
+                GodBridgeFacePoints.insideFace(
                         new BlockHitResult(
                                 new Vec3(1, .5, .5), Direction.EAST, BlockPos.ZERO, false),
                         target),
@@ -100,19 +100,20 @@ public final class GodBridgeSafetyVerification {
         AABB feet = new AABB(.2, 1, .2, .8, 2.8, .8);
         Vec3 diagonal = new Vec3(.156, 0, .156);
         require(
-                !TargetSelectorD.cells(feet, diagonal, 0).contains(new BlockPos(1, 0, 0)),
+                !GodBridgeTargetSelector.cells(feet, diagonal, 0).contains(new BlockPos(1, 0, 0)),
                 "Old diagonal inertia has not reached the straight destination yet");
         require(
-                TargetSelectorD.cells(feet, diagonal, feet.move(.221, 0, 0), 0)
+                GodBridgeTargetSelector.cells(feet, diagonal, feet.move(.221, 0, 0), 0)
                         .contains(new BlockPos(1, 0, 0)),
                 "Diagonal-to-straight input adds its destination before inertia catches up");
         AABB nearCorner = feet.move(0, 0, .15);
         Vec3 straight = new Vec3(.221, 0, 0);
         require(
-                !TargetSelectorD.cells(nearCorner, straight, 0).contains(new BlockPos(1, 0, 1)),
+                !GodBridgeTargetSelector.cells(nearCorner, straight, 0)
+                        .contains(new BlockPos(1, 0, 1)),
                 "Old straight inertia does not search the new diagonal corner");
         require(
-                TargetSelectorD.cells(nearCorner, straight, nearCorner.move(diagonal), 0)
+                GodBridgeTargetSelector.cells(nearCorner, straight, nearCorner.move(diagonal), 0)
                         .contains(new BlockPos(1, 0, 1)),
                 "Straight-to-diagonal input includes the corner and its connecting cells");
 
@@ -132,11 +133,13 @@ public final class GodBridgeSafetyVerification {
                                     [turn];
                     Rotation preferred = new Rotation((opposite ? 45 : 135) + turn * 90, 75.7F);
                     var quantizer =
-                            new QuantizerA.Adapter(
+                            new MouseAngleQuantizer.Adapter(
                                     (base, desired) ->
-                                            QuantizerA.quantizeYawWithStep(base, desired, step),
+                                            MouseAngleQuantizer.quantizeYawWithStep(
+                                                    base, desired, step),
                                     (base, desired) ->
-                                            QuantizerA.quantizePitchWithStep(base, desired, step));
+                                            MouseAngleQuantizer.quantizePitchWithStep(
+                                                    base, desired, step));
                     var target = new BlockTarget(new BlockPos(-3, 0, -3), face);
                     var box = new AABB(-3, 0, -3, -2, 1, -2);
                     java.util.function.Predicate<Rotation> reachable =
@@ -155,7 +158,7 @@ public final class GodBridgeSafetyVerification {
                                                 : (face.getStepZ() > 0 ? box.maxZ : box.minZ);
                                 double at = face.getAxis() == Direction.Axis.X ? point.x : point.z;
                                 return Math.abs(at - plane) < 1.0E-5
-                                        && AimPointsH.insideFace(
+                                        && GodBridgeFacePoints.insideFace(
                                                 new BlockHitResult(
                                                         point, face, target.support(), false),
                                                 target);
@@ -174,7 +177,7 @@ public final class GodBridgeSafetyVerification {
                                 "The old +/-12 degree horizontal rays miss this real side face");
                     }
                     Rotation recovered =
-                            AimPointsH.turnAim(
+                            GodBridgeFacePoints.turnAim(
                                     eye,
                                     preferred,
                                     face,
@@ -186,7 +189,7 @@ public final class GodBridgeSafetyVerification {
                             recovered != null && reachable.test(recovered),
                             "Turn fallback must hit the actual face after quantization");
                     require(
-                            AimPointsH.turnAim(
+                            GodBridgeFacePoints.turnAim(
                                             eye,
                                             preferred,
                                             face,

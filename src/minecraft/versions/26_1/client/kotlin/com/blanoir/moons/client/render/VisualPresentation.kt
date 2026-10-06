@@ -1,7 +1,7 @@
 package com.blanoir.moons.client.render
 
+import com.blanoir.moons.client.render.frame.FinalFrameGl
 import com.blanoir.moons.client.ui.compose.ComposeRenderBridge
-import com.blanoir.moons.client.ui.compose.FinalFrameGl
 import com.mojang.blaze3d.opengl.GlTexture
 import net.minecraft.client.Minecraft
 import org.lwjgl.opengl.GL11C

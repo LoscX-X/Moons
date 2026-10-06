@@ -3,10 +3,10 @@ package com.blanoir.moons.client.module.impl.combat.silentaura;
 import com.blanoir.moons.client.utils.math.MathUtils;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 import com.blanoir.moons.client.utils.rotation.aim.AimProfile;
-import com.blanoir.moons.client.utils.rotation.aim.AimProfileA;
-import com.blanoir.moons.client.utils.rotation.aim.AimProfileB;
-import com.blanoir.moons.client.utils.rotation.quantize.QuantizerA;
-import com.blanoir.moons.client.utils.rotation.smooth.SmoothA;
+import com.blanoir.moons.client.utils.rotation.aim.BalanceAimProfile;
+import com.blanoir.moons.client.utils.rotation.aim.LockAimProfile;
+import com.blanoir.moons.client.utils.rotation.quantize.MouseAngleQuantizer;
+import com.blanoir.moons.client.utils.rotation.smooth.PursuitSmoothing;
 import com.google.gson.Gson;
 
 import java.nio.charset.StandardCharsets;
@@ -159,14 +159,15 @@ public final class SilentAuraRotationSimulation {
                         !s.mode.equals("Balance"),
                         s.mode.equals("FullLock"),
                         (min, max) -> random.nextDouble(min, Math.nextUp(max)));
-        AimProfile profile = s.mode.equals("Balance") ? new AimProfileB() : new AimProfileA();
-        double gcd = QuantizerA.mouseSensitivityGcd(s.sensitivity);
+        AimProfile profile =
+                s.mode.equals("Balance") ? new BalanceAimProfile() : new LockAimProfile();
+        double gcd = MouseAngleQuantizer.mouseSensitivityGcd(s.sensitivity);
         float initialYaw = scenario.equals("wrap") ? 179 : 0;
         Rotation sent = new Rotation(initialYaw, 0);
         packets.rebase(sent.yaw(), sent.pitch());
-        var frame = new SmoothA.Motion(sent.yaw(), sent.pitch(), 0, 0);
+        var frame = new PursuitSmoothing.Motion(sent.yaw(), sent.pitch(), 0, 0);
         var tracking =
-                new SmoothA.Tracking(
+                new PursuitSmoothing.Tracking(
                         profile.response(s.smooth),
                         profile.maxYawSpeed(),
                         profile.maxPitchSpeed(),
@@ -199,7 +200,7 @@ public final class SilentAuraRotationSimulation {
             while (frameIndex / (double) s.fps <= time + 1e-10) {
                 double frameTime = frameIndex++ / (double) s.fps;
                 frame =
-                        SmoothA.track(
+                        PursuitSmoothing.track(
                                 frame,
                                 target(scenario, frameTime),
                                 frameTime - lastFrameTime,
@@ -223,8 +224,9 @@ public final class SilentAuraRotationSimulation {
                             s.smoothing);
             Rotation next =
                     new Rotation(
-                            QuantizerA.quantizeYawWithStep(sent.yaw(), raw.yaw(), gcd),
-                            QuantizerA.quantizePitchWithStep(sent.pitch(), raw.pitch(), gcd));
+                            MouseAngleQuantizer.quantizeYawWithStep(sent.yaw(), raw.yaw(), gcd),
+                            MouseAngleQuantizer.quantizePitchWithStep(
+                                    sent.pitch(), raw.pitch(), gcd));
             // The simulated successful send is the only point that advances angle history.
             packets.confirm(next.yaw(), next.pitch());
             Sample previous = samples.getLast();

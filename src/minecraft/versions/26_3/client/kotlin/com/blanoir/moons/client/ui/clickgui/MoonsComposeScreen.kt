@@ -1,5 +1,7 @@
 package com.blanoir.moons.client.ui.clickgui
 
+import com.blanoir.moons.client.input.InputKeys;
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -44,12 +46,12 @@ import com.blanoir.moons.client.config.Settings
 import com.blanoir.moons.client.module.framework.ModuleKeybinds
 import com.blanoir.moons.client.module.impl.player.invmanager.InvManager
 import com.blanoir.moons.client.module.impl.render.xray.PluginBlockPreviews
+import com.blanoir.moons.client.render.frame.FinalFrameSurface
+import com.blanoir.moons.client.render.item.NativeItemIcons
 import com.blanoir.moons.client.ui.MinecraftScreenAccess
 import com.blanoir.moons.client.ui.compose.ComposeTextInputContext
-import com.blanoir.moons.client.ui.compose.FinalFrameSurface
 import com.blanoir.moons.client.ui.compose.SdlComposeEvents
 import com.blanoir.moons.client.ui.hud.HudLayoutController
-import com.blanoir.moons.client.utils.render.NativeItemIcons
 import com.mojang.blaze3d.platform.InputConstants
 import com.mojang.blaze3d.systems.RenderSystem
 import java.awt.event.KeyEvent as AwtKeyEvent
@@ -255,14 +257,14 @@ class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} Cl
     @OptIn(ExperimentalComposeUiApi::class)
     override fun mouseClicked(event: MouseButtonEvent, doubleClick: Boolean): Boolean {
         bindingModuleId?.let { moduleId ->
-            val key = ModuleKeybinds.fromMouseButton(event.button())
+            val key = InputKeys.fromMouseButton(event.button())
             if (ModuleKeybinds.bind(moduleId, key)) {
                 bindingModuleId = null
                 revision++
             }
             return true
         }
-        if (ModuleKeybinds.isGuiKey(ModuleKeybinds.fromMouseButton(event.button()))) return true
+        if (ModuleKeybinds.isGuiKey(InputKeys.fromMouseButton(event.button()))) return true
         if (
             hudLayoutEditing &&
                 !hudToolbarBounds.contains(composeOffset(event.x(), event.y())) &&
@@ -395,7 +397,7 @@ class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} Cl
             }
         }
         bindingModuleId?.let { moduleId ->
-            val key = ModuleKeybinds.fromEvent(event)
+            val key = InputKeys.fromEvent(event)
             when (event.key()) {
                 InputConstants.KEY_ESCAPE -> bindingModuleId = null
                 InputConstants.KEY_BACKSPACE,
@@ -412,7 +414,7 @@ class MoonsComposeScreen : Screen(Component.literal("${ClientBranding.name()} Cl
             }
             return true
         }
-        val key = ModuleKeybinds.fromEvent(event)
+        val key = InputKeys.fromEvent(event)
         // The independent binding listener owns this key, including when a host hook is absent.
         if (ModuleKeybinds.isGuiKey(key)) return true
         val handled =

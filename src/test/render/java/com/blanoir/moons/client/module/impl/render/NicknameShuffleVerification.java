@@ -1,6 +1,6 @@
 package com.blanoir.moons.client.module.impl.render;
 
-import com.blanoir.moons.features.FeatureHooks;
+import com.blanoir.moons.client.event.ClientEventDispatcher;
 import com.blanoir.moons.runtime.RuntimeEvents;
 import com.mojang.authlib.GameProfile;
 
@@ -74,7 +74,7 @@ public final class NicknameShuffleVerification {
                             .append("! Alice_2");
             var nameColor = original.getSiblings().getFirst().getStyle().getColor();
             var tab = new RuntimeEvents.MethodHook("render.tab-name", null, alice, original);
-            FeatureHooks.apply(tab);
+            ClientEventDispatcher.apply(tab);
             require(
                     ((Component) tab.value())
                             .getString()
@@ -112,7 +112,7 @@ public final class NicknameShuffleVerification {
 
             var chat = Component.literal("Alice").append(" / ").append(Component.literal("Bob"));
             var message = new RuntimeEvents.MethodHook("render.chat-player-name", null, null, chat);
-            FeatureHooks.apply(message);
+            ClientEventDispatcher.apply(message);
             require(
                     ((Component) message.value()).getString().equals(aliceName + " / " + bobName),
                     "Chat applies the permutation once, without cascading names");
@@ -255,7 +255,7 @@ public final class NicknameShuffleVerification {
         public PlayerSkin getSkin() {
             if (fail) throw new IllegalStateException("Fixture skin download failed");
             var hook = new RuntimeEvents.MethodHook("render.player-skin", this, null, nativeSkin);
-            FeatureHooks.apply(hook);
+            ClientEventDispatcher.apply(hook);
             return (PlayerSkin) hook.value();
         }
     }

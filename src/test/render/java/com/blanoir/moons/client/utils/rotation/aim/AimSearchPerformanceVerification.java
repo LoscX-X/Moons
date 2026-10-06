@@ -65,7 +65,7 @@ public final class AimSearchPerformanceVerification {
                                 return visible.test(p);
                             });
             Vec3 actual =
-                    AimPointsC.findBestSurfacePoint(
+                    VisibleAimPoints.findBestSurfacePoint(
                             box,
                             eye,
                             look,
@@ -79,7 +79,7 @@ public final class AimSearchPerformanceVerification {
             require(Objects.equals(expected, actual), "Selected point changed: " + i);
             require(oldTrace.equals(newTrace), "Ray order/count changed: " + i);
             require(
-                    AimPointsC.aimPoints(box).equals(referenceAimPoints(box)),
+                    VisibleAimPoints.aimPoints(box).equals(referenceAimPoints(box)),
                     "Coarse interior sample order changed");
             same(
                     eye.distanceToSqr(EntityDistance.closestPoint(eye, box)),

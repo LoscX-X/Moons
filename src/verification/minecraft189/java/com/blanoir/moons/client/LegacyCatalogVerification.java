@@ -1,9 +1,10 @@
 package com.blanoir.moons.client;
 
 import com.blanoir.moons.client.config.Settings;
+import com.blanoir.moons.client.module.catalog.ModuleCatalog;
 import com.blanoir.moons.client.module.framework.ModuleRegistry;
 import com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraConfig;
-import com.blanoir.moons.features.catalog.ModuleCatalog;
+import com.google.gson.JsonParser;
 
 import net.minecraft.init.Bootstrap;
 
@@ -87,11 +88,12 @@ public final class LegacyCatalogVerification {
         SilentAuraConfig.aimMode("balance");
         SilentAuraConfig.cps(8, 12);
         Settings.save();
-        Properties stored = new Properties();
-        try (var in = Files.newInputStream(Settings.file())) {
-            stored.load(in);
-        }
-        if (!"balance".equals(stored.getProperty("silentaura.aimMode")))
+        var stored =
+                JsonParser.parseString(Files.readString(Settings.file()))
+                        .getAsJsonObject()
+                        .getAsJsonObject("values");
+        if (!Settings.saveResult().saved()
+                || !"balance".equals(stored.get("silentaura.aimMode").getAsString()))
             throw new AssertionError("Aim mode persistence failed");
         System.out.println(
                 "MINECRAFT189_CATALOG_VERIFIED modules="

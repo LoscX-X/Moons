@@ -2,6 +2,8 @@
 
 本分支 `legacy/1.8.9` 使用原版 1.8.9 JAR 与校验过的 MCP stable_22 映射，重新适配完整功能框架。默认构建目标为 **1.8.9**；现代版本请使用主分支。
 
+**1.8.9 使用者需自行构建本分支，配套使用同次生成的安装器与加载器。** 主分支 Release 中的现代版本包不包含此适配。
+
 ## 环境
 
 - Windows x64，**JDK 25**。编译和运行游戏都使用 Java 25；原版启动器的 Java 8 不能加载本客户端。
@@ -23,7 +25,7 @@
 | `moonsUiRuntime` | `build/dist/dependencies/moons-ui-runtime.jar` 及摘要 |
 | `ysmBundle` | `build/dist/moons-ysm-1.8.9.zip` |
 
-`featuresJar` 和 `ysmJar` 自动将编译后的游戏引用重映射为原版混淆名称。`build/named/` 中的开发 JAR 仅用于检查，不能代替发布载荷。
+`clientModuleJar` 和 `ysmJar` 自动将编译后的游戏引用重映射为原版混淆名称。`build/named/` 中的开发 JAR 仅用于检查，不能代替发布载荷。
 
 可指定输入与独立输出目录：
 
@@ -32,6 +34,8 @@
 ```
 
 上述示例的 EXE 位于 `build/1_8/dist/`。缓存完整后可加 `--offline`。
+
+`gradle.properties` 的 `load_version` 使用 `X.Y.Z.x-Experiment` 或 `X.Y.Z.x-Release`，第四段是从 0 开始的补丁顺序；每次 push 前加 1，前三段变化则归 0。同一次推送重跑构建不再次加号，Windows 文件版本使用这四段数字。旧冻结制品的版本名保持不变。`Experiment` 是预发布且不覆盖 Latest，`Release` 才是正式版；本分支的 push 仅触发检查，1.8.9 使用者仍需自行构建。
 
 ## 使用
 
@@ -60,7 +64,7 @@ SilentAura 仅有 Legacy 战斗路径，保留 47 项适用设置。原版没有
 完整载荷的混淆链接检查：
 
 ```powershell
-.\gradlew.bat featuresNamedJar ysmNamedJar verifyMinecraft189 '-Pminecraft189_verify_payloads=build/named/moons-payload/1_8/moons-core-features.jar;build/named/modules/1_8/moons-ysm-1.8.9.jar'
+.\gradlew.bat clientModuleNamedJar ysmNamedJar verifyMinecraft189 '-Pminecraft189_verify_payloads=build/named/moons-payload/1_8/moons-core-features.jar;build/named/modules/1_8/moons-ysm-1.8.9.jar'
 ```
 
 `checkAllVersions` 和 `compileAllVersions` 在本分支只处理 1.8.9。算法、模块时序和游戏内验证记录保存在本地 `dev-docs/`。

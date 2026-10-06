@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
-using System.Drawing.Drawing2D;
 using System.IO;
 using System.IO.Compression;
 using System.Reflection;
@@ -25,27 +24,9 @@ namespace Moons.WindowsLauncher
     {
         private const string DefaultDisplayName = "Moons";
         private static readonly string DisplayName = ResolveDisplayName();
-        private static readonly Color WindowBackground = Color.FromArgb(24, 24, 24);
-        private static readonly Color Surface = Color.FromArgb(20, 20, 22);
-        private static readonly Color SurfaceHover = Color.FromArgb(32, 31, 37);
-        private static readonly Color Border = Color.FromArgb(45, 44, 50);
-        private static readonly Color Muted = Color.FromArgb(139, 143, 148);
-        private static readonly Color Accent = Color.FromArgb(145, 116, 255);
-        private static readonly Color AccentHover = Color.FromArgb(161, 137, 255);
         private const string Payload189Resource = "Moons.Payload.1_8.jar";
         private const string BootstrapApiResource = "Moons.Api.jar";
         private const string BridgeResource = "Moons.Bridge.dll";
-
-        [DllImport("dwmapi.dll")]
-        private static extern int DwmSetWindowAttribute(
-            IntPtr window, int attribute, ref int value, int valueSize);
-
-        [DllImport("user32.dll")]
-        private static extern bool ReleaseCapture();
-
-        [DllImport("user32.dll")]
-        private static extern IntPtr SendMessage(
-            IntPtr window, int message, IntPtr wParam, IntPtr lParam);
 
         private delegate bool EnumWindowsCallback(IntPtr window, IntPtr parameter);
 
@@ -158,8 +139,7 @@ namespace Moons.WindowsLauncher
                 }
                 catch (Exception error)
                 {
-                    MessageBox.Show(error.Message, DisplayName + " Loader",
-                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    LauncherTheme.ShowError(null, "Unable to load.", error.Message);
                     return 1;
                 }
             }
@@ -171,6 +151,16 @@ namespace Moons.WindowsLauncher
             {
                 return SaveLoaderSnapshot(snapshotPath);
             }
+            string targetSnapshot = OptionArgument(arguments, "--self-test-target-ui-snapshot");
+            if (!String.IsNullOrWhiteSpace(targetSnapshot))
+                return LauncherTheme.SaveSnapshot(new TargetDialog(new List<MinecraftTarget> {
+                    new MinecraftTarget("12480", "Minecraft 1.8.9 · PID 12480"),
+                    new MinecraftTarget("17320", "Minecraft 1.8.9 · PID 17320")
+                }), targetSnapshot);
+            string errorSnapshot = OptionArgument(arguments, "--self-test-error-ui-snapshot");
+            if (!String.IsNullOrWhiteSpace(errorSnapshot))
+                return LauncherTheme.SaveSnapshot(new ThemeMessageDialog("Unable to load.",
+                    "The selected Minecraft client is no longer running.\r\nStart the game, then try again."), errorSnapshot);
             LoaderForm form = new LoaderForm(arguments);
             Application.Run(form);
             return form.ExitCode;
@@ -180,30 +170,10 @@ namespace Moons.WindowsLauncher
         {
             try
             {
-                string fullPath = Path.GetFullPath(outputPath);
-                string directory = Path.GetDirectoryName(fullPath);
-                if (!String.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
-                using (LoaderForm form = new LoaderForm(new string[0], false))
-                {
-                    form.ShowInTaskbar = false;
-                    form.StartPosition = FormStartPosition.Manual;
-                    form.Location = new Point(-32000, -32000);
-                    form.Show();
-                    Application.DoEvents();
-                    using (Bitmap bitmap = new Bitmap(form.Width, form.Height))
-                    {
-                        form.DrawToBitmap(bitmap, new Rectangle(Point.Empty, bitmap.Size));
-                        bitmap.Save(fullPath, System.Drawing.Imaging.ImageFormat.Png);
-                    }
-                    form.Hide();
-                }
-                return 0;
+                LoaderForm form = new LoaderForm(new string[0], false);
+                return LauncherTheme.SaveSnapshot(form, outputPath);
             }
-            catch (Exception error)
-            {
-                Console.Error.WriteLine(error);
-                return 4;
-            }
+            catch (Exception error) { Console.Error.WriteLine(error); return 4; }
         }
 
         private static int SelfTestVersionDetection()
@@ -224,238 +194,6 @@ namespace Moons.WindowsLauncher
             passed &= MatchSupportedVersion("--version 1.12.2 -cp C:\\cache\\1.8.9\\client.jar") == null;
             passed &= MatchSupportedVersion("--version \"1.8.9\"") == "1.8.9";
             return passed ? 0 : 3;
-        }
-
-        private static void UseRoundedCorners(Form form)
-        {
-            try
-            {
-                const int DwmWindowCornerPreference = 33;
-                const int Round = 2;
-                int preference = Round;
-                DwmSetWindowAttribute(form.Handle, DwmWindowCornerPreference,
-                    ref preference, sizeof(int));
-            }
-            catch
-            {
-                // Older Windows versions do not expose DWM corner preferences.
-            }
-        }
-
-        private static void EnableWindowDrag(Form form, Control surface)
-        {
-            surface.MouseDown += delegate(object sender, MouseEventArgs eventArgs)
-            {
-                if (eventArgs.Button != MouseButtons.Left) return;
-                ReleaseCapture();
-                SendMessage(form.Handle, 0x00A1, new IntPtr(2), IntPtr.Zero);
-            };
-        }
-
-        private static void InstallWindowChrome(Form form, bool allowMinimize)
-        {
-            WindowChromeButton close = new WindowChromeButton(true);
-            close.Left = form.ClientSize.Width - 48;
-            close.Top = 10;
-            close.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            close.Click += delegate { form.Close(); };
-            form.Controls.Add(close);
-
-            if (allowMinimize)
-            {
-                WindowChromeButton minimize = new WindowChromeButton(false);
-                minimize.Left = form.ClientSize.Width - 88;
-                minimize.Top = 10;
-                minimize.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-                minimize.Click += delegate { form.WindowState = FormWindowState.Minimized; };
-                form.Controls.Add(minimize);
-                minimize.BringToFront();
-            }
-            close.BringToFront();
-            EnableWindowDrag(form, form);
-        }
-
-        private static void StyleButton(Button button, bool primary)
-        {
-            button.BackColor = primary ? Accent : Surface;
-            button.ForeColor = Color.White;
-            button.FlatStyle = FlatStyle.Flat;
-            button.FlatAppearance.BorderSize = 1;
-            button.FlatAppearance.BorderColor = primary ? Accent : Border;
-            button.FlatAppearance.MouseOverBackColor = primary ? AccentHover : SurfaceHover;
-            button.FlatAppearance.MouseDownBackColor = primary
-                ? Color.FromArgb(126, 96, 232) : Color.FromArgb(38, 43, 59);
-            button.Cursor = Cursors.Hand;
-            button.Font = new Font("Segoe UI Semibold", 9.0F, FontStyle.Bold);
-            button.UseVisualStyleBackColor = false;
-        }
-
-        private static GraphicsPath RoundedRectangle(Rectangle bounds, int radius)
-        {
-            int diameter = Math.Max(2, radius * 2);
-            GraphicsPath path = new GraphicsPath();
-            path.AddArc(bounds.Left, bounds.Top, diameter, diameter, 180, 90);
-            path.AddArc(bounds.Right - diameter, bounds.Top, diameter, diameter, 270, 90);
-            path.AddArc(bounds.Right - diameter, bounds.Bottom - diameter, diameter, diameter, 0, 90);
-            path.AddArc(bounds.Left, bounds.Bottom - diameter, diameter, diameter, 90, 90);
-            path.CloseFigure();
-            return path;
-        }
-
-        private sealed class WindowChromeButton : Control
-        {
-            private readonly bool closeButton;
-            private bool hovered;
-            private bool pressed;
-
-            internal WindowChromeButton(bool closeButton)
-            {
-                this.closeButton = closeButton;
-                Size = new Size(36, 32);
-                Cursor = Cursors.Hand;
-                TabStop = false;
-                AccessibleName = closeButton ? "Close" : "Minimize";
-                DoubleBuffered = true;
-                SetStyle(ControlStyles.AllPaintingInWmPaint
-                    | ControlStyles.OptimizedDoubleBuffer
-                    | ControlStyles.SupportsTransparentBackColor
-                    | ControlStyles.UserPaint, true);
-                BackColor = Color.Transparent;
-            }
-
-            protected override void OnMouseEnter(EventArgs eventArgs)
-            {
-                hovered = true;
-                Invalidate();
-                base.OnMouseEnter(eventArgs);
-            }
-
-            protected override void OnMouseLeave(EventArgs eventArgs)
-            {
-                hovered = false;
-                pressed = false;
-                Invalidate();
-                base.OnMouseLeave(eventArgs);
-            }
-
-            protected override void OnMouseDown(MouseEventArgs eventArgs)
-            {
-                if (eventArgs.Button == MouseButtons.Left)
-                {
-                    pressed = true;
-                    Invalidate();
-                }
-                base.OnMouseDown(eventArgs);
-            }
-
-            protected override void OnMouseUp(MouseEventArgs eventArgs)
-            {
-                pressed = false;
-                Invalidate();
-                base.OnMouseUp(eventArgs);
-            }
-
-            protected override void OnPaint(PaintEventArgs eventArgs)
-            {
-                eventArgs.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                if (hovered || pressed)
-                {
-                    Color background = closeButton && hovered
-                        ? Color.FromArgb(54, 34, 42)
-                        : pressed ? Color.FromArgb(43, 43, 47)
-                        : Color.FromArgb(34, 34, 37);
-                    using (GraphicsPath path = RoundedRectangle(
-                        new Rectangle(0, 0, Width - 1, Height - 1), 10))
-                    using (SolidBrush fill = new SolidBrush(background))
-                    {
-                        eventArgs.Graphics.FillPath(fill, path);
-                    }
-                }
-
-                Color glyph = hovered ? Color.White : Color.FromArgb(116, 118, 124);
-                using (Pen pen = new Pen(glyph, 1.7F))
-                {
-                    pen.StartCap = LineCap.Round;
-                    pen.EndCap = LineCap.Round;
-                    if (closeButton)
-                    {
-                        eventArgs.Graphics.DrawLine(pen, 14, 12, 22, 20);
-                        eventArgs.Graphics.DrawLine(pen, 22, 12, 14, 20);
-                    }
-                    else
-                    {
-                        eventArgs.Graphics.DrawLine(pen, 14, 18, 22, 18);
-                    }
-                }
-            }
-        }
-
-        private sealed class SurfacePanel : Panel
-        {
-            internal int Radius = 12;
-
-            internal SurfacePanel()
-            {
-                DoubleBuffered = true;
-                SetStyle(ControlStyles.SupportsTransparentBackColor, true);
-                BackColor = Color.Transparent;
-            }
-
-            protected override void OnPaintBackground(PaintEventArgs eventArgs)
-            {
-                eventArgs.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                Rectangle bounds = new Rectangle(0, 0, Width - 1, Height - 1);
-                using (GraphicsPath path = RoundedRectangle(bounds, Radius))
-                using (SolidBrush fill = new SolidBrush(Surface))
-                using (Pen outline = new Pen(Border))
-                {
-                    eventArgs.Graphics.FillPath(fill, path);
-                    eventArgs.Graphics.DrawPath(outline, path);
-                }
-            }
-        }
-
-        private sealed class AccentProgressBar : Control
-        {
-            private double value;
-
-            internal double Value
-            {
-                get { return value; }
-                set
-                {
-                    this.value = Math.Max(0.0, Math.Min(100.0, value));
-                    Invalidate();
-                }
-            }
-
-            internal AccentProgressBar()
-            {
-                DoubleBuffered = true;
-                SetStyle(ControlStyles.SupportsTransparentBackColor, true);
-                Height = 10;
-                BackColor = Color.Transparent;
-            }
-
-            protected override void OnPaint(PaintEventArgs eventArgs)
-            {
-                base.OnPaint(eventArgs);
-                eventArgs.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                Rectangle track = new Rectangle(0, 0, Width - 1, Height - 1);
-                using (GraphicsPath trackPath = RoundedRectangle(track, Height / 2))
-                using (SolidBrush trackBrush = new SolidBrush(Color.FromArgb(13, 13, 13)))
-                {
-                    eventArgs.Graphics.FillPath(trackBrush, trackPath);
-                }
-                int fillWidth = (int)Math.Round((Width - 1) * value / 100.0);
-                if (fillWidth < 2) return;
-                Rectangle fill = new Rectangle(0, 0, fillWidth, Height - 1);
-                using (GraphicsPath fillPath = RoundedRectangle(fill, Height / 2))
-                using (SolidBrush fillBrush = new SolidBrush(Accent))
-                {
-                    eventArgs.Graphics.FillPath(fillBrush, fillPath);
-                }
-            }
         }
 
         private static void Execute(
@@ -519,29 +257,17 @@ namespace Moons.WindowsLauncher
                 target.Pid, progress, cancelled);
         }
 
-        private sealed class LoaderForm : Form
+        private sealed class LoaderForm : ThemeForm
         {
-            private static readonly PointF[] Stars =
-            {
-                new PointF(0.07F, 0.18F), new PointF(0.15F, 0.72F),
-                new PointF(0.23F, 0.31F), new PointF(0.31F, 0.84F),
-                new PointF(0.39F, 0.13F), new PointF(0.47F, 0.67F),
-                new PointF(0.56F, 0.24F), new PointF(0.64F, 0.79F),
-                new PointF(0.72F, 0.39F), new PointF(0.81F, 0.16F),
-                new PointF(0.88F, 0.62F), new PointF(0.94F, 0.31F),
-                new PointF(0.11F, 0.47F), new PointF(0.76F, 0.91F)
-            };
-
             private readonly string[] arguments;
             private readonly BackgroundWorker worker;
             private readonly Label status;
-            private readonly AccentProgressBar progressTrack;
+            private readonly ThemeProgressBar progressTrack;
+            private readonly Label percentage;
             private readonly System.Windows.Forms.Timer progressTimer;
             private readonly Stopwatch progressClock;
-            private readonly SolidBrush starBrush = new SolidBrush(Color.White);
             private double displayedProgress;
             private double lastAnimationSeconds;
-            private double starAnimationSeconds;
             private int targetProgress;
             private bool allowClose;
             private bool highResolutionTimer;
@@ -552,62 +278,38 @@ namespace Moons.WindowsLauncher
             {
             }
 
-            internal LoaderForm(string[] arguments, bool autoStart)
+            internal LoaderForm(string[] arguments, bool autoStart) : base(DisplayName)
             {
                 this.arguments = arguments;
                 Text = DisplayName + " " + DependencyRuntime.VersionLabel();
-                ClientSize = new Size(640, 360);
-                BackColor = WindowBackground;
-                ForeColor = Color.White;
-                Font = new Font("Segoe UI", 9.0F);
-                FormBorderStyle = FormBorderStyle.None;
-                ShowIcon = false;
-                ControlBox = false;
-                MaximizeBox = false;
-                MinimizeBox = false;
-                StartPosition = FormStartPosition.CenterScreen;
-                DoubleBuffered = true;
-                UseRoundedCorners(this);
+                ClientSize = new Size(640, 390);
+                InstallChrome(true, "CLIENT / LOADER");
+                Label eyebrow = LauncherTheme.Label(this, "MOONS / MINECRAFT JAVA",
+                    new Rectangle(32, 104, 576, 20), 8F, false, LauncherTheme.Muted);
+                Label title = LauncherTheme.Label(this, "Load your client.",
+                    new Rectangle(30, 130, 578, 48), 28F, true, LauncherTheme.Text);
+                LauncherTheme.Label(this, "Start Minecraft. Moons will find your client.",
+                    new Rectangle(32, 185, 576, 26), 10F, false, LauncherTheme.Muted);
+                EnableDrag(eyebrow);
+                EnableDrag(title);
 
-                Label title = new Label();
-                title.Text = DisplayName.ToUpperInvariant();
-                title.AutoSize = true;
-                title.Top = 106;
-                title.ForeColor = Color.White;
-                title.Font = new Font("Segoe UI Semibold", 18.0F, FontStyle.Bold);
-                title.Left = (ClientSize.Width - title.PreferredWidth) / 2;
-                Controls.Add(title);
-
-                Label subtitle = new Label();
-                subtitle.Text = DependencyRuntime.VersionLabel();
-                subtitle.AutoSize = true;
-                subtitle.Top = 139;
-                subtitle.ForeColor = Muted;
-                subtitle.Font = new Font("Segoe UI Semibold", 7.5F, FontStyle.Bold);
-                subtitle.Left = (ClientSize.Width - subtitle.PreferredWidth) / 2;
-                Controls.Add(subtitle);
-
-                status = new Label();
-                status.Text = "Preparing...";
+                GlassPanel card = new GlassPanel();
+                card.SetBounds(32, 230, 576, 94);
+                Controls.Add(card);
+                status = LauncherTheme.Label(card, "Preparing...",
+                    new Rectangle(24, 21, 462, 26), 9F, false, LauncherTheme.Text);
                 status.AutoEllipsis = true;
-                status.TextAlign = ContentAlignment.MiddleCenter;
-                status.Left = (ClientSize.Width - 340) / 2;
-                status.Top = 218;
-                status.Width = 340;
-                status.Height = 24;
-                status.ForeColor = Muted;
-                status.Font = new Font("Segoe UI", 8.5F);
-                status.BackColor = Color.Transparent;
-                Controls.Add(status);
-
-                progressTrack = new AccentProgressBar();
-                progressTrack.Left = (ClientSize.Width - 320) / 2;
-                progressTrack.Top = 196;
-                progressTrack.Width = 320;
-                progressTrack.Height = 8;
-                Controls.Add(progressTrack);
-
-                InstallWindowChrome(this, true);
+                percentage = LauncherTheme.Label(card, "0%",
+                    new Rectangle(490, 21, 62, 26), 9F, false, LauncherTheme.Muted);
+                percentage.TextAlign = ContentAlignment.TopRight;
+                progressTrack = new ThemeProgressBar();
+                progressTrack.SetBounds(24, 63, 528, 6);
+                card.Controls.Add(progressTrack);
+                LauncherTheme.Label(this, DependencyRuntime.VersionLabel().Split('|')[0].Trim(),
+                    new Rectangle(32, 349, 350, 20), 8F, false, LauncherTheme.Soft);
+                Label footer = LauncherTheme.Label(this, "FREE & OPEN SOURCE",
+                    new Rectangle(403, 349, 205, 20), 7.5F, false, LauncherTheme.Soft);
+                footer.TextAlign = ContentAlignment.TopRight;
 
                 worker = new BackgroundWorker();
                 worker.WorkerReportsProgress = true;
@@ -632,6 +334,12 @@ namespace Moons.WindowsLauncher
                     if (highResolutionTimer) TimeEndPeriod(1);
                 };
                 FormClosing += HandleFormClosing;
+                if (!autoStart)
+                {
+                    progressTrack.Value = 42;
+                    percentage.Text = "42%";
+                    status.Text = "Waiting for a Minecraft client";
+                }
             }
 
             private void MatchAnimationRateToDisplay()
@@ -691,7 +399,7 @@ namespace Moons.WindowsLauncher
                 double now = progressClock.Elapsed.TotalSeconds;
                 double deltaSeconds = now - lastAnimationSeconds;
                 lastAnimationSeconds = now;
-                starAnimationSeconds = now;
+                AnimationSeconds = now;
                 Invalidate(false);
                 if (deltaSeconds <= 0.0 || deltaSeconds > 0.25)
                 {
@@ -714,6 +422,7 @@ namespace Moons.WindowsLauncher
             private void RenderProgress()
             {
                 progressTrack.Value = displayedProgress;
+                percentage.Text = ((int)Math.Round(displayedProgress)).ToString() + "%";
             }
 
             private void Completed(object sender, RunWorkerCompletedEventArgs eventArgs)
@@ -730,8 +439,7 @@ namespace Moons.WindowsLauncher
                 {
                     ExitCode = 1;
                     status.Text = "Load failed";
-                    MessageBox.Show(this, eventArgs.Error.Message, DisplayName + " Loader",
-                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    LauncherTheme.ShowError(this, "Unable to load.", eventArgs.Error.Message);
                     Close();
                     return;
                 }
@@ -773,30 +481,9 @@ namespace Moons.WindowsLauncher
                 }
             }
 
-            protected override void OnPaint(PaintEventArgs eventArgs)
-            {
-                base.OnPaint(eventArgs);
-                eventArgs.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                for (int i = 0; i < Stars.Length; i++)
-                {
-                    double wave = (Math.Sin(starAnimationSeconds * 0.9 + i * 1.73) + 1.0) * 0.5;
-                    int alpha = 18 + (int)Math.Round(wave * 48.0);
-                    float diameter = i % 5 == 0 ? 2.2F : 1.4F;
-                    float x = Stars[i].X * ClientSize.Width;
-                    float y = Stars[i].Y * ClientSize.Height;
-                    starBrush.Color = Color.FromArgb(alpha, Color.White);
-                    eventArgs.Graphics.FillEllipse(starBrush, x, y, diameter, diameter);
-                }
-            }
-
-            protected override void Dispose(bool disposing)
-            {
-                if (disposing) starBrush.Dispose();
-                base.Dispose(disposing);
-            }
         }
 
-        private sealed class TargetDialog : Form
+        private sealed class TargetDialog : ThemeForm
         {
             private readonly ListBox targets;
 
@@ -805,48 +492,29 @@ namespace Moons.WindowsLauncher
                 get { return targets.SelectedItem as MinecraftTarget; }
             }
 
-            internal TargetDialog(IList<MinecraftTarget> candidates)
+            internal TargetDialog(IList<MinecraftTarget> candidates) : base(DisplayName)
             {
                 Text = "Select Minecraft — " + DisplayName;
-                ClientSize = new Size(540, 278);
-                BackColor = WindowBackground;
-                ForeColor = Color.White;
-                Font = new Font("Segoe UI", 9.0F);
-                FormBorderStyle = FormBorderStyle.None;
-                ShowIcon = false;
-                ControlBox = false;
-                MaximizeBox = false;
-                MinimizeBox = false;
+                ClientSize = new Size(640, 420);
                 ShowInTaskbar = false;
                 StartPosition = FormStartPosition.CenterParent;
-                UseRoundedCorners(this);
-
-                Label title = new Label();
-                title.Text = "Choose Minecraft";
-                title.AutoSize = false;
-                title.Left = 24;
-                title.Top = 22;
-                title.Width = 492;
-                title.Height = 30;
-                title.TextAlign = ContentAlignment.MiddleCenter;
-                title.ForeColor = Color.White;
-                title.Font = new Font("Segoe UI Semibold", 14.0F, FontStyle.Bold);
-                Controls.Add(title);
-
-                SurfacePanel listCard = new SurfacePanel();
-                listCard.Left = 24;
-                listCard.Top = 78;
-                listCard.Width = 492;
-                listCard.Height = 128;
+                InstallChrome(false, "CLIENT / SELECT");
+                Label title = LauncherTheme.Label(this, "Choose Minecraft.",
+                    new Rectangle(30, 103, 578, 46), 26F, true, LauncherTheme.Text);
+                LauncherTheme.Label(this, "More than one Minecraft client is open.",
+                    new Rectangle(32, 155, 576, 26), 10F, false, LauncherTheme.Muted);
+                EnableDrag(title);
+                GlassPanel listCard = new GlassPanel();
+                listCard.SetBounds(32, 200, 576, 128);
                 Controls.Add(listCard);
 
                 targets = new ListBox();
                 targets.Left = 10;
                 targets.Top = 10;
-                targets.Width = 472;
+                targets.Width = 556;
                 targets.Height = 108;
-                targets.BackColor = Surface;
-                targets.ForeColor = Color.White;
+                targets.BackColor = LauncherTheme.Panel;
+                targets.ForeColor = LauncherTheme.Text;
                 targets.BorderStyle = BorderStyle.None;
                 targets.DrawMode = DrawMode.OwnerDrawFixed;
                 targets.ItemHeight = 40;
@@ -869,65 +537,28 @@ namespace Moons.WindowsLauncher
                 };
                 listCard.Controls.Add(targets);
 
-                Button load = new Button();
+                ThemeButton load = new ThemeButton(true);
                 load.Text = "Load Moons";
                 load.DialogResult = DialogResult.OK;
-                load.Left = 364;
-                load.Top = 226;
-                load.Width = 152;
-                load.Height = 34;
-                StyleButton(load, true);
+                load.SetBounds(456, 352, 152, 40);
                 Controls.Add(load);
-
-                Button cancel = new Button();
+                ThemeButton cancel = new ThemeButton(false);
                 cancel.Text = "Cancel";
                 cancel.DialogResult = DialogResult.Cancel;
-                cancel.Left = 249;
-                cancel.Top = 226;
-                cancel.Width = 105;
-                cancel.Height = 34;
-                StyleButton(cancel, false);
+                cancel.SetBounds(338, 352, 106, 40);
                 Controls.Add(cancel);
-
                 AcceptButton = load;
                 CancelButton = cancel;
-                EnableWindowDrag(this, title);
-                InstallWindowChrome(this, false);
             }
 
             private void DrawTarget(object sender, DrawItemEventArgs eventArgs)
             {
                 if (eventArgs.Index < 0 || eventArgs.Index >= targets.Items.Count) return;
-                bool selected = (eventArgs.State & DrawItemState.Selected) != 0;
-                Rectangle bounds = eventArgs.Bounds;
-                Color background = selected ? Color.FromArgb(42, 37, 64) : Surface;
-                using (SolidBrush fill = new SolidBrush(background))
-                {
-                    eventArgs.Graphics.FillRectangle(fill, bounds);
-                }
-                if (selected)
-                {
-                    using (SolidBrush accent = new SolidBrush(Accent))
-                    {
-                        eventArgs.Graphics.FillRectangle(accent,
-                            bounds.Left, bounds.Top + 6, 3, bounds.Height - 12);
-                    }
-                }
-
                 MinecraftTarget target = targets.Items[eventArgs.Index] as MinecraftTarget;
                 string label = target == null ? targets.Items[eventArgs.Index].ToString() : target.Label;
-                eventArgs.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                using (SolidBrush icon = new SolidBrush(selected
-                    ? Color.FromArgb(70, 57, 112) : Color.FromArgb(35, 39, 53)))
-                using (SolidBrush dot = new SolidBrush(Accent))
-                {
-                    eventArgs.Graphics.FillEllipse(icon, bounds.Left + 12, bounds.Top + 7, 26, 26);
-                    eventArgs.Graphics.FillEllipse(dot, bounds.Left + 22, bounds.Top + 17, 6, 6);
-                }
-                TextRenderer.DrawText(eventArgs.Graphics, label, targets.Font,
-                    new Rectangle(bounds.Left + 50, bounds.Top + 8, bounds.Width - 62, 24),
-                    Color.White, TextFormatFlags.EndEllipsis | TextFormatFlags.VerticalCenter);
-                eventArgs.DrawFocusRectangle();
+                LauncherTheme.DrawChoice(eventArgs.Graphics, eventArgs.Bounds, label, targets.Font,
+                    (eventArgs.State & DrawItemState.Selected) != 0,
+                    (eventArgs.State & DrawItemState.Focus) != 0);
             }
         }
 
@@ -1166,6 +797,25 @@ namespace Moons.WindowsLauncher
 
             try
             {
+                string jsonConfig = Path.Combine(ResolveHome(), "config", "profiles", "default.json");
+                if (File.Exists(jsonConfig))
+                {
+                    var serializer = new System.Web.Script.Serialization.JavaScriptSerializer();
+                    serializer.MaxJsonLength = 2000000;
+                    var root = serializer.DeserializeObject(File.ReadAllText(jsonConfig)) as Dictionary<string, object>;
+                    object format;
+                    if (root != null && root.TryGetValue("format", out format) && Convert.ToInt32(format) == 2)
+                    {
+                        object valuesObject;
+                        object name;
+                        var values = root.TryGetValue("values", out valuesObject)
+                            ? valuesObject as Dictionary<string, object> : null;
+                        return values != null && values.TryGetValue("client.name", out name)
+                            ? NormalizeDisplayName(Convert.ToString(name)) ?? DefaultDisplayName
+                            : DefaultDisplayName;
+                    }
+                }
+                // Read-only compatibility before the client migrates its legacy settings.
                 string config = Path.Combine(ResolveHome(), "config", "moons.properties");
                 if (File.Exists(config))
                 {

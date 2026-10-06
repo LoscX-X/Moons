@@ -19,7 +19,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.blanoir.moons.client.config.Settings
 import com.blanoir.moons.client.module.framework.ModuleRegistry
-import com.blanoir.moons.client.utils.ui.SettingInput
+import com.blanoir.moons.client.ui.settings.SettingInput
 import com.google.gson.JsonPrimitive
 import java.nio.file.Files
 import java.nio.file.Path

@@ -48,8 +48,8 @@ jobs:
           $properties = Get-Content gradle.properties -Raw
           $match = [regex]::Match($properties, '(?m)^load_version=([^\r\n]+)\r?$')
           $version = $match.Groups[1].Value.Trim()
-          if ($version -notmatch '^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?(?:\+[A-Za-z0-9.-]+)?$') {
-            throw 'Missing or invalid load_version in gradle.properties'
+          if ($version -cnotmatch '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+-(Experiment|Release)$') {
+            throw 'load_version must use X.Y.Z.x-Experiment or X.Y.Z.x-Release; x is the patch sequence'
           }
           $commit = (git rev-parse HEAD).Trim()
           if ($LASTEXITCODE -ne 0 -or $commit -notmatch '^[0-9a-f]{40}$') { throw 'Cannot determine checked-out commit' }
@@ -236,18 +236,23 @@ jobs:
           - The installer contains the runtime; no separate JAR or dependency download is required.
           - `moons-ysm-1.8.9.zip`: standalone YSM libraries and the Minecraft 1.8.9 adapter.
 
-          Only assets selected for this run are included. The loader supports Minecraft 26.1.2, 26.2, 26.3, 26.4-snapshot-1.
+          Only assets selected for this run are included. This branch supports vanilla Minecraft 1.8.9 and Java 25.
           NOTES
           shopt -s nullglob
           assets=(artifacts/*.exe artifacts/*.zip artifacts/build-info.md artifacts/moons-update-notes.md)
+          case "$CLIENT_VERSION" in
+            *-Experiment) release_flags=(--prerelease=true --latest=false) ;;
+            *-Release) release_flags=(--prerelease=false --latest=true) ;;
+            *) echo "Unsupported release channel: $CLIENT_VERSION" >&2; exit 1 ;;
+          esac
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" "${assets[@]}" --repo "$GITHUB_REPOSITORY" --clobber
-            gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --notes-file release-notes.md
+            gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" "${release_flags[@]}" --notes-file release-notes.md
           else
             gh release create "$RELEASE_TAG" "${assets[@]}" \
               --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
               --title "Moons $CLIENT_VERSION · $SHORT_SHA (Build $GITHUB_RUN_NUMBER)" \
-              --prerelease --latest=false --notes-file release-notes.md
+              "${release_flags[@]}" --notes-file release-notes.md
           fi
       - name: Queue Moons QQ update notification
         if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')

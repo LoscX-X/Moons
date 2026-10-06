@@ -1,0 +1,95 @@
+package com.blanoir.moons.client.module.impl.render.xray
+
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.toComposeImageBitmap
+import com.blanoir.moons.client.render.item.NativeItemIconCapture
+import net.minecraft.block.state.IBlockState
+import net.minecraft.client.Minecraft
+import org.jetbrains.skia.ColorAlphaType
+import org.jetbrains.skia.ColorType
+import org.jetbrains.skia.Image
+import org.jetbrains.skia.ImageInfo
+
+/** Visible rows only; separate from Xray's world-position cache. */
+internal object PluginBlockPreviews {
+    private val revision = mutableIntStateOf(0)
+    private val images = linkedMapOf<IBlockState, Image>()
+    private val pending = linkedSetOf<IBlockState>()
+    private val failed = mutableSetOf<IBlockState>()
+    private var generation = 0
+    private var busy = false
+    private var models: Any? = null
+    private var scope = ""
+
+    fun get(state: IBlockState?): ImageBitmap? {
+        revision.intValue
+        if (state == null) return null
+        val image = images[state]
+        if (image == null && state !in failed) pending.add(state)
+        return image?.toComposeImageBitmap()
+    }
+
+    fun prepareFrame() {
+        val client = Minecraft.getMinecraft()
+        val currentModels = client.blockRendererDispatcher.blockModelShapes
+        val currentScope = PluginXrayTargets.scope()
+        if (models !== currentModels || scope != currentScope) {
+            clear()
+            models = currentModels
+            scope = currentScope
+        }
+        if (busy) return
+        val request = pending.firstOrNull() ?: return
+        pending.remove(request)
+        busy = true
+        val started = generation
+        try {
+            PluginBlockPreviewModel.capture(request) { pixels ->
+                client.addScheduledTask {
+                    if (started == generation) {
+                        busy = false
+                        pending.remove(request)
+                        if (pixels == null) {
+                            failed.add(request)
+                            revision.intValue++
+                            return@addScheduledTask
+                        }
+                        val size = NativeItemIconCapture.SIZE
+                        images[request] =
+                            Image.makeRaster(
+                                ImageInfo(size, size, ColorType.RGBA_8888, ColorAlphaType.PREMUL),
+                                pixels,
+                                size * 4,
+                            )
+                        if (images.size > 128) images.remove(images.keys.first())?.close()
+                        revision.intValue++
+                    }
+                }
+            }
+        } catch (_: RuntimeException) {
+            busy = false
+            failed.add(request)
+            revision.intValue++
+        }
+    }
+
+    fun cancelPending(state: IBlockState?) {
+        pending.remove(state)
+    }
+
+    fun unavailable(state: IBlockState?): Boolean {
+        revision.intValue
+        return state == null || state in failed
+    }
+
+    fun clear() {
+        generation++
+        busy = false
+        pending.clear()
+        failed.clear()
+        images.values.forEach { it.close() }
+        images.clear()
+        revision.intValue++
+    }
+}

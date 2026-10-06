@@ -1,0 +1,43 @@
+package com.blanoir.moons.client.module.impl.combat.silentaura.legacy;
+
+import com.blanoir.moons.client.manager.combat.ClickScheduler;
+import com.blanoir.moons.client.manager.input.CombatInputController;
+import com.blanoir.moons.client.module.impl.combat.HitSelect;
+import com.blanoir.moons.client.module.impl.combat.critical.Critical;
+import com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraAttackRay;
+import com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraConfig;
+import com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraRuntime;
+import com.blanoir.moons.client.module.impl.render.Animations;
+
+import net.minecraft.client.Minecraft;
+
+/** CPS scheduling and the use/release/attack/reblock lifecycle. */
+public final class LegacyCombat {
+    private static final ClickScheduler CLICKS = new ClickScheduler();
+
+    private LegacyCombat() {}
+
+    public static String tick(Minecraft client) {
+        var ray = SilentAuraAttackRay.find(client);
+        if (ray.target() == null) return ray.gate();
+        if (HitSelect.shouldDelay(client, ray.target()))
+            return "hitselect " + HitSelect.statusTag();
+        if (!CLICKS.ready(System.nanoTime())) return "cps";
+        if (!LegacyBlock.beforeAttack(client)) return "unblocking";
+        if (client.thePlayer.isUsingItem()) return "using item";
+        // Use the installed client's native attack -> swing path before its movement packet.
+        boolean attacked =
+                Critical.withoutSilentAuraCritical(
+                        () -> CombatInputController.attackTargetNow(client, ray.hit(), true));
+        if (!attacked) return "attack dispatch";
+        CLICKS.clicked(System.nanoTime(), SilentAuraConfig.minCps(), SilentAuraConfig.maxCps());
+        LegacyBlock.afterAttack(client);
+        Animations.onAttack();
+        SilentAuraRuntime.onSuccessfulAttack(client, ray.target());
+        return "attack";
+    }
+
+    public static void reset() {
+        CLICKS.reset();
+    }
+}

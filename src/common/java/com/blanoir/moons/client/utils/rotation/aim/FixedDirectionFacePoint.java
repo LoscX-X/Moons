@@ -1,0 +1,36 @@
+package com.blanoir.moons.client.utils.rotation.aim;
+
+import com.blanoir.moons.client.utils.rotation.Rotation;
+import com.blanoir.moons.client.utils.world.placement.PlacementRaycast;
+
+import net.minecraft.client.Minecraft;
+import net.minecraft.util.MovingObjectPosition;
+import net.minecraft.util.Vec3;
+
+/**
+ * I: Fixed-direction block-face selection, currently the Vanilla Tower downward ray.
+ * Performs one exact ray test without point-grid search or extra quantization. The caller
+ * chooses the direction and target order; null means that ray does not hit this support/face.
+ */
+public final class FixedDirectionFacePoint {
+    private FixedDirectionFacePoint() {}
+
+    public static BlockAim resolve(
+            PlacementRaycast rays,
+            Minecraft client,
+            BlockTarget target,
+            Vec3 eye,
+            Rotation direction,
+            double range) {
+        MovingObjectPosition hit =
+                rays.traceFace(
+                        client,
+                        eye,
+                        direction.yaw(),
+                        direction.pitch(),
+                        range,
+                        target.support(),
+                        target.face());
+        return hit == null ? null : new BlockAim(target, direction, hit);
+    }
+}

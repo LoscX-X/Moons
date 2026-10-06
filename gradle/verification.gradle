@@ -9,7 +9,7 @@ sourceSets {
         java.setSrcDirs(['src/test/render/java'])
         kotlin.setSrcDirs(['src/test/render/kotlin'])
         resources.setSrcDirs(['src/test/render/resources'])
-        compileClasspath += sourceSets.features.output + sourceSets.client.output + sourceSets.agent.output + sourceSets.runtime.output + sourceSets.api.output + sourceSets.features.compileClasspath + configurations.agentRuntimeClasspath
+        compileClasspath += sourceSets.client.output + sourceSets.loader.output + sourceSets.runtime.output + sourceSets.api.output + sourceSets.client.compileClasspath + configurations.loaderRuntimeClasspath
         runtimeClasspath += compileClasspath
     }
     gameAccessTest {
@@ -43,7 +43,7 @@ tasks.register('verifyArmorHide', JavaExec) {
     description = 'Checks custom-model head items, cached render states and the injected item resolver without a GPU.'
     dependsOn 'renderTestClasses'
     classpath = sourceSets.renderTest.runtimeClasspath
-    mainClass = 'com.blanoir.moons.agent.core.ArmorHeadItemVerification'
+    mainClass = 'com.blanoir.moons.loader.common.asm.transform.ArmorHeadItemVerification'
     systemProperty 'moons.home', layout.buildDirectory.dir('armor-hide-fixture/home').get().asFile.absolutePath
     workingDir layout.buildDirectory.get().asFile
 }
@@ -165,7 +165,7 @@ tasks.register("verifyMinecraftTransformers", JavaExec) {
     description = "Transforms and bytecode-verifies every supported hook against the actual Minecraft JAR."
     dependsOn tasks.named("loaderTestClasses")
     classpath = sourceSets.loaderTest.runtimeClasspath
-    mainClass = "com.blanoir.moons.agent.core.TransformerVerification"
+    mainClass = "com.blanoir.moons.loader.common.asm.transform.TransformerVerification"
     doFirst {
         def minecraftJars = sourceSets.client.compileClasspath.files.findAll {
             it.name.toLowerCase(Locale.ROOT).startsWith("minecraft-")
@@ -182,7 +182,7 @@ tasks.register("verifyMinecraftTransformers", JavaExec) {
 
 
 tasks.named("check").configure {
-    dependsOn "clientClasses", "featuresClasses", "verifyMinecraft189",
+    dependsOn "clientClasses", "verifyMinecraft189",
             "verifyLoadSession", "verifyCacheMaintenance", "verifyPayloadCache"
 }
 
@@ -256,7 +256,7 @@ def cacheMaintenanceCheckExe = tasks.register('cacheMaintenanceVerificationExe',
     onlyIf { moonsBuild.windowsHost }
     def sources = files('src/tools/launcher/csharp/CacheMaintenance.cs',
             'src/tools/launcher/csharp/DependencyRuntime.cs', 'src/tools/launcher/csharp/RuntimeMetadata.cs',
-            'src/tools/shared/Hashing.cs', 'src/tools/shared/StagedFile.cs',
+            'src/tools/common/Hashing.cs', 'src/tools/common/StagedFile.cs',
             'src/test/launcher/CacheMaintenanceVerification.cs')
     def output = layout.buildDirectory.file('verification/cache-maintenance.exe')
     inputs.files(sources)

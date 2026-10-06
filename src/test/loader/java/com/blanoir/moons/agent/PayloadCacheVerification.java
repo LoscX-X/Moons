@@ -20,7 +20,8 @@ public final class PayloadCacheVerification {
         Path cached = PayloadCache.extract(outer, home, "runtime.jar", "moons-runtime.jar");
         if (!cached.startsWith(home.resolve("cache/runtime"))
                 || !Arrays.equals(content, Files.readAllBytes(cached))) {
-            throw new AssertionError("Runtime extraction escaped MOONS_HOME or changed the payload");
+            throw new AssertionError(
+                    "Runtime extraction escaped MOONS_HOME or changed the payload");
         }
         var timestamp = Files.getLastModifiedTime(cached);
         if (!cached.equals(PayloadCache.extract(outer, home, "runtime.jar", "moons-runtime.jar"))

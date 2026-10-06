@@ -66,7 +66,7 @@ tasks.register('prepareMinecraft189Inputs') {
 tasks.register('prepareMinecraft189', JavaExec) {
     dependsOn 'mappingClasses','prepareMinecraft189Inputs'
     classpath = sourceSets.mapping.runtimeClasspath
-    mainClass = 'com.blanoir.moons.build.McpRemapper'
+    mainClass = 'com.blanoir.moons.tools.mapping.McpRemapper'
     inputs.files(inputDir.map { it.file('client.jar') }, inputDir.map { it.file('joined.srg') },inputDir.map { it.file('fields.csv') },inputDir.map { it.file('methods.csv') })
     outputs.file(inputDir.map { it.file('minecraft-1.8.9-named.jar') })
     doFirst {
@@ -76,30 +76,30 @@ tasks.register('prepareMinecraft189', JavaExec) {
 }
 def legacyLibraries = files(libraries.collect { inputDir.get().file('libraries/' + it[0].tokenize('/').last()) }).builtBy('prepareMinecraft189Inputs')
 sourceSets.client.compileClasspath += legacyLibraries
-sourceSets.features.compileClasspath += legacyLibraries
+sourceSets.client.compileClasspath += legacyLibraries
 tasks.named('compileClientJava') { dependsOn 'prepareMinecraft189'; options.compilerArgs.addAll(['-Xmaxerrs','3000']) }
 tasks.named('compileClientKotlin') { dependsOn 'prepareMinecraft189' }
 
 tasks.register('generateMinecraft189Hooks', JavaExec) {
     dependsOn 'prepareMinecraft189'
     classpath = sourceSets.mapping.runtimeClasspath
-    mainClass = 'com.blanoir.moons.build.McpHookTable'
+    mainClass = 'com.blanoir.moons.tools.mapping.McpHookTable'
     inputs.files(inputDir.map { it.file('minecraft-1.8.9-named.jar') }, inputDir.map { it.file('joined.srg') },inputDir.map { it.file('methods.csv') })
-    outputs.file(layout.buildDirectory.file('generated/agent/moons/1_8/hooks.tsv'))
-    outputs.file(layout.buildDirectory.file('generated/agent/moons/1_8/members.properties'))
-    args inputDir.get().asFile, layout.buildDirectory.file('generated/agent/moons/1_8/hooks.tsv').get().asFile
+    outputs.file(layout.buildDirectory.file('generated/loader/moons/1_8/hooks.tsv'))
+    outputs.file(layout.buildDirectory.file('generated/loader/moons/1_8/members.properties'))
+    args inputDir.get().asFile, layout.buildDirectory.file('generated/loader/moons/1_8/hooks.tsv').get().asFile
 }
-sourceSets.agent.resources.srcDir(layout.buildDirectory.dir('generated/agent'))
-sourceSets.client.resources.srcDir(layout.buildDirectory.dir('generated/agent'))
+sourceSets.loader.resources.srcDir(layout.buildDirectory.dir('generated/loader'))
+sourceSets.client.resources.srcDir(layout.buildDirectory.dir('generated/loader'))
 tasks.named('processClientResources') { dependsOn 'generateMinecraft189Hooks' }
-tasks.named('processAgentResources') { dependsOn 'generateMinecraft189Hooks' }
+tasks.named('processLoaderResources') { dependsOn 'generateMinecraft189Hooks' }
 
 // Keep named compiler output available for diagnostics; only remapped archives are distributed.
 ext.registerMinecraft189Remap = { String taskName, def namedArchive, String outputPath ->
     tasks.register(taskName, JavaExec) {
         dependsOn namedArchive, 'prepareMinecraft189'
         classpath = sourceSets.mapping.runtimeClasspath
-        mainClass = 'com.blanoir.moons.build.McpRemapper'
+        mainClass = 'com.blanoir.moons.tools.mapping.McpRemapper'
         inputs.file(namedArchive.flatMap { it.archiveFile })
         inputs.files(inputDir.map { it.file('joined.srg') }, inputDir.map { it.file('fields.csv') }, inputDir.map { it.file('methods.csv') })
         outputs.file(layout.buildDirectory.file(outputPath))

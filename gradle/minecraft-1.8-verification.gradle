@@ -5,14 +5,14 @@ tasks.register('verifyMinecraft189Audio', JavaExec) {
     description = 'Checks the actual 1.8 OpenAL/decoder lifecycle and PCM constraints, together with portable sound-cache/cancellation behavior.'
     dependsOn 'loaderTestClasses', 'ysmClasses', 'verifyYsmCore'
     classpath = sourceSets.loaderTest.runtimeClasspath
-    mainClass = 'com.blanoir.moons.agent.core.YsmAudioHookVerification'
+    mainClass = 'com.blanoir.moons.loader.common.asm.transform.YsmAudioHookVerification'
 }
 tasks.named('check') { dependsOn 'verifyMinecraft189Audio', 'verifyMinecraft189Version', 'verifyMinecraft189Catalog', 'verifyYsmQueries', 'verifyYsmRenderSetup' }
 sourceSets {
     minecraft189Verification {
         java.setSrcDirs(['src/verification/minecraft189/java'])
-        java.include('com/blanoir/moons/agent/core/**')
-        compileClasspath += sourceSets.agent.output + sourceSets.api.output + sourceSets.mapping.output + configurations.agentRuntimeClasspath + configurations.mappingRuntimeClasspath
+        java.include('com/blanoir/moons/loader/**')
+        compileClasspath += sourceSets.loader.output + sourceSets.api.output + sourceSets.mapping.output + configurations.loaderRuntimeClasspath + configurations.mappingRuntimeClasspath
         runtimeClasspath += compileClasspath
     }
 }
@@ -38,7 +38,7 @@ sourceSets {
     minecraft189CatalogVerification {
         java.setSrcDirs(['src/verification/minecraft189/java'])
         java.include('com/blanoir/moons/client/**')
-        compileClasspath += sourceSets.features.output + sourceSets.client.output + sourceSets.features.compileClasspath
+        compileClasspath += sourceSets.client.output + sourceSets.client.compileClasspath
         runtimeClasspath += compileClasspath
     }
 }
@@ -50,15 +50,27 @@ tasks.register('verifyMinecraft189Catalog', JavaExec) {
     mainClass = 'com.blanoir.moons.client.LegacyCatalogVerification'
     args layout.buildDirectory.dir('reports/minecraft189-catalog/config').get().asFile
 }
+
+tasks.register('verifySettingsPersistence', JavaExec) {
+    group = 'verification'
+    description = 'Checks complete JSON migration, profile isolation, cached settings, rollback and actual write failures on 1.8.9.'
+    dependsOn 'minecraft189CatalogVerificationClasses'
+    classpath = sourceSets.minecraft189CatalogVerification.runtimeClasspath
+    mainClass = 'com.blanoir.moons.client.config.SettingsPersistenceVerification'
+    systemProperty 'moons.home', layout.buildDirectory.dir('verifySettingsPersistence-fixture/home').get().asFile.absolutePath
+    workingDir layout.buildDirectory.get().asFile
+}
 tasks.register('verifyMinecraft189', JavaExec) {
     group = 'verification'
     description = 'Checks every named/obfuscated 1.8.9 hook, frame flow, bridge ABI, idempotence and reverse-remap linkage.'
-    dependsOn 'minecraft189VerificationClasses', 'generateMinecraft189Hooks', 'processAgentResources'
+    dependsOn 'minecraft189VerificationClasses', 'generateMinecraft189Hooks', 'processLoaderResources', 'clientModuleNamedJar'
     classpath = sourceSets.minecraft189Verification.runtimeClasspath
-    mainClass = 'com.blanoir.moons.agent.core.Minecraft189Verification'
+    mainClass = 'com.blanoir.moons.loader.common.asm.transform.Minecraft189Verification'
     args layout.buildDirectory.dir('minecraft189').get().asFile, layout.buildDirectory.dir('reports/minecraft189-verification').get().asFile
     if (providers.gradleProperty('minecraft189_verify_payloads').isPresent()) {
         args providers.gradleProperty('minecraft189_verify_payloads').get().split(java.io.File.pathSeparator).collect { file(it) }
+    } else {
+        args tasks.named('clientModuleNamedJar', Jar).get().archiveFile.get().asFile
     }
 }
 
@@ -70,3 +82,25 @@ tasks.register('verifyMinecraft189WorldInventory', JavaExec) {
     mainClass = 'com.blanoir.moons.client.utils.world.LegacyWorldInventoryVerification'
 }
 tasks.named('check') { dependsOn 'verifyMinecraft189WorldInventory' }
+
+tasks.register('verifyInputBindings', JavaExec) {
+    group = 'verification'
+    dependsOn 'minecraft189CatalogVerificationClasses'
+    classpath = sourceSets.minecraft189CatalogVerification.runtimeClasspath
+    mainClass = 'com.blanoir.moons.client.input.InputBindingVerification'
+    systemProperty 'moons.home', layout.buildDirectory.dir('verifyInputBindings-fixture/home').get().asFile.absolutePath
+}
+sourceSets {
+    threadVerification {
+        java.setSrcDirs(['src/test/render/java'])
+        java.include('com/blanoir/moons/client/threads/**')
+        compileClasspath += sourceSets.client.output + sourceSets.client.compileClasspath
+        runtimeClasspath += compileClasspath
+    }
+}
+tasks.register('verifyTaskScope', JavaExec) {
+    group = 'verification'
+    dependsOn 'threadVerificationClasses'
+    classpath = sourceSets.threadVerification.runtimeClasspath
+    mainClass = 'com.blanoir.moons.client.threads.TaskScopeVerification'
+}

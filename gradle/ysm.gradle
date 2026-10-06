@@ -81,12 +81,12 @@ def ysmDirectory = moonsBuild.versionDirectory
 
 sourceSets {
     ysm {
-        java.setSrcDirs(['src/minecraft/shared/ysm/adapter/java', "src/minecraft/versions/${ysmDirectory}/ysm/adapter/java"])
+        java.setSrcDirs(['src/common/ysm/adapter/java', "src/minecraft/versions/${ysmDirectory}/ysm/adapter/java"])
         resources.setSrcDirs(["src/minecraft/versions/${ysmDirectory}/ysm/adapter/resources"])
         compileClasspath += sourceSets.ysmCore.output + sourceSets.ysmCodecs.output + sourceSets.api.output + sourceSets.runtime.output + sourceSets.client.compileClasspath
     }
     ysmAdapterTest {
-        java.setSrcDirs(['src/minecraft/shared/ysm/test/java', "src/minecraft/versions/${ysmDirectory}/ysm/test/java"])
+        java.setSrcDirs(['src/common/ysm/test/java', "src/minecraft/versions/${ysmDirectory}/ysm/test/java"])
         compileClasspath += sourceSets.ysm.output + sourceSets.ysm.compileClasspath
         runtimeClasspath += sourceSets.ysm.output + sourceSets.ysm.compileClasspath
     }
@@ -207,8 +207,8 @@ def packageCheckExe = tasks.register('ysmPackageVerificationExe', Exec) {
     def sources = files('src/tools/launcher/csharp/YsmPackage.cs',
             'src/tools/launcher/csharp/CacheMaintenance.cs',
             'src/tools/launcher/csharp/DependencyRuntime.cs', 'src/tools/launcher/csharp/RuntimeMetadata.cs',
-            'src/tools/shared/StagedFile.cs',
-            'src/tools/launcher/csharp/ZipEntries.cs', 'src/tools/shared/Hashing.cs',
+            'src/tools/common/StagedFile.cs',
+            'src/tools/launcher/csharp/ZipEntries.cs', 'src/tools/common/Hashing.cs',
             'src/test/launcher/YsmPackageVerification.cs')
     def output = layout.buildDirectory.file('verification/ysm-package.exe')
     inputs.files(sources)

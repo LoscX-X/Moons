@@ -46,7 +46,7 @@ public final class HotPathBenchmark {
                 5000,
                 i ->
                         sink =
-                                AimPointsC.findBestSurfacePoint(
+                                VisibleAimPoints.findBestSurfacePoint(
                                         boxes[i & 31], eye, look, 6, .72, true, visible));
         var pose = new Matrix4f().translate(-100, -50, -200).rotateXYZ(.3f, 1.2f, -.1f);
         var vertices = new VertexSink();

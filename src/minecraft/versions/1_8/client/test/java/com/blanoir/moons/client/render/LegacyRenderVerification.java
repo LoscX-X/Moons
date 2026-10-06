@@ -1,6 +1,6 @@
 package com.blanoir.moons.client.render;
 
-import com.blanoir.moons.client.utils.plugin.PluginModelIndex;
+import com.blanoir.moons.client.manager.plugin.PluginModelScanner;
 import com.blanoir.moons.client.utils.text.DynamicMiniMessage;
 import com.blanoir.moons.client.utils.text.RgbChatStyle;
 import com.google.gson.JsonParser;
@@ -28,7 +28,7 @@ public final class LegacyRenderVerification {
                         .getFirst()
                         .getModelLocation();
         var models =
-                PluginModelIndex.modelsForState(
+                PluginModelScanner.modelsForState(
                         JsonParser.parseString(normal).getAsJsonObject(),
                         Blocks.stone.getDefaultState());
         equal(
@@ -41,13 +41,13 @@ public final class LegacyRenderVerification {
                 Set.of(
                         new ResourceLocation("minecraft:block/stone"),
                         new ResourceLocation("pack:block/custom/ore")),
-                PluginModelIndex.modelsForState(
+                PluginModelScanner.modelsForState(
                         JsonParser.parseString(weighted).getAsJsonObject(),
                         Blocks.stone.getDefaultState()),
                 "Weighted model alternatives");
         equal(
                 Set.of(new ResourceLocation("minecraft:block/granite")),
-                PluginModelIndex.modelsForState(
+                PluginModelScanner.modelsForState(
                         JsonParser.parseString(weighted).getAsJsonObject(),
                         Blocks.stone
                                 .getDefaultState()

@@ -21,7 +21,7 @@ public final class GameAccessVerification {
         int pipelines = 0;
         for (String name :
                 new String[] {
-                    "com.blanoir.moons.client.render.WorldLabelBackend",
+                    "com.blanoir.moons.client.render.WorldLabelPipeline",
                     "com.blanoir.moons.client.render.WorldOverlayRenderer",
                     "com.blanoir.moons.client.module.impl.network.backtrack.BacktrackRenderer"
                 }) {

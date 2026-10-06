@@ -29,17 +29,16 @@ def uiDependenciesJar = tasks.register("uiDependenciesJar", moonsPluginTypes.sha
     exclude "META-INF/versions/*/module-info.class", "module-info.class"
 }
 
-def featuresNamedJar = tasks.register("featuresNamedJar", Jar) {
+def clientModuleNamedJar = tasks.register("clientModuleNamedJar", Jar) {
     archiveFileName = "moons-core-features.jar"
     destinationDirectory = layout.buildDirectory.dir('named/' + versionedPayloadDirectory)
     dependsOn tasks.named("clientClasses")
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-    from sourceSets.features.output
     from sourceSets.client.output
 }
-def remapFeatures = registerMinecraft189Remap('remapFeatures189', featuresNamedJar, 'remapped/moons-core-features.jar')
-def featuresJar = tasks.register('featuresJar', Jar) {
-    dependsOn remapFeatures
+def remapClient = registerMinecraft189Remap('remapClient189', clientModuleNamedJar, 'remapped/moons-core-features.jar')
+def clientModuleJar = tasks.register('clientModuleJar', Jar) {
+    dependsOn remapClient
     archiveFileName = 'moons-core-features.jar'
     destinationDirectory = layout.buildDirectory.dir(versionedPayloadDirectory)
     from({ zipTree(layout.buildDirectory.file('remapped/moons-core-features.jar').get().asFile) })
@@ -48,15 +47,15 @@ def featuresJar = tasks.register('featuresJar', Jar) {
 tasks.register("moonsJar", Jar) {
     group = "build"
     description = "Builds the Java payload loaded by the JNI/JVMTI bridge."
-    dependsOn apiJar, runtimeJar, featuresJar, tasks.named("agentClasses")
+    dependsOn apiJar, runtimeJar, clientModuleJar, tasks.named("loaderClasses")
 
     archiveFileName = "moons.jar"
     destinationDirectory = layout.buildDirectory.dir(moonsJarOutputDirectory)
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 
-    from sourceSets.agent.output
+    from sourceSets.loader.output
     from({
-        configurations.agentRuntimeClasspath
+        configurations.loaderRuntimeClasspath
                 .findAll { it.isFile() }
                 .collect { zipTree(it) }
     }) {
@@ -71,7 +70,7 @@ tasks.register("moonsJar", Jar) {
         from(runtimeJar.flatMap { it.archiveFile })
     }
     into("META-INF/moons/modules") {
-        from(featuresJar.flatMap { it.archiveFile })
+        from(clientModuleJar.flatMap { it.archiveFile })
     }
 
     manifest {

@@ -18,12 +18,9 @@ internal object LwjglComposeEvents {
 
     fun modifiers(window: Long): Int {
         var result = 0
-        if (pressedMouse(window, 0))
-            result = result or InputEvent.BUTTON1_DOWN_MASK
-        if (pressedMouse(window, 1))
-            result = result or InputEvent.BUTTON2_DOWN_MASK
-        if (pressedMouse(window, 2))
-            result = result or InputEvent.BUTTON3_DOWN_MASK
+        if (pressedMouse(window, 0)) result = result or InputEvent.BUTTON1_DOWN_MASK
+        if (pressedMouse(window, 1)) result = result or InputEvent.BUTTON2_DOWN_MASK
+        if (pressedMouse(window, 2)) result = result or InputEvent.BUTTON3_DOWN_MASK
         if (pressedKey(window, Keyboard.KEY_LCONTROL, Keyboard.KEY_RCONTROL)) {
             result = result or InputEvent.CTRL_DOWN_MASK
         }
@@ -70,7 +67,8 @@ internal object LwjglComposeEvents {
 
     @OptIn(InternalComposeUiApi::class)
     fun key(window: Long, id: Int, keyCode: Int, codePoint: Int = 0): KeyEvent {
-        val awtCode = if (id == AwtKeyEvent.KEY_TYPED) AwtKeyEvent.VK_UNDEFINED else glfwToAwtKey(keyCode)
+        val awtCode =
+            if (id == AwtKeyEvent.KEY_TYPED) AwtKeyEvent.VK_UNDEFINED else glfwToAwtKey(keyCode)
         val character = if (codePoint == 0) AwtKeyEvent.CHAR_UNDEFINED else codePoint.toChar()
         val mods = modifiers(window)
         return KeyEvent(
@@ -99,17 +97,13 @@ internal object LwjglComposeEvents {
         )
     }
 
-    private fun pressedMouse(window: Long, button: Int) =
-        Mouse.isButtonDown(button)
+    private fun pressedMouse(window: Long, button: Int) = Mouse.isButtonDown(button)
 
     private fun pressedKey(window: Long, left: Int, right: Int) =
-        Keyboard.isKeyDown(left) ||
-            Keyboard.isKeyDown(right)
+        Keyboard.isKeyDown(left) || Keyboard.isKeyDown(right)
 
     private fun glfwToAwtKey(key: Int): Int =
         when (key) {
-
-
             in Keyboard.KEY_F1..Keyboard.KEY_F10 -> AwtKeyEvent.VK_F1 + key - Keyboard.KEY_F1
             Keyboard.KEY_F11 -> AwtKeyEvent.VK_F11
             Keyboard.KEY_F12 -> AwtKeyEvent.VK_F12
@@ -165,6 +159,9 @@ internal object LwjglComposeEvents {
             Keyboard.KEY_LMENU,
             Keyboard.KEY_RMENU -> AwtKeyEvent.VK_ALT
 
-            else -> Keyboard.getKeyName(key)?.singleOrNull()?.let { AwtKeyEvent.getExtendedKeyCodeForChar(it.code) } ?: AwtKeyEvent.VK_UNDEFINED
+            else ->
+                Keyboard.getKeyName(key)?.singleOrNull()?.let {
+                    AwtKeyEvent.getExtendedKeyCodeForChar(it.code)
+                } ?: AwtKeyEvent.VK_UNDEFINED
         }
 }

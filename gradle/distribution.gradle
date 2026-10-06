@@ -13,8 +13,8 @@ def moonsHwidExe = tasks.register("moonsHwidExe", Exec) {
     description = "Builds the out-of-process Windows hardware ID helper."
 
     def source = layout.projectDirectory.file("src/tools/hwid/csharp/MoonsHardwareId.cs")
-    def generator = layout.projectDirectory.file("src/tools/shared/HardwareIdGenerator.cs")
-    def hashing = layout.projectDirectory.file("src/tools/shared/Hashing.cs")
+    def generator = layout.projectDirectory.file("src/tools/common/HardwareIdGenerator.cs")
+    def hashing = layout.projectDirectory.file("src/tools/common/Hashing.cs")
     def output = layout.buildDirectory.file("dist/moons-hwid.exe")
     inputs.file(source)
     inputs.file(generator)
@@ -96,6 +96,8 @@ def launcherDependencyMetadata = tasks.register('launcherDependencyMetadata') {
 def releaseMetadata = layout.buildDirectory.file('generated/launcher/release.properties')
 def assemblyVersionSource = layout.buildDirectory.file('generated/launcher/LauncherVersion.cs')
 def clientVersion = project.version.toString()
+if (!(clientVersion ==~ /[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+-(?:Experiment|Release)/))
+    throw new GradleException('load_version must use X.Y.Z.x-Experiment or X.Y.Z.x-Release; x is the patch sequence')
 def launcherBuildId = providers.gradleProperty('moons_build_id')
         .getOrElse(providers.environmentVariable('GITHUB_SHA').getOrElse('local'))
 def launcherVersionMetadata = tasks.register('launcherVersionMetadata') {
@@ -105,8 +107,6 @@ def launcherVersionMetadata = tasks.register('launcherVersionMetadata') {
     inputs.property('buildId', launcherBuildId)
     outputs.files(releaseMetadata, assemblyVersionSource)
     doLast {
-        if (!(clientVersion ==~ /[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?(?:\+[A-Za-z0-9.-]+)?/))
-            throw new GradleException('load_version must use major.minor.patch, optionally with a prerelease/build suffix')
         if (!(launcherBuildId ==~ /[A-Za-z0-9._-]+/))
             throw new GradleException('moons_build_id must contain only letters, digits, dots, underscores or dashes')
         def numeric = clientVersion.split('[-+]')[0]
@@ -125,8 +125,8 @@ def launcherVersionMetadata = tasks.register('launcherVersionMetadata') {
                 + "dependencies.version=${dependencyHash.take(12)}\n"
                 + "ui.version=${uiHash.take(12)}\nysm.version=${ysmHash.take(12)}\n", 'UTF-8')
         assemblyVersionSource.get().asFile.setText(
-                "using System.Reflection;\n[assembly: AssemblyVersion(\"${numeric}.0\")]\n"
-                + "[assembly: AssemblyFileVersion(\"${numeric}.0\")]\n"
+                "using System.Reflection;\n[assembly: AssemblyVersion(\"${numeric}\")]\n"
+                + "[assembly: AssemblyFileVersion(\"${numeric}\")]\n"
                 + "[assembly: AssemblyInformationalVersion(\"${clientVersion} (${launcherBuildId})\")]\n", 'UTF-8')
     }
 }
@@ -138,16 +138,17 @@ def registerLauncher = { String taskName, String fileName, boolean installer ->
         dependsOn launcherVersionMetadata
         if (!installer) dependsOn legacyPayload, apiJar, bridgeDll, moonsHwidExe
         def sources = files(
-                'src/tools/shared/Hashing.cs', 'src/tools/shared/StagedFile.cs',
+                'src/tools/common/Hashing.cs', 'src/tools/common/StagedFile.cs',
                 'src/tools/launcher/csharp/RuntimeMetadata.cs',
                 'src/tools/launcher/csharp/DependencyRuntime.cs',
                 'src/tools/launcher/csharp/CacheMaintenance.cs', assemblyVersionSource)
+        sources += fileTree('src/tools/launcher/csharp/ui') { include '**/*.cs' }
         if (installer) {
             sources += files('src/tools/launcher/csharp/DependencyInstaller.cs',
                     'src/tools/launcher/csharp/YsmPackage.cs', 'src/tools/launcher/csharp/ZipEntries.cs')
         } else {
             sources += files('src/tools/launcher/csharp/MoonsExeLauncher.cs',
-                    'src/tools/shared/HardwareIdGenerator.cs',
+                    'src/tools/common/HardwareIdGenerator.cs',
                     'src/tools/launcher/csharp/ProcessEvidenceCache.cs',
                     'src/tools/launcher/csharp/LoadSession.cs', 'src/tools/launcher/csharp/ZipEntries.cs')
         }
@@ -172,7 +173,7 @@ def registerLauncher = { String taskName, String fileName, boolean installer ->
             output.get().asFile.parentFile.mkdirs()
             executable locateCSharpCompiler().absolutePath
             args '/nologo', '/target:winexe', '/optimize+', '/platform:x64',
-                    '/reference:System.Windows.Forms.dll', '/reference:System.Management.dll',
+                    '/reference:System.Windows.Forms.dll', '/reference:System.Management.dll', '/reference:System.Web.Extensions.dll',
                     '/reference:System.IO.Compression.dll', '/reference:System.IO.Compression.FileSystem.dll',
                     "/out:${output.get().asFile.absolutePath}"
             args resources.collect { name, path -> "/resource:${path.get().asFile.absolutePath},${name}" }
@@ -186,15 +187,20 @@ def moonsInstallExe = registerLauncher('moonsInstallExe', 'Moons-install.exe', t
 
 def distributionNotes = tasks.register('distributionNotes') {
     def output = layout.buildDirectory.file('dist/README-1.8.9.txt')
+    inputs.property('instructionsRevision', '2026-10-06-common-json-source-build')
     outputs.file(output)
     doLast {
         output.get().asFile.parentFile.mkdirs()
-        output.get().asFile.setText('''Moons for Minecraft 1.8.9 (Windows x64)
+        output.get().asFile.setText('''Build the legacy/1.8.9 branch yourself with JDK 25 on Windows x64:
+  .\\gradlew.bat moonsPackages
+Use Moons-install.exe and Moons.exe from that same build.
+
+Moons for Minecraft 1.8.9 (Windows x64)
 
 1. Configure your Minecraft launcher to run the original 1.8.9 client with 64-bit Java 25.
 2. Run Moons-install.exe once to install the matching UI and YSM runtime dependencies.
 3. Start Minecraft 1.8.9, then run Moons.exe and select that game process.
-4. Open the menu with Right Shift. Existing supported module settings are retained.
+4. Open the menu with Right Shift. Existing supported module settings are migrated to ordinary JSON.
 
 This build uses the native Moons JNI/JVMTI loader. It does not require Fabric.
 It targets the original 1.8.9 client and is not a Java 8 payload. Other game versions
@@ -206,6 +212,10 @@ Only use that override for an actual original 1.8.9 client.
 Dependency installation uses %APPDATA%/.moons by default; MOONS_HOME overrides it.
 The loader validates dependency checksums before loading. Use the matching installer
 after rebuilding. No Minecraft JAR, account data, or game assets are distributed.
+Configuration starts with config/profiles/default.json inside MOONS_HOME.
+Other presets are separate JSON files. Edits save to the loaded preset; copying
+and overwriting another preset do not switch it. Load explicitly changes it.
+Old moons.properties is read only for the first migration, then kept as a backup.
 Diagnostic logs are in %APPDATA%/.moons (bridge-dll.log and runtime logs).
 
 1.8.9 has one held item, no attack cooldown, and no modern shield/totem/mace/spear

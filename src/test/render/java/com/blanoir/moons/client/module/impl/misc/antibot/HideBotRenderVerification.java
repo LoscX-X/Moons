@@ -1,6 +1,6 @@
 package com.blanoir.moons.client.module.impl.misc.antibot;
 
-import com.blanoir.moons.features.FeatureHooks;
+import com.blanoir.moons.client.event.ClientEventDispatcher;
 import com.blanoir.moons.runtime.RuntimeEvents;
 
 import net.minecraft.SharedConstants;
@@ -66,10 +66,10 @@ final class HideBotRenderVerification {
             require(AntiBot.isBot(bot), "Fixture is a confirmed bot");
             var avatar = new AvatarRenderState();
             avatar.id = 7;
-            require(!FeatureHooks.isActive("render.antibot-hide"), "HideBot is opt-in");
+            require(!ClientEventDispatcher.isActive("render.antibot-hide"), "HideBot is opt-in");
             require(renderAllowed(avatar), "Filtering attacks alone keeps the model visible");
             AntiBot.setHideBot(null, true);
-            require(FeatureHooks.isActive("render.antibot-hide"), "Render gate activates");
+            require(ClientEventDispatcher.isActive("render.antibot-hide"), "Render gate activates");
             require(!renderAllowed(avatar), "Confirmed bot cancels the whole entity submission");
             require(
                     renderAllowed(new EntityRenderState()),
@@ -105,7 +105,7 @@ final class HideBotRenderVerification {
         var hook =
                 new RuntimeEvents.MethodHook(
                         "render.antibot-hide", null, new Object[] {state}, true);
-        FeatureHooks.apply(hook);
+        ClientEventDispatcher.apply(hook);
         return Boolean.TRUE.equals(hook.value());
     }
 

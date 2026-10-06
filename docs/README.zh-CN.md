@@ -1,3 +1,6 @@
+> [!IMPORTANT]
+> **Minecraft 1.8.9 请使用者自行构建。** 检出 `legacy/1.8.9` 分支，在 Windows x64 上使用 JDK 25 执行 `.\gradlew.bat moonsPackages`，随后配套使用生成的 `build/dist/Moons-install.exe` 和 `build/dist/Moons.exe`。完整步骤见 [构建说明](BUILDING.md)。主分支 Release 中的安装器和加载器面向现代版本。
+
 <h1 align="center">Moons</h1>
 
 <p align="center">简体中文 · <a href="../readme.md">English</a></p>
@@ -32,18 +35,20 @@ Moons 是面向 Minecraft Java Edition 的客户端，提供功能模块、本�
 
 ## 如何使用
 
-1. 从同一次 [Release](https://github.com/LoscX-X/Moons/releases) 下载 `moon-install-<版本>-<commit>.exe` 和 `moon-<版本>-<commit>.exe`。
+1. 按 [构建说明](BUILDING.md) 自行构建 `legacy/1.8.9` 分支，配套使用同次构建的 `build/dist/Moons-install.exe` 和 `build/dist/Moons.exe`。
 2. 运行安装器安装或更新依赖。
-3. 启动受支持版本的 Minecraft，再运行加载器，选择游戏进程并加载 Moons。
+3. 使用 Java 25 x64 启动原版 Minecraft 1.8.9，再运行加载器，选择游戏进程并加载 Moons。
 4. 按 **右 Shift** 打开 ClickGUI，这是默认按键。
 
-依赖编号不变且已安装文件完好时，只需更新加载器；依赖有变化时再运行匹配版本的安装器。安装器内置 UI runtime 和 YSM 依赖，支持离线安装。开发构建可从 [Actions](https://github.com/LoscX-X/Moons/actions) 获取。
+依赖编号不变且已安装文件完好时，只需更新加载器；依赖有变化时再运行匹配版本的安装器。自行构建的安装器内置 UI runtime 和 YSM 依赖，支持离线安装。
 
 ## 如何保存配置
 
 1. 打开 **ClickGUI → Configs**。
-2. 输入名称，点击 **Create**，再点击 **Save** 保存当前设置。
-3. 之后选中已保存的配置，点击 **Load** 应用。
+2. 修改自动保存到当前加载的 JSON 配置；输入名称并点击 **Create**，复制当前完整设置。
+3. 选中其他配置，点击 **Load** 才切换；**Overwrite** 只覆盖选中的目标文件，不切换当前配置。
+
+启动读取普通的 `config/profiles/default.json`。旧 `moons.properties` 的全部设置会在首次运行时迁入其中，已有命名 JSON 配置继续可用。
 
 ## 如何使用 YSM 模型
 

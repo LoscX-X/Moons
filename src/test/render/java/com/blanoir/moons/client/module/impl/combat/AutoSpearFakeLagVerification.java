@@ -1,8 +1,8 @@
 package com.blanoir.moons.client.module.impl.combat;
 
-import com.blanoir.moons.client.management.network.LagPacketPolicy;
-import com.blanoir.moons.client.management.network.LagUtils;
-import com.blanoir.moons.client.management.network.PacketDelayQueue;
+import com.blanoir.moons.client.manager.network.DelayedValueQueue;
+import com.blanoir.moons.client.manager.network.LagPacketPolicy;
+import com.blanoir.moons.client.manager.network.PacketDelayQueue;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -26,8 +26,9 @@ public final class AutoSpearFakeLagVerification {
         queue.observe(connection, world);
         Packet<?> first = new ServerboundMovePlayerPacket.Pos(1, 64, 1, true, false);
         Packet<?> second = new ServerboundMovePlayerPacket.Rot(45, 0, true, false);
-        Packet<?> stab = new ServerboundPlayerActionPacket(
-                ServerboundPlayerActionPacket.Action.STAB, BlockPos.ZERO, Direction.DOWN);
+        Packet<?> stab =
+                new ServerboundPlayerActionPacket(
+                        ServerboundPlayerActionPacket.Action.STAB, BlockPos.ZERO, Direction.DOWN);
 
         require(queue.offer(first) && queue.offer(second), "Movement is buffered");
         require(connection.sent.isEmpty(), "Buffered movement is not sent early");
@@ -35,17 +36,22 @@ public final class AutoSpearFakeLagVerification {
         require(LagPacketPolicy.mustFlushBefore(stab), "STAB must follow buffered movement");
         queue.flush();
         connection.send(stab);
-        require(connection.sent.equals(List.of(first, second, stab)),
+        require(
+                connection.sent.equals(List.of(first, second, stab)),
                 "Original position/rotation packets precede STAB in FIFO order");
         queue.flush();
         require(connection.sent.size() == 3, "Repeated flush does not replay twice");
-        require(!LagUtils.isReplaying(), "Replay guard is restored");
+        require(!DelayedValueQueue.isReplaying(), "Replay guard is restored");
 
-        require(!LagPacketPolicy.mustFlushBefore(new ServerboundKeepAlivePacket(1)),
+        require(
+                !LagPacketPolicy.mustFlushBefore(new ServerboundKeepAlivePacket(1)),
                 "Keepalive can pass without ending the movement window");
-        require(LagPacketPolicy.mustFlushBefore(new ServerboundPlayerActionPacket(
-                        ServerboundPlayerActionPacket.Action.RELEASE_USE_ITEM,
-                        BlockPos.ZERO, Direction.DOWN)),
+        require(
+                LagPacketPolicy.mustFlushBefore(
+                        new ServerboundPlayerActionPacket(
+                                ServerboundPlayerActionPacket.Action.RELEASE_USE_ITEM,
+                                BlockPos.ZERO,
+                                Direction.DOWN)),
                 "Releasing use sends earlier movement first");
 
         queue.offer(first);
@@ -61,14 +67,15 @@ public final class AutoSpearFakeLagVerification {
         queue.offer(first);
         connection.connected = false;
         queue.flush();
-        require(queue.isEmpty() && connection.sent.size() == 3,
+        require(
+                queue.isEmpty() && connection.sent.size() == 3,
                 "Disconnect discards pending packets");
         System.out.println("MOONS_AUTOSPEAR_FAKELAG_VERIFIED");
     }
 
     private static void verifyTimedDelivery() {
         var timing = new AutoSpearFakeLag.Timing();
-        var queue = new LagUtils<String>(32);
+        var queue = new DelayedValueQueue<String>(32);
         timing.start(0, 150, 500);
         for (long now = 0; now <= 800; now += 50)
             require(queue.offer("move-" + now, now, timing.delayAt(now)), "Capture timed movement");
@@ -108,7 +115,7 @@ public final class AutoSpearFakeLagVerification {
 
         @Override
         public void send(Packet<?> packet) {
-            if (LagUtils.isReplaying())
+            if (DelayedValueQueue.isReplaying())
                 require(!queue.offer(packet), "Replayed packets cannot be buffered again");
             sent.add(packet);
         }

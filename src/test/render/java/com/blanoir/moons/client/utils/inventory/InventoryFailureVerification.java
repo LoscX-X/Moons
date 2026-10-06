@@ -1,5 +1,7 @@
 package com.blanoir.moons.client.utils.inventory;
 
+import com.blanoir.moons.client.manager.inventory.InventoryClickFailure;
+
 import net.minecraft.SharedConstants;
 import net.minecraft.core.component.DataComponentMap;
 import net.minecraft.core.component.DataComponents;

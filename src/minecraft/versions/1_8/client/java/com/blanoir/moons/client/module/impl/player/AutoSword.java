@@ -13,10 +13,10 @@ import com.blanoir.moons.client.chat.ClientChat;
 import com.blanoir.moons.client.config.settings.BooleanSetting;
 import com.blanoir.moons.client.config.settings.IntSetting;
 import com.blanoir.moons.client.event.EventBus;
-import com.blanoir.moons.client.management.targeting.Targeting;
+import com.blanoir.moons.client.manager.placement.PlacementCoordinator;
+import com.blanoir.moons.client.manager.targeting.Targeting;
 import com.blanoir.moons.client.utils.client.ClientReady;
 import com.blanoir.moons.client.utils.player.HotbarQueries;
-import com.blanoir.moons.client.utils.world.placement.PlacementCoordinator;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.entity.Entity;

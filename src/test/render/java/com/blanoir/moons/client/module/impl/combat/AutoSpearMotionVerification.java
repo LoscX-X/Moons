@@ -20,21 +20,24 @@ public final class AutoSpearMotionVerification {
         pending.request(origin, 0);
         pending.confirm(origin, 10);
         pending.velocity(motion, 2, 11);
-        require(new Vec3(1.6, -.12, -.8).equals(pending.take(motion, 12)),
+        require(
+                new Vec3(1.6, -.12, -.8).equals(pending.take(motion, 12)),
                 "Scale horizontal motion once while preserving falling speed");
         require(pending.take(motion, 13) == null, "Never multiply on subsequent ticks");
 
         pending.request(origin, 0);
         pending.confirm(origin, 10);
         pending.velocity(motion, 2, 11);
-        require(pending.take(motion.add(0, .1, 0), 12) == null,
+        require(
+                pending.take(motion.add(0, .1, 0), 12) == null,
                 "Another movement change invalidates the boost");
 
         pending.request(origin, 0);
         pending.confirm(origin, 10);
         pending.velocity(motion, 2, 11);
         pending.velocity(new Vec3(0, .4, 0), 2, 12);
-        require(pending.take(new Vec3(0, .4, 0), 13) == null,
+        require(
+                pending.take(new Vec3(0, .4, 0), 13) == null,
                 "A later self velocity replaces the Lunge and is not amplified");
 
         pending.request(origin, 0);
@@ -46,12 +49,16 @@ public final class AutoSpearMotionVerification {
         pending.confirm(origin, 10);
         pending.velocity(motion, 2, 11);
         pending.clear();
-        require(pending.take(motion, 12) == null, "Disable, damage and context loss clear pending motion");
+        require(
+                pending.take(motion, 12) == null,
+                "Disable, damage and context loss clear pending motion");
 
         pending.request(origin, 0);
         pending.confirm(origin, 10);
         pending.velocity(motion, 1, 11);
-        require(motion.equals(pending.take(motion, 12)), "Default multiplier preserves vanilla velocity");
+        require(
+                motion.equals(pending.take(motion, 12)),
+                "Default multiplier preserves vanilla velocity");
         System.out.println("MOONS_AUTOSPEAR_MOTION_VERIFIED");
     }
 

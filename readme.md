@@ -1,3 +1,6 @@
+> [!IMPORTANT]
+> **Minecraft 1.8.9 users must build this branch themselves.** Check out `legacy/1.8.9` and run `.\gradlew.bat moonsPackages` with JDK 25 on Windows x64. Use the resulting `build/dist/Moons-install.exe` and `build/dist/Moons.exe` together. See [the build instructions](docs/BUILDING.md). Main-branch release packages target modern Minecraft versions.
+
 <h1 align="center">Moons</h1>
 
 <p align="center"><a href="docs/README.zh-CN.md">简体中文</a> · English</p>
@@ -32,18 +35,20 @@ Supports **vanilla Minecraft 1.8.9 on Java 25 x64**. Use the main branch for mod
 
 ## How to Use
 
-1. Download `moon-install-<version>-<commit>.exe` and `moon-<version>-<commit>.exe` from the same [release](https://github.com/LoscX-X/Moons/releases).
+1. Build `legacy/1.8.9` yourself using [BUILDING.md](docs/BUILDING.md), then use `build/dist/Moons-install.exe` and `build/dist/Moons.exe` from that same build.
 2. Run the installer to install or update dependencies.
 3. Start vanilla Minecraft 1.8.9 with Java 25 x64, then run the loader to select the game and load Moons.
 4. Press **Right Shift** to open ClickGUI (default binding).
 
-If the dependency version is unchanged and the installed files are intact, only the loader needs updating. Otherwise, run the matching installer. The installer includes the complete UI runtime and YSM dependencies and works offline. Development builds are available from [Actions](https://github.com/LoscX-X/Moons/actions).
+If the dependency version is unchanged and the installed files are intact, only the loader needs updating. Otherwise, run the matching installer. The self-built installer includes the complete UI runtime and YSM dependencies and works offline.
 
 ## How to Save a Config
 
 1. Open **ClickGUI → Configs**.
-2. Enter a name, choose **Create**, then **Save** to store your current settings.
-3. Select a saved config and choose **Load** to apply it.
+2. Changes save to the currently loaded JSON config. Choose **Create** to copy all current settings into a new config.
+3. Select another config and choose **Load** to switch. **Overwrite** replaces the selected target without switching the current config.
+
+Startup loads the ordinary `config/profiles/default.json`. All legacy `moons.properties` values migrate into it on the first run; existing named JSON configs remain available.
 
 ## How to Use YSM Models
 

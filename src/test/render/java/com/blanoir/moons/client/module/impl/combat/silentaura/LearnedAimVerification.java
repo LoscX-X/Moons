@@ -1,7 +1,7 @@
 package com.blanoir.moons.client.module.impl.combat.silentaura;
 
 import com.blanoir.moons.client.utils.rotation.Rotation;
-import com.blanoir.moons.client.utils.rotation.quantize.QuantizerA;
+import com.blanoir.moons.client.utils.rotation.quantize.MouseAngleQuantizer;
 
 import java.io.ByteArrayInputStream;
 import java.io.DataInputStream;
@@ -109,10 +109,10 @@ public final class LearnedAimVerification {
     }
 
     private static Rotation quantize(Rotation base, Rotation candidate) {
-        double q = QuantizerA.mouseSensitivityStep(.5);
+        double q = MouseAngleQuantizer.mouseSensitivityStep(.5);
         return new Rotation(
-                QuantizerA.quantizeYawWithStep(base.yaw(), candidate.yaw(), q),
-                QuantizerA.quantizePitchWithStep(base.pitch(), candidate.pitch(), q));
+                MouseAngleQuantizer.quantizeYawWithStep(base.yaw(), candidate.yaw(), q),
+                MouseAngleQuantizer.quantizePitchWithStep(base.pitch(), candidate.pitch(), q));
     }
 
     private static Rotation adjust(

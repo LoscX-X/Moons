@@ -186,6 +186,16 @@
           "text": "1.8.9 客户端版本统一四段补丁顺序与 Experiment/Release 渠道，Windows 版本资源和 Actions 校验同步，保留旧制品版本及分支仅检查、自行构建的策略。"
         }
       ]
+    },
+    {
+      "id": "2026-10-06-04",
+      "summary": "1.0.0.1-Experiment：同步 latest 主分支引用",
+      "changes": [
+        {
+          "type": "build",
+          "text": "1.8.9 构建工作流和公开说明同步 latest 主分支名称，保留独立分支仅检查、使用者自行构建的策略。"
+        }
+      ]
     }
   ]
 }

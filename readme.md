@@ -1,5 +1,5 @@
 > [!IMPORTANT]
-> **Minecraft 1.8.9 users must build this branch themselves.** Check out `legacy/1.8.9` and run `.\gradlew.bat moonsPackages` with JDK 25 on Windows x64. Use the resulting `build/dist/Moons-install.exe` and `build/dist/Moons.exe` together. See [the build instructions](docs/BUILDING.md). Main-branch release packages target modern Minecraft versions.
+> **Minecraft 1.8.9 users must build this branch themselves.** Check out `legacy/1.8.9` and run `.\gradlew.bat moonsPackages` with JDK 25 on Windows x64. Use the resulting `build/dist/Moons-install.exe` and `build/dist/Moons.exe` together. See [the build instructions](docs/BUILDING.md). The `latest` branch's release packages target modern Minecraft versions.
 
 <h1 align="center">Moons</h1>
 
@@ -9,7 +9,7 @@ Moons is a Windows client for Minecraft Java Edition with configurable modules, 
 
 The `legacy/1.8.9` branch adapts the complete client framework to vanilla Minecraft 1.8.9: 64 applicable modules, the full settings UI, presets and YSM. SilentAura retains Legacy combat and its 47 applicable settings. AutoMace, AutoSpear and AutoTotem have no equivalent game mechanics and are omitted.
 
-This branch is a development snapshot awaiting user testing. It has not been merged into `main` or published as a stable release; existing checks cover only part of the functionality.
+This branch is a development snapshot awaiting user testing. It has not been merged into `latest` or published as a stable release; existing checks cover only part of the functionality.
 
 > [!WARNING]
 > **Published for learning, research, and technical exchange only.**
@@ -22,7 +22,7 @@ This branch is a development snapshot awaiting user testing. It has not been mer
 >
 > **Provided as is; users bear the risks of use to the extent permitted by law.** Read the [full disclaimer](docs/DISCLAIMER.md) before use. Non-excludable liability and statutory rights remain unaffected.
 
-Supports **vanilla Minecraft 1.8.9 on Java 25 x64**. Use the main branch for modern Minecraft versions. Core-modified clients are not covered by this branch's verification.
+Supports **vanilla Minecraft 1.8.9 on Java 25 x64**. Use the [`latest`](https://github.com/LoscX-X/Moons/tree/latest) branch for modern Minecraft versions. Core-modified clients are not covered by this branch's verification.
 
 ## Risk and Responsibility Notice
 

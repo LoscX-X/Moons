@@ -76,12 +76,12 @@ jobs:
         shell: pwsh
         run: .\gradlew.bat checkAllVersions --console=plain
       - name: Package YSM for all supported versions
-        if: github.event_name == 'pull_request' || (github.event_name != 'workflow_dispatch' && github.ref != 'refs/heads/main')
+        if: github.event_name == 'pull_request' || (github.event_name != 'workflow_dispatch' && github.ref != 'refs/heads/latest')
         shell: pwsh
         run: .\gradlew.bat ysmAllVersions --console=plain
       - name: Build selected packages
         id: package
-        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch')
+        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/latest' || github.event_name == 'workflow_dispatch')
         shell: pwsh
         env:
           PACKAGE_KIND: ${{ inputs.package || 'all' }}
@@ -275,7 +275,7 @@ jobs:
               "${release_flags[@]}" --notes-file release-notes.md
           fi
       - name: Queue Moons QQ update notification
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        if: github.ref == 'refs/heads/latest' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         env:
           MOONS_BOT_URL: ${{ secrets.MOONS_BOT_URL }}
           MOONS_BOT_SECRET: ${{ secrets.MOONS_BOT_SECRET }}

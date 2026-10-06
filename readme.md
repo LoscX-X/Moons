@@ -21,7 +21,7 @@ Supports **26.1.2**, **26.2**, **26.3**, and **26.4-snapshot-1**.
 
 ## Version Support
 
-The main distribution maintains four Minecraft version profiles: **26.1.2**, **26.2**, **26.3**, and **26.4-snapshot-1**. As new profiles are added, older profiles leave this maintenance window.
+The [`latest`](https://github.com/LoscX-X/Moons/tree/latest) branch maintains four Minecraft version profiles: **26.1.2**, **26.2**, **26.3**, and **26.4-snapshot-1**. As new profiles are added, older profiles leave this maintenance window.
 
 Snapshots, pre-releases and release candidates are supported only for the newest upcoming Minecraft version, using the exact build listed above. Support for one preview build does not imply support for other previews.
 

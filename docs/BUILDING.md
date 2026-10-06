@@ -2,6 +2,8 @@
 
 在仓库根目录运行 PowerShell。当前构建目标为 Minecraft **26.1.2、26.2、26.3、26.4-snapshot-1**；26.3 仅支持正式版，26.4 目前仅支持此快照。
 
+仓库默认主分支为 `latest`，现代版本的自动打包使用该分支；Minecraft 1.8.9 使用独立的 `legacy/1.8.9` 分支。
+
 ## 环境
 
 - Windows x64，JDK 25 或更高版本；`JAVA_HOME` 指向 JDK。

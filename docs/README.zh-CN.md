@@ -21,7 +21,7 @@ Moons 是面向 Windows 的免费开源 Minecraft Java Edition 注入式客户�
 
 ## 版本支持
 
-主发行包维护四个 Minecraft 版本档案：**26.1.2**、**26.2**、**26.3** 和 **26.4-snapshot-1**。新增版本档案时，较旧档案逐步退出这个维护窗口。
+[`latest`](https://github.com/LoscX-X/Moons/tree/latest) 主分支维护四个 Minecraft 版本档案：**26.1.2**、**26.2**、**26.3** 和 **26.4-snapshot-1**。新增版本档案时，较旧档案逐步退出这个维护窗口。
 
 快照、预发布版和候选发布版仅支持即将推出的最新 Minecraft 版本，以这里列出的具体构建为准；支持一个预览构建不代表兼容其他预览构建。
 

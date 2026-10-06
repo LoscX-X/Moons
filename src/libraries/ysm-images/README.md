@@ -1,5 +1,14 @@
 # YSM image decoders
 
+> [!WARNING]
+> **Security concerns: report them with evidence.**
+>
+> If you believe this project has a security issue, please [open an Issue](https://github.com/LoscX-X/Moons/issues/new) immediately and include the relevant code file and line numbers, the affected version, reproduction steps, and supporting evidence.
+>
+> Moons' own code is publicly available for review and is not deliberately obfuscated. This statement applies specifically to Moons-owned code; review Minecraft name mappings and third-party components according to their respective documentation.
+>
+> We welcome evidence-based scrutiny. Please base claims on code and verifiable facts, and do not present unverified speculation as an established finding.
+
 `moons-ysm-images.jar` is independent of Minecraft and mod loaders. It provides
 explicit WebP/AVIF decoding through `com.blanoir.moons.ysm.images.YsmImages`.
 No global ImageIO providers or JNI libraries are installed into the game JVM.

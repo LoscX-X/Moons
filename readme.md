@@ -2,9 +2,25 @@
 
 <p align="center"><a href="docs/README.zh-CN.md">简体中文</a> · English</p>
 
+<p align="center">
+  <a href="https://github.com/journey-ad/Moe-Counter">
+    <img src="https://count.getloli.com/@LoscX-X.Moons?theme=booru-lewd&amp;padding=7&amp;align=top&amp;scale=1&amp;pixelated=1&amp;darkmode=auto" alt="Moons README view counter · Powered by Moe Counter" />
+  </a>
+</p>
+<p align="center"><sub>README views · Counts image requests, not unique visitors.</sub></p>
+
 Moons is a free, open-source Minecraft Java Edition injection client for Windows, built with Java and JVMTI, with configurable modules, local presets and YSM models.
 
 **Website:** [moons.cendreal.com](https://moons.cendreal.com/) · [English website](https://moons.cendreal.com/en/)
+
+> [!WARNING]
+> **Security concerns: report them with evidence.**
+>
+> If you believe this project has a security issue, please [open an Issue](https://github.com/LoscX-X/Moons/issues/new) immediately and include the relevant code file and line numbers, the affected version, reproduction steps, and supporting evidence.
+>
+> Moons' own code is publicly available for review and is not deliberately obfuscated. This statement applies specifically to Moons-owned code; review Minecraft name mappings and third-party components according to their respective documentation.
+>
+> We welcome evidence-based scrutiny. Please base claims on code and verifiable facts, and do not present unverified speculation as an established finding.
 
 > [!WARNING]
 > **Published for learning, research, and technical exchange only.**

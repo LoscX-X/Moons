@@ -2,9 +2,25 @@
 
 <p align="center">简体中文 · <a href="../readme.md">English</a></p>
 
+<p align="center">
+  <a href="https://github.com/journey-ad/Moe-Counter">
+    <img src="https://count.getloli.com/@LoscX-X.Moons?theme=booru-lewd&amp;padding=7&amp;align=top&amp;scale=1&amp;pixelated=1&amp;darkmode=auto" alt="Moons README 访问计数 · 由 Moe Counter 提供" />
+  </a>
+</p>
+<p align="center"><sub>README 访问计数 · 累计图片请求次数，非去重访客人数。</sub></p>
+
 Moons 是面向 Windows 的免费开源 Minecraft Java Edition 注入式客户端，基于 Java 和 JVMTI，提供功能模块、本地配置和 YSM 模型支持。
 
 **官方网站：** [moons.cendreal.com](https://moons.cendreal.com/) · [English website](https://moons.cendreal.com/en/)
+
+> [!WARNING]
+> **安全问题请提供代码与证据。**
+>
+> 如您认为本项目存在任何安全问题，请立即 [提交 Issue](https://github.com/LoscX-X/Moons/issues/new)，并注明对应代码位置（文件路径及行号）、受影响版本、复现步骤和相关证据。
+>
+> Moons 自身代码未主动混淆，源码公开可审查。这一说明仅针对 Moons 自有代码；Minecraft 名称映射和第三方组件请按各自说明核查。
+>
+> 我们欢迎有依据的质疑。请基于代码和可验证事实讨论，不要将未经验证的推测当作已经证实的问题。
 
 > [!WARNING]
 > **本项目发布目的仅为学习、研究和技术交流。**

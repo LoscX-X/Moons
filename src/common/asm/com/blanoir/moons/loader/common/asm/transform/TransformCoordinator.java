@@ -1,5 +1,6 @@
 package com.blanoir.moons.loader.common.asm.transform;
 
+import com.blanoir.moons.api.mapping.GameNames;
 import com.blanoir.moons.loader.common.mapping.MappingService;
 import com.blanoir.moons.loader.common.mapping.TargetMethod;
 
@@ -39,15 +40,19 @@ public final class TransformCoordinator {
     }
 
     public boolean targets(String className) {
-        return mappings.targetsClass(className);
+        return mappings.targetsClass(GameNames.namedType(className));
     }
 
     public boolean requiredClass(String className) {
-        return mappings.targetsForClass(className).stream().anyMatch(TargetMethod::required);
+        return mappings.targetsForClass(GameNames.namedType(className)).stream()
+                .anyMatch(TargetMethod::required);
     }
 
     public String[] targetClassNames() {
-        return mappings.targetClassNames();
+        return java.util.Arrays.stream(mappings.targetClassNames())
+                .flatMap(name -> java.util.stream.Stream.of(name, GameNames.runtimeType(name)))
+                .distinct()
+                .toArray(String[]::new);
     }
 
     public byte[] transform(ClassLoader loader, String className, byte[] bytes) {

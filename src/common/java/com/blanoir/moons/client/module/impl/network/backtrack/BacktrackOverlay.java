@@ -10,13 +10,13 @@ import com.blanoir.moons.client.utils.render.ColorCodec;
 import com.mojang.blaze3d.vertex.PoseStack;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.client.renderer.entity.state.EntityRenderState;
 import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
-import net.minecraft.client.renderer.state.level.CameraRenderState;
-import net.minecraft.client.renderer.state.level.LevelRenderState;
-import net.minecraft.util.LightCoordsUtil;
+import net.minecraft.client.renderer.state.CameraRenderState;
+import net.minecraft.client.renderer.state.LevelRenderState;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityDimensions;
@@ -148,13 +148,13 @@ final class BacktrackOverlay {
         CameraRenderState camera = levelState.cameraRenderState;
         state.distanceToCameraSq = camera.pos.distanceToSqr(state.x, state.y, state.z);
         state.lightCoords =
-                LightCoordsUtil.pack(
+                LightTexture.pack(
                         Mth.clamp(
-                                Math.round(LightCoordsUtil.block(state.lightCoords) * modelLight),
+                                Math.round(LightTexture.block(state.lightCoords) * modelLight),
                                 0,
                                 15),
                         Mth.clamp(
-                                Math.round(LightCoordsUtil.sky(state.lightCoords) * modelLight),
+                                Math.round(LightTexture.sky(state.lightCoords) * modelLight),
                                 0,
                                 15));
         if (state instanceof LivingEntityRenderState living) {

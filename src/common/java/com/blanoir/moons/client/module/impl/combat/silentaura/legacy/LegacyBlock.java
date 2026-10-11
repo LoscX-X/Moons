@@ -16,7 +16,7 @@ import com.blanoir.moons.client.utils.rotation.Rotation;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.protocol.game.ClientboundDamageEventPacket;
-import net.minecraft.network.protocol.game.ServerboundAttackPacket;
+import net.minecraft.network.protocol.game.ServerboundInteractPacket;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.world.entity.LivingEntity;
 
@@ -54,15 +54,22 @@ public final class LegacyBlock {
         EventBus.PACKET_SEND_POST.register(
                 "LegacyBlock.attackSent",
                 event -> {
-                    if (!(event.packet() instanceof ServerboundAttackPacket attack)) return;
+                    if (!(event.packet() instanceof ServerboundInteractPacket attack
+                            && com.blanoir.moons.client.access.PacketAccess.isAttackPacket(attack)))
+                        return;
                     Minecraft client = Minecraft.getInstance();
                     if (!legacy() || !SilentAuraConfig.blockVisual() || target(client) == null)
                         return;
-                    var attacked = client.level.getEntity(attack.entityId());
+                    var attacked =
+                            client.level.getEntity(
+                                    com.blanoir.moons.client.access.PacketAccess.attackEntityId(
+                                            attack));
                     if (attacked instanceof LivingEntity
                             && CombatReach.within(
                                     client, attacked, SilentAuraConfig.blockRange())) {
-                        HITS.sent(attack.entityId(), System.nanoTime());
+                        HITS.sent(
+                                com.blanoir.moons.client.access.PacketAccess.attackEntityId(attack),
+                                System.nanoTime());
                     }
                 });
         EventBus.PACKET_RECEIVE_APPLY.register(

@@ -1,6 +1,7 @@
 package com.blanoir.moons.loader.common.asm.transform;
 
 import com.blanoir.moons.api.bridge.RuntimeBridge;
+import com.blanoir.moons.api.mapping.GameNames;
 import com.blanoir.moons.loader.VersionMappings;
 import com.blanoir.moons.loader.common.mapping.MappingService;
 import com.blanoir.moons.loader.common.mapping.TargetMethod;
@@ -37,6 +38,8 @@ public final class TransformerVerification {
         BoxedGateVerification.verify();
         FloatArgumentsVerification.verify();
         YsmAudioHookVerification.verify();
+        boolean intermediary = arguments[0].equals("--intermediary");
+        if (intermediary) arguments = java.util.Arrays.copyOfRange(arguments, 1, arguments.length);
         MappingService mappings = VersionMappings.create();
         TransformCoordinator transformer = new TransformCoordinator(mappings);
         Set<String> classes = new LinkedHashSet<>();
@@ -49,10 +52,11 @@ public final class TransformerVerification {
             for (String argument : arguments)
                 minecraftJars.add(new JarFile(Path.of(argument).toFile()));
             for (String className : classes) {
+                String runtimeName = intermediary ? GameNames.runtimeType(className) : className;
                 JarFile minecraft = null;
                 JarEntry entry = null;
                 for (JarFile candidate : minecraftJars) {
-                    entry = candidate.getJarEntry(className + ".class");
+                    entry = candidate.getJarEntry(runtimeName + ".class");
                     if (entry != null) {
                         minecraft = candidate;
                         break;
@@ -70,14 +74,18 @@ public final class TransformerVerification {
                 try (InputStream input = minecraft.getInputStream(entry)) {
                     original = input.readAllBytes();
                 }
-                byte[] transformed = transformer.transform(null, className, original);
+                byte[] transformed = transformer.transform(null, runtimeName, original);
                 if (transformed == null) {
                     unchangedTargets.add(className);
                     continue;
                 }
-                assertStructureUnchanged(className, original, transformed);
-                verify(className, transformed);
-                if (transformer.transform(null, className, transformed) != null) {
+                assertStructureUnchanged(runtimeName, original, transformed);
+                verify(
+                        className,
+                        intermediary
+                                ? NamespaceRemapper.translate(transformed, false)
+                                : transformed);
+                if (transformer.transform(null, runtimeName, transformed) != null) {
                     throw new AssertionError(
                             "Retransformation added duplicate hooks: " + className);
                 }
@@ -105,7 +113,9 @@ public final class TransformerVerification {
                             + transformer.ledger().installedHooks());
         }
         System.out.println(
-                "MOONS_TRANSFORMERS_VERIFIED hooks="
+                "MOONS_TRANSFORMERS_VERIFIED namespace="
+                        + (intermediary ? "intermediary" : "named")
+                        + " hooks="
                         + expected.size()
                         + " classes="
                         + availableClasses.size());

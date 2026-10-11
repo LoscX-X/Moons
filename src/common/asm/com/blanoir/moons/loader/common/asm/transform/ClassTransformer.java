@@ -1,6 +1,7 @@
 package com.blanoir.moons.loader.common.asm.transform;
 
 import com.blanoir.moons.api.Branding;
+import com.blanoir.moons.api.mapping.GameNames;
 import com.blanoir.moons.loader.common.asm.hooks.HookDispatcher;
 import com.blanoir.moons.loader.common.mapping.HookRequirement;
 import com.blanoir.moons.loader.common.mapping.MappingService;
@@ -26,11 +27,19 @@ final class ClassTransformer {
     }
 
     TransformResult transform(ClassLoader loader, String className, byte[] classfileBuffer) {
+        boolean intermediary =
+                className != null
+                        && (GameNames.intermediary(className)
+                                || loader != null
+                                        && loader.getResource("net/minecraft/class_310.class")
+                                                != null);
+        className = GameNames.namedType(className);
         if (className == null || !mappings.targetsClass(className)) return null;
         List<TargetMethod> targets = mappings.targetsForClass(className);
         var installed = new ArrayList<TransformReceipt.Method>();
         var failures = new HashSet<String>();
         try {
+            if (intermediary) classfileBuffer = NamespaceRemapper.translate(classfileBuffer, false);
             ClassReader reader = new ClassReader(classfileBuffer);
             ClassNode node = new ClassNode(Opcodes.ASM9);
             reader.accept(node, 0);
@@ -49,8 +58,17 @@ final class ClassTransformer {
                         installed.add(
                                 new TransformReceipt.Method(
                                         target.id(),
-                                        method.name,
-                                        method.desc,
+                                        intermediary
+                                                ? GameNames.member(
+                                                        className,
+                                                        method.name,
+                                                        method.desc,
+                                                        false,
+                                                        true)
+                                                : method.name,
+                                        intermediary
+                                                ? GameNames.descriptor(method.desc, true)
+                                                : method.desc,
                                         HookRequirement.of(target)));
                     else failures.add(target.id() + ":load-point-not-found");
                 }
@@ -67,10 +85,13 @@ final class ClassTransformer {
                             ? new LoaderAwareClassWriter(
                                     reader,
                                     ClassWriter.COMPUTE_FRAMES | ClassWriter.COMPUTE_MAXS,
-                                    loader)
+                                    intermediary
+                                            ? NamespaceRemapper.namedResources(loader)
+                                            : loader)
                             : new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
             node.accept(writer);
             byte[] output = writer.toByteArray();
+            if (intermediary) output = NamespaceRemapper.translate(output, true);
             return new TransformResult(output, installed, failures, true);
         } catch (Throwable failure) {
             failures.add(className + ":" + failure.getClass().getSimpleName());

@@ -50,7 +50,7 @@ try {
         $loaderResources -notcontains 'Moons.Bridge.dll' -or
         $installerResources -notcontains 'Moons.UiRuntime.jar' -or
         $loaderResources -contains 'Moons.UiRuntime.jar' -or
-        $loaderResources -notcontains 'Moons.Payload.26_4.patch') { throw 'Incorrect installer/loader resource split.' }
+        $loaderResources -notcontains 'Moons.Payload.1_21_11.jar') { throw 'Incorrect installer/loader resource split.' }
 
     # A clean loader must report missing dependencies without creating the installation.
     Run-Tool $loader '--verify-dependencies' 1
@@ -60,11 +60,11 @@ try {
     Run-Tool $loader '--verify-dependencies --minecraft-version 26.2' 1
     if (Test-Path -LiteralPath (Join-Path $env:MOONS_HOME 'modules/moons-ysm-26.2.jar')) { throw 'Installer wrote unselected root adapter.' }
     if (Test-Path -LiteralPath (Join-Path $env:MOONS_HOME 'installations')) { throw 'Installer created a second root installation layout.' }
-    Run-Tool $installer '--install-only --minecraft-version 26.2' 0
-    Run-Tool $loader '--verify-dependencies --minecraft-version 26.2' 0
-    Run-Tool $loader '--dependency-context --minecraft-version 26.2' 0
+    Run-Tool $installer '--install-only --minecraft-version 26.2' 1
+    Run-Tool $loader '--verify-dependencies --minecraft-version 26.2' 1
+    Run-Tool $loader '--dependency-context --minecraft-version 1.21.11' 0
     $selectedContext = (Get-Content (Join-Path $fixture ('run-' + $script:attempt + '.out')) -Raw).Trim()
-    if ($selectedContext -notlike '*libraries\latest\26.2\*') { throw 'Selected version is not isolated under libraries/latest.' }
+    if ($selectedContext -notlike '*libraries\latest\1.21.11\*') { throw 'Selected version is not isolated under libraries/latest.' }
     $before = Installed-State
     Run-Tool $loader '--verify-dependencies' 0
     Run-Tool $installer '--install-only' 0
@@ -76,7 +76,7 @@ try {
         if ($before[$name] -ne $after[$name]) { throw "Unchanged dependency was rewritten: $name" }
     }
 
-    Run-Tool $loader '--dependency-context --minecraft-version 26.1.2' 0
+    Run-Tool $loader '--dependency-context --minecraft-version 1.21.11' 0
     $baseContext = (Get-Content (Join-Path $fixture ('run-' + $script:attempt + '.out')) -Raw).Trim()
     $baseRoot = Split-Path (Split-Path $baseContext -Parent) -Parent
     $ui = Join-Path $baseRoot 'ui/moons-ui-runtime.jar'
@@ -107,12 +107,12 @@ try {
     Run-Tool $loader '--verify-dependencies' 1
     Run-Tool $installer '--install-only' 0
     Run-Tool $loader '--verify-dependencies' 0
-    Run-Tool $installer '--install-only --minecraft-version 26.4-snapshot-1' 0
-    Run-Tool $loader '--extract-only --minecraft-version 26.4-snapshot-1' 0
+    Run-Tool $installer '--install-only --minecraft-version 1.21.11' 0
+    Run-Tool $loader '--extract-only --minecraft-version 1.21.11' 0
     $snapshotPayload = Get-ChildItem -LiteralPath (Join-Path $env:MOONS_HOME 'cache/launcher') `
-        -Recurse -File -Filter 'moons-26.4-snapshot-1.jar' | Select-Object -First 1
+        -Recurse -File -Filter 'moons-1.21.11.jar' | Select-Object -First 1
     if ($null -eq $snapshotPayload -or $snapshotPayload.Length -eq 0) {
-        throw '26.4 snapshot payload was not extracted.'
+        throw '1.21.11 payload was not extracted.'
     }
     if ($LegacyDistribution) {
         $currentHome = $env:MOONS_HOME
@@ -143,10 +143,10 @@ try {
         $env:MOONS_HOME = $currentHome
         Write-Output 'LEGACY_EXE_VIEW_VERIFIED: actual old installer -> new installer -> actual old loader, unchanged dependencies and shared user configuration.'
     }
-    Run-Tool $installer '--retire-version 26.4-snapshot-1' 0
-    Run-Tool $loader '--verify-dependencies --minecraft-version 26.4-snapshot-1' 0
-    if (Test-Path -LiteralPath (Join-Path $env:MOONS_HOME 'libraries/latest/26.4-snapshot-1')) { throw 'Retirement left the original version directory.' }
-    if (-not (Test-Path -LiteralPath (Join-Path $env:MOONS_HOME 'libraries/legacy/26.4-snapshot-1'))) { throw 'Retired version was not moved to legacy.' }
+    Run-Tool $installer '--retire-version 1.21.11' 0
+    Run-Tool $loader '--verify-dependencies --minecraft-version 1.21.11' 0
+    if (Test-Path -LiteralPath (Join-Path $env:MOONS_HOME 'libraries/latest/1.21.11')) { throw 'Retirement left the original version directory.' }
+    if (-not (Test-Path -LiteralPath (Join-Path $env:MOONS_HOME 'libraries/legacy/1.21.11'))) { throw 'Retired version was not moved to legacy.' }
     if ($Legacy189Distribution) {
         $sharedHome = $env:MOONS_HOME
         $frozenInstaller = Join-Path $Legacy189Distribution 'Moons-install.exe'
@@ -165,6 +165,6 @@ try {
         Run-Tool $loader '--verify-dependencies' 0
         Write-Output 'LEGACY_189_PACKAGE_VERIFIED: actual frozen installer resources, Java8 package, independent libraries/legacy/1.8.9, actual frozen loader verification and shared data.'
     }
-    Write-Output 'LAUNCHER_PACKAGES_VERIFIED: isolated roles, read-only loader, selected-version offline install, idempotence, 26.4 extraction, failed extraction preservation, UI/YSM repair, relocatable retirement.'
+    Write-Output 'LAUNCHER_PACKAGES_VERIFIED: isolated roles, read-only loader, selected-version offline install, idempotence, 1.21.11 extraction, failed extraction preservation, UI/YSM repair, relocatable retirement.'
 }
 finally { $env:MOONS_HOME = $previousHome }

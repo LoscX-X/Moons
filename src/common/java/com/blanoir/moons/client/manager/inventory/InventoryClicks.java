@@ -6,7 +6,7 @@ import com.blanoir.moons.client.event.network.PacketThread;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.protocol.game.ServerboundContainerClickPacket;
 import net.minecraft.world.inventory.AbstractContainerMenu;
-import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.ItemStack;
 
 /** Native, cursor-free inventory operations plus observation of competing inventory activity. */
@@ -63,8 +63,8 @@ public final class InventoryClicks {
         if (!slot.isActive() || slot.hasItem()) return false;
         executing = true;
         try {
-            client.gameMode.handleContainerInput(
-                    menu.containerId, slotIndex, 0, ContainerInput.QUICK_MOVE, client.player);
+            client.gameMode.handleInventoryMouseClick(
+                    menu.containerId, slotIndex, 0, ClickType.QUICK_MOVE, client.player);
         } finally {
             executing = false;
             activityVersion++;
@@ -123,8 +123,8 @@ public final class InventoryClicks {
                 || !expectedCursor.isEmpty() && !slot.mayPlace(expectedCursor)) return false;
         executing = true;
         try {
-            client.gameMode.handleContainerInput(
-                    menu.containerId, slotIndex, 0, ContainerInput.PICKUP, client.player);
+            client.gameMode.handleInventoryMouseClick(
+                    menu.containerId, slotIndex, 0, ClickType.PICKUP, client.player);
         } finally {
             executing = false;
             activityVersion++;
@@ -167,12 +167,8 @@ public final class InventoryClicks {
                 || !ItemStack.matches(target.getItem(), beforeTarget)) return false;
         executing = true;
         try {
-            client.gameMode.handleContainerInput(
-                    menu.containerId,
-                    sourceMenuSlot,
-                    hotbarButton,
-                    ContainerInput.SWAP,
-                    client.player);
+            client.gameMode.handleInventoryMouseClick(
+                    menu.containerId, sourceMenuSlot, hotbarButton, ClickType.SWAP, client.player);
         } finally {
             executing = false;
             activityVersion++;
@@ -213,8 +209,8 @@ public final class InventoryClicks {
                 || !ItemStack.matches(slot.getItem(), expected)) return false;
         executing = true;
         try {
-            client.gameMode.handleContainerInput(
-                    menu.containerId, menuSlot, 0, ContainerInput.QUICK_MOVE, client.player);
+            client.gameMode.handleInventoryMouseClick(
+                    menu.containerId, menuSlot, 0, ClickType.QUICK_MOVE, client.player);
         } finally {
             executing = false;
             activityVersion++;
@@ -242,8 +238,8 @@ public final class InventoryClicks {
                 || !ItemStack.matches(slot.getItem(), expected)) return false;
         executing = true;
         try {
-            client.gameMode.handleContainerInput(
-                    menu.containerId, menuSlot, 1, ContainerInput.THROW, client.player);
+            client.gameMode.handleInventoryMouseClick(
+                    menu.containerId, menuSlot, 1, ClickType.THROW, client.player);
         } finally {
             executing = false;
             activityVersion++;

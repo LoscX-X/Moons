@@ -9,10 +9,10 @@ import com.mojang.blaze3d.vertex.PoseStack;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.SubmitNodeCollector;
-import net.minecraft.client.renderer.state.level.LevelRenderState;
+import net.minecraft.client.renderer.state.LevelRenderState;
 import net.minecraft.network.PacketListener;
 import net.minecraft.network.protocol.Packet;
-import net.minecraft.network.protocol.game.ServerboundAttackPacket;
+import net.minecraft.network.protocol.game.ServerboundInteractPacket;
 import net.minecraft.world.entity.Entity;
 
 import java.util.List;
@@ -46,7 +46,10 @@ public final class Backtrack {
         EventBus.PACKET_SEND_POST.register(
                 "Backtrack.attackSent",
                 event -> {
-                    if (isEnabled() && event.packet() instanceof ServerboundAttackPacket attack) {
+                    if (isEnabled()
+                            && event.packet() instanceof ServerboundInteractPacket attack
+                            && com.blanoir.moons.client.access.PacketAccess.isAttackPacket(
+                                    attack)) {
                         Minecraft client = Minecraft.getInstance();
                         var connection = client.getConnection();
                         var level = client.level;
@@ -59,7 +62,10 @@ public final class Backtrack {
                                             && level != null
                                             && session.matches(
                                                     client.getConnection(), client.level)) {
-                                        onAttack(level.getEntity(attack.entityId()));
+                                        onAttack(
+                                                level.getEntity(
+                                                        com.blanoir.moons.client.access.PacketAccess
+                                                                .attackEntityId(attack)));
                                     }
                                 });
                     }

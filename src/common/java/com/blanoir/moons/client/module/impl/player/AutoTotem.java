@@ -30,7 +30,7 @@ import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.Pose;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.InventoryMenu;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
@@ -262,8 +262,8 @@ public final class AutoTotem {
 
         if (inventorySlot >= 0 && inventorySlot < 9) {
             int menuSlot = Inventory.INVENTORY_SIZE + inventorySlot;
-            client.gameMode.handleContainerInput(
-                    containerId, menuSlot, 40, ContainerInput.SWAP, client.player);
+            client.gameMode.handleInventoryMouseClick(
+                    containerId, menuSlot, 40, ClickType.SWAP, client.player);
             dangerEpisodeHandled = true;
             nextActionAtMs = System.currentTimeMillis() + SWITCH_DELAY_MS.get();
             return;
@@ -347,12 +347,8 @@ public final class AutoTotem {
     }
 
     private static void clickInventorySlot(Minecraft client, int slot) {
-        client.gameMode.handleContainerInput(
-                client.player.inventoryMenu.containerId,
-                slot,
-                0,
-                ContainerInput.PICKUP,
-                client.player);
+        client.gameMode.handleInventoryMouseClick(
+                client.player.inventoryMenu.containerId, slot, 0, ClickType.PICKUP, client.player);
     }
 
     private static void finishTotemEquip(Minecraft client) {

@@ -14,7 +14,10 @@ public final class OverlayFrustum {
     private double eyeX, eyeY, eyeZ;
 
     public void update(Camera camera) {
-        set(camera.getViewRotationProjectionMatrix(matrix), camera.position());
+        var client = net.minecraft.client.Minecraft.getInstance();
+        matrix.set(client.gameRenderer.getProjectionMatrix(client.options.fov().get().floatValue()))
+                .rotate(camera.rotation().conjugate(new org.joml.Quaternionf()));
+        set(matrix, camera.position());
     }
 
     public void set(Matrix4fc projection, Vec3 eye) {

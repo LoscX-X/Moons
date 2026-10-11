@@ -3,7 +3,7 @@ package com.blanoir.moons.client.ui.render;
 import com.mojang.blaze3d.platform.NativeImage;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.resources.Identifier;
@@ -24,13 +24,7 @@ public final class SmoothGui {
     private SmoothGui() {}
 
     public static void roundedRect(
-            GuiGraphicsExtractor graphics,
-            int left,
-            int top,
-            int right,
-            int bottom,
-            int radius,
-            int color) {
+            GuiGraphics graphics, int left, int top, int right, int bottom, int radius, int color) {
         int width = right - left;
         int height = bottom - top;
         if (width <= 0 || height <= 0 || (color >>> 24) == 0) {
@@ -66,13 +60,7 @@ public final class SmoothGui {
     }
 
     private static void fillSpans(
-            GuiGraphicsExtractor graphics,
-            int left,
-            int top,
-            int right,
-            int bottom,
-            int r,
-            int color) {
+            GuiGraphics graphics, int left, int top, int right, int bottom, int r, int color) {
         graphics.fill(left, top + r, right, bottom - r, color);
         int sourceAlpha = color >>> 24;
         int rgb = color & 0xFFFFFF;
@@ -145,7 +133,7 @@ public final class SmoothGui {
     private record Shape(int width, int height, int radius) {}
 
     public static void roundedOutline(
-            GuiGraphicsExtractor graphics,
+            GuiGraphics graphics,
             int left,
             int top,
             int right,

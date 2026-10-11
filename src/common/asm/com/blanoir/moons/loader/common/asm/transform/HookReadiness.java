@@ -1,5 +1,6 @@
 package com.blanoir.moons.loader.common.asm.transform;
 
+import com.blanoir.moons.api.mapping.GameNames;
 import com.blanoir.moons.loader.common.mapping.HookRequirement;
 import com.blanoir.moons.loader.common.mapping.MappingService;
 import com.blanoir.moons.loader.common.mapping.TargetMethod;
@@ -18,7 +19,7 @@ final class HookReadiness {
         boolean tick = false;
         var unavailable = new java.util.TreeSet<String>();
         for (var receipt : receipts) {
-            if (mappings.targetsForClass(receipt.className()).stream()
+            if (mappings.targetsForClass(GameNames.namedType(receipt.className())).stream()
                     .noneMatch(TargetMethod::required)) continue;
             if (!receipt.generated()
                     || receipt.acceptance() == TransformReceipt.Acceptance.REJECTED)
@@ -49,7 +50,7 @@ final class HookReadiness {
 
     /** Preserve legacy matching tolerance without concealing transformation or delivery errors. */
     private boolean runtimeHookMiss(String className, String failure) {
-        return mappings.targetsForClass(className).stream()
+        return mappings.targetsForClass(GameNames.namedType(className)).stream()
                 .anyMatch(
                         target ->
                                 HookRequirement.of(target) != HookRequirement.STARTUP

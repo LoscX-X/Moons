@@ -93,6 +93,7 @@ tasks.named("compileClientKotlin", moonsPluginTypes.kotlinCompile) {
 
 dependencies {
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    mappings loom.officialMojangMappings()
 
     // Compose renders as an independent final-frame overlay in the GLFW framebuffer.
     // These artifacts are shaded into the hot-loaded feature payload below.
@@ -103,6 +104,7 @@ dependencies {
     // Its only non-JDK dependency is ASM, which is folded into moons.jar.
     loaderImplementation "org.ow2.asm:asm:9.10.1"
     loaderImplementation "org.ow2.asm:asm-tree:9.10.1"
+    loaderImplementation "org.ow2.asm:asm-commons:9.10.1"
     loaderImplementation "org.ow2.asm:asm-util:9.10.1"
 }
 
@@ -113,9 +115,13 @@ tasks.withType(JavaCompile).configureEach {
     }
 }
 
+tasks.withType(JavaExec).configureEach {
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(targetJavaVersion) }
+}
+
 kotlin {
     compilerOptions {
-        jvmTarget = moonsPluginTypes.jvmTarget25
+        jvmTarget = targetJavaVersion == 21 ? moonsPluginTypes.jvmTarget21 : moonsPluginTypes.jvmTarget25
     }
 }
 

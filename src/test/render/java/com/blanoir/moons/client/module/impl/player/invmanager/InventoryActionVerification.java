@@ -1,7 +1,6 @@
 package com.blanoir.moons.client.module.impl.player.invmanager;
 
 import net.minecraft.SharedConstants;
-import net.minecraft.core.component.DataComponentMap;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.Bootstrap;
@@ -14,20 +13,6 @@ public final class InventoryActionVerification {
     public static void main(String[] args) {
         SharedConstants.tryDetectVersion();
         Bootstrap.bootStrap();
-        for (var item :
-                new net.minecraft.world.item.Item[] {
-                    Items.IRON_PICKAXE,
-                    Items.IRON_AXE,
-                    Items.IRON_SHOVEL,
-                    Items.IRON_SWORD,
-                    Items.STICK
-                }) {
-            item.builtInRegistryHolder()
-                    .bindComponents(
-                            DataComponentMap.builder()
-                                    .set(DataComponents.MAX_STACK_SIZE, 1)
-                                    .build());
-        }
         var pickaxe = new ItemStack(Items.IRON_PICKAXE);
         require(!pickaxe.is(ItemTags.PICKAXES), "Fixture must have no server item tags");
         require(

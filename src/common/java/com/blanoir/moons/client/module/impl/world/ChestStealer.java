@@ -21,7 +21,7 @@ import net.minecraft.client.gui.screens.inventory.ShulkerBoxScreen;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.inventory.AbstractContainerMenu;
-import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 
@@ -175,12 +175,8 @@ public final class ChestStealer {
             return;
         }
         int before = source.getItem().getCount();
-        currentGameMode.handleContainerInput(
-                handler.containerId,
-                slotIndex.getAsInt(),
-                0,
-                ContainerInput.QUICK_MOVE,
-                currentPlayer);
+        currentGameMode.handleInventoryMouseClick(
+                handler.containerId, slotIndex.getAsInt(), 0, ClickType.QUICK_MOVE, currentPlayer);
         tookItems |= source.getItem().getCount() < before;
 
         nextStealAtNanos = System.nanoTime() + nextDelayMs() * 1_000_000L;
@@ -243,19 +239,15 @@ public final class ChestStealer {
         // Bukkit. It must target the very same slot as the following NUMBER_KEY/SWAP.
         // Creative CLONE creates a carried item, so creative uses only the real swap.
         if (!client.player.getAbilities().instabuild) {
-            client.gameMode.handleContainerInput(
-                    handler.containerId, action.slot(), 2, ContainerInput.CLONE, client.player);
+            client.gameMode.handleInventoryMouseClick(
+                    handler.containerId, action.slot(), 2, ClickType.CLONE, client.player);
             if (client.player.containerMenu != handler
                     || !handler.getCarried().isEmpty()
                     || !ItemStack.matches(slot.getItem(), action.beforeSlot())
                     || !ItemStack.matches(hotbar.getItem(), action.beforeHotbar())) return false;
         }
-        client.gameMode.handleContainerInput(
-                handler.containerId,
-                action.slot(),
-                action.button(),
-                ContainerInput.SWAP,
-                client.player);
+        client.gameMode.handleInventoryMouseClick(
+                handler.containerId, action.slot(), action.button(), ClickType.SWAP, client.player);
         return handler.getCarried().isEmpty()
                 && ItemStack.matches(slot.getItem(), action.beforeHotbar())
                 && ItemStack.matches(hotbar.getItem(), action.beforeSlot());

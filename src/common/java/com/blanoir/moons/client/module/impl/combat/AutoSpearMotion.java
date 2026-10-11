@@ -116,8 +116,8 @@ final class AutoSpearMotion {
             // Velocity packets contain no cause; require nearby Lunge confirmation first.
             PENDING.confirm(new Vec3(sound.getX(), sound.getY(), sound.getZ()), System.nanoTime());
         } else if (packet instanceof ClientboundSetEntityMotionPacket motion
-                && motion.id() == player.getId()) {
-            PENDING.velocity(motion.movement(), AutoSpear.motionMultiply(), System.nanoTime());
+                && motion.getId() == player.getId()) {
+            PENDING.velocity(motion.getMovement(), AutoSpear.motionMultiply(), System.nanoTime());
         }
     }
 

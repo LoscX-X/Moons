@@ -49,7 +49,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.GameRenderer;
@@ -57,7 +57,7 @@ import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.entity.state.AvatarRenderState;
 import net.minecraft.client.renderer.entity.state.EntityRenderState;
-import net.minecraft.client.renderer.state.level.LevelRenderState;
+import net.minecraft.client.renderer.state.LevelRenderState;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Avatar;
 import net.minecraft.world.entity.Entity;
@@ -174,7 +174,7 @@ public final class RuntimeEventAdapter {
     }
 
     private void hud(RuntimeEvents.Hud event) {
-        if (event.extractor() instanceof GuiGraphicsExtractor graphics
+        if (event.extractor() instanceof GuiGraphics graphics
                 && event.deltaTracker() instanceof DeltaTracker tracker) {
             EventBus.HUD_RENDER.post(new HudRenderEvent(graphics, tracker));
         }

@@ -1,5 +1,5 @@
 plugins {
-    id 'net.fabricmc.fabric-loom' version "1.17.19"
+    id 'net.fabricmc.fabric-loom-remap' version "1.17.19"
     id 'maven-publish'
     id 'org.jetbrains.kotlin.jvm' version '2.3.20'
     id 'org.jetbrains.kotlin.plugin.compose' version '2.3.20'
@@ -10,7 +10,11 @@ plugins {
 // Applied scripts have their own classloader; resolve plugin types here.
 ext.moonsPluginTypes = [
         kotlinCompile: org.jetbrains.kotlin.gradle.tasks.KotlinCompile,
+        jvmTarget21  : org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21,
         jvmTarget25  : org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_25,
+        remapJar     : net.fabricmc.loom.task.RemapJarTask,
+        classReader  : org.objectweb.asm.ClassReader,
+        intermediary : net.fabricmc.loom.api.mappings.layered.MappingsNamespace.INTERMEDIARY,
         shadowJar    : com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 ].asImmutable()
 
@@ -46,6 +50,7 @@ ext.moonsBuild = [
 
 apply from: "gradle/toolchains.gradle"
 apply from: "gradle/java-conventions.gradle"
+apply from: "gradle/legacy-names.gradle"
 apply from: "gradle/payloads.gradle"
 apply from: "gradle/native.gradle"
 apply from: "gradle/distribution.gradle"

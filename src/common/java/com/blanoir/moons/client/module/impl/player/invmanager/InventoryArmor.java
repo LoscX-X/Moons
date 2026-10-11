@@ -37,7 +37,7 @@ public final class InventoryArmor {
                 || stack.is(Items.ELYTRA)
                 || !net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE
                         .get(net.minecraft.resources.Identifier.parse("minecraft:player"))
-                        .map(equippable::canBeEquippedBy)
+                        .map(holder -> equippable.canBeEquippedBy(holder.value()))
                         .orElse(false)) return -1;
         for (int i = 0; i < SLOTS.length; i++)
             if (equippable.slot() == SLOTS[i] && armor(stack, SLOTS[i], false) > 0) return 36 + i;

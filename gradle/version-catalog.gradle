@@ -4,7 +4,7 @@ def catalog = new groovy.json.JsonSlurper().parse(catalogFile)
 if (catalog.keySet() != ['schema', 'activeWindow', 'profiles'].toSet()) {
     throw new GradleException('Unknown or missing version catalog fields')
 }
-if (catalog.schema != 1 || catalog.activeWindow != 4) {
+if (catalog.schema != 1 || !(catalog.activeWindow in 1..4)) {
     throw new GradleException('Unsupported version catalog schema or active window')
 }
 def profiles = catalog.profiles
@@ -44,7 +44,7 @@ profiles.each { profile ->
         if (!(profile.releaseLock instanceof String) || !(profile.releaseLock ==~ /[a-f0-9]{64}/))
             throw new GradleException("Legacy profile requires a complete frozen release lock: ${profile.profileId}")
     } else if (profile.available) {
-        if (profile.javaVersion != 25 || profile.payloadFamily != 'modern'
+        if (!(profile.javaVersion in [21, 25]) || profile.payloadFamily != 'modern'
                 || profile.backend != 'windows-x64-jvmti' || !(profile.evidencePattern instanceof String)
                 || !file("src/minecraft/versions/${profile.profileId}").isDirectory()) {
             throw new GradleException("Unimplemented build profile ${profile.profileId}")
@@ -54,7 +54,7 @@ profiles.each { profile ->
 }
 def active = profiles.findAll { it.status == 'active' }
 if (active.size() != catalog.activeWindow || active.any { !it.available }) {
-    throw new GradleException('The active window must contain four implemented profiles')
+    throw new GradleException('The active window must contain the declared number of implemented profiles')
 }
 // Legacy artifacts are frozen externally; never rebuild them with the active toolchain.
 def frozenProfiles = profiles.collect { profile ->

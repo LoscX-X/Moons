@@ -1758,7 +1758,7 @@ public final class ScaffoldManager {
             int x = event.graphics().guiWidth() / 2 + client.font.lineHeight * 2;
             int y = event.graphics().guiHeight() / 2 - client.font.lineHeight / 2;
             event.graphics()
-                    .text(client.font, text, x, y, count > 0 ? 0xFFFFFFFF : 0xFFFF5555, true);
+                    .drawString(client.font, text, x, y, count > 0 ? 0xFFFFFFFF : 0xFFFF5555, true);
         }
         if (DEBUGGER.get() && tellyMode()) {
             drawTellyDebugger(event, client);
@@ -2377,7 +2377,7 @@ public final class ScaffoldManager {
         for (int index = 0; index < lines.size(); index++) {
             int color = index == 1 ? tellyPhase.color() : 0xFFE7F5FF;
             event.graphics()
-                    .text(
+                    .drawString(
                             client.font,
                             lines.get(index),
                             x,

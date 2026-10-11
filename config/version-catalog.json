@@ -1,62 +1,20 @@
 {
   "schema": 1,
-  "activeWindow": 4,
+  "activeWindow": 1,
   "profiles": [
     {
-      "profileId": "26_1",
-      "gameId": "26.1.2",
-      "aliases": ["26.1", "26.1.2"],
-      "artifactId": "26.1",
+      "profileId": "1_21_11",
+      "gameId": "1.21.11",
+      "aliases": [
+        "1.21.11"
+      ],
+      "artifactId": "1.21.11",
       "status": "active",
       "available": true,
-      "javaVersion": 25,
+      "javaVersion": 21,
       "payloadFamily": "modern",
       "backend": "windows-x64-jvmti",
-      "evidencePattern": "(?<![0-9.])26\\.1\\.2(?![0-9.])"
-    },
-    {
-      "profileId": "26_2",
-      "gameId": "26.2",
-      "aliases": ["26.2"],
-      "artifactId": "26.2",
-      "status": "active",
-      "available": true,
-      "javaVersion": 25,
-      "payloadFamily": "modern",
-      "backend": "windows-x64-jvmti",
-      "evidencePattern": "(?<![0-9.])26\\.2(?![0-9.])"
-    },
-    {
-      "profileId": "26_3",
-      "gameId": "26.3",
-      "aliases": ["26.3"],
-      "artifactId": "26.3",
-      "status": "active",
-      "available": true,
-      "javaVersion": 25,
-      "payloadFamily": "modern",
-      "backend": "windows-x64-jvmti",
-      "evidencePattern": "(?<![0-9A-Za-z_.\\-])26\\.3(?=\\.jar(?:$|[^0-9A-Za-z_.\\-])|$|[^0-9A-Za-z_.\\-])"
-    },
-    {
-      "profileId": "26_4",
-      "gameId": "26.4-snapshot-1",
-      "aliases": ["26.4-snapshot-1"],
-      "artifactId": "26.4-snapshot-1",
-      "status": "active",
-      "available": true,
-      "javaVersion": 25,
-      "payloadFamily": "modern",
-      "backend": "windows-x64-jvmti",
-      "evidencePattern": "(?<![0-9A-Za-z_.\\-])26\\.4-snapshot-1(?=\\.jar(?:$|[^0-9A-Za-z_.\\-])|$|[^0-9A-Za-z_.\\-])"
-    },
-    {
-      "profileId": "1_8_9",
-      "gameId": "1.8.9",
-      "aliases": ["1.8.9"],
-      "artifactId": "1.8.9",
-      "status": "special",
-      "available": false
+      "evidencePattern": "(?<![0-9.])1\\.21\\.11(?![0-9.]|-(?:snapshot|pre|rc)-[0-9])"
     }
   ]
 }

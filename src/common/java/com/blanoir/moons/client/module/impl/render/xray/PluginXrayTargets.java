@@ -100,7 +100,7 @@ public final class PluginXrayTargets {
                 || client == null
                 || client.level == null
                 || MinecraftClientAccess.hasOverlay(client)) return;
-        Object currentModels = client.getModelManager().getBlockStateModelSet();
+        Object currentModels = client.getModelManager().getMissingBlockStateModel();
         List<PackResources> currentPacks = client.getResourceManager().listPacks().toList();
         if (modelSet != currentModels || !packs.equals(currentPacks)) {
             modelSet = currentModels;

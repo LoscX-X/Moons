@@ -9,7 +9,7 @@ import com.blanoir.moons.client.utils.text.DynamicMiniMessage;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.numbers.BlankFormat;
 import net.minecraft.network.chat.numbers.NumberFormat;
@@ -111,7 +111,7 @@ public final class Scoreboard {
                 "Scoreboard.hudRender", event -> renderFallback(event.graphics()));
     }
 
-    public static boolean render(GuiGraphicsExtractor graphics, Objective objective) {
+    public static boolean render(GuiGraphics graphics, Objective objective) {
         syncClientData();
         if (!ENABLED.get() || graphics == null || objective == null) return false;
 
@@ -148,7 +148,7 @@ public final class Scoreboard {
         return true;
     }
 
-    private static void renderFallback(GuiGraphicsExtractor graphics) {
+    private static void renderFallback(GuiGraphics graphics) {
         syncClientData();
         if (!ENABLED.get()) {
             renderedSinceHud = false;
@@ -494,8 +494,7 @@ public final class Scoreboard {
         return lines;
     }
 
-    private static void draw(
-            GuiGraphicsExtractor graphics, Font font, Component title, List<Line> lines) {
+    private static void draw(GuiGraphics graphics, Font font, Component title, List<Line> lines) {
         int width = font.width(title);
         int colonWidth = font.width(":");
         for (Line line : lines) {
@@ -516,16 +515,16 @@ public final class Scoreboard {
 
         graphics.fill(left - 2, top - 10, right, top - 1, titleColor);
         if (lineCount > 0) graphics.fill(left - 2, top - 1, right, bottom, bodyColor);
-        graphics.text(
+        graphics.drawString(
                 font, title, left + width / 2 - font.width(title) / 2, top - 9, 0xFFFFFFFF, false);
 
         for (int index = 0; index < lineCount; index++) {
             Line line = lines.get(index);
             int y = top + index * 9;
-            graphics.text(font, line.name(), left, y, 0xFFFFFFFF, false);
+            graphics.drawString(font, line.name(), left, y, 0xFFFFFFFF, false);
             int scoreWidth = font.width(line.score());
             if (scoreWidth > 0) {
-                graphics.text(font, line.score(), right - scoreWidth, y, 0xFFFFFFFF, false);
+                graphics.drawString(font, line.score(), right - scoreWidth, y, 0xFFFFFFFF, false);
             }
         }
     }

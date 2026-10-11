@@ -358,6 +358,20 @@
           "text": "发布 1.0.1.0-Release 正式版，安装器与加载器使用同次构建，GitHub Release 标记为 Latest。"
         }
       ]
+    },
+    {
+      "id": "2026-10-11-02",
+      "summary": "1.21.11 Fabric 向下兼容分支",
+      "changes": [
+        {
+          "type": "build",
+          "text": "新增 legacy/1.21.11 独立分支，从 1.0.1.0-Release 移植到 Minecraft 1.21.11 / Fabric Loader 0.19.3，使用 Java 21 载荷和独立安装器、加载器及 YSM 适配包。"
+        },
+        {
+          "type": "fix",
+          "text": "适配 Fabric Intermediary 名称、私有成员访问、79 个注入点、旧版交互包和渲染 API；保留 Scaffold / SilentAura 共用寻点与旋转。生产模块链接与真实安装器检查通过，游戏内效果仍待实测。"
+        }
+      ]
     }
   ]
 }

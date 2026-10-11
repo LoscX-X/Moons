@@ -29,12 +29,21 @@ def uiDependenciesJar = tasks.register("uiDependenciesJar", moonsPluginTypes.sha
     exclude "META-INF/versions/*/module-info.class", "module-info.class"
 }
 
-def clientModuleJar = tasks.register("clientModuleJar", Jar) {
+def clientModuleNamedJar = tasks.register("clientModuleNamedJar", Jar) {
     archiveFileName = "moons-core-features.jar"
-    destinationDirectory = layout.buildDirectory.dir(versionedPayloadDirectory)
+    destinationDirectory = layout.buildDirectory.dir(versionedPayloadDirectory + '/named')
     dependsOn tasks.named("clientClasses")
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     from sourceSets.client.output
+}
+
+def clientModuleJar = tasks.register('clientModuleJar', moonsPluginTypes.remapJar) {
+    dependsOn clientModuleNamedJar
+    inputFile = clientModuleNamedJar.flatMap { it.archiveFile }
+    archiveFileName = 'moons-core-features.jar'
+    destinationDirectory = layout.buildDirectory.dir(versionedPayloadDirectory)
+    addNestedDependencies = false
+    classpath.from(sourceSets.client.compileClasspath)
 }
 
 tasks.register("moonsJar", Jar) {

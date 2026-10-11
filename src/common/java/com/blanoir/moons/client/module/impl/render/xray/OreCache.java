@@ -97,8 +97,8 @@ public final class OreCache {
                 int chunkX = pos.getX() >> 4;
                 int chunkZ = pos.getZ() >> 4;
 
-                int dx = Math.abs(chunkX - center.x());
-                int dz = Math.abs(chunkZ - center.z());
+                int dx = Math.abs(chunkX - center.x);
+                int dz = Math.abs(chunkZ - center.z);
 
                 if (dx > maxDistance || dz > maxDistance) {
                     iterator.remove();

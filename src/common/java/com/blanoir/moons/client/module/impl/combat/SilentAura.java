@@ -513,7 +513,7 @@ public final class SilentAura {
                                     ? 0xFFFF7777
                                     : 0xFFEDE9FF;
             event.graphics()
-                    .text(
+                    .drawString(
                             client.font,
                             lines[index],
                             x,

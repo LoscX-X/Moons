@@ -129,8 +129,8 @@ public final class OreScanner {
 
         boolean movedToAnotherChunk =
                 lastCenterChunk == null
-                        || lastCenterChunk.x() != currentCenter.x()
-                        || lastCenterChunk.z() != currentCenter.z();
+                        || lastCenterChunk.x != currentCenter.x
+                        || lastCenterChunk.z != currentCenter.z;
 
         if (movedToAnotherChunk) {
             lastCenterChunk = currentCenter;
@@ -185,8 +185,8 @@ public final class OreScanner {
 
         ChunkPos center = client.player.chunkPosition();
 
-        for (int chunkX = center.x() - radius; chunkX <= center.x() + radius; chunkX++) {
-            for (int chunkZ = center.z() - radius; chunkZ <= center.z() + radius; chunkZ++) {
+        for (int chunkX = center.x - radius; chunkX <= center.x + radius; chunkX++) {
+            for (int chunkZ = center.z - radius; chunkZ <= center.z + radius; chunkZ++) {
                 long key = ChunkKey.pack(chunkX, chunkZ);
 
                 if (!forceRescan && SCANNED_CHUNKS.contains(key)) {
@@ -212,9 +212,9 @@ public final class OreScanner {
                 && SCAN_JOBS.size() + (currentScan == null ? 0 : 1) < maxChunks) {
             ChunkPos chunkPos = SCAN_QUEUE.poll();
             if (chunkPos == null) break;
-            long key = ChunkKey.pack(chunkPos.x(), chunkPos.z());
+            long key = ChunkKey.pack(chunkPos.x, chunkPos.z);
             QUEUED_CHUNKS.remove(key);
-            LevelChunk chunk = level.getChunkSource().getChunk(chunkPos.x(), chunkPos.z(), false);
+            LevelChunk chunk = level.getChunkSource().getChunk(chunkPos.x, chunkPos.z, false);
             if (chunk == null) continue;
             try {
                 SCAN_JOBS.add(
@@ -226,8 +226,8 @@ public final class OreScanner {
                                                 level,
                                                 generation,
                                                 key,
-                                                chunkPos.x(),
-                                                chunkPos.z(),
+                                                chunkPos.x,
+                                                chunkPos.z,
                                                 OreChunkSnapshot.capture(
                                                         chunk.getSections(),
                                                         chunk.getMinY(),
@@ -508,8 +508,8 @@ public final class OreScanner {
                     int chunkX = ChunkKey.unpackX(key);
                     int chunkZ = ChunkKey.unpackZ(key);
 
-                    int dx = Math.abs(chunkX - center.x());
-                    int dz = Math.abs(chunkZ - center.z());
+                    int dx = Math.abs(chunkX - center.x);
+                    int dz = Math.abs(chunkZ - center.z);
 
                     return dx > maxDistance || dz > maxDistance;
                 });

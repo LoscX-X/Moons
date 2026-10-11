@@ -32,8 +32,8 @@ public final class Clip {
                 || client.options.getCameraType().isFirstPerson()) return false;
         var chunk = player.chunkPosition();
         VisibilityRange range = visibilityRange;
-        if (range == null || range.chunkX != chunk.x() || range.chunkZ != chunk.z()) {
-            range = new VisibilityRange(chunk.x(), chunk.z());
+        if (range == null || range.chunkX != chunk.x || range.chunkZ != chunk.z) {
+            range = new VisibilityRange(chunk.x, chunk.z);
             visibilityRange = range;
         }
         return range.contains(box.minX, box.minZ);

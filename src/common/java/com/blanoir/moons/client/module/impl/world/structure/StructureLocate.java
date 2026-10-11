@@ -107,9 +107,9 @@ public final class StructureLocate {
                     if (!isEnabled()) return;
                     if (event.packet() instanceof ClientboundLevelChunkWithLightPacket packet) {
                         var position = PacketAccess.chunkPosition(packet);
-                        invalidate(position.x(), position.z());
+                        invalidate(position.x, position.z);
                     } else if (event.packet() instanceof ClientboundForgetLevelChunkPacket packet)
-                        invalidate(packet.pos().x(), packet.pos().z());
+                        invalidate(packet.pos().x, packet.pos().z);
                 });
     }
 
@@ -407,8 +407,7 @@ public final class StructureLocate {
             for (int dx = -radius; dx <= radius; dx++)
                 for (int dz = -radius; dz <= radius; dz++) chunks.add(new ChunkPos(x + dx, z + dz));
             chunks.sort(
-                    Comparator.comparingInt(
-                            p -> (p.x() - x) * (p.x() - x) + (p.z() - z) * (p.z() - z)));
+                    Comparator.comparingInt(p -> (p.x - x) * (p.x - x) + (p.z - z) * (p.z - z)));
         }
 
         boolean step(ClientLevel level) {
@@ -434,8 +433,8 @@ public final class StructureLocate {
                     && visited++ < 128) {
                 if (System.nanoTime() >= deadline) break;
                 var position = chunks.get(chunkIndex++);
-                long key = ChunkKey.pack(position.x(), position.z());
-                var chunk = level.getChunkSource().getChunk(position.x(), position.z(), false);
+                long key = ChunkKey.pack(position.x, position.z);
+                var chunk = level.getChunkSource().getChunk(position.x, position.z, false);
                 if (chunk == null) {
                     CHUNKS.invalidate(key);
                     continue;
@@ -452,8 +451,8 @@ public final class StructureLocate {
                         WORKER.submit(
                                 () ->
                                         StructureChunkScanner.scan(
-                                                position.x(),
-                                                position.z(),
+                                                position.x,
+                                                position.z,
                                                 sections,
                                                 enabled,
                                                 shapeEnabled,

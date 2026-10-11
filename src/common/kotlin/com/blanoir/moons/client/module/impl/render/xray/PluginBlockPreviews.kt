@@ -32,7 +32,7 @@ internal object PluginBlockPreviews {
 
     fun prepareFrame() {
         val client = Minecraft.getInstance()
-        val currentModels = client.modelManager.blockStateModelSet
+        val currentModels = client.modelManager.missingBlockStateModel
         val currentScope = PluginXrayTargets.scope()
         if (models !== currentModels || scope != currentScope) {
             clear()

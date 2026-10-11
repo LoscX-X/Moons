@@ -1,8 +1,6 @@
 package com.blanoir.moons.client.manager.inventory;
 
 import net.minecraft.SharedConstants;
-import net.minecraft.core.component.DataComponentMap;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.server.Bootstrap;
 import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.entity.player.Player;
@@ -35,10 +33,6 @@ public final class InventoryFailureVerification {
 
         SharedConstants.tryDetectVersion();
         Bootstrap.bootStrap();
-        Items.STONE
-                .builtInRegistryHolder()
-                .bindComponents(
-                        DataComponentMap.builder().set(DataComponents.MAX_STACK_SIZE, 64).build());
         var chest = new SimpleContainer(3);
         var inventory = new SimpleContainer(41);
         var crafting = new SimpleContainer(1);

@@ -1,0 +1,48 @@
+/* Private-member lookup and injected bytecode share Fabric's production namespace. */
+def namesDirectory = layout.buildDirectory.dir('generated/game-names')
+def namesTask = tasks.register('generateGameNames') {
+    def tiny = providers.provider { loom.mappingConfiguration.tinyMappings.toFile() }
+    def minecraftJars = providers.provider {
+        sourceSets.client.compileClasspath.files.findAll { it.name.startsWith('minecraft-') && it.name.endsWith('.jar') }
+    }
+    inputs.file(tiny)
+    inputs.files(minecraftJars)
+    outputs.dir(namesDirectory)
+    doLast {
+        def lines = tiny.get().readLines('UTF-8')
+        if (lines[0] != 'tiny\t2\t0\tofficial\tintermediary\tnamed')
+            throw new GradleException('Unexpected Mojang mapping namespaces')
+        def classes = [:]
+        lines.findAll { it.startsWith('c\t') }.each { line ->
+            def parts = line.split('\t', -1)
+            classes[parts[1]] = [parts[3], parts[2]]
+        }
+        def descriptor = { value ->
+            value.replaceAll('L([^;]+);') { match, name -> 'L' + (classes[name]?.getAt(0) ?: name) + ';' }
+        }
+        def output = new File(namesDirectory.get().asFile, 'META-INF/moons/game-names.tsv')
+        output.parentFile.mkdirs()
+        output.withWriter('UTF-8') { writer ->
+            writer.write('moons-game-names\t1\t1.21.11\n')
+            classes.values().each { writer.write('C\t' + it[0] + '\t' + it[1] + '\n') }
+            def owner = null
+            lines.each { line ->
+                def parts = line.split('\t', -1)
+                if (parts[0] == 'c') owner = parts[3]
+                else if (parts.length >= 6 && parts[0].isEmpty() && parts[1] in ['f', 'm'])
+                    writer.write(parts[1].toUpperCase(Locale.ROOT) + '\t' + owner + '\t' + parts[5] + '\t' + descriptor(parts[2]) + '\t' + parts[4] + '\n')
+            }
+            minecraftJars.get().each { jar ->
+                new java.util.zip.ZipFile(jar).withCloseable { archive ->
+                    archive.entries().each { entry ->
+                        if (!entry.name.endsWith('.class')) return
+                        def reader = archive.getInputStream(entry).withCloseable { moonsPluginTypes.classReader.getConstructor(byte[].class).newInstance([it.readAllBytes()] as Object[]) }
+                        writer.write('H\t' + reader.className + '\t' + ([reader.superName ?: ''] + reader.interfaces.toList()).join('\t') + '\n')
+                    }
+                }
+            }
+        }
+    }
+}
+sourceSets.api.resources.srcDir(namesDirectory)
+tasks.named('processApiResources') { dependsOn namesTask }

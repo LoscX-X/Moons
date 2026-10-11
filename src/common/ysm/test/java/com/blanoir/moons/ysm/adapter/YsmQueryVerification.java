@@ -1,7 +1,6 @@
 package com.blanoir.moons.ysm.adapter;
 
 import net.minecraft.SharedConstants;
-import net.minecraft.core.component.DataComponentMap;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.server.Bootstrap;
 import net.minecraft.world.effect.MobEffectInstance;
@@ -23,12 +22,6 @@ public final class YsmQueryVerification {
     public static void main(String[] args) throws Exception {
         SharedConstants.tryDetectVersion();
         Bootstrap.bootStrap();
-        for (var item : List.of(Items.STONE, Items.SHIELD, Items.TIPPED_ARROW, Items.ARROW))
-            item.builtInRegistryHolder()
-                    .bindComponents(
-                            DataComponentMap.builder()
-                                    .set(DataComponents.MAX_STACK_SIZE, 64)
-                                    .build());
         var field = sun.misc.Unsafe.class.getDeclaredField("theUnsafe");
         field.setAccessible(true);
         var unsafe = (sun.misc.Unsafe) field.get(null);

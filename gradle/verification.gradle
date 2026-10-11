@@ -69,7 +69,7 @@ tasks.register('verifyInputBindings', JavaExec) {
     group = 'verification'
     description = 'Checks callback/poll deduplication, held activation, focus loss and binding changes without a window.'
     dependsOn 'renderTestClasses'
-    classpath = sourceSets.renderTest.runtimeClasspath
+    classpath = sourceSets.renderTest.runtimeClasspath + configurations.minecraftNatives
     mainClass = 'com.blanoir.moons.client.input.InputBindingVerification'
     systemProperty 'moons.home', layout.buildDirectory.dir('verification/input-bindings/home').get().asFile.absolutePath
 }
@@ -192,6 +192,53 @@ tasks.register("verifyMinecraftTransformers", JavaExec) {
     }
 }
 
+tasks.register('verifyMinecraftTargetInventory', JavaExec) {
+    group = 'verification'
+    dependsOn 'loaderTestClasses'
+    classpath = sourceSets.loaderTest.runtimeClasspath
+    mainClass = 'com.blanoir.moons.loader.common.asm.transform.TargetInventoryVerification'
+    doFirst {
+        args = sourceSets.client.compileClasspath.files.findAll {
+            it.name.startsWith('minecraft-') && it.name.endsWith('.jar')
+        }.collect { it.absolutePath }
+    }
+}
+
+def fabricIntermediaryJars = {
+    def path = providers.gradleProperty('moons_fabric_intermediary_jar').orNull
+    if (path != null) {
+        if (!file(path).isFile()) throw new GradleException('Fabric intermediary client JAR is missing')
+        return [file(path)]
+    }
+    loom.getMinecraftJarsCollection(moonsPluginTypes.intermediary).files.toList()
+}
+tasks.register('verifyFabricTransformers', JavaExec) {
+    group = 'verification'
+    dependsOn 'loaderTestClasses'
+    classpath = sourceSets.loaderTest.runtimeClasspath
+    mainClass = 'com.blanoir.moons.loader.common.asm.transform.TransformerVerification'
+    doFirst { args = ['--intermediary'] + fabricIntermediaryJars().collect { it.absolutePath } }
+}
+tasks.register('verifyFabricPayload', JavaExec) {
+    group = 'verification'
+    dependsOn 'loaderTestClasses', 'apiJar', 'runtimeJar', 'clientModuleJar', 'ysmJar', 'ysmCoreJar', 'ysmCodecsJar', 'ysmImagesJar'
+    classpath = sourceSets.loaderTest.runtimeClasspath
+    mainClass = 'com.blanoir.moons.loader.common.asm.transform.FabricPayloadVerification'
+    doFirst {
+        def paths = [tasks.apiJar.archiveFile.get().asFile, tasks.clientModuleJar.archiveFile.get().asFile,
+                tasks.ysmJar.archiveFile.get().asFile, tasks.runtimeJar.archiveFile.get().asFile,
+                tasks.ysmCoreJar.archiveFile.get().asFile, tasks.ysmCodecsJar.archiveFile.get().asFile, tasks.ysmImagesJar.archiveFile.get().asFile]
+        paths.addAll(fabricIntermediaryJars())
+        paths.addAll((sourceSets.client.compileClasspath + configurations.minecraftNatives).files.findAll {
+            it.isFile() && it.name.endsWith('.jar') && !it.name.startsWith('minecraft-')
+        })
+        def manifest = layout.buildDirectory.file('verification/fabric-runtime-classpath.txt').get().asFile
+        manifest.parentFile.mkdirs()
+        manifest.setText(paths.collect { it.absolutePath }.unique().join('\n') + '\n', 'UTF-8')
+        args = [manifest.absolutePath]
+    }
+}
+
 // Opt-in checks use a locally installed NeoForge profile, not the unpatched Loom JAR.
 def neoForgeClientJar = {
     def path = providers.gradleProperty('moons_neoforge_client_jar').orNull
@@ -264,7 +311,8 @@ tasks.register('verifyNeoForgeYsmRenderSetup', JavaExec) {
 
 tasks.named("check").configure {
     dependsOn "clientClasses", "verifyMinecraftTransformers", "verifyGameAccess",
-            "verifyLoadSession", "verifyCacheMaintenance", "verifyPayloadCache"
+            "verifyLoadSession", "verifyCacheMaintenance", "verifyPayloadCache", 'verifyMinecraftTargetInventory',
+            'verifyFabricTransformers', 'verifyFabricPayload'
 }
 
 def versionChecks = []

@@ -108,6 +108,8 @@ public final class GameAccessVerification {
                     protected Class<?> loadClass(String name, boolean resolve)
                             throws ClassNotFoundException {
                         if (!name.equals(GameAccess.class.getName())
+                                && !name.equals("com.blanoir.moons.client.access.GameLookup")
+                                && !name.startsWith("com.blanoir.moons.client.access.GameLookup$")
                                 && !name.startsWith(GameAccess.class.getName() + "$")) {
                             return super.loadClass(name, resolve);
                         }

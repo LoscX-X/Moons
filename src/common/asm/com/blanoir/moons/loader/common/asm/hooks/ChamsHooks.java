@@ -23,7 +23,8 @@ final class ChamsHooks {
         int renderGroupOrdinal = 0;
         for (AbstractInsnNode instruction : method.instructions.toArray()) {
             if (!(instruction instanceof MethodInsnNode invocation)) continue;
-            if (invocation.name.equals("renderSolidFeatures")) beginPoint = invocation;
+            if (invocation.name.equals("renderSolidFeatures")
+                    || invocation.name.equals("renderAllFeatures")) beginPoint = invocation;
             if (invocation.name.equals("renderTranslucentParticles")) oldEndPoint = invocation;
             if (invocation.owner.equals(
                             "net/minecraft/client/renderer/feature/FeatureRenderDispatcher$PreparedFrame")
@@ -58,6 +59,19 @@ final class ChamsHooks {
     }
 
     static boolean loadChamsItemRender(MethodNode method, String id) {
+        if (method.name.equals("render")) {
+            boolean changed = false;
+            for (var instruction : method.instructions.toArray()) {
+                if (instruction instanceof MethodInsnNode call
+                        && call.owner.equals("net/minecraft/client/renderer/entity/ItemRenderer")
+                        && call.name.equals("renderItem")) {
+                    method.instructions.insertBefore(call, itemSubmitHook(id, 5));
+                    method.instructions.insert(call, itemSubmitHook(id + ".end", 5));
+                    changed = true;
+                }
+            }
+            return changed;
+        }
         InsnList start = new InsnList();
         start.add(new LdcInsnNode(id));
         start.add(new VarInsnNode(Opcodes.ALOAD, 0));
@@ -79,5 +93,14 @@ final class ChamsHooks {
                     return end;
                 });
         return ValueHooks.loadInvocationArgumentRemap(method, id + ".type", "getBuffer", 0);
+    }
+
+    private static InsnList itemSubmitHook(String id, int slot) {
+        var hook = new InsnList();
+        hook.add(new LdcInsnNode(id));
+        hook.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        hook.add(new VarInsnNode(Opcodes.ALOAD, slot));
+        hook.add(call("onVoidHook", "(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;)V"));
+        return hook;
     }
 }

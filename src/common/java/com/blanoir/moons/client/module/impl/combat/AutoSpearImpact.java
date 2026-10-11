@@ -44,7 +44,7 @@ final class AutoSpearImpact {
                     var packet = event.packet();
                     if (packet instanceof ClientboundPlayerPositionPacket
                             || packet instanceof ClientboundSetEntityMotionPacket motion
-                                    && motion.id() == player.getId()
+                                    && motion.getId() == player.getId()
                             || packet instanceof ClientboundDamageEventPacket damage
                                     && damage.entityId() == player.getId()
                             || packet instanceof ClientboundExplodePacket explosion
@@ -134,7 +134,11 @@ final class AutoSpearImpact {
                                                 || Targeting.isValidTargetPlayer(client, other)),
                         false);
         if (target == null) return;
-        var range = player.getAttackRangeWith(player.getMainHandItem());
+        var range =
+                player.getMainHandItem()
+                        .getOrDefault(
+                                net.minecraft.core.component.DataComponents.ATTACK_RANGE,
+                                net.minecraft.world.item.component.AttackRange.defaultFor(player));
         Vec3 burst =
                 plan(
                         eye,

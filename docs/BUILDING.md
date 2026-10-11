@@ -1,12 +1,12 @@
 # 构建与更新
 
-在仓库根目录运行 PowerShell。当前构建目标为 Minecraft **26.1.2、26.2、26.3、26.4-snapshot-1**；26.3 仅支持正式版，26.4 目前仅支持此快照。
+在仓库根目录运行 PowerShell。本 `legacy/1.21.11` 分支仅构建 **Minecraft 1.21.11 / Fabric Loader 0.19.3**，游戏使用 Java 21。
 
-仓库默认主分支为 `latest`，现代版本的自动打包使用该分支；Minecraft 1.8.9 使用独立的 `legacy/1.8.9` 分支。
+本分支从 `1.0.1.0-Release` 移植，保留 Scaffold / SilentAura 更新。`latest` 和 `legacy/1.8.9` 各自独立；已发布主分支制品不包含 1.21.11。
 
 ## 环境
 
-- Windows x64，JDK 25 或更高版本；`JAVA_HOME` 指向 JDK。
+- Windows x64，JDK 25 或更高版本用于 Gradle / JNI 构建，`JAVA_HOME` 指向该 JDK；另安装 JDK 21，验证任务自动选用 Java 21。Java / Kotlin 游戏载荷目标为 Java 21。
 - Visual Studio / Build Tools 的 C++ 桌面开发组件、Windows SDK 和 CMake 工具，用于 JNI 桥接 DLL。
 - .NET Framework 4.x 的 `csc.exe`，用于启动器。构建脚本自动查找 Windows 自带的位置。
 - 首次构建需要联网下载 Gradle 和依赖；缓存完整后才使用 `--offline`。
@@ -28,15 +28,15 @@ Set-Location E:\McEnv\moons
 | `moonsInstallExe` | `moon-install.exe`，安装/更新依赖，不加载游戏 |
 | `moonsPackages` | 安装器、加载器、UI 运行库、发行锁和离线留档 ZIP |
 | `moonsReleaseLock` | `moons-release-lock.json`、完整 SHA-256 文件与 `releases\<lock SHA-256>\` 冻结快照 |
-| `moonsReleaseArchive` | `moons-release-archive.zip`，包含匹配的 EXE、四版原始载荷及发行锁 |
+| `moonsReleaseArchive` | `moons-release-archive.zip`，包含匹配的 EXE、1.21.11 原始载荷及发行锁 |
 | `moonsUiRuntime` | `dependencies\moons-ui-runtime.jar` 及 SHA-256 文件 |
-| `ysmAllVersions` | `moons-ysm-all.zip` 和四个单版本 ZIP |
-| `ysmBundle -Pminecraft_version=26.2` | `moons-ysm-26.2.zip` |
-| `moonsJar -Pminecraft_version=26.2` | `agent\26_2\moons.jar`，由加载器加载 |
+| `ysmAllVersions` | `moons-ysm-all.zip` 和 `moons-ysm-1.21.11.zip` |
+| `ysmBundle -Pminecraft_version=1.21.11` | `moons-ysm-1.21.11.zip` |
+| `moonsJar -Pminecraft_version=1.21.11` | `agent\1_21_11\moons.jar`，由加载器加载 |
 
 ## 客户端与依赖版本
 
-四个维护目标由 `config/version-catalog.json` 统一声明，生成构建任务、启动器版本选择和资源索引。退役版登记为 legacy 并引用完整发行 lock 哈希，不使用当前工具链重编译；尚未实现的 special 不生成可用选项。发行锁记录实际制品的完整 SHA-256、大小、来源及依赖闭包；本地快照按完整 lock 哈希保存并校验，已有快照不会被新构建覆盖。载荷补丁重建的 ZIP 序列化可能不同于原始 JAR，因此原始制品哈希与加载器的重建配方分别记录。
+本分支的单个维护目标由 `config/version-catalog.json` 统一声明，生成构建任务、启动器版本选择和资源索引。退役版登记为 legacy 并引用完整发行 lock 哈希，不使用当前工具链重编译；尚未实现的 special 不生成可用选项。发行锁记录实际制品的完整 SHA-256、大小、来源及依赖闭包；本地快照按完整 lock 哈希保存并校验，已有快照不会被新构建覆盖。载荷补丁重建的 ZIP 序列化可能不同于原始 JAR，因此原始制品哈希与加载器的重建配方分别记录。
 
 安装器发布 `MOONS_HOME/installations/<依赖 SHA-256>/` 下的库、适配模块和各 profile 上下文。生产加载器选择游戏版本后，只检查该 profile 的 UI、三个 YSM 库及一个适配模块；把上下文路径和 SHA-256 交给 native/Java，运行时再次校验，不通过全局 current 指针选库。模块和模型数据仍使用原 `MOONS_HOME/data`。
 
@@ -82,8 +82,9 @@ Get-Item .\build\dist\moon.exe | Select-Object FullName, LastWriteTime, Length
 .\gradlew.bat checkAllVersions
 
 # 局部修改只跑相关检查
-.\gradlew.bat verifyYsmCore verifyYsmRenderSetup '-Pminecraft_version=26.3'
-.\gradlew.bat check '-Pminecraft_version=26.4-snapshot-1'
+.\gradlew.bat verifyYsmCore verifyYsmRenderSetup '-Pminecraft_version=1.21.11'
+.\gradlew.bat check '-Pminecraft_version=1.21.11'
+.\gradlew.bat verifyFabricTransformers verifyFabricPayload # Fabric 运行时名称、生产类与私有成员链接
 .\gradlew.bat verifyYsmCore '-Pysm_test_model=C:\Models\example.ysm'
 .\gradlew.bat verifyYsmPackage
 .\gradlew.bat verifyLauncherPackages # 隔离目录验证两个真实 EXE，不注入游戏

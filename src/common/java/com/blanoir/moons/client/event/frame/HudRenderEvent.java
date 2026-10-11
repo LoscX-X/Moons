@@ -1,6 +1,6 @@
 package com.blanoir.moons.client.event.frame;
 
 import net.minecraft.client.DeltaTracker;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 
-public record HudRenderEvent(GuiGraphicsExtractor graphics, DeltaTracker deltaTracker) {}
+public record HudRenderEvent(GuiGraphics graphics, DeltaTracker deltaTracker) {}

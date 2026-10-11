@@ -225,50 +225,29 @@ namespace Moons.WindowsLauncher
         private static int SelfTestVersionDetection()
         {
             bool passed = true;
-            passed &= String.Equals(MatchSupportedVersion(
-                "net.minecraft.client.main.Main --version 26.1.2"),
-                "26.1", StringComparison.Ordinal);
-            passed &= String.Equals(MatchSupportedVersion(
-                @"C:\Games\Minecraft\versions\26.2\client.jar"),
-                "26.2", StringComparison.Ordinal);
-            passed &= String.Equals(NormalizeConfiguredVersion("26.1"),
-                "26.1", StringComparison.Ordinal);
-            passed &= String.Equals(NormalizeConfiguredVersion("26.1.2"),
-                "26.1", StringComparison.Ordinal);
-            passed &= NormalizeConfiguredVersion("26.1.3") == null;
-            passed &= String.Equals(NormalizeConfiguredVersion("26.3"), "26.3", StringComparison.Ordinal);
-            passed &= String.Equals(MatchSupportedVersion("net.minecraft.client.main.Main --version 26.3"), "26.3", StringComparison.Ordinal);
-            passed &= String.Equals(MatchSupportedVersion(@"C:\Users\coffe\AppData\Roaming\.minecraft\versions\26.3\26.3.jar"), "26.3", StringComparison.Ordinal);
-            passed &= String.Equals(MatchSupportedVersion("26.3.jar"), "26.3", StringComparison.Ordinal);
-            passed &= String.Equals(NormalizeConfiguredVersion("26.4-snapshot-1"), "26.4-snapshot-1", StringComparison.Ordinal);
-            passed &= String.Equals(MatchSupportedVersion("net.minecraft.client.main.Main --version 26.4-snapshot-1"), "26.4-snapshot-1", StringComparison.Ordinal);
-            passed &= String.Equals(MatchSupportedVersion(@"C:\Users\coffe\AppData\Roaming\.minecraft\versions\26.4-snapshot-1\26.4-snapshot-1.jar"), "26.4-snapshot-1", StringComparison.Ordinal);
-            foreach (string unsupported in new[] { "26.4", "26.4-snapshot-2", "26.4-snapshot-10", "26.4-pre-1", "126.4-snapshot-1", "26.4-snapshot-1-custom" })
+            foreach (var profile in VersionCatalog.Profiles)
+            {
+                foreach (string alias in profile.Aliases)
+                    passed &= String.Equals(NormalizeConfiguredVersion(alias), profile.ArtifactId, StringComparison.Ordinal);
+                foreach (string evidence in new[] {
+                    "net.fabricmc.loader.impl.launch.knot.KnotClient --version " + profile.GameId,
+                    @"C:\Games\.minecraft\versions\" + profile.GameId + @"-Fabric 0.19.3\" + profile.GameId + ".jar" })
+                    passed &= String.Equals(MatchSupportedVersion(evidence), profile.ArtifactId, StringComparison.Ordinal);
+                foreach (string unsupported in new[] { "1" + profile.GameId, profile.GameId + "0", profile.GameId + ".1" })
+                    passed &= MatchSupportedVersion(unsupported) == null;
+            }
+            foreach (string unsupported in new[] { "1.21.10", "1.21.12", "1.21.11-pre-1", "1.21.11-rc-1", "26.1.2", "26.2", "26.3" })
             {
                 passed &= NormalizeConfiguredVersion(unsupported) == null;
                 passed &= MatchSupportedVersion(unsupported) == null;
             }
-            foreach (string unsupported in new[] { "26.3-pre-3", "26.3-rc-1", "26.3-rc-2", "26.3-rc-3",
-                "26.3-rc-30", "26.3-snapshot", "26.3-custom", "26.3.1", "126.3", "26.30", "26.3_custom" })
-            {
-                passed &= NormalizeConfiguredVersion(unsupported) == null;
-                passed &= MatchSupportedVersion(unsupported) == null;
-                passed &= MatchSupportedVersion(@"C:\Games\Minecraft\versions\" + unsupported + @"\" + unsupported + ".jar") == null;
-            }
-            passed &= MatchSupportedVersion("26.2 and 26.3") == null;
-            passed &= MatchSupportedVersion("26.3 and 26.4-snapshot-1") == null;
-            passed &= MatchSupportedVersion("Minecraft 1.21.5") == null;
-            passed &= MatchSupportedVersion("26.1.2 and 26.2") == null;
             passed &= IsMinecraftTargetEvidence(
                 @"C:\Users\player\.lunarclient\jre\runtime\bin\javaw.exe", "", "");
             passed &= IsMinecraftTargetEvidence(
-                @"C:\Program Files\Java\jdk-25\bin\java.exe", "",
-                "net.minecraft.client.main.Main --version 26.1.2");
-            passed &= !IsMinecraftTargetEvidence(
-                @"C:\Program Files\Java\jdk-25\bin\java.exe", "", "");
+                @"C:\Program Files\Java\jdk-21\bin\java.exe", "", "net.minecraft.client.main.Main --version 1.21.11");
+            passed &= !IsMinecraftTargetEvidence(@"C:\Program Files\Java\jdk-21\bin\java.exe", "", "");
             return passed ? 0 : 3;
         }
-
         private static void Execute(
             string[] arguments,
             Action<int, string> progress,

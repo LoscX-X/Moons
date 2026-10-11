@@ -28,7 +28,6 @@ import com.mojang.blaze3d.platform.InputConstants;
 
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
-import net.minecraft.network.protocol.game.ServerboundAttackPacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.world.entity.Entity;
@@ -163,8 +162,8 @@ public final class AutoBlock {
                             && action.getAction()
                                     == ServerboundPlayerActionPacket.Action.RELEASE_USE_ITEM)
                         releasedTick = tickId;
-                    else if (event.packet() instanceof ServerboundAttackPacket)
-                        attackedTick = tickId;
+                    else if (com.blanoir.moons.client.access.PacketAccess.isAttackPacket(
+                            event.packet())) attackedTick = tickId;
                 });
     }
 

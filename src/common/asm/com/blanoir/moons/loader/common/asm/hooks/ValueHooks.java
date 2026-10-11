@@ -281,7 +281,30 @@ final class ValueHooks {
                                                         && candidate.desc.equals("F"))
                                 .findFirst()
                                 .orElse(null);
-        if (local == null) return false;
+        if (local == null) {
+            // Obfuscated releases omit descriptive local names. Anchor to the gamma option's
+            // float conversion instead of depending on a numeric local slot.
+            boolean gamma = false;
+            for (var instruction : method.instructions.toArray()) {
+                if (instruction instanceof MethodInsnNode invocation
+                        && invocation.owner.equals("net/minecraft/client/Options")
+                        && invocation.name.equals("gamma")) gamma = true;
+                if (gamma
+                        && instruction instanceof VarInsnNode variable
+                        && variable.getOpcode() == Opcodes.FSTORE) {
+                    var hook = new InsnList();
+                    hook.add(new LdcInsnNode(id));
+                    hook.add(new VarInsnNode(Opcodes.ALOAD, 0));
+                    hook.add(new InsnNode(Opcodes.FCONST_0));
+                    hook.add(new VarInsnNode(Opcodes.FLOAD, variable.var));
+                    hook.add(call("onFloatValue", "(Ljava/lang/String;Ljava/lang/Object;FF)F"));
+                    hook.add(new VarInsnNode(Opcodes.FSTORE, variable.var));
+                    method.instructions.insert(variable, hook);
+                    return true;
+                }
+            }
+            return false;
+        }
         AbstractInsnNode store = local.start.getPrevious();
         while (store != null
                 && !(store instanceof VarInsnNode variable

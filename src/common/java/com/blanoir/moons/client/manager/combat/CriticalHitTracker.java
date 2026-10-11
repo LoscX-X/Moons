@@ -5,7 +5,7 @@ import com.blanoir.moons.client.event.EventBus;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.protocol.game.ClientboundDamageEventPacket;
-import net.minecraft.network.protocol.game.ServerboundAttackPacket;
+import net.minecraft.network.protocol.game.ServerboundInteractPacket;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 
@@ -38,15 +38,25 @@ public final class CriticalHitTracker {
         EventBus.PACKET_SEND_PRE.register(
                 "CriticalHitTracker.attackSending",
                 event -> {
-                    if (event.packet() instanceof ServerboundAttackPacket attack) {
-                        recordAttackSendPre(event.packet(), attack.entityId());
+                    if (event.packet() instanceof ServerboundInteractPacket attack
+                            && com.blanoir.moons.client.access.PacketAccess.isAttackPacket(
+                                    attack)) {
+                        recordAttackSendPre(
+                                event.packet(),
+                                com.blanoir.moons.client.access.PacketAccess.attackEntityId(
+                                        attack));
                     }
                 });
         EventBus.PACKET_SEND_POST.register(
                 "CriticalHitTracker.attackSent",
                 event -> {
-                    if (event.packet() instanceof ServerboundAttackPacket attack) {
-                        recordAttackSendPost(event.packet(), attack.entityId());
+                    if (event.packet() instanceof ServerboundInteractPacket attack
+                            && com.blanoir.moons.client.access.PacketAccess.isAttackPacket(
+                                    attack)) {
+                        recordAttackSendPost(
+                                event.packet(),
+                                com.blanoir.moons.client.access.PacketAccess.attackEntityId(
+                                        attack));
                     }
                 });
         EventBus.PACKET_RECEIVE_APPLY.register(

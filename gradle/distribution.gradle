@@ -195,7 +195,7 @@ def registerLauncher = { String taskName, String fileName, boolean installer ->
         group = 'build'
         description = installer ? 'Builds the dependency installer/updater.' : 'Builds the game loader using installed dependencies.'
         dependsOn launcherVersionMetadata, 'launcherVersionCatalog'
-        if (!installer) dependsOn patchTasks, apiJar, bridgeDll, moonsHwidExe
+        if (!installer) dependsOn payloadTasks.values(), patchTasks, apiJar, bridgeDll, moonsHwidExe
         def sources = files(
                 'src/tools/common/Hashing.cs', 'src/tools/common/StagedFile.cs', 'src/tools/common/DirectoryJunction.cs',
                 'src/tools/launcher/csharp/RuntimeMetadata.cs',

@@ -51,9 +51,7 @@ private fun registryEntry(type: String, id: String): RegistryEntry {
             BuiltInRegistries.ENTITY_TYPE.getOptional(key)
                 .map { entity ->
                     RegistryEntry(id, entity.description.string) {
-                        SpawnEggItem.byId(entity)
-                            .map { it.value().defaultInstance }
-                            .orElse(ItemStack.EMPTY)
+                        SpawnEggItem.byId(entity)?.defaultInstance ?: ItemStack.EMPTY
                     }
                 }
                 .orElse(null)

@@ -47,7 +47,7 @@ internal class ItemIconCache(private val capacity: Int = 128) {
 
     fun prepareFrame() {
         val client = Minecraft.getInstance()
-        val current = client.modelManager.blockStateModelSet
+        val current = client.modelManager.missingBlockStateModel
         if (models !== current || level !== client.level) {
             clear()
             models = current

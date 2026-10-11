@@ -3,8 +3,6 @@ package com.blanoir.moons.client.utils.prediction;
 import net.minecraft.SharedConstants;
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderLookup;
-import net.minecraft.core.component.DataComponentMap;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.data.registries.VanillaRegistries;
 import net.minecraft.server.Bootstrap;
@@ -29,7 +27,6 @@ import net.minecraft.world.entity.vehicle.minecart.MinecartTNT;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.enchantment.Enchantments;
-import net.minecraft.world.item.enchantment.ItemEnchantments;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -83,13 +80,6 @@ public final class DamagePredictionVerification {
                 "Diamond armor and toughness");
         close(DamagePrediction.effectiveDamage(player, fall, 20), 20, "Fall damage bypasses armor");
         var enchantments = lookup.lookupOrThrow(Registries.ENCHANTMENT);
-        Items.DIAMOND_BOOTS
-                .builtInRegistryHolder()
-                .bindComponents(
-                        DataComponentMap.builder()
-                                .set(DataComponents.MAX_STACK_SIZE, 1)
-                                .set(DataComponents.ENCHANTMENTS, ItemEnchantments.EMPTY)
-                                .build());
         for (EquipmentSlot slot :
                 new EquipmentSlot[] {
                     EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET
@@ -317,8 +307,8 @@ public final class DamagePredictionVerification {
         }
 
         @Override
-        public boolean is(TagKey<EntityType<?>> tag) {
-            return false;
+        public EntityType<?> getType() {
+            return EntityType.PLAYER;
         }
 
         @Override

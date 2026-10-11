@@ -118,13 +118,22 @@ tasks.register('verifyYsmQueries', JavaExec) {
     workingDir layout.buildDirectory.get().asFile
 }
 
-tasks.register('ysmJar', Jar) {
+def ysmNamedJar = tasks.register('ysmNamedJar', Jar) {
     group = 'build'
     description = "Builds the independent Fabric-free YSM module for Minecraft ${ysmVersion}."
     dependsOn tasks.named('ysmClasses')
     archiveFileName = "moons-ysm-${ysmVersion}.jar"
-    destinationDirectory = layout.buildDirectory.dir("dist/modules/${ysmDirectory}")
+    destinationDirectory = layout.buildDirectory.dir("dist/modules/${ysmDirectory}/named")
     from sourceSets.ysm.output
+}
+
+tasks.register('ysmJar', moonsPluginTypes.remapJar) {
+    dependsOn ysmNamedJar
+    inputFile = ysmNamedJar.flatMap { it.archiveFile }
+    archiveFileName = "moons-ysm-${ysmVersion}.jar"
+    destinationDirectory = layout.buildDirectory.dir("dist/modules/${ysmDirectory}")
+    addNestedDependencies = false
+    classpath.from(sourceSets.ysm.compileClasspath)
 }
 
 tasks.register('ysmBundle', Zip) {
@@ -133,7 +142,7 @@ tasks.register('ysmBundle', Zip) {
     archiveFileName = "moons-ysm-${ysmVersion}.zip"
     destinationDirectory = layout.buildDirectory.dir('dist')
     into('libraries') { from coreJar.flatMap { it.archiveFile }; from codecsJar.flatMap { it.archiveFile }; from imagesJar.flatMap { it.archiveFile } }
-    into('modules') { from tasks.named('ysmJar', Jar).flatMap { it.archiveFile } }
+    into('modules') { from tasks.named('ysmJar').flatMap { it.archiveFile } }
 }
 
 tasks.named('check') {

@@ -3,10 +3,10 @@ package com.blanoir.moons.client.module.impl.render.xray;
 import com.blanoir.moons.client.render.item.NativeItemIconCapture;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.block.dispatch.BlockStateModelPart;
+import net.minecraft.client.renderer.block.model.BakedQuad;
+import net.minecraft.client.renderer.block.model.BlockModelPart;
+import net.minecraft.client.renderer.block.model.ItemTransform;
 import net.minecraft.client.renderer.item.TrackingItemStackRenderState;
-import net.minecraft.client.resources.model.cuboid.ItemTransform;
-import net.minecraft.client.resources.model.geometry.BakedQuad;
 import net.minecraft.core.Direction;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.util.RandomSource;
@@ -26,7 +26,7 @@ public final class PluginBlockPreviewModel {
 
     public static TrackingItemStackRenderState create(BlockState block) {
         var client = Minecraft.getInstance();
-        var model = client.getModelManager().getBlockStateModelSet().get(block);
+        var model = client.getModelManager().getBlockModelShaper().getBlockModel(block);
         var state = new TrackingItemStackRenderState();
         // A model-less stack initializes GUI context without adding the carrier's item geometry.
         var context = new ItemStack(Items.STONE);
@@ -36,7 +36,7 @@ public final class PluginBlockPreviewModel {
                         state, context, ItemDisplayContext.GUI, client.level, client.player, 0);
         state.appendModelIdentityElement(block);
         state.appendModelIdentityElement(model);
-        var parts = new ArrayList<BlockStateModelPart>();
+        var parts = new ArrayList<BlockModelPart>();
         model.collectParts(RandomSource.create(42), parts);
         var quads = new ArrayList<BakedQuad>();
         for (var part : parts) {
@@ -46,7 +46,10 @@ public final class PluginBlockPreviewModel {
         if (quads.isEmpty()) return state;
         var layer = state.newLayer();
         NativeItemIconCapture.setQuads(layer, quads);
-        layer.setParticleMaterial(model.particleMaterial());
+        layer.setParticleIcon(model.particleIcon());
+        layer.setRenderType(
+                net.minecraft.client.renderer.rendertype.RenderTypes.itemEntityTranslucentCull(
+                        net.minecraft.client.renderer.texture.TextureAtlas.LOCATION_BLOCKS));
         layer.setUsesBlockLight(true);
         // Fit large custom models as well as ordinary cubes inside the thumbnail.
         var minimum = new Vector3f(Float.POSITIVE_INFINITY);
@@ -60,21 +63,22 @@ public final class PluginBlockPreviewModel {
                 maximum.max(point);
                 extents.add(point);
             }
-            maxTint = Math.max(maxTint, quad.materialInfo().tintIndex());
+            maxTint = Math.max(maxTint, quad.tintIndex());
         }
         Vector3f center = new Vector3f(minimum).add(maximum).mul(0.5f);
         Vector3f dimensions = new Vector3f(maximum).sub(minimum);
         float scale =
                 0.58f / Math.max(1f, Math.max(dimensions.x, Math.max(dimensions.y, dimensions.z)));
-        layer.setItemTransform(
-                new ItemTransform(new Vector3f(30, 225, 0), new Vector3f(), new Vector3f(scale)));
-        layer.setLocalTransform(
-                new org.joml.Matrix4f().translation(new Vector3f(0.5f).sub(center)));
+        layer.setTransform(
+                new ItemTransform(
+                        new Vector3f(30, 225, 0),
+                        new Vector3f(0.5f).sub(center).mul(scale),
+                        new Vector3f(scale)));
         layer.setExtents(() -> extents.toArray(Vector3fc[]::new));
-        for (int tint = 0; tint <= Math.min(maxTint, 255); tint++) {
-            var source = client.getBlockColors().getTintSource(block, tint);
-            int rgb = source == null ? 0xffffff : source.color(block);
-            layer.tintLayers().add(rgb | 0xff000000);
+        int[] tints = layer.prepareTintLayers(Math.min(maxTint, 255) + 1);
+        for (int tint = 0; tint < tints.length; tint++) {
+            int rgb = client.getBlockColors().getColor(block, null, null, tint);
+            tints[tint] = rgb | 0xff000000;
         }
         return state;
     }

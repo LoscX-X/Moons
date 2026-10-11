@@ -29,7 +29,7 @@ final class RenderHooks {
             for (AbstractInsnNode instruction : method.instructions.toArray()) {
                 if (instruction instanceof TypeInsnNode type
                         && instruction.getOpcode() == Opcodes.NEW
-                        && type.desc.equals("net/minecraft/client/gui/GuiGraphicsExtractor")) {
+                        && type.desc.equals("net/minecraft/client/gui/GuiGraphics")) {
                     constructingExtractor = true;
                     continue;
                 }
@@ -50,7 +50,7 @@ final class RenderHooks {
                     InsnList hook = new InsnList();
                     hook.add(new VarInsnNode(Opcodes.ALOAD, 0));
                     if (method.desc.equals("(Lnet/minecraft/client/DeltaTracker;ZZ)V")) {
-                        // 26.2 moved GuiGraphicsExtractor from a method parameter to a
+                        // 26.2 moved GuiGraphics from a method parameter to a
                         // local created inside Gui.extractRenderState.
                         hook.add(new VarInsnNode(Opcodes.ALOAD, resolvedExtractorSlot));
                         hook.add(new VarInsnNode(Opcodes.ALOAD, 1));
@@ -139,7 +139,8 @@ final class RenderHooks {
         for (AbstractInsnNode instruction : method.instructions.toArray()) {
             if (!collectLoaded
                     && instruction instanceof LdcInsnNode constant
-                    && "renderSolidFeatures".equals(constant.cst)) {
+                    && ("renderSolidFeatures".equals(constant.cst)
+                            || "renderFeatures".equals(constant.cst))) {
                 AbstractInsnNode insertionPoint = constant.getPrevious();
                 while (insertionPoint != null
                         && (insertionPoint.getType() == AbstractInsnNode.LABEL

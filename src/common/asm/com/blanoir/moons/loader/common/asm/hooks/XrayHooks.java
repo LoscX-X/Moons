@@ -25,15 +25,25 @@ final class XrayHooks {
         hook.add(new VarInsnNode(Opcodes.ALOAD, 0));
         hook.add(new InsnNode(Opcodes.ICONST_3));
         hook.add(new TypeInsnNode(Opcodes.ANEWARRAY, "java/lang/Object"));
-        addArrayValue(hook, 0, 5);
-        addArrayValue(hook, 1, 6);
-        addArrayValue(hook, 2, 7);
+        addArrayValue(hook, 0, 1);
+        addArrayValue(hook, 1, 4);
+        addArrayValue(hook, 2, 3);
         hook.add(new InsnNode(Opcodes.ICONST_1));
         hook.add(
                 call(
                         "onBooleanValue",
                         "(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;Z)Z"));
         appendVoidCancellation(hook);
+        hook.add(new LdcInsnNode("xray.consumer"));
+        hook.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        hook.add(new InsnNode(Opcodes.ACONST_NULL));
+        hook.add(new VarInsnNode(Opcodes.ALOAD, 6));
+        hook.add(
+                call(
+                        "onObjectValue",
+                        "(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;"));
+        hook.add(new TypeInsnNode(Opcodes.CHECKCAST, "com/mojang/blaze3d/vertex/VertexConsumer"));
+        hook.add(new VarInsnNode(Opcodes.ASTORE, 6));
         method.instructions.insert(guardHook(id, hook));
         beforeReturns(
                 method,

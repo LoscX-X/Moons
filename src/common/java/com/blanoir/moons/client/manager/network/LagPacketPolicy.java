@@ -12,7 +12,6 @@ import net.minecraft.network.protocol.game.ClientboundPlayerPositionPacket;
 import net.minecraft.network.protocol.game.ClientboundRespawnPacket;
 import net.minecraft.network.protocol.game.ClientboundSetEntityMotionPacket;
 import net.minecraft.network.protocol.game.ClientboundSetHealthPacket;
-import net.minecraft.network.protocol.game.ServerboundAttackPacket;
 import net.minecraft.network.protocol.game.ServerboundContainerButtonClickPacket;
 import net.minecraft.network.protocol.game.ServerboundContainerClickPacket;
 import net.minecraft.network.protocol.game.ServerboundContainerClosePacket;
@@ -31,8 +30,7 @@ public final class LagPacketPolicy {
     private LagPacketPolicy() {}
 
     public static boolean mustFlushBefore(Packet<?> packet) {
-        return packet instanceof ServerboundAttackPacket
-                || packet instanceof ServerboundInteractPacket
+        return packet instanceof ServerboundInteractPacket
                 || PacketAccess.isSwingPacket(packet)
                 || packet instanceof ServerboundUseItemOnPacket
                 || packet instanceof ServerboundUseItemPacket
@@ -64,11 +62,11 @@ public final class LagPacketPolicy {
             return true;
         }
 
-        if (packet instanceof ClientboundSetEntityMotionPacket(int id, Vec3 movement)) {
+        if (packet instanceof ClientboundSetEntityMotionPacket motion) {
             return client != null
                     && currentPlayer != null
-                    && id == currentPlayer.getId()
-                    && !movement.equals(Vec3.ZERO);
+                    && motion.getId() == currentPlayer.getId()
+                    && !motion.getMovement().equals(Vec3.ZERO);
         }
 
         return packet instanceof ClientboundExplodePacket explosion

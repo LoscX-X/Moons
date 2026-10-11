@@ -33,15 +33,13 @@ Moons is a free, open-source Minecraft Java Edition injection client for Windows
 >
 > **Provided as is; users bear the risks of use to the extent permitted by law.** Read the [full disclaimer](docs/DISCLAIMER.md) before use. Non-excludable liability and statutory rights remain unaffected.
 
-Supports **26.1.2**, **26.2**, **26.3**, and **26.4-snapshot-1**.
+This `legacy/1.21.11` branch targets **Minecraft 1.21.11 with Fabric Loader 0.19.3**, running on **Java 21**.
 
 ## Version Support
 
-The [`latest`](https://github.com/LoscX-X/Moons/tree/latest) branch maintains four Minecraft version profiles: **26.1.2**, **26.2**, **26.3**, and **26.4-snapshot-1**. As new profiles are added, older profiles leave this maintenance window.
+This branch backports `1.0.1.0-Release`, including the shared Scaffold/SilentAura aim motion, to a single Minecraft target. Fabric bytecode hooks, production module linkage and installer/loader packages are checked automatically; in-game visuals and behavior still require game testing. Build this branch's matching installer and loader using the instructions below.
 
-Snapshots, pre-releases and release candidates are supported only for the newest upcoming Minecraft version, using the exact build listed above. Support for one preview build does not imply support for other previews.
-
-Older preview builds and retired Minecraft versions may remain available through historical releases or CI artifacts, but receive no further fixes or compatibility updates.
+The [`latest`](https://github.com/LoscX-X/Moons/tree/latest) branch maintains **26.1.2**, **26.2**, **26.3**, and **26.4-snapshot-1**. Its published `1.0.1.0-Release` packages do not contain this 1.21.11 backport.
 
 Minecraft **1.8.9** is developed separately on [`legacy/1.8.9`](https://github.com/LoscX-X/Moons/tree/legacy/1.8.9), pending game testing. Users must build that branch themselves; see its README and build instructions. It is outside the four-profile window and is not included in the main installer or loader.
 
@@ -58,7 +56,7 @@ Moons client versions use **`X.Y.Z.x-Experiment`** or **`X.Y.Z.x-Release`**, for
 
 ## How to Use
 
-1. Download `moon-install-<version>-<commit>.exe` and `moon-<version>-<commit>.exe` from the same [release](https://github.com/LoscX-X/Moons/releases).
+1. Build `moon-install.exe` and `moon.exe` together from this branch. Main-branch release packages target different Minecraft versions.
 2. Run the installer, select your Minecraft version, and click **Install** to install its dependencies.
 3. Start a supported Minecraft version, then run the loader to select the game and load Moons.
 4. Press **Right Shift** to open ClickGUI (default binding).
@@ -81,7 +79,7 @@ Dependencies are isolated under `libraries/latest/<game-version>` or `libraries/
 
 ## How to Build
 
-Prepare Windows x64, JDK 25 and the native build tools listed in [BUILDING.md](docs/BUILDING.md). Open PowerShell in the project folder:
+Prepare Windows x64, JDK 25 for Gradle/native builds, JDK 21 for verification, and the native build tools listed in [BUILDING.md](docs/BUILDING.md). The game payload targets Java 21. Open PowerShell in the project folder:
 
 ```powershell
 .\gradlew.bat moonsPackages

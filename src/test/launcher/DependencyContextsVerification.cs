@@ -13,6 +13,8 @@ internal static class DependencyContextsVerification
         Directory.CreateDirectory(home);
         var first = Install(home, "A");
         var profile = VersionCatalog.Profiles[0];
+        var otherProfile = VersionCatalog.Profiles.Length > 1 ? VersionCatalog.Profiles[1] :
+            new SupportProfile("fixture_other", "1.21.10", "1.21.10", "active", "", "^$", new[] { "1.21.10" }, profile.JavaVersion);
         var a = DependencyRuntime.Resolve(home, profile, first.Item1, first.Item2);
         string legacyA = DependencyRuntime.LegacyView(home, first.Item1, first.Item2);
         DependencyRuntime.Verify(legacyA, first.Item1, first.Item2);
@@ -29,10 +31,12 @@ internal static class DependencyContextsVerification
         Check(a.Path == again.Path && a.Hash == again.Hash && a.Path != b.Path, "A -> B -> A context changed");
         Check(Hashing.Sha256(oldBytes) == Hashing.Sha256(a.Path), "Old context was overwritten");
         string rootB = DependencyRuntime.ViewRoot(home, second.Item1, second.Item2);
-        string otherAdapter = Path.Combine(rootB, VersionCatalog.Profiles[1].YsmModuleName.Replace('/', Path.DirectorySeparatorChar));
-        File.Delete(otherAdapter);
-        DependencyRuntime.Resolve(home, profile, second.Item1, second.Item2);
-        ExpectFailure(() => DependencyRuntime.Resolve(home, VersionCatalog.Profiles[1], second.Item1, second.Item2));
+        if (VersionCatalog.Profiles.Length > 1) {
+            string otherAdapter = Path.Combine(rootB, otherProfile.YsmModuleName.Replace('/', Path.DirectorySeparatorChar));
+            File.Delete(otherAdapter);
+            DependencyRuntime.Resolve(home, profile, second.Item1, second.Item2);
+            ExpectFailure(() => DependencyRuntime.Resolve(home, otherProfile, second.Item1, second.Item2));
+        }
         string core = Path.Combine(rootB, "libraries", "moons-ysm-core.jar");
         File.WriteAllText(core, "broken");
         ExpectFailure(() => DependencyRuntime.Resolve(home, profile, second.Item1, second.Item2));
@@ -47,11 +51,11 @@ internal static class DependencyContextsVerification
         Check(File.Exists(firstUi), "GC removed UI retained by an older context");
         DependencyRuntime.Resolve(home, profile, first.Item1, first.Item2);
         var selectedA = InstallSelected(home, profile, "selected-A");
-        var selectedB = InstallSelected(home, VersionCatalog.Profiles[1], "selected-B");
+        var selectedB = InstallSelected(home, otherProfile, "selected-B");
         var independentA = DependencyRuntime.Resolve(home, profile, selectedA.Item1, selectedA.Item2);
-        var independentB = DependencyRuntime.Resolve(home, VersionCatalog.Profiles[1], selectedB.Item1, selectedB.Item2);
+        var independentB = DependencyRuntime.Resolve(home, otherProfile, selectedB.Item1, selectedB.Item2);
         Check(independentA.Path.Contains("libraries\\latest\\" + profile.GameId), "Latest package is not grouped by game version");
-        Check(!File.Exists(Path.Combine(DependencyRuntime.SelectedRoot(home, profile, selectedA.Item1, selectedA.Item2), VersionCatalog.Profiles[1].YsmModuleName)), "Unselected adapter installed");
+        Check(!File.Exists(Path.Combine(DependencyRuntime.SelectedRoot(home, profile, selectedA.Item1, selectedA.Item2), otherProfile.YsmModuleName)), "Unselected adapter installed");
         var legacyProfile = new SupportProfile("1_8_9", "1.8.9", "1.8.9", "legacy", "", "^$", new[] { "1.8.9" }, 8);
         var selectedLegacy = InstallSelected(home, legacyProfile, "java8-legacy");
         var legacyContext = DependencyRuntime.Resolve(home, legacyProfile, selectedLegacy.Item1, selectedLegacy.Item2);
@@ -63,7 +67,7 @@ internal static class DependencyContextsVerification
         var retired = DependencyRuntime.Resolve(home, profile, selectedA.Item1, selectedA.Item2);
         Check(retired.Path.Contains("libraries\\legacy\\" + profile.GameId) && retired.Hash == independentA.Hash
             && Hashing.Sha256(originalManifest) == Hashing.Sha256(retired.Path), "Retirement rewrote dependency manifests");
-        DependencyRuntime.Resolve(home, VersionCatalog.Profiles[1], selectedB.Item1, selectedB.Item2);
+        DependencyRuntime.Resolve(home, otherProfile, selectedB.Item1, selectedB.Item2);
         string handoff = Path.Combine(args[0], "dependency-fixture.properties");
         File.WriteAllText(handoff, "home=" + home + "\nmanifest=" + retired.Path + "\nhash=" + retired.Hash + "\nprofile=" + profile.GameId + "\n", new UTF8Encoding(false));
         Console.WriteLine("MOONS_DEPENDENCY_CONTEXTS_VERIFIED A-B-A profile-closure corruption-repair old-ui-retention unicode independent-selected legacy-java8 immutable-retirement");

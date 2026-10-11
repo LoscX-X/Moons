@@ -330,6 +330,34 @@
           "text": "中英文项目首页新增 Moe Counter 萌系访问计数器，共用计数并注明累计图片请求次数，非去重访客人数。"
         }
       ]
+    },
+    {
+      "id": "2026-10-08-01",
+      "summary": "10 月 8 日 SilentAura 与官网更新",
+      "changes": [
+        {
+          "type": "feat",
+          "text": "SilentAura 新增可关闭的统一 Packet planner，Lock、Balance、FullLock 与 Learned Assist 共用实际发包步长连续规划；支持 1–5 tick 滚动到达时间，Predict 变化和近身限速不再重启或硬裁轨迹，最终鼠标 GCD 取整也保持在加速度包络内。"
+        },
+        {
+          "type": "docs",
+          "text": "中英文官网新增静态最近更新日志，区分开发中内容与已发布 Experiment 版本；支持列表补充独立 legacy/1.8.9 分支，并明确待游戏实测、需自行构建且不包含在主发行包中。"
+        }
+      ]
+    },
+    {
+      "id": "2026-10-11-01",
+      "summary": "1.0.1.0-Release：Scaffold 寻点与旋转更新",
+      "changes": [
+        {
+          "type": "fix",
+          "text": "Scaffold 复用 SilentAura 的连续空间抖动与发包旋转规划：在可点击面内变化落点，Smooth 按实际已发送角度连续加减速，量化与重复角度备选遵守旋转预算；保留射线回退、GodBridge 方向与垂直 Tower 约束。"
+        },
+        {
+          "type": "build",
+          "text": "发布 1.0.1.0-Release 正式版，安装器与加载器使用同次构建，GitHub Release 标记为 Latest。"
+        }
+      ]
     }
   ]
 }

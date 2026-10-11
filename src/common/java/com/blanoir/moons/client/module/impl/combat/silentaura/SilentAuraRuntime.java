@@ -26,6 +26,8 @@ public final class SilentAuraRuntime {
     private static boolean stopping;
     private static String activeMode;
     private static boolean activeMatrix;
+    private static boolean activePacketPlanner;
+    private static int activePacketPlannerTicks;
     private static SentRotation sent = SentRotation.invalid();
     private static final RotationLease ROTATION_LEASE =
             new RotationLease(
@@ -63,10 +65,14 @@ public final class SilentAuraRuntime {
         }
         running = true;
         if (!SilentAuraConfig.aimMode().equals(activeMode)
-                || SilentAuraConfig.matrixCompatibility() != activeMatrix) {
+                || SilentAuraConfig.matrixCompatibility() != activeMatrix
+                || SilentAuraConfig.packetPlanner() != activePacketPlanner
+                || SilentAuraConfig.packetPlannerTicks() != activePacketPlannerTicks) {
             resetTargeting();
             activeMode = SilentAuraConfig.aimMode();
             activeMatrix = SilentAuraConfig.matrixCompatibility();
+            activePacketPlanner = SilentAuraConfig.packetPlanner();
+            activePacketPlannerTicks = SilentAuraConfig.packetPlannerTicks();
         }
         if (externallyPreempted()) {
             pauseForExternalRotation();
@@ -173,7 +179,9 @@ public final class SilentAuraRuntime {
                 && canApply(client)
                 && MODES.rotation().active()
                 && SilentAuraConfig.aimMode().equals(activeMode)
-                && SilentAuraConfig.matrixCompatibility() == activeMatrix;
+                && SilentAuraConfig.matrixCompatibility() == activeMatrix
+                && SilentAuraConfig.packetPlanner() == activePacketPlanner
+                && SilentAuraConfig.packetPlannerTicks() == activePacketPlannerTicks;
     }
 
     public static boolean shouldCorrectMovement() {

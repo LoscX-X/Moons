@@ -225,6 +225,7 @@ public final class ScaffoldManager {
     private static float renderYaw;
     private static float renderPitch;
     private static final PlacementRotations PLACEMENT_ROTATIONS = new PlacementRotations();
+    private static final ScaffoldAimMotion AIM_MOTION = new ScaffoldAimMotion();
     private static Object placementRotationConnection;
     private static boolean silentInputAllowsSprint = true;
     private static double lastServerX;
@@ -358,6 +359,7 @@ public final class ScaffoldManager {
                 new RotationRequest(camera.yaw(), camera.pitch(), 1, .35F, null),
                 camera,
                 start -> {
+                    AIM_MOTION.rebase(start);
                     outgoingYaw = renderYaw = start.yaw();
                     outgoingPitch = renderPitch = start.pitch();
                     rotationInitialized =
@@ -424,6 +426,7 @@ public final class ScaffoldManager {
         }
         if (!(event.packet() instanceof ServerboundMovePlayerPacket movement)) return;
         if (!RotationManager.observed(event.packet())) return;
+        if (ROTATION.active()) AIM_MOTION.confirm(RotationManager.latest().rotation());
 
         double fallbackX = serverPositionValid ? lastServerX : currentPlayer.getX();
         double fallbackY = serverPositionValid ? lastServerY : currentPlayer.getY();
@@ -749,10 +752,24 @@ public final class ScaffoldManager {
                             placementBasePitch(client), rotation.pitch());
             publishTellyRotation(client, yaw, pitch);
         } else if (!rotationInitialized) {
-            publishTellyRotation(client, client.player.getYRot() + 180.0F, 80.0F);
+            publishTellyRotation(client, sentYaw(), sentPitch());
         }
         ROTATION.acquire(new RotationRequest(outgoingYaw, outgoingPitch, 1, .35F, null));
         if (blockCount <= 0 || !godBridgeMode() && tellyFeetCovered(client)) {
+            if (!godBridgeMode() && !placementRotationStarted) {
+                Rotation backward = new Rotation(client.player.getYRot() + 180.0F, 80.0F);
+                if (TELLY_ROTATION.get() == TellyRotation.SMOOTH) {
+                    backward =
+                            AIM_MOTION.sample(
+                                    client.player.tickCount,
+                                    backward,
+                                    client.options.sensitivity().get(),
+                                    TELLY_START_SPEED.get(),
+                                    2);
+                }
+                publishTellyRotation(client, backward.yaw(), backward.pitch());
+                ROTATION.acquire(new RotationRequest(outgoingYaw, outgoingPitch, 1, .35F, null));
+            }
             clearTellyAim();
             transitionTelly(TellyPhase.SELECT_POINT, "jump; holding backward view");
             return;
@@ -981,6 +998,11 @@ public final class ScaffoldManager {
 
         transitionTelly(TellyPhase.PLACE, "rotation ready");
         Rotation finalRotation = packetRotation();
+        if (smoothPlacementMotion(verticalTower)
+                && !AIM_MOTION.accepts(client.player.tickCount, finalRotation)) {
+            tellyDebugReason = "committed rotation outside packet motion budget; retry next tick";
+            return;
+        }
         if (PLACEMENT_ROTATIONS.wouldRepeatNext(finalRotation.yaw())) {
             // MoveFix can freeze an older candidate before the varied angle is published.
             // That frozen look also needs validation: changing only the requested angle
@@ -1025,45 +1047,14 @@ public final class ScaffoldManager {
     }
 
     /**
-     * Publishes a micro-jittered placement rotation. The jitter is re-traced so
-     * a rotation which no longer intersects the frozen face can never unlock
-     * PLACE.
+     * Publishes the point-derived rotation. Duplicate-delta alternatives must satisfy
+     * both the final packet motion budget and the selected face's ray test.
      */
     private static PlacementStep publishPlacementRotation(
             Minecraft client, PlacementStep step, boolean verticalTower) {
         float pubYaw = step.rotation().yaw();
         float pubPitch = step.rotation().pitch();
         BlockHitResult hit = step.hit();
-        if (!verticalTower && !jumpMode()) {
-            double traceRange = client.player.blockInteractionRange();
-            float jitteredYaw =
-                    SilentPacketRotation.quantizePacketYaw(
-                            pubYaw, pubYaw + SilentPacketRotation.packetRotationJitter());
-            float jitteredPitch =
-                    SilentPacketRotation.quantizePacketPitch(
-                            pubPitch, pubPitch + SilentPacketRotation.packetRotationJitter());
-            if (jitteredYaw != pubYaw || jitteredPitch != pubPitch) {
-                BlockHitResult jitterHit =
-                        hit == null
-                                ? null
-                                : RAYS.traceFace(
-                                        client,
-                                        client.player.getEyePosition(),
-                                        jitteredYaw,
-                                        jitteredPitch,
-                                        traceRange,
-                                        step.target().support(),
-                                        step.target().face());
-                if (jitterHit != null) {
-                    pubYaw = jitteredYaw;
-                    pubPitch = jitteredPitch;
-                    hit = jitterHit;
-                } else if (hit == null) {
-                    pubYaw = jitteredYaw;
-                    pubPitch = jitteredPitch;
-                }
-            }
-        }
         final float checkedPitch = pubPitch;
         final boolean requireHit = hit != null;
         Float variedYaw =
@@ -1072,6 +1063,12 @@ public final class ScaffoldManager {
                         SilentPacketRotation.packetRotationJitter(),
                         yaw -> SilentPacketRotation.quantizePacketYaw(sentYaw(), yaw),
                         yaw -> {
+                            if (smoothPlacementMotion(verticalTower)
+                                    && !AIM_MOTION.accepts(
+                                            client.player.tickCount,
+                                            new Rotation(yaw, checkedPitch))) {
+                                return false;
+                            }
                             if (!requireHit) return true;
                             BlockHitResult candidateHit =
                                     RAYS.traceFace(
@@ -1112,6 +1109,15 @@ public final class ScaffoldManager {
     }
 
     private static boolean publishSettlingRotation(Minecraft client, boolean verticalTower) {
+        if (smoothPlacementMotion(verticalTower)) {
+            Rotation pending = AIM_MOTION.pending(client.player.tickCount);
+            if (pending != null) {
+                // Send the already-budgeted look without placing; no post-plan jitter or snap.
+                publishTellyRotation(client, pending.yaw(), pending.pitch());
+                return ROTATION.acquire(
+                        new RotationRequest(outgoingYaw, outgoingPitch, 1, .35F, null));
+            }
+        }
         float settledYaw =
                 PLACEMENT_ROTATIONS.settlingYaw(SilentPacketRotation.packetRotationJitter());
         publishTellyRotation(client, settledYaw, verticalTower ? 90.0F : sentPitch());
@@ -1261,16 +1267,31 @@ public final class ScaffoldManager {
         if (lastTellyReturnTick == client.player.tickCount) return;
         lastTellyReturnTick = client.player.tickCount;
         Rotation camera = new Rotation(client.player.getYRot(), client.player.getXRot());
-        if (PlacementAngleSolver.distance(camera, sentYaw(), sentPitch()) < .5D
+        if (AIM_MOTION.settled()
+                && PlacementAngleSolver.distance(camera, sentYaw(), sentPitch()) < .5D
                 && PlacementAngleSolver.distance(camera, renderYaw, renderPitch) < 1.0D) {
             releaseTellyRotation();
             return;
         }
+        Rotation base = new Rotation(sentYaw(), sentPitch());
+        boolean smooth = TELLY_ROTATION.get() == TellyRotation.SMOOTH;
         Rotation next =
-                BoundedRotationStep.boundedTurn(
-                        new Rotation(outgoingYaw, outgoingPitch), camera, TELLY_RETURN_SPEED.get());
-        float yaw = SilentPacketRotation.quantizePacketYaw(outgoingYaw, next.yaw());
-        float pitch = SilentPacketRotation.quantizePacketPitch(outgoingPitch, next.pitch());
+                smooth
+                        ? AIM_MOTION.sample(
+                                client.player.tickCount,
+                                camera,
+                                client.options.sensitivity().get(),
+                                TELLY_RETURN_SPEED.get(),
+                                2)
+                        : BoundedRotationStep.boundedTurn(base, camera, TELLY_RETURN_SPEED.get());
+        float yaw =
+                smooth
+                        ? next.yaw()
+                        : SilentPacketRotation.quantizePacketYaw(base.yaw(), next.yaw());
+        float pitch =
+                smooth
+                        ? next.pitch()
+                        : SilentPacketRotation.quantizePacketPitch(base.pitch(), next.pitch());
         publishTellyRotation(client, yaw, pitch);
         ROTATION.acquire(new RotationRequest(yaw, pitch, 1, .35F, null));
         placementRotationStarted = false;
@@ -1278,6 +1299,7 @@ public final class ScaffoldManager {
 
     private static void releaseTellyRotation() {
         ROTATION.release();
+        AIM_MOTION.rebase(new Rotation(sentYaw(), sentPitch()));
         canRotate = false;
         rotationInitialized = placementRotationStarted = false;
     }
@@ -1857,13 +1879,15 @@ public final class ScaffoldManager {
     private static BlockAim findPlacementAim(
             Minecraft client, Vec3 playerPosition, Vec3 eye, BlockPos desired) {
         Rotation base = new Rotation(placementBaseYaw(client), placementBasePitch(client));
-        return ScaffoldTargetSelector.select(
-                desired,
-                base,
-                collectPlacementTargets(client, playerPosition, desired),
-                MAX_FACE_CANDIDATES,
-                lastTellyPlacePos,
-                target -> findFaceAim(client, target, eye));
+        BlockAim selected =
+                ScaffoldTargetSelector.select(
+                        desired,
+                        base,
+                        collectPlacementTargets(client, playerPosition, desired),
+                        MAX_FACE_CANDIDATES,
+                        lastTellyPlacePos,
+                        target -> findFaceAim(client, target, eye));
+        return AIM_MOTION.varyPoint(client, RAYS, selected, eye, base, AIM_QUANTIZER, false);
     }
 
     private static Rotation godBridgeRotation(Minecraft client) {
@@ -1891,17 +1915,26 @@ public final class ScaffoldManager {
     /** Prefer the bridge angle, then re-aim at a real side face while remaining on the bridge row. */
     private static BlockAim findGodBridgeAim(
             Minecraft client, Vec3 position, Vec3 eye, BlockPos desired) {
-        return GodBridgeTargetSelector.select(
-                RAYS,
+        BlockAim selected =
+                GodBridgeTargetSelector.select(
+                        RAYS,
+                        client,
+                        eye,
+                        TrajectoryPrediction.nextInputBox(client, godBridgeInput(client)),
+                        desired.getY(),
+                        new Rotation(outgoingYaw, outgoingPitch),
+                        client.player.blockInteractionRange(),
+                        cell -> tellyPointCovered(client, cell),
+                        ScaffoldManager::isInteractable,
+                        AIM_QUANTIZER);
+        return AIM_MOTION.varyPoint(
                 client,
+                RAYS,
+                selected,
                 eye,
-                TrajectoryPrediction.nextInputBox(client, godBridgeInput(client)),
-                desired.getY(),
-                new Rotation(outgoingYaw, outgoingPitch),
-                client.player.blockInteractionRange(),
-                cell -> tellyPointCovered(client, cell),
-                ScaffoldManager::isInteractable,
-                AIM_QUANTIZER);
+                new Rotation(sentYaw(), sentPitch()),
+                AIM_QUANTIZER,
+                true);
     }
 
     /** Preserves the original single-support/single-face Vanilla Tower path. */
@@ -1953,13 +1986,19 @@ public final class ScaffoldManager {
             double speed =
                     placementRotationStarted ? TELLY_TRACK_SPEED.get() : TELLY_START_SPEED.get();
             limited =
-                    BoundedRotationStep.limitedStep(
-                            base, exact.rotation(), remainingAirDelay + 1.0F, speed);
+                    AIM_MOTION.sample(
+                            client.player.tickCount,
+                            exact.rotation(),
+                            client.options.sensitivity().get(),
+                            speed,
+                            Math.min(5, remainingAirDelay + 1));
         }
         float limitedYaw = limited.yaw();
         float limitedPitch = limited.pitch();
-        limitedYaw = SilentPacketRotation.quantizePacketYaw(baseYaw, limitedYaw);
-        limitedPitch = SilentPacketRotation.quantizePacketPitch(basePitch, limitedPitch);
+        if (instant) {
+            limitedYaw = SilentPacketRotation.quantizePacketYaw(baseYaw, limitedYaw);
+            limitedPitch = SilentPacketRotation.quantizePacketPitch(basePitch, limitedPitch);
+        }
         Rotation rotation = new Rotation(limitedYaw, limitedPitch);
         if (remainingAirDelay > 0) {
             return new PlacementStep(exact.target(), rotation, null);
@@ -1978,15 +2017,18 @@ public final class ScaffoldManager {
     }
 
     private static float placementBaseYaw(Minecraft client) {
-        return rotationInitialized
-                ? outgoingYaw
-                : RotationManager.latest().valid() ? sentYaw() : client.player.getYRot();
+        return RotationManager.latest().valid() ? sentYaw() : client.player.getYRot();
     }
 
     private static float placementBasePitch(Minecraft client) {
-        return rotationInitialized
-                ? outgoingPitch
-                : RotationManager.latest().valid() ? sentPitch() : client.player.getXRot();
+        return RotationManager.latest().valid() ? sentPitch() : client.player.getXRot();
+    }
+
+    private static boolean smoothPlacementMotion(boolean verticalTower) {
+        return !verticalTower
+                && !godBridgePlacement()
+                && scaffoldPath != ScaffoldPath.RESCUE
+                && TELLY_ROTATION.get() == TellyRotation.SMOOTH;
     }
 
     private static boolean shouldStopSprint() {
@@ -2077,6 +2119,7 @@ public final class ScaffoldManager {
                 client != null && currentPlayer != null ? currentPlayer.getXRot() : 0.0F;
         outgoingYaw = renderYaw = cameraYaw;
         outgoingPitch = renderPitch = cameraPitch;
+        AIM_MOTION.rebase(new Rotation(cameraYaw, cameraPitch));
         serverPositionValid = false;
         renderTarget = null;
         renderHit = null;
@@ -2098,6 +2141,7 @@ public final class ScaffoldManager {
     }
 
     private static void disableState(Minecraft client) {
+        AIM_MOTION.rebase(new Rotation(0, 0));
         GOD_BRIDGE_ROTATION.reset();
         releaseGodBridgeSneaking(client);
         ScaffoldPlacementDebugger.update(client, false);

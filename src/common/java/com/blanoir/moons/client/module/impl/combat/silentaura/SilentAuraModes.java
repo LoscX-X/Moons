@@ -64,40 +64,47 @@ final class SilentAuraModes {
             boolean assist) {
         PacketRotationSmoother smoother = packets[lockMode ? 0 : 1];
         if (SilentAuraConfig.fullLockMode()) smoother = packets[2];
-        return smoother.sample(
-                tick,
-                cameraYaw,
-                cameraPitch,
-                desiredYaw,
-                desiredPitch,
-                sensitivity,
-                overlappingTarget,
-                matrixCompatibility,
-                SilentAuraConfig.fullLockAngleStep(),
-                SilentAuraConfig.fullLockSmoothing(),
-                assist
-                        ? (base,
-                                primary,
-                                previousYaw,
-                                previousPitch,
-                                yawMax,
-                                pitchMax,
-                                yawAccel,
-                                pitchAccel) ->
-                                learned.adjust(
-                                        tick,
-                                        System.nanoTime(),
-                                        base,
+        Rotation result =
+                smoother.sample(
+                        tick,
+                        cameraYaw,
+                        cameraPitch,
+                        desiredYaw,
+                        desiredPitch,
+                        sensitivity,
+                        overlappingTarget,
+                        matrixCompatibility,
+                        SilentAuraConfig.fullLockAngleStep(),
+                        SilentAuraConfig.fullLockSmoothing(),
+                        SilentAuraConfig.packetPlanner(),
+                        SilentAuraConfig.packetPlannerTicks(),
+                        assist
+                                ? (base,
                                         primary,
-                                        sensitivity,
-                                        SilentAuraConfig.learnedStrength(),
                                         previousYaw,
                                         previousPitch,
                                         yawMax,
                                         pitchMax,
                                         yawAccel,
-                                        pitchAccel)
-                        : null);
+                                        pitchAccel) ->
+                                        learned.adjust(
+                                                tick,
+                                                System.nanoTime(),
+                                                base,
+                                                primary,
+                                                sensitivity,
+                                                SilentAuraConfig.learnedStrength(),
+                                                previousYaw,
+                                                previousPitch,
+                                                yawMax,
+                                                pitchMax,
+                                                yawAccel,
+                                                pitchAccel)
+                                : null);
+        if (assist && SilentAuraConfig.packetPlanner()) {
+            learned.expectPlanned(tick, result, sensitivity);
+        }
+        return result;
     }
 
     void clearTargets() {

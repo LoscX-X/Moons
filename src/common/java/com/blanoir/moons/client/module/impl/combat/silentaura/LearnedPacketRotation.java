@@ -193,6 +193,19 @@ final class LearnedPacketRotation {
         return cached;
     }
 
+    /** The shared packet planner may choose another feasible GCD step after the residual. */
+    void expectPlanned(int tick, Rotation planned, double sensitivity) {
+        if (sampleTick != tick || sampleBase == null || planned == null) return;
+        cached = planned;
+        double quantum = MouseAngleQuantizer.mouseSensitivityGcd(sensitivity);
+        expectedSent =
+                new Rotation(
+                        MouseAngleQuantizer.quantizeYawWithStep(
+                                sampleBase.yaw(), planned.yaw(), quantum),
+                        MouseAngleQuantizer.quantizePitchWithStep(
+                                sampleBase.pitch(), planned.pitch(), quantum));
+    }
+
     /** Residual projection keeps direction, settling and the original mode's motion envelope. */
     static float assistAxis(
             float primary,

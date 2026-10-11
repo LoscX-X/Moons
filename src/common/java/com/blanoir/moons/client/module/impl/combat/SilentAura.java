@@ -345,6 +345,18 @@ public final class SilentAura {
         return 1;
     }
 
+    public static int setPacketPlanner(Minecraft ignoredClient, boolean value) {
+        SilentAuraConfig.packetPlanner(value);
+        SilentAuraRuntime.resetTargeting();
+        return 1;
+    }
+
+    public static int setPacketPlannerTicks(Minecraft ignoredClient, int value) {
+        SilentAuraConfig.packetPlannerTicks(value);
+        SilentAuraRuntime.resetTargeting();
+        return 1;
+    }
+
     public static int setCriticalIntegration(Minecraft client, boolean value) {
         SilentAuraConfig.criticalIntegration(value);
         if (!value) Critical.cancelAutomaticPrediction(client);

@@ -100,6 +100,9 @@ public final class SilentAuraConfig {
                     .option(AimMode.FULL_LOCK, "full_lock")
                     .build();
     private static final BooleanSetting MATRIX_COMPATIBILITY = bool("silentaura.matrix", false);
+    private static final BooleanSetting PACKET_PLANNER = bool("silentaura.packetPlanner", true);
+    private static final IntSetting PACKET_PLANNER_TICKS =
+            integer("silentaura.packetPlannerTicks", 2, 1, 5);
     private static final BooleanSetting CRITICAL_INTEGRATION = bool("silentaura.critical", true);
     private static final ModeSetting<AimPoint> AIM_POINT =
             new ModeSetting.Builder<AimPoint>()
@@ -317,8 +320,16 @@ public final class SilentAuraConfig {
                             SilentAura::setPredictionResponse)
                     .visibleWhen(() -> SilentAuraConfig.traditionalAim()),
             MATRIX_COMPATIBILITY
-                    .describe("matrix", "Optimize", SilentAura::setMatrixCompatibility)
-                    .visibleWhen(() -> SilentAuraConfig.traditionalAim()),
+                    .describe("matrix", "Optimize", SilentAura::setMatrixCompatibility),
+            PACKET_PLANNER.describe(
+                    "packet_planner", "Packet planner", SilentAura::setPacketPlanner),
+            PACKET_PLANNER_TICKS
+                    .describe(
+                            "packet_planner_ticks",
+                            "Packet planning ticks",
+                            1,
+                            SilentAura::setPacketPlannerTicks)
+                    .visibleWhen(SilentAuraConfig::packetPlanner),
             CRITICAL_INTEGRATION
                     .describe("critical", "Critical", SilentAura::setCriticalIntegration)
                     .visibleWhen(() -> !SilentAuraConfig.legacyCombat()),
@@ -626,7 +637,15 @@ public final class SilentAuraConfig {
     }
 
     public static boolean matrixCompatibility() {
-        return MATRIX_COMPATIBILITY.get() && traditionalAim();
+        return MATRIX_COMPATIBILITY.get();
+    }
+
+    public static boolean packetPlanner() {
+        return PACKET_PLANNER.get();
+    }
+
+    public static int packetPlannerTicks() {
+        return PACKET_PLANNER_TICKS.get();
     }
 
     public static boolean criticalIntegration() {
@@ -761,6 +780,14 @@ public final class SilentAuraConfig {
 
     public static void matrixCompatibility(boolean value) {
         MATRIX_COMPATIBILITY.set(value);
+    }
+
+    public static void packetPlanner(boolean value) {
+        PACKET_PLANNER.set(value);
+    }
+
+    public static void packetPlannerTicks(int value) {
+        PACKET_PLANNER_TICKS.set(value);
     }
 
     public static void criticalIntegration(boolean value) {

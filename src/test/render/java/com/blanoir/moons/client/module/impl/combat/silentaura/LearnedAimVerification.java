@@ -213,7 +213,20 @@ public final class LearnedAimVerification {
                 helper.observe(WORLD, TARGET, geometry(base.yaw() + 60));
                 final int t = tick;
                 Rotation expected =
-                        original.sample(tick, 0, 0, base.yaw() + 20, 10, .5, false, true, 90, 0);
+                        original.sample(
+                                tick,
+                                0,
+                                0,
+                                base.yaw() + 20,
+                                10,
+                                .5,
+                                false,
+                                true,
+                                90,
+                                0,
+                                true,
+                                2,
+                                null);
                 Rotation actual =
                         assisted.sample(
                                 tick,
@@ -226,6 +239,8 @@ public final class LearnedAimVerification {
                                 true,
                                 90,
                                 0,
+                                true,
+                                2,
                                 (start, primary, py, pp, ym, pm, ya, pa) ->
                                         helper.adjust(
                                                 t,

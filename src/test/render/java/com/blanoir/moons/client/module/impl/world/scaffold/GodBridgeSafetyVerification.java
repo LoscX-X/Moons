@@ -1,7 +1,9 @@
 package com.blanoir.moons.client.module.impl.world.scaffold;
 
 import com.blanoir.moons.client.utils.rotation.Rotation;
+import com.blanoir.moons.client.utils.rotation.aim.BlockAim;
 import com.blanoir.moons.client.utils.rotation.aim.BlockTarget;
+import com.blanoir.moons.client.utils.rotation.aim.FaceAimJitter;
 import com.blanoir.moons.client.utils.rotation.aim.GodBridgeFacePoints;
 import com.blanoir.moons.client.utils.rotation.aim.GodBridgeTargetSelector;
 import com.blanoir.moons.client.utils.rotation.quantize.MouseAngleQuantizer;
@@ -14,6 +16,7 @@ import net.minecraft.world.phys.Vec3;
 
 public final class GodBridgeSafetyVerification {
     public static void main(String[] args) {
+        verifyAimMotion();
         verifyPlacementRotations();
         verifyDirectionChanges();
         require(
@@ -213,6 +216,159 @@ public final class GodBridgeSafetyVerification {
             z = previousX;
         }
         return new Vec3(x - 2.5, point.y, z - 2.5);
+    }
+
+    private static void verifyAimMotion() {
+        AABB bounds = new AABB(-2.0, .25, -4.0, -1.0, .75, -3.0);
+        Vec3 eye = new Vec3(.2, 2.62, -2.8);
+        for (Direction face : Direction.values()) {
+            Vec3 base =
+                    new Vec3(
+                            face == Direction.WEST
+                                    ? bounds.minX
+                                    : face == Direction.EAST ? bounds.maxX : -1.5,
+                            face == Direction.DOWN
+                                    ? bounds.minY
+                                    : face == Direction.UP ? bounds.maxY : .5,
+                            face == Direction.NORTH
+                                    ? bounds.minZ
+                                    : face == Direction.SOUTH ? bounds.maxZ : -3.5);
+            Vec3 old = null;
+            boolean moved = false;
+            for (int tick = 0; tick < 100; tick++) {
+                Vec3 point =
+                        FaceAimJitter.sample(eye, base, bounds, face, tick * .05, 19L, .38, .85);
+                require(
+                        point.x >= bounds.minX
+                                && point.x <= bounds.maxX
+                                && point.y >= bounds.minY
+                                && point.y <= bounds.maxY
+                                && point.z >= bounds.minZ
+                                && point.z <= bounds.maxZ,
+                        "Face noise stays inside the actual partial-block bounds");
+                require(
+                        switch (face.getAxis()) {
+                            case X -> point.x == base.x;
+                            case Y -> point.y == base.y;
+                            case Z -> point.z == base.z;
+                        },
+                        "Combat interior noise must preserve the clicked face plane");
+                require(
+                        point.equals(
+                                FaceAimJitter.sample(
+                                        eye, base, bounds, face, tick * .05, 19L, .38, .85)),
+                        "Same-tick point reads are deterministic");
+                if (old != null) {
+                    require(
+                            point.distanceTo(old) < .03,
+                            "Point noise has no per-tick random jumps");
+                    moved |= !point.equals(old);
+                }
+                old = point;
+            }
+            require(moved, "The face point must vary instead of remaining on one grid coordinate");
+            require(
+                    base.equals(FaceAimJitter.sample(eye, base, bounds, face, 0, 19L, 0, .85)),
+                    "Zero strength preserves the exact point");
+        }
+
+        var motion = new ScaffoldAimMotion((min, max) -> (min + max) * .5);
+        motion.rebase(new Rotation(0, 0));
+        BlockTarget target = new BlockTarget(new BlockPos(-2, 0, -4), Direction.EAST);
+        Vec3 facePoint = new Vec3(-1, .5, -3.5);
+        BlockAim fallback =
+                new BlockAim(
+                        target,
+                        new Rotation(90, 60),
+                        new BlockHitResult(facePoint, Direction.EAST, target.support(), false));
+        int[] probes = {0};
+        BlockAim blocked =
+                motion.varyPoint(
+                        fallback,
+                        eye,
+                        bounds,
+                        0,
+                        point -> {
+                            probes[0]++;
+                            return null;
+                        });
+        require(
+                blocked == fallback && probes[0] == 3,
+                "Occluded or GCD-unreachable noise retains the validated scanned hit");
+        BlockAim reached =
+                motion.varyPoint(
+                        fallback,
+                        eye,
+                        bounds,
+                        10,
+                        point -> {
+                            BlockHitResult hit =
+                                    AABB.clip(
+                                            java.util.List.of(
+                                                    bounds.move(
+                                                            -target.support().getX(),
+                                                            -target.support().getY(),
+                                                            -target.support().getZ())),
+                                            eye,
+                                            eye.add(point.subtract(eye).scale(2)),
+                                            target.support());
+                            return hit != null && hit.getDirection() == target.face()
+                                    ? new BlockAim(target, fallback.rotation(), hit)
+                                    : null;
+                        });
+        require(
+                reached != fallback && reached.hit().getDirection() == Direction.EAST,
+                "A partial-block face must still be reached by the actual candidate ray");
+        Rotation desired = new Rotation(135, 80);
+        Rotation first = motion.sample(1, desired, .5, 85, 2);
+        require(
+                first.equals(motion.sample(1, new Rotation(-90, -30), .5, 45, 1)),
+                "Candidate reads cannot replace a sampled movement look in the same tick");
+        require(
+                first.equals(motion.sample(2, desired, .5, 85, 2)),
+                "A cancelled movement must not advance from the unsent candidate");
+        require(
+                !motion.accepts(2, new Rotation(first.yaw() + 10, first.pitch())),
+                "Duplicate alternatives cannot escape the acceleration envelope");
+        Rotation sent = new Rotation(0, 0);
+        double quantum = MouseAngleQuantizer.mouseSensitivityGcd(.5);
+        for (int tick = 3; tick <= 40; tick++) {
+            Rotation next = motion.sample(tick, desired, .5, 85, tick < 6 ? 2 : 1);
+            require(motion.accepts(tick, next), "Final GCD look remains inside the motion budget");
+            double yaw = net.minecraft.util.Mth.wrapDegrees(next.yaw() - sent.yaw());
+            double pitch = next.pitch() - sent.pitch();
+            require(
+                    Math.abs(yaw / quantum - Math.rint(yaw / quantum)) < .0002
+                            && Math.abs(pitch / quantum - Math.rint(pitch / quantum)) < .0002,
+                    "Both axes use actual-sent-relative mouse steps");
+            motion.confirm(next);
+            sent = next;
+        }
+        require(
+                Math.abs(net.minecraft.util.Mth.wrapDegrees(desired.yaw() - sent.yaw())) < .3
+                        && Math.abs(desired.pitch() - sent.pitch()) < .3,
+                "A finite placement target converges instead of perpetually orbiting");
+
+        motion.rebase(new Rotation(179, 0));
+        Rotation wrapped = motion.sample(50, new Rotation(-179, 0), .5, 85, 1);
+        require(Math.abs(wrapped.yaw() - 179) < 3, "Crossing +/-180 follows the short arc");
+        require(motion.pending(49) == null, "Old ticks cannot revive pending motion");
+
+        motion.rebase(new Rotation(0, 0));
+        Rotation fast = motion.sample(60, new Rotation(170, 0), .5, 85, 1);
+        motion.confirm(fast);
+        Rotation faster = motion.sample(61, new Rotation(170, 0), .5, 85, 1);
+        motion.confirm(faster);
+        Rotation slowed = motion.sample(62, new Rotation(170, 0), .5, 5, 1);
+        require(
+                slowed.yaw() - faster.yaw() > 5,
+                "A reduced speed cap is approached through braking instead of snapping");
+        require(motion.accepts(62, slowed), "Braking retains the final packet interval");
+        motion.rebase(new Rotation(20, -5));
+        Rotation idle = motion.sample(70, new Rotation(20, -5), .5, 45, 2);
+        require(
+                idle.equals(new Rotation(20, -5)) && motion.settled(),
+                "A fresh tenure cannot inherit velocity from another mode or owner");
     }
 
     private static void verifyPlacementRotations() {

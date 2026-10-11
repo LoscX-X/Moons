@@ -4,6 +4,8 @@ import com.blanoir.moons.client.utils.math.MathUtils;
 import com.blanoir.moons.client.utils.math.RandomMath;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 import com.blanoir.moons.client.utils.rotation.aim.AimMotionSampling;
+import com.blanoir.moons.client.utils.rotation.quantize.MouseAngleQuantizer;
+import com.blanoir.moons.client.utils.rotation.quantize.PacketStepQuantizer;
 import com.blanoir.moons.client.utils.rotation.smooth.FullLockRotationStep;
 import com.blanoir.moons.client.utils.rotation.smooth.PacketRotationStep;
 
@@ -109,6 +111,8 @@ public final class PacketRotationSmoother {
                 matrixCompatibility,
                 fullLockAngleStep,
                 fullLockSmoothing,
+                false,
+                1,
                 null);
     }
 
@@ -124,12 +128,53 @@ public final class PacketRotationSmoother {
             int fullLockAngleStep,
             double fullLockSmoothing,
             StepAdjustment adjustment) {
+        return sample(
+                tick,
+                cameraYaw,
+                cameraPitch,
+                desiredYaw,
+                desiredPitch,
+                sensitivity,
+                overlappingTarget,
+                matrixCompatibility,
+                fullLockAngleStep,
+                fullLockSmoothing,
+                false,
+                1,
+                adjustment);
+    }
+
+    Rotation sample(
+            int tick,
+            float cameraYaw,
+            float cameraPitch,
+            float desiredYaw,
+            float desiredPitch,
+            double sensitivity,
+            boolean overlappingTarget,
+            boolean matrixCompatibility,
+            int fullLockAngleStep,
+            double fullLockSmoothing,
+            boolean packetPlanner,
+            int packetPlannerTicks,
+            StepAdjustment adjustment) {
         if (sampledTick == tick) return sampled;
 
         sampledTick = tick;
         sampledBaseYaw = confirmed ? confirmedYaw : cameraYaw;
         sampledBasePitch = confirmed ? confirmedPitch : cameraPitch;
-        if (fullLockMode) {
+        Rotation base = new Rotation(sampledBaseYaw, sampledBasePitch);
+        float yawDemand = MathUtils.wrappedAngleDifference(sampledBaseYaw, desiredYaw);
+        float pitchDemand = desiredPitch - sampledBasePitch;
+        double demand = Math.hypot(yawDemand, pitchDemand);
+        double urgency = Mth.clamp(demand / 55.0D, 0.0D, 1.0D);
+
+        // The switch is a real compatibility escape hatch: disabled FullLock
+        // retains its original direct step and does not consume motion samples.
+        if (fullLockMode && !packetPlanner) {
+            double cap =
+                    Mth.clamp(fullLockAngleStep, 0, 180)
+                            * (1 - .5 * Mth.clamp(fullLockSmoothing, 0, 1));
             sampled =
                     sampleFullLock(
                             desiredYaw,
@@ -138,12 +183,9 @@ public final class PacketRotationSmoother {
                             fullLockSmoothing,
                             sensitivity);
             if (adjustment != null) {
-                double cap =
-                        Mth.clamp(fullLockAngleStep, 0, 180)
-                                * (1 - .5 * Mth.clamp(fullLockSmoothing, 0, 1));
                 sampled =
                         adjustment.apply(
-                                new Rotation(sampledBaseYaw, sampledBasePitch),
+                                base,
                                 sampled,
                                 previousYawStep,
                                 previousPitchStep,
@@ -154,13 +196,10 @@ public final class PacketRotationSmoother {
             }
             return sampled;
         }
-        float yawDemand = MathUtils.wrappedAngleDifference(sampledBaseYaw, desiredYaw);
-        float pitchDemand = desiredPitch - sampledBasePitch;
-        double demand = Math.hypot(yawDemand, pitchDemand);
-        double urgency = Mth.clamp(demand / 55.0D, 0.0D, 1.0D);
 
-        // The compatibility profile retains stricter acceleration bounds;
-        // the generic profile can respond faster.
+        // Every planned aim mode shares one packet-domain motion budget. Profiles only
+        // choose the target and maximum step; none may restart or bypass the
+        // last movement packet's confirmed velocity.
         AimMotionSampling.PacketMotion motion =
                 matrixCompatibility
                         ? AimMotionSampling.samplePacketMotion(lockMode, urgency, random)
@@ -181,29 +220,131 @@ public final class PacketRotationSmoother {
         }
         previousMotion = motion;
 
-        sampled =
-                PacketRotationStep.step(
-                        new Rotation(sampledBaseYaw, sampledBasePitch),
-                        yawDemand,
-                        pitchDemand,
-                        previousYawStep,
-                        previousPitchStep,
-                        motion.yawAcceleration(),
-                        motion.pitchAcceleration(),
-                        matrixCompatibility && overlappingTarget);
+        double yawMax;
+        double pitchMax;
+        if (fullLockMode) {
+            double cap =
+                    Mth.clamp(fullLockAngleStep, 0, 180)
+                            * (1 - .5 * Mth.clamp(fullLockSmoothing, 0, 1));
+            yawMax = pitchMax = cap;
+            sampled =
+                    sampleFullLock(
+                            desiredYaw,
+                            desiredPitch,
+                            fullLockAngleStep,
+                            fullLockSmoothing,
+                            sensitivity);
+        } else {
+            yawMax = matrixCompatibility && overlappingTarget ? 18 : 48;
+            pitchMax = 32;
+            sampled =
+                    packetPlanner
+                            ? PacketRotationStep.plan(
+                                    base,
+                                    yawDemand,
+                                    pitchDemand,
+                                    previousYawStep,
+                                    previousPitchStep,
+                                    motion.yawAcceleration(),
+                                    motion.pitchAcceleration(),
+                                    yawMax,
+                                    pitchMax,
+                                    packetPlannerTicks)
+                            : PacketRotationStep.step(
+                                    base,
+                                    yawDemand,
+                                    pitchDemand,
+                                    previousYawStep,
+                                    previousPitchStep,
+                                    motion.yawAcceleration(),
+                                    motion.pitchAcceleration(),
+                                    matrixCompatibility && overlappingTarget);
+        }
+
+        // Final receding-horizon step. Target prediction, FullLock and learned
+        // residuals may move the desired angle, but every path reaches the
+        // movement packet through this one acceleration-aware planner.
+        if (packetPlanner) {
+            sampled =
+                    PacketRotationStep.plan(
+                            base,
+                            MathUtils.wrappedAngleDifference(base.yaw(), sampled.yaw()),
+                            sampled.pitch() - base.pitch(),
+                            previousYawStep,
+                            previousPitchStep,
+                            motion.yawAcceleration(),
+                            motion.pitchAcceleration(),
+                            yawMax,
+                            pitchMax,
+                            packetPlannerTicks);
+        }
         if (adjustment != null) {
             sampled =
                     adjustment.apply(
-                            new Rotation(sampledBaseYaw, sampledBasePitch),
+                            base,
                             sampled,
                             previousYawStep,
                             previousPitchStep,
-                            matrixCompatibility && overlappingTarget ? 18 : 48,
-                            32,
+                            yawMax,
+                            pitchMax,
                             motion.yawAcceleration(),
                             motion.pitchAcceleration());
         }
+        if (packetPlanner) {
+            sampled = quantizePlanned(base, sampled, sensitivity, motion, yawMax, pitchMax);
+        }
         return sampled;
+    }
+
+    /** Selects a real mouse-GCD step from the acceleration-feasible interval. */
+    private Rotation quantizePlanned(
+            Rotation base,
+            Rotation desired,
+            double sensitivity,
+            AimMotionSampling.PacketMotion motion,
+            double yawMax,
+            double pitchMax) {
+        double quantum = MouseAngleQuantizer.mouseSensitivityGcd(sensitivity);
+        float yawMinimum = (float) Math.max(-180.0D, Math.min(-yawMax, previousYawStep));
+        float yawMaximum = (float) Math.min(180.0D, Math.max(yawMax, previousYawStep));
+        float yawStep =
+                quantizedStep(
+                        MathUtils.wrappedAngleDifference(base.yaw(), desired.yaw()),
+                        previousYawStep,
+                        motion.yawAcceleration(),
+                        quantum,
+                        yawMinimum,
+                        yawMaximum);
+        float pitchMinimum =
+                (float)
+                        Math.max(
+                                -90.0F - base.pitch(),
+                                Math.min(-pitchMax, previousPitchStep));
+        float pitchMaximum =
+                (float)
+                        Math.min(
+                                90.0F - base.pitch(),
+                                Math.max(pitchMax, previousPitchStep));
+        float pitchStep =
+                quantizedStep(
+                        desired.pitch() - base.pitch(),
+                        previousPitchStep,
+                        motion.pitchAcceleration(),
+                        quantum,
+                        pitchMinimum,
+                        pitchMaximum);
+        return new Rotation(base.yaw() + yawStep, base.pitch() + pitchStep);
+    }
+
+    static float quantizedStep(
+            float desiredStep,
+            float previousStep,
+            double acceleration,
+            double quantum,
+            float physicalMinimum,
+            float physicalMaximum) {
+        return PacketStepQuantizer.step(
+                desiredStep, previousStep, acceleration, quantum, physicalMinimum, physicalMaximum);
     }
 
     /** FULL-Lock angle stepping; the caller applies sensitivity quantization. */

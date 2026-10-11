@@ -391,8 +391,61 @@ public final class SilentAuraRotationSimulation {
         require(
                 full.sample(1, 0, 0, 90, 45, .5, false, false).equals(new Rotation(90, 45)),
                 "Default FullLock response");
+        verifyPacketPlanner();
         Trace wrap = simulate(new Settings("packet", "Lock", true, .58, 90, 0, .5, 60), "wrap", 71);
         require(wrap.metrics.maxYawSpeed < 100, "Yaw wrap must take the short arc");
+    }
+
+    private static void verifyPacketPlanner() {
+        var full = new PacketRotationSmoother(true, true, (min, max) -> (min + max) * .5);
+        Rotation planned = full.sample(1, 0, 0, 90, 45, .5, false, true, 90, 0, true, 2, null);
+        require(
+                Math.abs(planned.yaw()) < 90 && Math.abs(planned.pitch()) < 45,
+                "FullLock must use the shared packet planner");
+        require(
+                Math.abs(planned.pitch()) <= 2.10001,
+                "Planned FullLock pitch must stay inside the Matrix packet acceleration budget");
+
+        var shortHorizon = new PacketRotationSmoother(true, false, (min, max) -> max);
+        var longHorizon = new PacketRotationSmoother(true, false, (min, max) -> max);
+        Rotation oneTick =
+                shortHorizon.sample(1, 0, 0, 10, 4, .5, false, true, 90, 0, true, 1, null);
+        Rotation fiveTicks =
+                longHorizon.sample(1, 0, 0, 10, 4, .5, false, true, 90, 0, true, 5, null);
+        require(
+                Math.abs(fiveTicks.yaw()) < Math.abs(oneTick.yaw()),
+                "Planning horizon must change the receding-horizon arrival step");
+
+        var legacy = new PacketRotationSmoother(true, true, (min, max) -> (min + max) * .5);
+        Rotation direct = legacy.sample(1, 0, 0, 90, 45, .5, false, true, 90, 0, false, 2, null);
+        require(
+                direct.equals(new Rotation(90, 45)),
+                "Disabling the packet planner must retain FullLock's direct step");
+
+        var overlap = new PacketRotationSmoother(true, false, (min, max) -> max);
+        Rotation first = overlap.sample(1, 0, 0, 160, 0, .5, false, true, 90, 0, true, 1, null);
+        overlap.confirm(first.yaw(), first.pitch());
+        Rotation second = overlap.sample(2, 0, 0, 160, 0, .5, false, true, 90, 0, true, 1, null);
+        overlap.confirm(second.yaw(), second.pitch());
+        Rotation third = overlap.sample(3, 0, 0, 160, 0, .5, false, true, 90, 0, true, 1, null);
+        overlap.confirm(third.yaw(), third.pitch());
+        float previousStep = third.yaw() - second.yaw();
+        Rotation entering = overlap.sample(4, 0, 0, 160, 0, .5, true, true, 90, 0, true, 1, null);
+        float enteringStep = entering.yaw() - third.yaw();
+        require(enteringStep > 18, "Overlap cap must be approached instead of snapped");
+        require(
+                Math.abs(enteringStep - previousStep) <= 23.00001,
+                "Overlap transition must retain the packet acceleration envelope");
+
+        double gcd =
+                com.blanoir.moons.client.utils.rotation.quantize.MouseAngleQuantizer
+                        .mouseSensitivityGcd(1.0D);
+        float gcdStep =
+                PacketRotationSmoother.quantizedStep(5.0F, 0.0F, 2.10D, gcd, -90, 90);
+        require(Math.abs(gcdStep) <= 2.10001, "GCD selection must retain acceleration limits");
+        require(
+                Math.abs(gcdStep / gcd - Math.rint(gcdStep / gcd)) < 1.0E-5,
+                "Planned step must lie on the mouse GCD grid");
     }
 
     private static void require(boolean condition, String message) {

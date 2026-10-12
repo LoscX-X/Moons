@@ -40,6 +40,8 @@ jobs:
           node-version: '22'
       - name: Validate Moons update batches
         run: node .github/scripts/moons-updates.mjs check
+      - name: Test bot notification diagnostics
+        run: node --test .github/scripts/moons-updates.test.mjs
       - name: Show client version and commit
         id: version
         shell: pwsh
@@ -71,35 +73,34 @@ jobs:
           distribution: temurin
           java-version: '25'
       - uses: gradle/actions/setup-gradle@v5
-      - name: Verify Minecraft hooks and YSM behavior
-        if: github.event_name != 'workflow_dispatch' || inputs.verify
-        shell: pwsh
-        run: .\gradlew.bat checkAllVersions --console=plain
-      - name: Package YSM for all supported versions
-        if: github.event_name == 'pull_request' || (github.event_name != 'workflow_dispatch' && github.ref != 'refs/heads/latest')
-        shell: pwsh
-        run: .\gradlew.bat ysmAllVersions --console=plain
-      - name: Build selected packages
+      - name: Check and build selected packages
         id: package
-        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/latest' || github.event_name == 'workflow_dispatch')
         shell: pwsh
         env:
           PACKAGE_KIND: ${{ inputs.package || 'all' }}
           VERIFY_PACKAGES: ${{ github.event_name != 'workflow_dispatch' || inputs.verify }}
+          PUBLISH_PACKAGES: ${{ github.event_name != 'pull_request' && (github.ref == 'refs/heads/latest' || github.event_name == 'workflow_dispatch') }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $tasks = @(switch ($env:PACKAGE_KIND) {
-            'all'        { @('moonsPackages') }
-            'install'    { @('moonsInstallExe') }
-            'loader'     { @('moonsExe') }
-            default     { throw "Unknown package: $env:PACKAGE_KIND" }
-          })
-          if ($env:PACKAGE_KIND -eq 'all' -and $env:VERIFY_PACKAGES -eq 'true') {
-            $tasks += 'verifyLauncherPackages'
+          $tasks = @()
+          if ($env:VERIFY_PACKAGES -eq 'true' -and
+              ($env:PUBLISH_PACKAGES -ne 'true' -or $env:PACKAGE_KIND -ne 'all')) {
+            $tasks += 'checkAllVersions'
           }
-          $tag = "build-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
-          "release_tag=$tag" >> $env:GITHUB_OUTPUT
-          "kind=$env:PACKAGE_KIND" >> $env:GITHUB_OUTPUT
+          if ($env:PUBLISH_PACKAGES -eq 'true') {
+            $tasks += switch ($env:PACKAGE_KIND) {
+              'all'     { if ($env:VERIFY_PACKAGES -eq 'true') { 'moonsBuild' } else { 'moonsPackages' } }
+              'install' { 'moonsInstallExe' }
+              'loader'  { 'moonsExe' }
+              default   { throw "Unknown package: $env:PACKAGE_KIND" }
+            }
+            $tag = "build-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+            "release_tag=$tag" >> $env:GITHUB_OUTPUT
+            "kind=$env:PACKAGE_KIND" >> $env:GITHUB_OUTPUT
+          } else {
+            $tasks += 'ysmAllVersions'
+            'kind=ysm' >> $env:GITHUB_OUTPUT
+          }
           .\gradlew.bat @tasks --console=plain
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Name executable release files
@@ -150,12 +151,12 @@ jobs:
           $rows >> build/ci/build-info.md
           @('', '## Dependency versions', '', '| Item | Value |', '| --- | --- |') + $rows >> $env:GITHUB_STEP_SUMMARY
       - name: Prepare Moons update payload and release notes
-        if: steps.package.outcome == 'success'
+        if: steps.package.outcome == 'success' && steps.package.outputs.release_tag != ''
         env:
           CLIENT_VERSION: ${{ steps.version.outputs.client_version }}
         run: node .github/scripts/moons-updates.mjs prepare
       - name: Upload build information
-        if: steps.package.outcome == 'success'
+        if: steps.package.outcome == 'success' && steps.package.outputs.release_tag != ''
         uses: actions/upload-artifact@v6
         with:
           name: moons-build-info

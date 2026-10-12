@@ -1,0 +1,44 @@
+/* Coalesce compilation, checks and packages into one isolated build per profile. */
+def requests = [:]
+def builds = [:]
+def directories = [:]
+moonsVersions.profiles.each { profile ->
+    def profileRequests = []
+    requests[profile.profileId] = profileRequests
+    def nestedBuild = layout.buildDirectory.dir("versions/${profile.profileId}").get().asFile
+    directories[profile.profileId] = nestedBuild
+    def previous = builds.isEmpty() ? null : builds.values().last()
+    builds[profile.profileId] = tasks.register("buildMinecraft${profile.profileId}", Exec) {
+        description = "Runs the requested build steps for Minecraft ${profile.gameId}."
+        if (previous != null) mustRunAfter previous
+        mustRunAfter 'check'
+        workingDir project.projectDir
+        executable moonsToolchains.gradleExecutable.absolutePath
+        doFirst {
+            def targets = profileRequests.findAll { gradle.taskGraph.hasTask(it.task.get()) }
+                    .collectMany { it.targets }.toSet()
+            // Verify before publishing this version's payload or dependency package.
+            def orderedTargets = targets.contains('check') ? ['check'] + (targets - 'check') : targets.toList()
+            if (orderedTargets.isEmpty()) throw new GradleException('Use a version build entry point')
+            setArgs(moonsToolchains.nestedGradleArguments(orderedTargets + [
+                    "-Pminecraft_version=${profile.gameId}",
+                    "-Pmoons_build_directory=${nestedBuild.absolutePath}",
+                    "-Pmoons_jar_output_directory=dist/agent/${profile.profileId}"
+            ].collect { it.toString() }))
+            logger.lifecycle("MOONS_VERSION_BUILD ${profile.gameId}: ${orderedTargets.join(' ')}")
+        }
+    }
+}
+
+ext.moonsMultiVersion = [
+        directories: directories.asImmutable(),
+        register: { String profileId, String name, String groupName, String summary, List<String> targets ->
+            def entry = tasks.register(name) {
+                group = groupName
+                description = summary
+                dependsOn builds[profileId]
+            }
+            requests[profileId].add([task: entry, targets: targets.asImmutable()])
+            entry
+        }
+].asImmutable()

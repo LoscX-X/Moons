@@ -4,35 +4,22 @@ def locateCSharpCompiler = moonsToolchains.locateCSharpCompiler
 def apiJar = tasks.named("apiJar", Jar)
 def bridgeDll = tasks.named("bridgeDll")
 def uiDependenciesJar = tasks.named("uiDependenciesJar")
-def nestedGradleExecutable = moonsToolchains.gradleExecutable
-
-def nestedInvocation = ProcessHandle.current().pid().toString()
-def nestedPayloadBuildRoot = layout.buildDirectory.dir("universal-work/${nestedInvocation}").get().asFile
-
 def profiles = moonsVersions.profiles
 def baseProfile = profiles.first()
 def payloadTasks = [:]
 def patchTasks = []
 profiles.eachWithIndex { profile, index ->
     def previous = index == 0 ? null : payloadTasks[profiles[index - 1].profileId]
-    def payloadTask = tasks.register("universalPayload${profile.profileId}", Exec) {
-        group = 'build'
-        description = "Builds the Minecraft ${profile.artifactId} payload for the universal loader."
+    def payloadTask = moonsMultiVersion.register(profile.profileId, "universalPayload${profile.profileId}", 'build',
+            "Builds the Minecraft ${profile.artifactId} payload for the universal loader.", ['moonsJar'])
+    payloadTask.configure {
         if (previous != null) dependsOn previous
         else mustRunAfter apiJar, bridgeDll
-        def nestedBuild = "${nestedPayloadBuildRoot}/${profile.artifactId}"
-        def nestedPayload = file("${nestedBuild}/universal/${profile.artifactId}/moons.jar")
+        def nestedPayload = new File(moonsMultiVersion.directories[profile.profileId],
+                "dist/agent/${profile.profileId}/moons.jar")
         def publishedPayload = layout.buildDirectory.file("universal/${profile.artifactId}/moons.jar")
+        inputs.file(nestedPayload)
         outputs.file(publishedPayload)
-        outputs.upToDateWhen { false }
-        workingDir project.projectDir
-        executable nestedGradleExecutable.absolutePath
-        args moonsToolchains.nestedGradleArguments([
-                'moonsJar',
-                "-Pminecraft_version=${profile.gameId}",
-                "-Pmoons_build_directory=${nestedBuild}",
-                "-Pmoons_jar_output_directory=universal/${profile.artifactId}"
-        ].collect { it.toString() })
         doLast {
             if (!nestedPayload.isFile()) {
                 throw new GradleException("Nested ${profile.artifactId} payload was not produced: ${nestedPayload}")
@@ -230,7 +217,9 @@ def registerLauncher = { String taskName, String fileName, boolean installer ->
             resources['Moons.Bridge.dll'] = layout.buildDirectory.file("${moonsBuild.loaderStagingDirectory}/moons-bridge.dll")
         }
         def output = layout.buildDirectory.file("dist/${fileName}")
+        def manifest = file('src/tools/launcher/launcher.manifest')
         inputs.files(sources)
+        inputs.file(manifest)
         inputs.files(resources.values())
         outputs.file(output)
         doFirst {
@@ -238,6 +227,7 @@ def registerLauncher = { String taskName, String fileName, boolean installer ->
             output.get().asFile.parentFile.mkdirs()
             executable locateCSharpCompiler().absolutePath
             args '/nologo', '/target:winexe', '/optimize+', '/platform:x64',
+                    "/win32manifest:${manifest.absolutePath}",
                     '/reference:System.Windows.Forms.dll', '/reference:System.Management.dll', '/reference:System.Web.Extensions.dll',
                     '/reference:System.IO.Compression.dll', '/reference:System.IO.Compression.FileSystem.dll',
                     "/out:${output.get().asFile.absolutePath}"
@@ -254,6 +244,12 @@ tasks.register('moonsPackages') {
     group = 'build'
     description = 'Builds moon-install.exe, moon.exe and the matching standalone UI runtime.'
     dependsOn moonsExe, moonsInstallExe
+}
+
+tasks.register('moonsBuild') {
+    group = 'build'
+    description = 'Checks every supported version, packages the distribution and verifies both real EXEs.'
+    dependsOn 'checkAllVersions', 'verifyLauncherPackages'
 }
 
 tasks.named('assemble').configure {

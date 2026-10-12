@@ -136,22 +136,9 @@ sourceSets.client.compileClasspath += sourceSets.api.output + sourceSets.runtime
 // Compilation-only entry points remain available; CI runs the full version checks by default.
 def versionCompilations = []
 moonsBuild.supportedVersions.each { minecraftVersion, directory ->
-    def previousCompilation = versionCompilations.isEmpty() ? null : versionCompilations.last()
-    def versionCompilation = tasks.register("compileMinecraft${directory}", Exec) {
-        group = "build"
-        description = "Compiles production sources for Minecraft ${minecraftVersion} without verification."
-        if (previousCompilation != null) {
-            mustRunAfter previousCompilation
-        }
-        workingDir project.projectDir
-        executable moonsToolchains.gradleExecutable.absolutePath
-        def nestedBuild = layout.buildDirectory.dir("compilation/${directory}").get().asFile.absolutePath
-        args moonsToolchains.nestedGradleArguments([
-                "clientClasses", "loaderClasses", "ysmClasses",
-                "-Pminecraft_version=${minecraftVersion}",
-                "-Pmoons_build_directory=${nestedBuild}"
-        ].collect { it.toString() })
-    }
+    def versionCompilation = moonsMultiVersion.register(directory, "compileMinecraft${directory}", 'build',
+            "Compiles production sources for Minecraft ${minecraftVersion} without verification.",
+            ['clientClasses', 'loaderClasses', 'ysmClasses'])
     versionCompilations.add(versionCompilation)
 }
 

@@ -8,7 +8,7 @@ using System.Windows.Forms;
 
 namespace Moons.WindowsLauncher
 {
-    // Desktop equivalents of the website's palette, glass surfaces and white actions.
+    // Shared desktop controls for the installer, loader and their dialogs.
     internal static class LauncherTheme
     {
         internal static readonly Color Background = Color.FromArgb(11, 11, 13);
@@ -36,58 +36,48 @@ namespace Moons.WindowsLauncher
         {
             Label label = new Label();
             label.Text = text;
-            label.Bounds = bounds;
             label.Font = new Font("Segoe UI", size, bold ? FontStyle.Bold : FontStyle.Regular);
             label.ForeColor = color;
-            label.BackColor = Color.Transparent;
+            label.BackColor = parent.BackColor;
+            label.UseMnemonic = false;
+            label.AutoEllipsis = true;
+            label.Bounds = bounds;
             parent.Controls.Add(label);
             return label;
         }
 
-        internal static void DrawMoon(Graphics graphics, RectangleF bounds, Color color)
-        {
-            using (GraphicsPath moon = new GraphicsPath())
-            using (GraphicsPath cutout = new GraphicsPath())
-            {
-                moon.AddEllipse(bounds);
-                cutout.AddEllipse(bounds.X + bounds.Width * 0.36F,
-                    bounds.Y - bounds.Height * 0.19F, bounds.Width, bounds.Height);
-                using (Region crescent = new Region(moon))
-                using (SolidBrush fill = new SolidBrush(color))
-                {
-                    crescent.Exclude(cutout);
-                    graphics.FillRegion(fill, crescent);
-                }
-            }
-        }
+        internal static float Scale(Graphics graphics) { return graphics.DpiX / 96F; }
+
+        internal static readonly TextFormatFlags TextFlags = TextFormatFlags.NoPrefix
+            | TextFormatFlags.PreserveGraphicsClipping | TextFormatFlags.PreserveGraphicsTranslateTransform;
 
         internal static void DrawChoice(Graphics graphics, Rectangle bounds, string text,
             Font font, bool selected, bool focused)
         {
+            float scale = Scale(graphics);
             graphics.SmoothingMode = SmoothingMode.AntiAlias;
             using (SolidBrush background = new SolidBrush(Panel))
                 graphics.FillRectangle(background, bounds);
-            Rectangle row = Rectangle.Inflate(bounds, -4, -2);
-            using (GraphicsPath path = RoundedRectangle(row, 7))
+            Rectangle row = Rectangle.Inflate(bounds, -(int)(4 * scale), -(int)(2 * scale));
+            using (GraphicsPath path = RoundedRectangle(row, 6 * scale))
             using (SolidBrush fill = new SolidBrush(selected ? Color.FromArgb(40, 40, 44) : Panel))
             using (Pen line = new Pen(selected ? Color.FromArgb(77, 77, 83) : Panel))
             {
                 graphics.FillPath(fill, path);
                 graphics.DrawPath(line, path);
             }
-            DrawMoon(graphics, new RectangleF(bounds.Left + 16, bounds.Top + 12, 16, 16),
-                selected ? Text : Muted);
             TextRenderer.DrawText(graphics, text, font,
-                new Rectangle(bounds.Left + 46, bounds.Top, bounds.Width - 78, bounds.Height),
-                selected ? Text : Muted, TextFormatFlags.EndEllipsis | TextFormatFlags.VerticalCenter);
+                new Rectangle(bounds.Left + (int)(14 * scale), bounds.Top, bounds.Width - (int)(54 * scale), bounds.Height),
+                selected ? Text : Muted, TextFlags | TextFormatFlags.EndEllipsis | TextFormatFlags.VerticalCenter);
             if (selected)
             {
-                using (Pen pen = new Pen(Text, 1.5F))
+                using (Pen pen = new Pen(Text, 1.5F * scale))
                 {
-                    graphics.DrawLine(pen, bounds.Right - 27, bounds.Top + 20,
-                        bounds.Right - 23, bounds.Top + 24);
-                    graphics.DrawLine(pen, bounds.Right - 23, bounds.Top + 24,
-                        bounds.Right - 16, bounds.Top + 16);
+                    float middle = bounds.Top + bounds.Height / 2F;
+                    graphics.DrawLine(pen, bounds.Right - 27 * scale, middle,
+                        bounds.Right - 23 * scale, middle + 4 * scale);
+                    graphics.DrawLine(pen, bounds.Right - 23 * scale, middle + 4 * scale,
+                        bounds.Right - 16 * scale, middle - 4 * scale);
                 }
             }
             if (focused) ControlPaint.DrawFocusRectangle(graphics, Rectangle.Inflate(row, -2, -2), Text, Panel);
@@ -114,6 +104,7 @@ namespace Moons.WindowsLauncher
                 form.Location = new Point(-32000, -32000);
                 form.Show();
                 Application.DoEvents();
+                SettleProgress(form);
                 using (Bitmap bitmap = new Bitmap(form.Width, form.Height))
                 {
                     form.DrawToBitmap(bitmap, new Rectangle(Point.Empty, bitmap.Size));
@@ -123,19 +114,21 @@ namespace Moons.WindowsLauncher
             }
             return 0;
         }
+
+        private static void SettleProgress(Control parent)
+        {
+            foreach (Control child in parent.Controls)
+            {
+                ThemeProgressBar progress = child as ThemeProgressBar;
+                if (progress != null) progress.Settle();
+                if (child.HasChildren) SettleProgress(child);
+            }
+        }
     }
 
     internal class ThemeForm : Form
     {
-        private static readonly PointF[] Stars = {
-            new PointF(.03F, .21F), new PointF(.13F, .45F), new PointF(.22F, .24F),
-            new PointF(.34F, .36F), new PointF(.47F, .09F), new PointF(.60F, .24F),
-            new PointF(.74F, .12F), new PointF(.88F, .31F), new PointF(.97F, .18F),
-            new PointF(.05F, .78F), new PointF(.19F, .92F), new PointF(.30F, .68F),
-            new PointF(.50F, .87F), new PointF(.66F, .66F), new PointF(.81F, .90F),
-            new PointF(.95F, .75F), new PointF(.83F, .52F)
-        };
-        internal double AnimationSeconds = 0.0;
+        private readonly ThemeAnimationClock animation;
         private readonly string brand;
 
         [DllImport("dwmapi.dll")]
@@ -147,6 +140,7 @@ namespace Moons.WindowsLauncher
 
         internal ThemeForm(string brand)
         {
+            SuspendLayout();
             this.brand = brand;
             BackColor = LauncherTheme.Background;
             ForeColor = LauncherTheme.Text;
@@ -158,7 +152,96 @@ namespace Moons.WindowsLauncher
             ControlBox = MaximizeBox = MinimizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
             DoubleBuffered = true;
+            animation = new ThemeAnimationClock(this, Animate);
             EnableDrag(this);
+        }
+
+        private void Animate(double deltaSeconds)
+        {
+            AnimateProgress(this, deltaSeconds);
+            if (!HasAnimation(this)) animation.Pause();
+        }
+
+        internal void UpdateAnimationState()
+        {
+            if (animation == null) return;
+            if (HasAnimation(this)) animation.UpdateState();
+            else animation.Pause();
+        }
+
+        private static bool HasAnimation(Control parent)
+        {
+            foreach (Control child in parent.Controls)
+            {
+                ThemeProgressBar progress = child as ThemeProgressBar;
+                if (progress != null && progress.IsAnimating) return true;
+                if (child.HasChildren && HasAnimation(child)) return true;
+            }
+            return false;
+        }
+
+        private static void AnimateProgress(Control parent, double deltaSeconds)
+        {
+            foreach (Control child in parent.Controls)
+            {
+                ThemeProgressBar progress = child as ThemeProgressBar;
+                if (progress != null) progress.Animate(deltaSeconds);
+                if (child.HasChildren) AnimateProgress(child, deltaSeconds);
+            }
+        }
+
+        protected override void OnLoad(EventArgs e)
+        {
+            // All derived controls use 96-DPI design coordinates. Scale the
+            // completed layout together, not midway through construction.
+            ResumeLayout(false);
+            PerformAutoScale();
+            base.OnLoad(e);
+        }
+
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+            UpdateAnimationState();
+        }
+
+        protected override void OnVisibleChanged(EventArgs e)
+        {
+            base.OnVisibleChanged(e);
+            UpdateAnimationState();
+        }
+
+        protected override void OnLocationChanged(EventArgs e)
+        {
+            base.OnLocationChanged(e);
+            UpdateAnimationState();
+        }
+
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            UpdateAnimationState();
+        }
+
+        protected override void OnHandleDestroyed(EventArgs e)
+        {
+            if (animation != null) animation.Pause();
+            base.OnHandleDestroyed(e);
+        }
+
+        protected override void WndProc(ref Message message)
+        {
+            base.WndProc(ref message);
+            if (message.Msg == 0x007E) UpdateAnimationState(); // WM_DISPLAYCHANGE
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                if (animation != null) animation.Dispose();
+            }
+            base.Dispose(disposing);
         }
 
         internal void EnableDrag(Control surface)
@@ -172,21 +255,18 @@ namespace Moons.WindowsLauncher
 
         internal void InstallChrome(bool minimize, string section)
         {
-            Label name = LauncherTheme.Label(this, brand.ToLowerInvariant() + ".",
-                new Rectangle(58, 24, 140, 30), 15F, true, LauncherTheme.Text);
-            Label category = LauncherTheme.Label(this, section,
-                new Rectangle(191, 32, 210, 20), 7.5F, false, LauncherTheme.Muted);
+            Label name = LauncherTheme.Label(this, brand + " — " + section,
+                new Rectangle(24, 22, 430, 25), 10F, false, LauncherTheme.Text);
             EnableDrag(name);
-            EnableDrag(category);
             ThemeChromeButton close = new ThemeChromeButton(true);
-            close.SetBounds(ClientSize.Width - 50, 21, 30, 30);
+            close.SetBounds(ClientSize.Width - 54, 17, 30, 30);
             close.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             close.Click += delegate { Close(); };
             Controls.Add(close);
             if (minimize)
             {
                 ThemeChromeButton small = new ThemeChromeButton(false);
-                small.SetBounds(ClientSize.Width - 86, 21, 30, 30);
+                small.SetBounds(ClientSize.Width - 90, 17, 30, 30);
                 small.Anchor = AnchorStyles.Top | AnchorStyles.Right;
                 small.Click += delegate { WindowState = FormWindowState.Minimized; };
                 Controls.Add(small);
@@ -196,40 +276,30 @@ namespace Moons.WindowsLauncher
         protected override void OnHandleCreated(EventArgs e)
         {
             base.OnHandleCreated(e);
+            UpdateAnimationState();
             try { int round = 2; DwmSetWindowAttribute(Handle, 33, ref round, sizeof(int)); }
             catch (DllNotFoundException) { }
             catch (EntryPointNotFoundException) { }
         }
 
+        protected override void OnPaintBackground(PaintEventArgs e)
+        {
+            using (SolidBrush background = new SolidBrush(BackColor))
+                e.Graphics.FillRectangle(background, ClientRectangle);
+        }
+
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
+            if (ClientSize.Width < 2 || ClientSize.Height < 2) return;
             Graphics g = e.Graphics;
+            float scale = LauncherTheme.Scale(g);
             g.SmoothingMode = SmoothingMode.AntiAlias;
-            PointF[] positions = new PointF[Stars.Length];
-            for (int i = 0; i < Stars.Length; i++)
-                positions[i] = new PointF(Stars[i].X * ClientSize.Width, Stars[i].Y * ClientSize.Height);
-            using (Pen connection = new Pen(Color.FromArgb(13, LauncherTheme.Text)))
-            using (SolidBrush star = new SolidBrush(LauncherTheme.Text))
-            {
-                for (int i = 0; i < positions.Length; i++)
-                {
-                    for (int j = i + 1; j < positions.Length; j++)
-                    {
-                        double dx = Stars[i].X - Stars[j].X, dy = Stars[i].Y - Stars[j].Y;
-                        if (dx * dx + dy * dy < .055) g.DrawLine(connection, positions[i], positions[j]);
-                    }
-                    star.Color = Color.FromArgb(32 + (int)(20 * (1 + Math.Sin(AnimationSeconds * .7 + i))),
-                        LauncherTheme.Text);
-                    g.FillEllipse(star, positions[i].X - 1, positions[i].Y - 1, 2, 2);
-                }
-            }
-            LauncherTheme.DrawMoon(g, new RectangleF(32, 30, 17, 17), LauncherTheme.White);
             using (Pen line = new Pen(LauncherTheme.Border))
             {
-                g.DrawLine(line, 32, 72, ClientSize.Width - 32, 72);
+                g.DrawLine(line, 24 * scale, 62 * scale, ClientSize.Width - 24 * scale, 62 * scale);
                 using (GraphicsPath path = LauncherTheme.RoundedRectangle(
-                    new Rectangle(0, 0, ClientSize.Width - 1, ClientSize.Height - 1), 15))
+                    new Rectangle(0, 0, ClientSize.Width - 1, ClientSize.Height - 1), 12 * scale))
                     g.DrawPath(line, path);
             }
         }
@@ -240,24 +310,22 @@ namespace Moons.WindowsLauncher
         internal GlassPanel()
         {
             DoubleBuffered = true;
-            SetStyle(ControlStyles.SupportsTransparentBackColor, true);
-            BackColor = Color.Transparent;
+            BackColor = LauncherTheme.Panel;
         }
         protected override void OnPaintBackground(PaintEventArgs e)
         {
-            base.OnPaintBackground(e);
+            using (SolidBrush background = new SolidBrush(Parent == null ? LauncherTheme.Background : Parent.BackColor))
+                e.Graphics.FillRectangle(background, ClientRectangle);
+            if (Width < 2 || Height < 2) return;
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
             Rectangle bounds = new Rectangle(0, 0, Width - 1, Height - 1);
-            using (GraphicsPath path = LauncherTheme.RoundedRectangle(bounds, 12))
-            using (LinearGradientBrush fill = new LinearGradientBrush(bounds,
-                Color.FromArgb(242, 28, 28, 31), Color.FromArgb(246, 17, 17, 19), 110F))
-            using (Pen outline = new Pen(Color.FromArgb(64, 112, 112, 121)))
+            using (GraphicsPath path = LauncherTheme.RoundedRectangle(bounds, 8 * LauncherTheme.Scale(e.Graphics)))
+            using (SolidBrush fill = new SolidBrush(BackColor))
+            using (Pen outline = new Pen(LauncherTheme.Border))
             {
                 e.Graphics.FillPath(fill, path);
                 e.Graphics.DrawPath(outline, path);
             }
-            using (Pen reflection = new Pen(Color.FromArgb(32, Color.White)))
-                e.Graphics.DrawLine(reflection, 14, 1, Width / 2, 1);
         }
     }
 
@@ -273,10 +341,22 @@ namespace Moons.WindowsLauncher
             UseVisualStyleBackColor = false;
             BackColor = LauncherTheme.Panel;
             ForeColor = LauncherTheme.Text;
-            Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+            Font = new Font("Segoe UI", 9F);
+            UseMnemonic = false;
             Cursor = Cursors.Hand;
             SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint
                 | ControlStyles.OptimizedDoubleBuffer, true);
+        }
+        protected override void OnPaintBackground(PaintEventArgs e)
+        {
+            PaintSurfaceBackground(e.Graphics);
+        }
+        protected void PaintSurfaceBackground(Graphics graphics)
+        {
+            // ButtonBase can skip OnPaintBackground. Always initialize every
+            // pixel of its reused double buffer, including the rounded corners.
+            using (SolidBrush background = new SolidBrush(Parent == null ? LauncherTheme.Background : Parent.BackColor))
+                graphics.FillRectangle(background, ClientRectangle);
         }
         protected override void OnMouseEnter(EventArgs e) { Hovered = true; Invalidate(); base.OnMouseEnter(e); }
         protected override void OnMouseLeave(EventArgs e) { Hovered = Pressed = false; Invalidate(); base.OnMouseLeave(e); }
@@ -287,12 +367,13 @@ namespace Moons.WindowsLauncher
         protected override void OnEnabledChanged(EventArgs e) { Hovered = Pressed = false; Invalidate(); base.OnEnabledChanged(e); }
         protected Color DrawSurface(Graphics graphics)
         {
+            PaintSurfaceBackground(graphics);
             graphics.SmoothingMode = SmoothingMode.AntiAlias;
             Color fill = !Enabled ? LauncherTheme.Panel : Primary
                 ? Pressed ? Color.FromArgb(211, 211, 216) : Hovered ? Color.White : LauncherTheme.White
                 : Pressed ? Color.FromArgb(40, 40, 45) : Hovered ? Color.FromArgb(31, 31, 35) : LauncherTheme.Panel;
             Color color = !Enabled ? LauncherTheme.Soft : Primary ? LauncherTheme.Panel : LauncherTheme.Text;
-            using (GraphicsPath path = LauncherTheme.RoundedRectangle(new Rectangle(0, 0, Width - 1, Height - 1), 7))
+            using (GraphicsPath path = LauncherTheme.RoundedRectangle(new Rectangle(0, 0, Width - 1, Height - 1), 6 * LauncherTheme.Scale(graphics)))
             using (SolidBrush brush = new SolidBrush(fill))
             using (Pen line = new Pen(Primary && Enabled ? fill : Color.FromArgb(58, 58, 63)))
             {
@@ -305,7 +386,7 @@ namespace Moons.WindowsLauncher
         {
             Color color = DrawSurface(e.Graphics);
             TextRenderer.DrawText(e.Graphics, Text, Font, ClientRectangle, color,
-                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+                LauncherTheme.TextFlags | TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
             if (Focused && ShowFocusCues) ControlPaint.DrawFocusRectangle(e.Graphics,
                 Rectangle.Inflate(ClientRectangle, -4, -4), color, BackColor);
         }
@@ -317,31 +398,51 @@ namespace Moons.WindowsLauncher
         internal ThemeChromeButton(bool close) : base(false)
         {
             this.close = close;
-            SetStyle(ControlStyles.SupportsTransparentBackColor, true);
-            BackColor = Color.Transparent;
+            BackColor = LauncherTheme.Background;
             AccessibleName = close ? "Close" : "Minimize";
             TabStop = false;
         }
         protected override void OnPaint(PaintEventArgs e)
         {
-            if (Hovered || Pressed) base.OnPaint(e);
+            if (Hovered || Pressed) DrawSurface(e.Graphics);
+            else PaintSurfaceBackground(e.Graphics);
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            using (Pen pen = new Pen(Hovered ? LauncherTheme.Text : LauncherTheme.Muted, 1.3F))
+            float scale = LauncherTheme.Scale(e.Graphics);
+            float middleX = Width / 2F, middleY = Height / 2F, offset = 4 * scale;
+            using (Pen pen = new Pen(Hovered ? LauncherTheme.Text : LauncherTheme.Muted, 1.3F * scale))
             {
-                if (close) { e.Graphics.DrawLine(pen, 11, 11, 19, 19); e.Graphics.DrawLine(pen, 19, 11, 11, 19); }
-                else e.Graphics.DrawLine(pen, 11, 17, 19, 17);
+                if (close) { e.Graphics.DrawLine(pen, middleX - offset, middleY - offset, middleX + offset, middleY + offset);
+                    e.Graphics.DrawLine(pen, middleX + offset, middleY - offset, middleX - offset, middleY + offset); }
+                else e.Graphics.DrawLine(pen, middleX - offset, middleY, middleX + offset, middleY);
             }
         }
     }
 
     internal sealed class ThemeProgressBar : Control
     {
-        private double value;
+        private double value, displayedValue;
         internal double Value
         {
             get { return value; }
-            set { this.value = Math.Max(0, Math.Min(100, value)); Invalidate(); }
+            set {
+                double next = Math.Max(0, Math.Min(100, value));
+                if (next < this.value) displayedValue = next; // Retry starts at zero.
+                this.value = next;
+                Invalidate();
+                ThemeForm form = FindForm() as ThemeForm;
+                if (form != null) form.UpdateAnimationState();
+            }
         }
+        internal bool IsAnimating { get { return displayedValue != value; } }
+        internal void Animate(double deltaSeconds)
+        {
+            if (displayedValue == value) return;
+            displayedValue += (value - displayedValue) * (1.0 - Math.Exp(-14.0 * deltaSeconds));
+            if (Math.Abs(value - displayedValue) < .05) displayedValue = value;
+            Invalidate();
+            Update();
+        }
+        internal void Settle() { displayedValue = value; Invalidate(); }
         internal ThemeProgressBar()
         {
             DoubleBuffered = true;
@@ -352,14 +453,17 @@ namespace Moons.WindowsLauncher
         }
         protected override void OnPaint(PaintEventArgs e)
         {
+            if (Width < 2 || Height < 2) return;
+            using (SolidBrush background = new SolidBrush(BackColor))
+                e.Graphics.FillRectangle(background, ClientRectangle);
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
             Rectangle bounds = new Rectangle(0, 0, Width - 1, Height - 1);
             using (GraphicsPath path = LauncherTheme.RoundedRectangle(bounds, Height / 2F))
             using (SolidBrush track = new SolidBrush(Color.FromArgb(47, 47, 52)))
                 e.Graphics.FillPath(track, path);
-            int width = (int)Math.Round((Width - 1) * value / 100);
+            float width = (float)((Width - 1) * displayedValue / 100);
             if (width < 1) return;
-            using (GraphicsPath path = LauncherTheme.RoundedRectangle(new Rectangle(0, 0, width, Height - 1), Height / 2F))
+            using (GraphicsPath path = LauncherTheme.RoundedRectangle(new RectangleF(0, 0, width, Height - 1), Height / 2F))
             using (SolidBrush fill = new SolidBrush(LauncherTheme.White))
                 e.Graphics.FillPath(fill, path);
         }
@@ -393,18 +497,19 @@ namespace Moons.WindowsLauncher
         protected override void OnPaint(PaintEventArgs e)
         {
             Color color = DrawSurface(e.Graphics);
-            TextRenderer.DrawText(e.Graphics, Text, Font, new Rectangle(14, 0, Width - 52, Height),
-                color, TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+            float scale = LauncherTheme.Scale(e.Graphics);
+            TextRenderer.DrawText(e.Graphics, Text, Font, new Rectangle((int)(14 * scale), 0, Width - (int)(52 * scale), Height),
+                color, LauncherTheme.TextFlags | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
             float middle = Height / 2F;
             bool opened = menu != null && menu.Visible;
-            using (Pen arrow = new Pen(Enabled ? LauncherTheme.Muted : LauncherTheme.Soft, 1.3F))
+            using (Pen arrow = new Pen(Enabled ? LauncherTheme.Muted : LauncherTheme.Soft, 1.3F * scale))
             {
                 arrow.StartCap = arrow.EndCap = LineCap.Round;
                 float direction = opened ? -1 : 1;
                 e.Graphics.DrawLines(arrow, new[] {
-                    new PointF(Width - 27, middle - 2 * direction),
-                    new PointF(Width - 23, middle + 2 * direction),
-                    new PointF(Width - 19, middle - 2 * direction)
+                    new PointF(Width - 27 * scale, middle - 2 * scale * direction),
+                    new PointF(Width - 23 * scale, middle + 2 * scale * direction),
+                    new PointF(Width - 19 * scale, middle - 2 * scale * direction)
                 });
             }
             if (Focused && ShowFocusCues)
@@ -415,6 +520,9 @@ namespace Moons.WindowsLauncher
         private void PrepareMenu()
         {
             if (menu != null) menu.Dispose();
+            float scale;
+            using (Graphics graphics = CreateGraphics()) scale = LauncherTheme.Scale(graphics);
+            int padding = (int)Math.Round(4 * scale), rowHeight = (int)Math.Round(40 * scale);
             menu = new ContextMenuStrip();
             menu.Renderer = new ThemeMenuRenderer();
             menu.ShowImageMargin = false;
@@ -422,20 +530,20 @@ namespace Moons.WindowsLauncher
             menu.BackColor = LauncherTheme.Panel;
             menu.ForeColor = LauncherTheme.Text;
             menu.Font = Font;
-            menu.Padding = new Padding(4);
+            menu.Padding = new Padding(padding);
             menu.AutoSize = false;
-            menu.Size = new Size(Width, Items.Count * 40 + 8);
+            menu.Size = new Size(Width, Items.Count * rowHeight + padding * 2);
             for (int i = 0; i < Items.Count; i++)
             {
                 int index = i;
                 ToolStripMenuItem item = new ToolStripMenuItem(Items[i]);
                 item.Checked = i == selectedIndex;
                 item.AutoSize = false;
-                item.Size = new Size(Width - 8, 40);
+                item.Size = new Size(Width - padding * 2, rowHeight);
                 item.Click += delegate { SelectedIndex = index; };
                 menu.Items.Add(item);
             }
-            using (GraphicsPath path = LauncherTheme.RoundedRectangle(new Rectangle(0, 0, menu.Width, menu.Height), 8))
+            using (GraphicsPath path = LauncherTheme.RoundedRectangle(new Rectangle(0, 0, menu.Width, menu.Height), 6 * scale))
                 menu.Region = new Region(path);
             menu.Closed += delegate { Focus(); Invalidate(); };
         }
@@ -496,7 +604,7 @@ namespace Moons.WindowsLauncher
         {
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
             using (GraphicsPath path = LauncherTheme.RoundedRectangle(
-                new Rectangle(0, 0, e.ToolStrip.Width - 1, e.ToolStrip.Height - 1), 8))
+                new Rectangle(0, 0, e.ToolStrip.Width - 1, e.ToolStrip.Height - 1), 6 * LauncherTheme.Scale(e.Graphics)))
             using (Pen line = new Pen(Color.FromArgb(58, 58, 63))) e.Graphics.DrawPath(line, path);
         }
         protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e)
@@ -505,7 +613,7 @@ namespace Moons.WindowsLauncher
             if (!e.Item.Selected && (item == null || !item.Checked)) return;
             Rectangle bounds = new Rectangle(0, 0, e.Item.Width - 1, e.Item.Height - 1);
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            using (GraphicsPath path = LauncherTheme.RoundedRectangle(bounds, 5))
+            using (GraphicsPath path = LauncherTheme.RoundedRectangle(bounds, 5 * LauncherTheme.Scale(e.Graphics)))
             using (SolidBrush fill = new SolidBrush(e.Item.Selected ? Color.FromArgb(40, 40, 44) : Color.FromArgb(29, 29, 33)))
                 e.Graphics.FillPath(fill, path);
         }
@@ -518,11 +626,13 @@ namespace Moons.WindowsLauncher
         {
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
             Rectangle mark = e.ImageRectangle;
-            using (Pen pen = new Pen(LauncherTheme.Text, 1.5F))
+            float scale = LauncherTheme.Scale(e.Graphics);
+            float x = mark.Left + mark.Width / 2F, y = mark.Top + mark.Height / 2F;
+            using (Pen pen = new Pen(LauncherTheme.Text, 1.5F * scale))
             {
                 pen.StartCap = pen.EndCap = LineCap.Round;
-                e.Graphics.DrawLines(pen, new[] { new Point(mark.Left + 2, mark.Top + 8),
-                    new Point(mark.Left + 6, mark.Top + 12), new Point(mark.Left + 13, mark.Top + 4) });
+                e.Graphics.DrawLines(pen, new[] { new PointF(x - 5 * scale, y),
+                    new PointF(x - scale, y + 4 * scale), new PointF(x + 6 * scale, y - 4 * scale) });
             }
         }
     }
@@ -532,15 +642,16 @@ namespace Moons.WindowsLauncher
         internal ThemeMessageDialog(string title, string message) : base("Moons")
         {
             Text = title + " — Moons";
-            ClientSize = new Size(600, 390);
+            ClientSize = new Size(600, 336);
             StartPosition = FormStartPosition.CenterParent;
-            InstallChrome(false, "CLIENT / NOTICE");
-            LauncherTheme.Label(this, title, new Rectangle(32, 94, 536, 42), 22F, true, LauncherTheme.Text);
+            InstallChrome(false, "Notice");
+            LauncherTheme.Label(this, title, new Rectangle(24, 82, 552, 30), 14F, false, LauncherTheme.Text);
             GlassPanel card = new GlassPanel();
-            card.SetBounds(32, 150, 536, 154);
+            card.SetBounds(24, 124, 552, 138);
+            card.Padding = new Padding(16, 14, 16, 38);
             Controls.Add(card);
             RichTextBox content = new RichTextBox();
-            content.SetBounds(18, 18, 500, 96);
+            content.Dock = DockStyle.Fill;
             content.Text = message;
             content.Multiline = content.ReadOnly = true;
             content.ScrollBars = RichTextBoxScrollBars.None;
@@ -551,10 +662,10 @@ namespace Moons.WindowsLauncher
             content.Font = Font;
             card.Controls.Add(content);
             LauncherTheme.Label(card, "Select text to copy. Scroll for more.",
-                new Rectangle(18, 126, 500, 18), 7.5F, false, LauncherTheme.Soft);
+                new Rectangle(16, 111, 520, 18), 8F, false, LauncherTheme.Soft);
             ThemeButton close = new ThemeButton(true);
             close.Text = "Close";
-            close.SetBounds(452, 324, 116, 38);
+            close.SetBounds(460, 280, 116, 36);
             close.DialogResult = DialogResult.OK;
             Controls.Add(close);
             AcceptButton = CancelButton = close;

@@ -84,10 +84,10 @@ Dependencies are isolated under `libraries/latest/<game-version>` or `libraries/
 Prepare Windows x64, JDK 25 and the native build tools listed in [BUILDING.md](docs/BUILDING.md). Open PowerShell in the project folder:
 
 ```powershell
-.\gradlew.bat moonsPackages
+.\gradlew.bat moonsBuild
 ```
 
-The outputs are `build/dist/moon-install.exe`, `build/dist/moon.exe` and `build/dist/dependencies/moons-ui-runtime.jar`. In an IDE, import the Gradle project with JDK 25 and run the same task.
+This checks all supported versions, builds `build/dist/moon-install.exe`, `build/dist/moon.exe` and the matching runtime, then verifies both executables in isolation. Use `moonsPackages` to package without checks. In an IDE, import the Gradle project with JDK 25 and run the same task.
 
 ## How to Contribute
 

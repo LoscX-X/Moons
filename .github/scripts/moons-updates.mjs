@@ -60,7 +60,29 @@ export async function requestBot(env, { id, payload, request = fetch } = {}) {
     headers: { 'Content-Type': 'application/json', 'X-CI-Secret': env.MOONS_BOT_SECRET },
     ...(payload ? { body: JSON.stringify(payload) } : {}), signal: AbortSignal.timeout(20000),
   });
-  if (!response.ok) throw new Error(`Bot HTTP ${response.status}; check bot logs (404 = batch not received, 409 = immutable batch changed)`);
+  if (!response.ok) {
+    // Only known codes become log text. Never echo an arbitrary proxy response,
+    // request body or credentials into public Actions logs.
+    const reasons = {
+      INVALID_BUILD_PAYLOAD: 'Invalid build payload; check the Actions build identity and update manifest',
+      PROJECT_MISMATCH: 'Project mismatch; check UPDATE_PROJECT',
+      REPOSITORY_MISMATCH: 'Repository mismatch; check UPDATE_REPOSITORY / MOONS_REPOSITORY',
+      BRANCH_MISMATCH: 'Branch mismatch; align UPDATE_BRANCH / MOONS_BRANCH with the release branch',
+      IMMUTABLE_BATCH: 'A queued batch changed; restore its frozen content and create a new batch',
+      UNKNOWN_BATCH: 'The batch has not been received by the bot',
+    };
+    let body;
+    try { body = await response.json(); } catch { /* Non-JSON proxy errors use the status fallback. */ }
+    const reason = typeof body?.code === 'string' && Object.hasOwn(reasons, body.code) ? reasons[body.code]
+      : ['Invalid build payload or repository/branch mismatch', 'Invalid Moons build payload or repository/branch mismatch'].includes(body?.error)
+        ? 'Invalid payload or repository/branch mismatch; check UPDATE_BRANCH / MOONS_BRANCH and repository configuration'
+        : response.status === 401 ? 'Bot authentication failed; check MOONS_BOT_SECRET / CI_SECRET'
+          : response.status === 404 ? reasons.UNKNOWN_BATCH
+            : response.status === 409 ? reasons.IMMUTABLE_BATCH : 'Check bot service logs';
+    const error = new Error(`Bot HTTP ${response.status}: ${reason}`);
+    error.status = response.status;
+    throw error;
+  }
   const result = await response.json();
   if (!result.ok) throw new Error('Bot did not acknowledge the request');
   return result;
@@ -93,7 +115,11 @@ export async function main(args, env = process.env) {
         console.log(JSON.stringify(result.updates.map(u => ({ id: u.id, status: u.status })), null, 2));
         console.log('Accepted into the bot queue. Only status=pushed confirms QQ delivery.');
         return;
-      } catch (error) { if (attempt >= 2) throw error; await delay(2000 * (attempt + 1)); }
+      } catch (error) {
+        const permanent = error.status >= 400 && error.status < 500 && ![408, 429].includes(error.status);
+        if (permanent || attempt >= 2) throw error;
+        await delay(2000 * (attempt + 1));
+      }
     }
   }
   const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));

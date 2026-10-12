@@ -15,15 +15,16 @@
 
 ```powershell
 Set-Location E:\McEnv\moons
-.\gradlew.bat moonsPackages
+.\gradlew.bat moonsBuild
 ```
 
 产物是 `build\dist\moon-install.exe` 和 `build\dist\moon.exe`。先运行安装器安装/更新 UI 运行库、共享 YSM 库及所有游戏版本适配模块，再运行加载器。加载器只校验已安装依赖，缺失、损坏或版本不匹配时提示运行匹配的安装器。
 
-安装器内置 UI runtime、共享 YSM 库和各版本适配模块，支持离线安装和更新。
+`moonsBuild` 一次完成四版检查、打包和两个真实 EXE 的隔离验收。仅需重新打包时使用 `moonsPackages`。安装器内置 UI runtime、共享 YSM 库和各版本适配模块，支持离线安装和更新。
 
 | 命令 | `build\dist` 下的产物 |
 | --- | --- |
+| `moonsBuild` | 四版检查 → 完整发行包 → 真实安装器/加载器验收 |
 | `moonsExe` | `moon.exe`，校验依赖并加载游戏 |
 | `moonsInstallExe` | `moon-install.exe`，安装/更新依赖，不加载游戏 |
 | `moonsPackages` | 安装器、加载器、UI 运行库、发行锁和离线留档 ZIP |
@@ -100,7 +101,9 @@ Get-Item .\build\dist\moon.exe | Select-Object FullName, LastWriteTime, Length
 
 `verifyYsmCore` 使用所选 Minecraft 的 Java 依赖运行一次核心验证，包括头部追踪、第一人称过滤、动画和队列快照。`verifyYsmRenderSetup` 检查该版本的材质与顶点变换；`benchmarkYsm` 测 CPU 时间和分配量，不代表游戏 FPS。最终视觉效果仍需进游戏确认第三人称抬头/低头、第一人称双臂、持物、透明材质和动作切换。
 
-CI 在 push、PR 和默认的手动运行中先执行 `checkAllVersions`，通过后再打包。该任务已经包含各版本的注入点检查。手动运行时可取消勾选 `verify` 来跳过验证。使用 `formatCode` 格式化代码。
+CI 将检查和打包放在同一次 Gradle 调用中。默认主分支的完整发行使用 `moonsBuild`；PR 和其他分支执行 `checkAllVersions ysmAllVersions`，只生成 YSM 附件。手动运行可选择完整包、安装器或加载器，取消勾选 `verify` 可跳过验证。使用 `formatCode` 格式化代码。
+
+组合 `checkAllVersions`、`compileAllVersions`、`ysmAllVersions` 或加载器打包任务时，同一游戏版本只启动一次子构建，先完成该版本的检查，再生成其制品。输出固定在 `build\versions\<profile>`，各自保留独立项目缓存，重复构建复用编译结果；不再按进程号累积载荷工作目录。单版本命令和原有任务名继续可用。
 
 ## Windows bootstrap 中文路径验证
 
@@ -124,4 +127,4 @@ cmake --build build/bootstrap-path-check --config Release --target bootstrap-pat
 .\gradlew.bat moonsExe '-Pmoons_build_directory=build/local' --project-cache-dir build/local/.gradle-project-cache
 ```
 
-对应产物在 `build\local\dist`。多版本子构建自动隔离输出和项目缓存。构建出现错误时，先查看最早的异常；需要更多信息可加 `--stacktrace`。
+对应产物在 `build\local\dist`，多版本缓存位于 `build\local\versions`。并行构建应为每次构建指定不同的输出目录和项目缓存。构建出现错误时，先查看最早的异常；需要更多信息可加 `--stacktrace`。

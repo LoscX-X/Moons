@@ -84,10 +84,10 @@ Moons 客户端版本使用 **`X.Y.Z.x-Experiment`** 或 **`X.Y.Z.x-Release`**�
 准备 Windows x64、JDK 25，以及 [BUILDING.md](BUILDING.md) 列出的本地编译工具。在项目目录打开 PowerShell：
 
 ```powershell
-.\gradlew.bat moonsPackages
+.\gradlew.bat moonsBuild
 ```
 
-产物为 `build/dist/moon-install.exe`、`build/dist/moon.exe` 和 `build/dist/dependencies/moons-ui-runtime.jar`。使用 IDE 时，以 JDK 25 导入 Gradle 项目并执行同名任务。
+该命令完成四版检查、发行打包和两个 EXE 的隔离验收，产物位于 `build/dist`。仅需打包时使用 `moonsPackages`。使用 IDE 时，以 JDK 25 导入 Gradle 项目并执行同名任务。
 
 ## 如何参与开发
 

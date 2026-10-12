@@ -269,24 +269,9 @@ tasks.named("check").configure {
 
 def versionChecks = []
 moonsBuild.supportedVersions.each { minecraftVersion, directory ->
-    def previousCheck = versionChecks.isEmpty() ? null : versionChecks.last()
-    def versionCheck = tasks.register("checkMinecraft${directory}", Exec) {
-        group = "verification"
-        description = "Compiles production sources and verifies hooks and YSM behavior for Minecraft ${minecraftVersion}."
-        if (previousCheck != null) {
-            mustRunAfter previousCheck
-        }
-        mustRunAfter tasks.named("check")
-        workingDir project.projectDir
-        executable moonsToolchains.gradleExecutable.absolutePath
-        def nestedBuild = layout.buildDirectory.dir("checks/${directory}").get().asFile.absolutePath
-        args moonsToolchains.nestedGradleArguments([
-                "check",
-                "-Pminecraft_version=${minecraftVersion}",
-                "-Pmoons_build_directory=${nestedBuild}",
-                "-Pmoons_jar_output_directory=verification/agent/${directory}"
-        ].collect { it.toString() })
-    }
+    def versionCheck = moonsMultiVersion.register(directory, "checkMinecraft${directory}", 'verification',
+            "Compiles production sources and verifies hooks and YSM behavior for Minecraft ${minecraftVersion}.",
+            ['check'])
     versionChecks.add(versionCheck)
 }
 

@@ -45,6 +45,7 @@ ext.moonsBuild = [
 ].asImmutable()
 
 apply from: "gradle/toolchains.gradle"
+apply from: "gradle/multi-version.gradle"
 apply from: "gradle/java-conventions.gradle"
 apply from: "gradle/payloads.gradle"
 apply from: "gradle/native.gradle"

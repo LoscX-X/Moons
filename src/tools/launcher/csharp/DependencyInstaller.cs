@@ -162,42 +162,38 @@ namespace Moons.WindowsLauncher
             internal InstallerForm(SupportProfile selected) : base("Moons")
             {
                 Text = "Moons Dependency Installer";
-                ClientSize = new Size(640, 500);
-                InstallChrome(true, "CLIENT / INSTALLER");
-                Label eyebrow = LauncherTheme.Label(this, "MOONS / SETUP",
-                    new Rectangle(32, 104, 576, 20), 8F, false, LauncherTheme.Muted);
-                Label title = LauncherTheme.Label(this, "Set up your client.",
-                    new Rectangle(30, 130, 578, 48), 28F, true, LauncherTheme.Text);
-                LauncherTheme.Label(this, "Choose Minecraft. Install once, then load Moons.",
-                    new Rectangle(32, 185, 576, 26), 10F, false, LauncherTheme.Muted);
-                EnableDrag(eyebrow);
-                EnableDrag(title);
+                ClientSize = new Size(640, 358);
+                InstallChrome(true, "Installer");
+                LauncherTheme.Label(this, "Install or update dependencies for your Minecraft version.",
+                    new Rectangle(24, 82, 592, 26), 9F, false, LauncherTheme.Muted);
                 GlassPanel card = new GlassPanel();
-                card.SetBounds(32, 230, 576, 158);
+                card.SetBounds(24, 118, 592, 142);
                 Controls.Add(card);
-                LauncherTheme.Label(card, "MINECRAFT VERSION",
-                    new Rectangle(24, 17, 450, 20), 7.5F, false, LauncherTheme.Muted);
-                selection.SetBounds(24, 44, 528, 36);
+                LauncherTheme.Label(card, "Minecraft version",
+                    new Rectangle(16, 14, 500, 20), 9F, false, LauncherTheme.Muted);
+                selection.SetBounds(16, 40, 560, 36);
                 foreach (var profile in VersionCatalog.Profiles) selection.Items.Add(profile.GameId);
                 selection.SelectedIndex = Array.IndexOf(VersionCatalog.Profiles, selected);
                 if (selection.SelectedIndex < 0) selection.SelectedIndex = 0;
                 card.Controls.Add(selection);
-                status.SetBounds(24, 96, 462, 24);
                 status.Text = "Select the Minecraft version to install.";
-                status.BackColor = Color.Transparent;
+                status.Font = new Font("Segoe UI", 9F);
+                status.BackColor = card.BackColor;
+                status.UseMnemonic = false;
                 status.ForeColor = LauncherTheme.Text;
                 status.AutoEllipsis = true;
+                status.SetBounds(16, 90, 480, 24);
                 percentage = LauncherTheme.Label(card, "0%",
-                    new Rectangle(490, 96, 62, 24), 9F, false, LauncherTheme.Muted);
+                    new Rectangle(514, 90, 62, 24), 9F, false, LauncherTheme.Muted);
                 percentage.TextAlign = ContentAlignment.TopRight;
-                progress.SetBounds(24, 132, 528, 6);
+                progress.SetBounds(16, 120, 560, 6);
                 card.Controls.AddRange(new Control[] { status, progress });
-                close.SetBounds(338, 409, 106, 40);
+                close.SetBounds(338, 278, 106, 36);
                 close.Text = "Close";
                 close.Enabled = true;
                 close.Click += delegate { Close(); };
                 Controls.Add(close);
-                install.SetBounds(456, 409, 152, 40);
+                install.SetBounds(456, 278, 160, 36);
                 install.Text = "Install dependencies";
                 install.Click += delegate {
                     selection.Enabled = install.Enabled = close.Enabled = false;
@@ -210,10 +206,7 @@ namespace Moons.WindowsLauncher
                 AcceptButton = install;
                 CancelButton = close;
                 LauncherTheme.Label(this, DependencyRuntime.VersionLabel().Split('|')[0].Trim(),
-                    new Rectangle(32, 471, 350, 20), 8F, false, LauncherTheme.Soft);
-                Label footer = LauncherTheme.Label(this, "FREE & OPEN SOURCE",
-                    new Rectangle(403, 471, 205, 20), 7.5F, false, LauncherTheme.Soft);
-                footer.TextAlign = ContentAlignment.TopRight;
+                    new Rectangle(24, 330, 592, 18), 8F, false, LauncherTheme.Soft);
                 worker.WorkerReportsProgress = true;
                 worker.WorkerSupportsCancellation = true;
                 worker.DoWork += delegate(object sender, DoWorkEventArgs e)

@@ -49,15 +49,6 @@ namespace Moons.WindowsLauncher
         private static extern uint GetWindowThreadProcessId(
             IntPtr window, out uint processId);
 
-        [DllImport("gdi32.dll")]
-        private static extern int GetDeviceCaps(IntPtr deviceContext, int index);
-
-        [DllImport("winmm.dll", EntryPoint = "timeBeginPeriod")]
-        private static extern uint TimeBeginPeriod(uint period);
-
-        [DllImport("winmm.dll", EntryPoint = "timeEndPeriod")]
-        private static extern uint TimeEndPeriod(uint period);
-
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern IntPtr OpenProcess(uint access, bool inherit, int processId);
 
@@ -342,13 +333,8 @@ namespace Moons.WindowsLauncher
             private readonly Label status;
             private readonly ThemeProgressBar progressTrack;
             private readonly Label percentage;
-            private readonly System.Windows.Forms.Timer progressTimer;
-            private readonly Stopwatch progressClock;
-            private double displayedProgress;
-            private double lastAnimationSeconds;
             private int targetProgress;
             private bool allowClose;
-            private bool highResolutionTimer;
 
             internal int ExitCode { get; private set; }
 
@@ -360,34 +346,24 @@ namespace Moons.WindowsLauncher
             {
                 this.arguments = arguments;
                 Text = DisplayName + " " + DependencyRuntime.VersionLabel();
-                ClientSize = new Size(640, 390);
-                InstallChrome(true, "CLIENT / LOADER");
-                Label eyebrow = LauncherTheme.Label(this, "MOONS / MINECRAFT JAVA",
-                    new Rectangle(32, 104, 576, 20), 8F, false, LauncherTheme.Muted);
-                Label title = LauncherTheme.Label(this, "Load your client.",
-                    new Rectangle(30, 130, 578, 48), 28F, true, LauncherTheme.Text);
+                ClientSize = new Size(640, 248);
+                InstallChrome(true, "Launcher");
                 LauncherTheme.Label(this, "Start Minecraft. Moons will find your client.",
-                    new Rectangle(32, 185, 576, 26), 10F, false, LauncherTheme.Muted);
-                EnableDrag(eyebrow);
-                EnableDrag(title);
+                    new Rectangle(24, 82, 592, 26), 9F, false, LauncherTheme.Muted);
 
                 GlassPanel card = new GlassPanel();
-                card.SetBounds(32, 230, 576, 94);
+                card.SetBounds(24, 118, 592, 82);
                 Controls.Add(card);
-                status = LauncherTheme.Label(card, "Preparing...",
-                    new Rectangle(24, 21, 462, 26), 9F, false, LauncherTheme.Text);
-                status.AutoEllipsis = true;
-                percentage = LauncherTheme.Label(card, "0%",
-                    new Rectangle(490, 21, 62, 26), 9F, false, LauncherTheme.Muted);
+                status = LauncherTheme.Label(card, autoStart ? "Preparing..." : "Waiting for a Minecraft client",
+                    new Rectangle(16, 18, 480, 26), 9F, false, LauncherTheme.Text);
+                percentage = LauncherTheme.Label(card, autoStart ? "0%" : "42%",
+                    new Rectangle(514, 18, 62, 26), 9F, false, LauncherTheme.Muted);
                 percentage.TextAlign = ContentAlignment.TopRight;
                 progressTrack = new ThemeProgressBar();
-                progressTrack.SetBounds(24, 63, 528, 6);
+                progressTrack.SetBounds(16, 57, 560, 6);
                 card.Controls.Add(progressTrack);
                 LauncherTheme.Label(this, DependencyRuntime.VersionLabel().Split('|')[0].Trim(),
-                    new Rectangle(32, 349, 350, 20), 8F, false, LauncherTheme.Soft);
-                Label footer = LauncherTheme.Label(this, "FREE & OPEN SOURCE",
-                    new Rectangle(403, 349, 205, 20), 7.5F, false, LauncherTheme.Soft);
-                footer.TextAlign = ContentAlignment.TopRight;
+                    new Rectangle(24, 220, 592, 18), 8F, false, LauncherTheme.Soft);
 
                 worker = new BackgroundWorker();
                 worker.WorkerReportsProgress = true;
@@ -395,54 +371,15 @@ namespace Moons.WindowsLauncher
                 worker.DoWork += Work;
                 worker.ProgressChanged += ProgressChanged;
                 worker.RunWorkerCompleted += Completed;
-                progressTimer = new System.Windows.Forms.Timer();
-                progressTimer.Interval = 16;
-                progressTimer.Tick += AnimateProgress;
-                progressClock = Stopwatch.StartNew();
-                progressTimer.Start();
                 Shown += delegate
                 {
-                    MatchAnimationRateToDisplay();
                     if (autoStart) worker.RunWorkerAsync();
-                };
-                FormClosed += delegate
-                {
-                    progressTimer.Stop();
-                    progressTimer.Dispose();
-                    if (highResolutionTimer) TimeEndPeriod(1);
                 };
                 FormClosing += HandleFormClosing;
                 if (!autoStart)
                 {
                     progressTrack.Value = 42;
-                    percentage.Text = "42%";
-                    status.Text = "Waiting for a Minecraft client";
                 }
-            }
-
-            private void MatchAnimationRateToDisplay()
-            {
-                const int VerticalRefresh = 116;
-                int refreshRate = 60;
-                using (Graphics graphics = CreateGraphics())
-                {
-                    IntPtr deviceContext = graphics.GetHdc();
-                    try
-                    {
-                        int detected = GetDeviceCaps(deviceContext, VerticalRefresh);
-                        if (detected >= 30 && detected <= 360) refreshRate = detected;
-                    }
-                    finally
-                    {
-                        graphics.ReleaseHdc(deviceContext);
-                    }
-                }
-
-                progressTimer.Interval = Math.Max(4,
-                    (int)Math.Round(1000.0 / refreshRate));
-                highResolutionTimer = TimeBeginPeriod(1) == 0;
-                progressClock.Restart();
-                lastAnimationSeconds = 0.0;
             }
 
             private void Work(object sender, DoWorkEventArgs eventArgs)
@@ -468,45 +405,15 @@ namespace Moons.WindowsLauncher
             {
                 int value = Math.Max(0, Math.Min(100, eventArgs.ProgressPercentage));
                 targetProgress = Math.Max(targetProgress, value);
+                progressTrack.Value = targetProgress;
+                percentage.Text = targetProgress.ToString() + "%";
                 status.Text = eventArgs.UserState == null
                     ? "Working..." : eventArgs.UserState.ToString();
-            }
-
-            private void AnimateProgress(object sender, EventArgs eventArgs)
-            {
-                double now = progressClock.Elapsed.TotalSeconds;
-                double deltaSeconds = now - lastAnimationSeconds;
-                lastAnimationSeconds = now;
-                AnimationSeconds = now;
-                Invalidate(false);
-                if (deltaSeconds <= 0.0 || deltaSeconds > 0.25)
-                {
-                    deltaSeconds = progressTimer.Interval / 1000.0;
-                }
-
-                if (displayedProgress < targetProgress)
-                {
-                    double remaining = targetProgress - displayedProgress;
-                    double blend = 1.0 - Math.Exp(-14.0 * deltaSeconds);
-                    displayedProgress += remaining * blend;
-                    if (targetProgress - displayedProgress < 0.05)
-                    {
-                        displayedProgress = targetProgress;
-                    }
-                    RenderProgress();
-                }
-            }
-
-            private void RenderProgress()
-            {
-                progressTrack.Value = displayedProgress;
-                percentage.Text = ((int)Math.Round(displayedProgress)).ToString() + "%";
             }
 
             private void Completed(object sender, RunWorkerCompletedEventArgs eventArgs)
             {
                 allowClose = true;
-                progressTimer.Stop();
                 if (eventArgs.Cancelled)
                 {
                     ExitCode = 2;
@@ -573,24 +480,20 @@ namespace Moons.WindowsLauncher
             internal TargetDialog(IList<MinecraftTarget> candidates) : base(DisplayName)
             {
                 Text = "Select Minecraft — " + DisplayName;
-                ClientSize = new Size(640, 420);
+                ClientSize = new Size(640, 310);
                 ShowInTaskbar = false;
                 StartPosition = FormStartPosition.CenterParent;
-                InstallChrome(false, "CLIENT / SELECT");
-                Label title = LauncherTheme.Label(this, "Choose Minecraft.",
-                    new Rectangle(30, 103, 578, 46), 26F, true, LauncherTheme.Text);
-                LauncherTheme.Label(this, "More than one Minecraft client is open.",
-                    new Rectangle(32, 155, 576, 26), 10F, false, LauncherTheme.Muted);
-                EnableDrag(title);
+                InstallChrome(false, "Select Minecraft");
+                LauncherTheme.Label(this, "Choose the Minecraft client to load.",
+                    new Rectangle(24, 82, 592, 26), 9F, false, LauncherTheme.Muted);
                 GlassPanel listCard = new GlassPanel();
-                listCard.SetBounds(32, 200, 576, 128);
+                listCard.SetBounds(24, 118, 592, 116);
+                listCard.Padding = new Padding(10);
                 Controls.Add(listCard);
 
                 targets = new ListBox();
-                targets.Left = 10;
-                targets.Top = 10;
-                targets.Width = 556;
-                targets.Height = 108;
+                targets.IntegralHeight = false;
+                targets.Dock = DockStyle.Fill;
                 targets.BackColor = LauncherTheme.Panel;
                 targets.ForeColor = LauncherTheme.Text;
                 targets.BorderStyle = BorderStyle.None;
@@ -618,15 +521,22 @@ namespace Moons.WindowsLauncher
                 ThemeButton load = new ThemeButton(true);
                 load.Text = "Load Moons";
                 load.DialogResult = DialogResult.OK;
-                load.SetBounds(456, 352, 152, 40);
+                load.SetBounds(456, 252, 160, 36);
                 Controls.Add(load);
                 ThemeButton cancel = new ThemeButton(false);
                 cancel.Text = "Cancel";
                 cancel.DialogResult = DialogResult.Cancel;
-                cancel.SetBounds(338, 352, 106, 40);
+                cancel.SetBounds(338, 252, 106, 36);
                 Controls.Add(cancel);
                 AcceptButton = load;
                 CancelButton = cancel;
+            }
+
+            protected override void OnLoad(EventArgs e)
+            {
+                base.OnLoad(e);
+                using (Graphics graphics = targets.CreateGraphics())
+                    targets.ItemHeight = (int)Math.Round(40 * LauncherTheme.Scale(graphics));
             }
 
             private void DrawTarget(object sender, DrawItemEventArgs eventArgs)

@@ -142,22 +142,15 @@ tasks.named('check') {
 
 def ysmBundles = []
 moonsBuild.supportedVersions.each { version, directory ->
-    def previous = ysmBundles.isEmpty() ? null : ysmBundles.last()
-    def bundle = tasks.register("ysmBundleMinecraft${directory}", Exec) {
-        group = 'build'
-        description = "Builds the YSM adapter package for Minecraft ${version}."
-        if (previous != null) mustRunAfter previous
-        workingDir project.projectDir
-        executable moonsToolchains.gradleExecutable.absolutePath
-        def nestedBuild = layout.buildDirectory.dir("ysm-versions/${directory}").get().asFile
-        args moonsToolchains.nestedGradleArguments([
-                'ysmBundle',
-                "-Pminecraft_version=${version}",
-                "-Pmoons_build_directory=${nestedBuild.absolutePath}"
-        ].collect { it.toString() })
+    def bundle = moonsMultiVersion.register(directory, "ysmBundleMinecraft${directory}", 'build',
+            "Builds the YSM adapter package for Minecraft ${version}.", ['ysmBundle'])
+    bundle.configure {
+        def nestedPackage = new File(moonsMultiVersion.directories[directory], "dist/moons-ysm-${version}.zip")
+        inputs.file(nestedPackage)
+        outputs.file(layout.buildDirectory.file("dist/moons-ysm-${version}.zip"))
         doLast {
             copy {
-                from new File(nestedBuild, "dist/moons-ysm-${version}.zip")
+                from nestedPackage
                 into layout.buildDirectory.dir('dist')
             }
         }

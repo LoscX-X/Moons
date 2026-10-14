@@ -322,6 +322,83 @@ final class World {
                                         .5,
                                         Scaffold::setTellyTrackSpeed)
                                 .visibleWhen(Scaffold::smoothTellySelected),
+                        bool(
+                                        "packet_planner",
+                                        "Packet planner",
+                                        "scaffold.packetPlanner",
+                                        true,
+                                        Scaffold::setPacketPlanner)
+                                .visibleWhen(Scaffold::smoothTellySelected),
+                        integer(
+                                        "rotation_plan_ticks",
+                                        "Plan horizon (ticks)",
+                                        "scaffold.rotationPlanTicks",
+                                        1,
+                                        1,
+                                        5,
+                                        1,
+                                        Scaffold::setRotationPlanTicks)
+                                .visibleWhen(Scaffold::plannedTellySelected),
+                        number(
+                                        "yaw_acceleration",
+                                        "Yaw accel (deg/tick^2)",
+                                        "scaffold.yawAcceleration",
+                                        40,
+                                        2,
+                                        180,
+                                        1,
+                                        Scaffold::setYawAcceleration)
+                                .visibleWhen(Scaffold::plannedTellySelected),
+                        number(
+                                        "pitch_acceleration",
+                                        "Pitch accel (deg/tick^2)",
+                                        "scaffold.pitchAcceleration",
+                                        20,
+                                        2,
+                                        180,
+                                        .5,
+                                        Scaffold::setPitchAcceleration)
+                                .visibleWhen(Scaffold::plannedTellySelected),
+                        number(
+                                        "acceleration_variation",
+                                        "Accel variation (%)",
+                                        "scaffold.accelerationVariation",
+                                        15,
+                                        0,
+                                        50,
+                                        1,
+                                        Scaffold::setAccelerationVariation)
+                                .visibleWhen(Scaffold::plannedTellySelected),
+                        number(
+                                        "acceleration_response",
+                                        "Accel response",
+                                        "scaffold.accelerationResponse",
+                                        .3,
+                                        .05,
+                                        1,
+                                        .05,
+                                        Scaffold::setAccelerationResponse)
+                                .visibleWhen(Scaffold::plannedTellySelected),
+                        number(
+                                        "point_jitter_strength",
+                                        "Point jitter strength",
+                                        "scaffold.pointJitterStrength",
+                                        .38,
+                                        0,
+                                        1,
+                                        .01,
+                                        Scaffold::setPointJitterStrength)
+                                .visibleWhen(Scaffold::tellySelected),
+                        number(
+                                        "point_jitter_speed",
+                                        "Point jitter speed",
+                                        "scaffold.pointJitterSpeed",
+                                        .85,
+                                        .1,
+                                        3,
+                                        .05,
+                                        Scaffold::setPointJitterSpeed)
+                                .visibleWhen(Scaffold::tellySelected),
                         number(
                                         "telly_place_angle",
                                         "Telly place angle",
@@ -338,7 +415,7 @@ final class World {
                                         "scaffold.tellyReturnSpeed",
                                         45,
                                         1,
-                                        90,
+                                        180,
                                         .5,
                                         Scaffold::setTellyReturnSpeed)
                                 .visibleWhen(Scaffold::returningTellySelected),

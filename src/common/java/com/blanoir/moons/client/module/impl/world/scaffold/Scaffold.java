@@ -73,6 +73,42 @@ public final class Scaffold {
         return ScaffoldManager.smoothTellySelected();
     }
 
+    public static boolean plannedTellySelected() {
+        return ScaffoldManager.plannedTellySelected();
+    }
+
+    public static int setPacketPlanner(Minecraft client, boolean value) {
+        return ScaffoldManager.setPacketPlanner(client, value);
+    }
+
+    public static int setRotationPlanTicks(Minecraft client, int value) {
+        return ScaffoldManager.setRotationPlanTicks(client, value);
+    }
+
+    public static int setYawAcceleration(Minecraft client, double value) {
+        return ScaffoldManager.setYawAcceleration(client, value);
+    }
+
+    public static int setPitchAcceleration(Minecraft client, double value) {
+        return ScaffoldManager.setPitchAcceleration(client, value);
+    }
+
+    public static int setAccelerationVariation(Minecraft client, double value) {
+        return ScaffoldManager.setAccelerationVariation(client, value);
+    }
+
+    public static int setAccelerationResponse(Minecraft client, double value) {
+        return ScaffoldManager.setAccelerationResponse(client, value);
+    }
+
+    public static int setPointJitterStrength(Minecraft client, double value) {
+        return ScaffoldManager.setPointJitterStrength(client, value);
+    }
+
+    public static int setPointJitterSpeed(Minecraft client, double value) {
+        return ScaffoldManager.setPointJitterSpeed(client, value);
+    }
+
     public static boolean standardBridgeSelected() {
         return ScaffoldManager.standardBridgeSelected();
     }

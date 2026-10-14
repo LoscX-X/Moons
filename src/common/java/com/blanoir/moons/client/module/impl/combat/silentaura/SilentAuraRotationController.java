@@ -31,7 +31,12 @@ public final class SilentAuraRotationController {
         this.fullLockMode = fullLockMode;
     }
 
-    public void track(Minecraft client, LivingEntity target, Vec3 point, double deltaSeconds) {
+    public void track(
+            Minecraft client,
+            LivingEntity target,
+            Vec3 point,
+            double deltaSeconds,
+            boolean throughBlocks) {
         var currentPlayer = client == null ? null : client.player;
         if (client == null || currentPlayer == null || target == null || point == null) {
             returnToCamera(client, deltaSeconds);
@@ -67,7 +72,7 @@ public final class SilentAuraRotationController {
         state.returning = false;
         state.targetId = target.getId();
         learnedPoint = point;
-        AimParameters parameters = parameters();
+        AimParameters parameters = parameters(throughBlocks);
         PredictiveAimSolver.observe(state, aimType, parameters, client, target, deltaSeconds);
         if (fullLockMode) {
             FullLockAimSolver.solve(state, parameters, client, target, point, deltaSeconds);
@@ -106,7 +111,8 @@ public final class SilentAuraRotationController {
 
         CameraReturnSolver.returnTarget(state, currentPlayer.getYRot(), currentPlayer.getXRot());
         double time = System.nanoTime() * 1.0E-9D;
-        CameraReturnSolver.returnStep(state, aimType, parameters(), deltaSeconds, time);
+        CameraReturnSolver.returnStep(
+                state, aimType, parameters(SilentAuraConfig.throughBlocks()), deltaSeconds, time);
     }
 
     public boolean returnPacketReached(float sentYaw, float sentPitch) {
@@ -215,7 +221,7 @@ public final class SilentAuraRotationController {
         clear();
     }
 
-    private static AimParameters parameters() {
+    private static AimParameters parameters(boolean throughBlocks) {
         return new AimParameters(
                 SilentAuraConfig.fullLockPrediction(),
                 SilentAuraConfig.jitter(),
@@ -227,6 +233,6 @@ public final class SilentAuraRotationController {
                 SilentAuraConfig.returnSmooth(),
                 SilentAuraConfig.settledJitter(),
                 SilentAuraConfig.smooth(),
-                SilentAuraConfig.throughBlocks());
+                throughBlocks);
     }
 }

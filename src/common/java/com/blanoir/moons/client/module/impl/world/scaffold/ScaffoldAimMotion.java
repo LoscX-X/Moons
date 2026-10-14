@@ -24,7 +24,18 @@ import java.util.function.Function;
 
 /** Scaffold-owned history using the same point noise and packet primitives as SilentAura. */
 final class ScaffoldAimMotion {
+    record MotionProfile(
+            double yawAcceleration, double pitchAcceleration, double variation, double response) {
+        static final MotionProfile DEFAULT = new MotionProfile(40, 20, .15, .3);
+    }
+
+    record PointProfile(double strength, double speed) {
+        static final PointProfile DEFAULT = new PointProfile(.38, .85);
+    }
+
     private final DoubleBinaryOperator random;
+    private MotionProfile motionProfile = MotionProfile.DEFAULT;
+    private PointProfile pointProfile = PointProfile.DEFAULT;
     private Rotation sent = new Rotation(0, 0);
     private float previousYaw;
     private float previousPitch;
@@ -47,6 +58,12 @@ final class ScaffoldAimMotion {
 
     ScaffoldAimMotion(DoubleBinaryOperator random) {
         this.random = random;
+    }
+
+    synchronized void configure(MotionProfile motionProfile, PointProfile pointProfile) {
+        this.motionProfile = motionProfile;
+        this.pointProfile = pointProfile;
+        // Keep real sent velocity and this tick's frozen candidate when settings change.
     }
 
     synchronized void rebase(Rotation start) {
@@ -76,6 +93,7 @@ final class ScaffoldAimMotion {
             MouseAngleQuantizer.Adapter quantizer,
             boolean godBridge) {
         if (fallback == null) return null;
+        if (pointProfile.strength() <= 0) return unchangedPoint(fallback);
         AABB bounds;
         try {
             bounds =
@@ -115,13 +133,14 @@ final class ScaffoldAimMotion {
 
     synchronized BlockAim varyPoint(
             BlockAim fallback, Vec3 eye, AABB bounds, int tick, Function<Vec3, BlockAim> trace) {
+        if (pointProfile.strength() <= 0) return unchangedPoint(fallback);
         if (!fallback.target().equals(pointTarget)) {
             pointTarget = fallback.target();
             pointAnchor = fallback.hit().getLocation();
         }
         if (noiseStartTick == Integer.MIN_VALUE || tick < noiseStartTick) noiseStartTick = tick;
         double seconds = (tick - noiseStartTick) * .05D;
-        for (double strength = .38D; strength >= .095D; strength *= .5D) {
+        for (int attempt = 0; attempt < 3; attempt++) {
             Vec3 point =
                     FaceAimJitter.sample(
                             eye,
@@ -130,13 +149,19 @@ final class ScaffoldAimMotion {
                             fallback.target().face(),
                             seconds,
                             seed,
-                            strength,
-                            .85D);
+                            pointProfile.strength() / (1 << attempt),
+                            pointProfile.speed());
             BlockAim varied = trace.apply(point);
             if (varied != null) return varied;
         }
         // Re-anchor when movement or occlusion makes the old point unusable.
         pointAnchor = fallback.hit().getLocation();
+        return fallback;
+    }
+
+    private BlockAim unchangedPoint(BlockAim fallback) {
+        pointTarget = null;
+        pointAnchor = null;
         return fallback;
     }
 
@@ -147,14 +172,31 @@ final class ScaffoldAimMotion {
         sampledBase = sent;
         float yawDemand = Mth.wrapDegrees(desired.yaw() - sent.yaw());
         float pitchDemand = desired.pitch() - sent.pitch();
-        double urgency = Mth.clamp(Math.hypot(yawDemand, pitchDemand) / 55.0D, 0, 1);
         AimMotionSampling.PacketMotion next =
-                AimMotionSampling.sampleResponsivePacketMotion(true, urgency, random);
+                new AimMotionSampling.PacketMotion(
+                        random.applyAsDouble(
+                                motionProfile.yawAcceleration() * (1 - motionProfile.variation()),
+                                motionProfile.yawAcceleration()),
+                        random.applyAsDouble(
+                                motionProfile.pitchAcceleration() * (1 - motionProfile.variation()),
+                                motionProfile.pitchAcceleration()),
+                        0,
+                        0);
         if (motion != null) {
             next =
                     new AimMotionSampling.PacketMotion(
-                            Mth.lerp(.3D, motion.yawAcceleration(), next.yawAcceleration()),
-                            Mth.lerp(.3D, motion.pitchAcceleration(), next.pitchAcceleration()),
+                            Math.min(
+                                    motionProfile.yawAcceleration(),
+                                    Mth.lerp(
+                                            motionProfile.response(),
+                                            motion.yawAcceleration(),
+                                            next.yawAcceleration())),
+                            Math.min(
+                                    motionProfile.pitchAcceleration(),
+                                    Mth.lerp(
+                                            motionProfile.response(),
+                                            motion.pitchAcceleration(),
+                                            next.pitchAcceleration())),
                             0,
                             0);
         }
@@ -179,16 +221,18 @@ final class ScaffoldAimMotion {
         pitchMaximum = (float) Math.min(90 - sent.pitch(), Math.max(cap, previousPitch));
         double quantum = MouseAngleQuantizer.mouseSensitivityGcd(sensitivity);
         float yawStep =
-                PacketStepQuantizer.step(
+                quantizedStep(
                         Mth.wrapDegrees(planned.yaw() - sent.yaw()),
+                        yawDemand,
                         previousYaw,
                         motion.yawAcceleration(),
                         quantum,
                         yawMinimum,
                         yawMaximum);
         float pitchStep =
-                PacketStepQuantizer.step(
+                quantizedStep(
                         planned.pitch() - sent.pitch(),
+                        pitchDemand,
                         previousPitch,
                         motion.pitchAcceleration(),
                         quantum,
@@ -205,6 +249,35 @@ final class ScaffoldAimMotion {
         pitchMaximum = Math.max(pitchMaximum, pitchStep);
         sampled = new Rotation(sent.yaw() + yawStep, sent.pitch() + pitchStep);
         return sampled;
+    }
+
+    private static float quantizedStep(
+            float planned,
+            float demand,
+            float previous,
+            double acceleration,
+            double quantum,
+            float minimum,
+            float maximum) {
+        // Within one mouse count, close to the nearest target grid line instead of
+        // retaining a rounded velocity that can orbit past the target indefinitely.
+        if (Math.abs(demand) <= quantum) planned = demand;
+        float step =
+                PacketStepQuantizer.step(
+                        planned, previous, acceleration, quantum, minimum, maximum);
+        if (step == 0 && Math.abs(demand) > quantum * .5D) {
+            // A long horizon must not round every future candidate to zero near the target.
+            // Request one count through the same acceleration and physical interval.
+            step =
+                    PacketStepQuantizer.step(
+                            (float) Math.copySign(quantum, demand),
+                            previous,
+                            acceleration,
+                            quantum,
+                            minimum,
+                            maximum);
+        }
+        return step;
     }
 
     /** Nearby duplicate-delta alternatives must still fit the final packet's motion budget. */

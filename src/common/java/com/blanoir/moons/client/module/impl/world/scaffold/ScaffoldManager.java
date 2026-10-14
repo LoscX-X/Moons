@@ -136,9 +136,24 @@ public final class ScaffoldManager {
     private static final DoubleSetting TELLY_START_SPEED =
             decimal("scaffold.tellyStartSpeed", 85.0D, 1.0D, 180.0D);
     private static final DoubleSetting TELLY_RETURN_SPEED =
-            decimal("scaffold.tellyReturnSpeed", 45.0D, 1.0D, 90.0D);
+            decimal("scaffold.tellyReturnSpeed", 45.0D, 1.0D, 180.0D);
     private static final DoubleSetting TELLY_TRACK_SPEED =
             decimal("scaffold.tellyTrackSpeed", 45.0D, 1.0D, 180.0D);
+    private static final BooleanSetting PACKET_PLANNER = bool("scaffold.packetPlanner", true);
+    private static final IntSetting ROTATION_PLAN_TICKS =
+            integer("scaffold.rotationPlanTicks", 1, 1, 5);
+    private static final DoubleSetting YAW_ACCELERATION =
+            decimal("scaffold.yawAcceleration", 40.0D, 2.0D, 180.0D);
+    private static final DoubleSetting PITCH_ACCELERATION =
+            decimal("scaffold.pitchAcceleration", 20.0D, 2.0D, 180.0D);
+    private static final DoubleSetting ACCELERATION_VARIATION =
+            decimal("scaffold.accelerationVariation", 15.0D, 0.0D, 50.0D);
+    private static final DoubleSetting ACCELERATION_RESPONSE =
+            decimal("scaffold.accelerationResponse", .3D, .05D, 1.0D);
+    private static final DoubleSetting POINT_JITTER_STRENGTH =
+            decimal("scaffold.pointJitterStrength", .38D, 0.0D, 1.0D);
+    private static final DoubleSetting POINT_JITTER_SPEED =
+            decimal("scaffold.pointJitterSpeed", .85D, .1D, 3.0D);
     private static final DoubleSetting TELLY_PLACE_ANGLE =
             decimal("scaffold.tellyPlaceAngle", 6.0D, 0.5D, 20.0D);
     private static final DoubleSetting RENDER_RESPONSE =
@@ -534,6 +549,50 @@ public final class ScaffoldManager {
         return standardBridgeSelected() && TELLY_ROTATION.get() == TellyRotation.SMOOTH;
     }
 
+    public static boolean plannedTellySelected() {
+        return smoothTellySelected() && PACKET_PLANNER.get();
+    }
+
+    public static int setPacketPlanner(Minecraft client, boolean value) {
+        PACKET_PLANNER.set(value);
+        return 1;
+    }
+
+    public static int setRotationPlanTicks(Minecraft client, int value) {
+        ROTATION_PLAN_TICKS.set(value);
+        return 1;
+    }
+
+    public static int setYawAcceleration(Minecraft client, double value) {
+        YAW_ACCELERATION.set(value);
+        return 1;
+    }
+
+    public static int setPitchAcceleration(Minecraft client, double value) {
+        PITCH_ACCELERATION.set(value);
+        return 1;
+    }
+
+    public static int setAccelerationVariation(Minecraft client, double value) {
+        ACCELERATION_VARIATION.set(value);
+        return 1;
+    }
+
+    public static int setAccelerationResponse(Minecraft client, double value) {
+        ACCELERATION_RESPONSE.set(value);
+        return 1;
+    }
+
+    public static int setPointJitterStrength(Minecraft client, double value) {
+        POINT_JITTER_STRENGTH.set(value);
+        return 1;
+    }
+
+    public static int setPointJitterSpeed(Minecraft client, double value) {
+        POINT_JITTER_SPEED.set(value);
+        return 1;
+    }
+
     public static boolean standardBridgeSelected() {
         return tellySelected() && !godBridgeMode();
     }
@@ -758,14 +817,15 @@ public final class ScaffoldManager {
         if (blockCount <= 0 || !godBridgeMode() && tellyFeetCovered(client)) {
             if (!godBridgeMode() && !placementRotationStarted) {
                 Rotation backward = new Rotation(client.player.getYRot() + 180.0F, 80.0F);
-                if (TELLY_ROTATION.get() == TellyRotation.SMOOTH) {
+                if (TELLY_ROTATION.get() == TellyRotation.SMOOTH && PACKET_PLANNER.get()) {
                     backward =
-                            AIM_MOTION.sample(
-                                    client.player.tickCount,
-                                    backward,
-                                    client.options.sensitivity().get(),
-                                    TELLY_START_SPEED.get(),
-                                    2);
+                            aimMotion()
+                                    .sample(
+                                            client.player.tickCount,
+                                            backward,
+                                            client.options.sensitivity().get(),
+                                            TELLY_START_SPEED.get(),
+                                            ROTATION_PLAN_TICKS.get());
                 }
                 publishTellyRotation(client, backward.yaw(), backward.pitch());
                 ROTATION.acquire(new RotationRequest(outgoingYaw, outgoingPitch, 1, .35F, null));
@@ -1267,29 +1327,30 @@ public final class ScaffoldManager {
         if (lastTellyReturnTick == client.player.tickCount) return;
         lastTellyReturnTick = client.player.tickCount;
         Rotation camera = new Rotation(client.player.getYRot(), client.player.getXRot());
-        if (AIM_MOTION.settled()
+        boolean planned = TELLY_ROTATION.get() == TellyRotation.SMOOTH && PACKET_PLANNER.get();
+        if ((!planned || AIM_MOTION.settled())
                 && PlacementAngleSolver.distance(camera, sentYaw(), sentPitch()) < .5D
                 && PlacementAngleSolver.distance(camera, renderYaw, renderPitch) < 1.0D) {
             releaseTellyRotation();
             return;
         }
         Rotation base = new Rotation(sentYaw(), sentPitch());
-        boolean smooth = TELLY_ROTATION.get() == TellyRotation.SMOOTH;
         Rotation next =
-                smooth
-                        ? AIM_MOTION.sample(
-                                client.player.tickCount,
-                                camera,
-                                client.options.sensitivity().get(),
-                                TELLY_RETURN_SPEED.get(),
-                                2)
+                planned
+                        ? aimMotion()
+                                .sample(
+                                        client.player.tickCount,
+                                        camera,
+                                        client.options.sensitivity().get(),
+                                        TELLY_RETURN_SPEED.get(),
+                                        ROTATION_PLAN_TICKS.get())
                         : BoundedRotationStep.boundedTurn(base, camera, TELLY_RETURN_SPEED.get());
         float yaw =
-                smooth
+                planned
                         ? next.yaw()
                         : SilentPacketRotation.quantizePacketYaw(base.yaw(), next.yaw());
         float pitch =
-                smooth
+                planned
                         ? next.pitch()
                         : SilentPacketRotation.quantizePacketPitch(base.pitch(), next.pitch());
         publishTellyRotation(client, yaw, pitch);
@@ -1887,7 +1948,7 @@ public final class ScaffoldManager {
                         MAX_FACE_CANDIDATES,
                         lastTellyPlacePos,
                         target -> findFaceAim(client, target, eye));
-        return AIM_MOTION.varyPoint(client, RAYS, selected, eye, base, AIM_QUANTIZER, false);
+        return aimMotion().varyPoint(client, RAYS, selected, eye, base, AIM_QUANTIZER, false);
     }
 
     private static Rotation godBridgeRotation(Minecraft client) {
@@ -1927,14 +1988,15 @@ public final class ScaffoldManager {
                         cell -> tellyPointCovered(client, cell),
                         ScaffoldManager::isInteractable,
                         AIM_QUANTIZER);
-        return AIM_MOTION.varyPoint(
-                client,
-                RAYS,
-                selected,
-                eye,
-                new Rotation(sentYaw(), sentPitch()),
-                AIM_QUANTIZER,
-                true);
+        return aimMotion()
+                .varyPoint(
+                        client,
+                        RAYS,
+                        selected,
+                        eye,
+                        new Rotation(sentYaw(), sentPitch()),
+                        AIM_QUANTIZER,
+                        true);
     }
 
     /** Preserves the original single-support/single-face Vanilla Tower path. */
@@ -1986,16 +2048,22 @@ public final class ScaffoldManager {
             double speed =
                     placementRotationStarted ? TELLY_TRACK_SPEED.get() : TELLY_START_SPEED.get();
             limited =
-                    AIM_MOTION.sample(
-                            client.player.tickCount,
-                            exact.rotation(),
-                            client.options.sensitivity().get(),
-                            speed,
-                            Math.min(5, remainingAirDelay + 1));
+                    PACKET_PLANNER.get()
+                            ? aimMotion()
+                                    .sample(
+                                            client.player.tickCount,
+                                            exact.rotation(),
+                                            client.options.sensitivity().get(),
+                                            speed,
+                                            Math.min(
+                                                    ROTATION_PLAN_TICKS.get(),
+                                                    remainingAirDelay + 1))
+                            : BoundedRotationStep.limitedStep(
+                                    base, exact.rotation(), remainingAirDelay + 1.0F, speed);
         }
         float limitedYaw = limited.yaw();
         float limitedPitch = limited.pitch();
-        if (instant) {
+        if (instant || !PACKET_PLANNER.get()) {
             limitedYaw = SilentPacketRotation.quantizePacketYaw(baseYaw, limitedYaw);
             limitedPitch = SilentPacketRotation.quantizePacketPitch(basePitch, limitedPitch);
         }
@@ -2028,7 +2096,20 @@ public final class ScaffoldManager {
         return !verticalTower
                 && !godBridgePlacement()
                 && scaffoldPath != ScaffoldPath.RESCUE
-                && TELLY_ROTATION.get() == TellyRotation.SMOOTH;
+                && TELLY_ROTATION.get() == TellyRotation.SMOOTH
+                && PACKET_PLANNER.get();
+    }
+
+    private static ScaffoldAimMotion aimMotion() {
+        AIM_MOTION.configure(
+                new ScaffoldAimMotion.MotionProfile(
+                        YAW_ACCELERATION.get(),
+                        PITCH_ACCELERATION.get(),
+                        ACCELERATION_VARIATION.get() / 100.0D,
+                        ACCELERATION_RESPONSE.get()),
+                new ScaffoldAimMotion.PointProfile(
+                        POINT_JITTER_STRENGTH.get(), POINT_JITTER_SPEED.get()));
+        return AIM_MOTION;
     }
 
     private static boolean shouldStopSprint() {

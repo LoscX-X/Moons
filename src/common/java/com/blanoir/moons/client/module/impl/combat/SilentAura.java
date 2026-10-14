@@ -214,6 +214,12 @@ public final class SilentAura {
         return 1;
     }
 
+    public static int setPreAimThroughWalls(Minecraft ignoredClient, boolean value) {
+        SilentAuraConfig.preAimThroughWalls(value);
+        SilentAuraRuntime.resetTargeting();
+        return 1;
+    }
+
     public static int setFov(Minecraft ignoredClient, double value) {
         SilentAuraConfig.fov(value);
         SilentAuraRuntime.resetTargeting();

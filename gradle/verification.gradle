@@ -97,6 +97,7 @@ tasks.register('verifyRasterPipeline', JavaExec) {
         verifyInventoryActions: 'com.blanoir.moons.client.module.impl.player.invmanager.InventoryActionVerification',
         verifyInventoryFailures: 'com.blanoir.moons.client.manager.inventory.InventoryFailureVerification',
         verifyGodBridgeSafety: 'com.blanoir.moons.client.module.impl.world.scaffold.GodBridgeSafetyVerification',
+        verifyScaffoldSettings: 'com.blanoir.moons.client.module.catalog.ScaffoldSettingsVerification',
         verifyPlacementRays: 'com.blanoir.moons.client.utils.world.placement.PlacementRaycastVerification'
 ].each { taskName, entryPoint ->
     tasks.register(taskName, JavaExec) {

@@ -27,6 +27,7 @@ final class SilentAuraTargets {
     private final SilentAuraPointProcessor pointProcessor = new SilentAuraPointProcessor();
     private Object pointWorld;
     private LivingEntity pointTarget;
+    private boolean aimThroughBlocks;
     private boolean reevaluateAfterAttack;
     private int reevaluateTick = Integer.MIN_VALUE;
 
@@ -100,6 +101,7 @@ final class SilentAuraTargets {
     }
 
     public Vec3 aimPoint(Minecraft client, LivingEntity target, Vec3 look) {
+        aimThroughBlocks = SilentAuraConfig.throughBlocks();
         if (!validClient(client) || target == null) return null;
         if (pointWorld != client.level || pointTarget != target) {
             center.reset();
@@ -115,14 +117,16 @@ final class SilentAuraTargets {
                         : scanRange(client);
         // Never reuse a world-space aim point. Resolve it from the target's
         // current bounding box on every frame, including in balance mode.
-        Vec3 preferred;
-        if (target.getId() == targetId
-                && AuraTargetSelector.trackingEligible(
-                        selectionParameters(), client, target, scanRange(client))) {
-            preferred = AuraTrackingPoints.trackingAimPoint(pointContext(), client, target, look);
-        } else {
-            preferred =
-                    AuraTrackingPoints.visibleAimPoint(pointContext(), client, target, look, range);
+        boolean tracking =
+                target.getId() == targetId
+                        && AuraTargetSelector.trackingEligible(
+                                selectionParameters(), client, target, scanRange(client));
+        Vec3 preferred = resolvePoint(client, target, look, range, tracking, aimThroughBlocks);
+        // Keep exposed points usable for attacks. Ignore cover only when normal
+        // tracking finds no point, and pass that policy only to the aim path.
+        if (preferred == null && SilentAuraConfig.preAimThroughWalls() && !aimThroughBlocks) {
+            aimThroughBlocks = true;
+            preferred = resolvePoint(client, target, look, range, tracking, true);
         }
         Vec3 eye = client.player.getEyePosition();
         var shape = CombatGeometry.shape(client, target);
@@ -136,11 +140,24 @@ final class SilentAuraTargets {
                 point ->
                         eye.distanceToSqr(point) <= range * range
                                 && CombatGeometry.visible(
-                                        client,
-                                        shape,
-                                        eye,
-                                        point,
-                                        SilentAuraConfig.throughBlocks()));
+                                        client, shape, eye, point, aimThroughBlocks));
+    }
+
+    boolean aimThroughBlocks() {
+        return aimThroughBlocks;
+    }
+
+    private Vec3 resolvePoint(
+            Minecraft client,
+            LivingEntity target,
+            Vec3 look,
+            double range,
+            boolean tracking,
+            boolean throughBlocks) {
+        var context = pointContext(throughBlocks);
+        return tracking
+                ? AuraTrackingPoints.trackingAimPoint(context, client, target, look)
+                : AuraTrackingPoints.visibleAimPoint(context, client, target, look, range);
     }
 
     public void clear() {
@@ -151,6 +168,7 @@ final class SilentAuraTargets {
         pointProcessor.reset();
         pointWorld = null;
         pointTarget = null;
+        aimThroughBlocks = false;
         reevaluateAfterAttack = false;
         reevaluateTick = Integer.MIN_VALUE;
     }
@@ -191,10 +209,11 @@ final class SilentAuraTargets {
                 SilentAuraConfig.aimRange(),
                 SilentAuraConfig.scanExtra(),
                 lockMode,
-                SilentAuraConfig.throughBlocks());
+                SilentAuraConfig.throughBlocks(),
+                SilentAuraConfig.preAimThroughWalls());
     }
 
-    private AuraTrackingPoints.Context pointContext() {
+    private AuraTrackingPoints.Context pointContext(boolean throughBlocks) {
         return new AuraTrackingPoints.Context(
                 new AuraTrackingPoints.Parameters(
                         lockMode,
@@ -202,7 +221,7 @@ final class SilentAuraTargets {
                         SilentAuraConfig.closestAimPoint(),
                         SilentAuraConfig.aimWander(),
                         SilentAuraConfig.aimWanderTicks(),
-                        SilentAuraConfig.throughBlocks(),
+                        throughBlocks,
                         SilentAuraConfig.aimRange(),
                         SilentAuraConfig.scanExtra()),
                 center,

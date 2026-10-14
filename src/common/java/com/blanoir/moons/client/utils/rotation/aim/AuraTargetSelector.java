@@ -36,7 +36,8 @@ public final class AuraTargetSelector {
             double aimRange,
             double scanExtra,
             boolean lockMode,
-            boolean throughBlocks) {}
+            boolean throughBlocks,
+            boolean preAimThroughWalls) {}
 
     public record Candidate(
             LivingEntity entity,
@@ -111,7 +112,14 @@ public final class AuraTargetSelector {
                         : null;
         boolean attackable = point != null;
         if (point == null)
-            point = visibleAimPoint(parameters, client, entity, referenceLook, scanRange);
+            point =
+                    findAimPoint(
+                            parameters,
+                            client,
+                            entity,
+                            referenceLook,
+                            scanRange,
+                            parameters.throughBlocks() || parameters.preAimThroughWalls());
         return point == null
                 ? null
                 : new Candidate(entity, point, distanceSquared, attackable, locked);
@@ -186,6 +194,16 @@ public final class AuraTargetSelector {
 
     public static Vec3 visibleAimPoint(
             Parameters parameters, Minecraft client, LivingEntity target, Vec3 look, double range) {
+        return findAimPoint(parameters, client, target, look, range, parameters.throughBlocks());
+    }
+
+    private static Vec3 findAimPoint(
+            Parameters parameters,
+            Minecraft client,
+            LivingEntity target,
+            Vec3 look,
+            double range,
+            boolean throughBlocks) {
         if (!validClient(parameters, client) || target == null || range <= 0.0D) return null;
         AABB aimBox = CombatGeometry.box(client, target);
         return VisibleAimPoints.findBestVisibleSurfacePoint(
@@ -195,6 +213,6 @@ public final class AuraTargetSelector {
                 range,
                 UPPER_BODY_ANCHOR,
                 parameters.lockMode(),
-                parameters.throughBlocks());
+                throughBlocks);
     }
 }

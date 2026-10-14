@@ -17,6 +17,7 @@ import net.minecraft.world.phys.Vec3;
 public final class GodBridgeSafetyVerification {
     public static void main(String[] args) {
         verifyAimMotion();
+        verifyConfigurableMotion();
         verifyPlacementRotations();
         verifyDirectionChanges();
         require(
@@ -369,6 +370,162 @@ public final class GodBridgeSafetyVerification {
         require(
                 idle.equals(new Rotation(20, -5)) && motion.settled(),
                 "A fresh tenure cannot inherit velocity from another mode or owner");
+    }
+
+    private static void verifyConfigurableMotion() {
+        var motion = new ScaffoldAimMotion((min, max) -> (min + max) * .5);
+        Rotation target = new Rotation(135, 80);
+        var slow = new ScaffoldAimMotion.MotionProfile(30, 5, 0, 1);
+        motion.configure(slow, ScaffoldAimMotion.PointProfile.DEFAULT);
+        motion.rebase(new Rotation(0, 0));
+        Rotation slowStart = motion.sample(1, target, .5, 85, 2);
+        motion.configure(
+                ScaffoldAimMotion.MotionProfile.DEFAULT, ScaffoldAimMotion.PointProfile.DEFAULT);
+        require(
+                motion.sample(1, target, .5, 85, 1).equals(slowStart),
+                "Live settings must not replace a candidate already frozen in this tick");
+        motion.rebase(new Rotation(0, 0));
+        Rotation fastStart = motion.sample(2, target, .5, 85, 1);
+        require(
+                fastStart.pitch() > slowStart.pitch() * 3 && fastStart.yaw() > slowStart.yaw(),
+                "The responsive defaults must turn both axes faster from rest");
+        int slowTicks = settlingTicks(slow, 2);
+        int fastTicks = settlingTicks(ScaffoldAimMotion.MotionProfile.DEFAULT, 1);
+        require(fastTicks < slowTicks, "Responsive defaults must settle a large turn sooner");
+        System.out.println("SCAFFOLD_TURN_TICKS slow=" + slowTicks + " responsive=" + fastTicks);
+
+        // Small legal envelopes, maximum variation and coarse mouse counts must still progress.
+        var minimumMotion = new ScaffoldAimMotion((min, max) -> min);
+        minimumMotion.configure(
+                new ScaffoldAimMotion.MotionProfile(2, 2, .5, 1),
+                ScaffoldAimMotion.PointProfile.DEFAULT);
+        minimumMotion.rebase(new Rotation(0, 0));
+        Rotation previous = new Rotation(0, 0);
+        double coarseQuantum = MouseAngleQuantizer.mouseSensitivityGcd(1);
+        for (int tick = 1; tick <= 12; tick++) {
+            Rotation next = minimumMotion.sample(tick, new Rotation(3, 3), 1, 1, 5);
+            require(minimumMotion.accepts(tick, next), "Minimum settings retain the packet budget");
+            double yawStep = next.yaw() - previous.yaw();
+            double pitchStep = next.pitch() - previous.pitch();
+            require(
+                    Math.abs(yawStep) <= 1.001 && Math.abs(pitchStep) <= 1.001,
+                    "One-count progress still respects the configured phase speed cap");
+            require(
+                    Math.abs(yawStep / coarseQuantum - Math.rint(yawStep / coarseQuantum)) < .0001
+                            && Math.abs(
+                                            pitchStep / coarseQuantum
+                                                    - Math.rint(pitchStep / coarseQuantum))
+                                    < .0001,
+                    "Long-horizon progress uses whole mouse counts");
+            minimumMotion.confirm(next);
+            previous = next;
+        }
+        require(
+                Math.abs(previous.yaw() - 3) <= coarseQuantum * .5
+                        && Math.abs(previous.pitch() - 3) <= coarseQuantum * .5
+                        && minimumMotion.settled(),
+                "A coarse-sensitivity long plan must finish the last few degrees");
+
+        var unlimited = new ScaffoldAimMotion.MotionProfile(180, 180, 0, 1);
+        motion.configure(unlimited, ScaffoldAimMotion.PointProfile.DEFAULT);
+        motion.rebase(new Rotation(0, 0));
+        Rotation shortPlan = motion.sample(3, target, .5, 85, 1);
+        motion.rebase(new Rotation(0, 0));
+        Rotation longPlan = motion.sample(4, target, .5, 85, 5);
+        require(
+                shortPlan.yaw() > longPlan.yaw() && shortPlan.pitch() > longPlan.pitch(),
+                "The exposed planning horizon must change actual turn speed");
+        motion.rebase(new Rotation(0, 0));
+        Rotation capped = motion.sample(5, target, .5, 12, 1);
+        require(
+                capped.yaw() <= 12.001 && capped.pitch() <= 12.001,
+                "Phase speed limits still constrain both axes at high acceleration");
+
+        motion.configure(
+                new ScaffoldAimMotion.MotionProfile(2, 40, 0, 1),
+                ScaffoldAimMotion.PointProfile.DEFAULT);
+        motion.rebase(new Rotation(0, 0));
+        Rotation independent = motion.sample(6, target, .5, 85, 1);
+        require(
+                independent.yaw() <= 2.001 && independent.pitch() > 30,
+                "Yaw and pitch acceleration controls must be independent");
+        motion.confirm(independent);
+        motion.configure(
+                new ScaffoldAimMotion.MotionProfile(2, 2, 0, .05),
+                ScaffoldAimMotion.PointProfile.DEFAULT);
+        Rotation lowered = motion.sample(7, new Rotation(135, -80), .5, 85, 1);
+        require(
+                Math.abs((lowered.pitch() - independent.pitch()) - independent.pitch()) <= 2.001,
+                "Lowered acceleration takes effect without clearing confirmed velocity or retaining the old envelope");
+        require(motion.accepts(7, lowered), "Retuned turns retain a valid final packet budget");
+
+        double[] sequence = {1, 0, 1, 0};
+        int[] sample = {0};
+        var varied =
+                new ScaffoldAimMotion(
+                        (min, max) -> min + (max - min) * sequence[sample[0]++ % sequence.length]);
+        varied.configure(
+                new ScaffoldAimMotion.MotionProfile(40, 20, .5, 1),
+                ScaffoldAimMotion.PointProfile.DEFAULT);
+        varied.rebase(new Rotation(0, 0));
+        Rotation randomized = varied.sample(8, target, .5, 85, 1);
+        require(
+                randomized.yaw() > 39.8 && randomized.pitch() >= 9.8 && randomized.pitch() <= 10.1,
+                "Variation controls the acceleration range within each configured maximum");
+
+        BlockTarget support = new BlockTarget(new BlockPos(-2, 0, -4), Direction.EAST);
+        BlockAim fallback =
+                new BlockAim(
+                        support,
+                        target,
+                        new BlockHitResult(
+                                new Vec3(-1, .5, -3.5), Direction.EAST, support.support(), false));
+        Vec3 eye = new Vec3(.2, 2.62, -2.8);
+        AABB bounds = new AABB(-2, .25, -4, -1, .75, -3);
+        int[] probes = {0};
+        motion.configure(unlimited, new ScaffoldAimMotion.PointProfile(0, .85));
+        require(
+                motion.varyPoint(
+                                        fallback,
+                                        eye,
+                                        bounds,
+                                        9,
+                                        point -> {
+                                            probes[0]++;
+                                            return null;
+                                        })
+                                == fallback
+                        && probes[0] == 0,
+                "Zero point strength restores the scanned hit without jitter ray probes");
+        motion.configure(unlimited, new ScaffoldAimMotion.PointProfile(.01, 3));
+        require(
+                motion.varyPoint(
+                                        fallback,
+                                        eye,
+                                        bounds,
+                                        10,
+                                        point -> {
+                                            probes[0]++;
+                                            return null;
+                                        })
+                                == fallback
+                        && probes[0] == 3,
+                "Tiny user strengths still try all three relative fallback levels");
+    }
+
+    private static int settlingTicks(ScaffoldAimMotion.MotionProfile profile, int horizon) {
+        var motion = new ScaffoldAimMotion((min, max) -> (min + max) * .5);
+        motion.configure(profile, ScaffoldAimMotion.PointProfile.DEFAULT);
+        motion.rebase(new Rotation(0, 0));
+        for (int tick = 1; tick <= 100; tick++) {
+            Rotation next =
+                    motion.sample(tick, new Rotation(135, 80), .5, tick == 1 ? 85 : 45, horizon);
+            motion.confirm(next);
+            if (Math.abs(next.yaw() - 135) < .3
+                    && Math.abs(next.pitch() - 80) < .3
+                    && motion.settled()) return tick;
+        }
+        throw new AssertionError("Configured motion did not settle in a finite window");
     }
 
     private static void verifyPlacementRotations() {

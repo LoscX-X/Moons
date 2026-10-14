@@ -11,14 +11,23 @@ Copy-Item -LiteralPath (Join-Path $Distribution 'moon-install.exe') -Destination
 $loader = Join-Path $Distribution 'moon.exe'
 $script:attempt = 0
 
-function Run-Tool([string]$Executable, [string]$Argument, [int]$Expected) {
+function Run-Tool([string]$Executable, [string]$Argument, [int]$Expected, [switch]$AllowRetirementDeferred) {
     $script:attempt++
     $log = Join-Path $fixture ("run-" + $script:attempt)
     $process = Start-Process -FilePath $Executable -ArgumentList $Argument -WindowStyle Hidden -Wait -PassThru `
         -RedirectStandardOutput ($log + '.out') -RedirectStandardError ($log + '.err')
+    if ($AllowRetirementDeferred -and $process.ExitCode -eq 2) {
+        $output = Get-Content ($log + '.out') -Raw
+        if ($output -notmatch 'Retirement deferred:') { throw 'Unexpected retirement deferral output.' }
+        $busy = [Reflection.Assembly]::LoadFile($Executable).GetType('Moons.WindowsLauncher.CacheMaintenance').GetMethod(
+            'JavaRunning', [Reflection.BindingFlags]'Static, NonPublic').Invoke($null, @())
+        if (-not $busy) { throw 'Retirement was deferred without an active protected JVM.' }
+        return $false
+    }
     if ($process.ExitCode -ne $Expected) {
         throw "Unexpected exit code $($process.ExitCode), expected ${Expected}: $Executable $Argument`nstdout: $(Get-Content ($log + '.out') -Raw)`nstderr: $(Get-Content ($log + '.err') -Raw)"
     }
+    if ($AllowRetirementDeferred) { return $true }
 }
 
 function Installed-State {
@@ -143,10 +152,23 @@ try {
         $env:MOONS_HOME = $currentHome
         Write-Output 'LEGACY_EXE_VIEW_VERIFIED: actual old installer -> new installer -> actual old loader, unchanged dependencies and shared user configuration.'
     }
-    Run-Tool $installer '--retire-version 26.4-snapshot-1' 0
+    $beforeRetirement = Installed-State
+    $retired = Run-Tool $installer '--retire-version 26.4-snapshot-1' 0 -AllowRetirementDeferred
     Run-Tool $loader '--verify-dependencies --minecraft-version 26.4-snapshot-1' 0
-    if (Test-Path -LiteralPath (Join-Path $env:MOONS_HOME 'libraries/latest/26.4-snapshot-1')) { throw 'Retirement left the original version directory.' }
-    if (-not (Test-Path -LiteralPath (Join-Path $env:MOONS_HOME 'libraries/legacy/26.4-snapshot-1'))) { throw 'Retired version was not moved to legacy.' }
+    if ($retired) {
+        if (Test-Path -LiteralPath (Join-Path $env:MOONS_HOME 'libraries/latest/26.4-snapshot-1')) { throw 'Retirement left the original version directory.' }
+        if (-not (Test-Path -LiteralPath (Join-Path $env:MOONS_HOME 'libraries/legacy/26.4-snapshot-1'))) { throw 'Retired version was not moved to legacy.' }
+        Write-Output 'LAUNCHER_RETIREMENT_VERIFIED: idle version moved to legacy and dependencies remain usable.'
+    } else {
+        $afterRetirement = Installed-State
+        if ($beforeRetirement.Count -ne $afterRetirement.Count) { throw 'Deferred retirement changed the file set.' }
+        foreach ($name in $beforeRetirement.Keys) {
+            if ($beforeRetirement[$name] -ne $afterRetirement[$name]) { throw "Deferred retirement changed a file: $name" }
+        }
+        if (-not (Test-Path -LiteralPath (Join-Path $env:MOONS_HOME 'libraries/latest/26.4-snapshot-1')) -or
+            (Test-Path -LiteralPath (Join-Path $env:MOONS_HOME 'libraries/legacy/26.4-snapshot-1'))) { throw 'Deferred retirement moved the protected version.' }
+        Write-Output 'LAUNCHER_RETIREMENT_DEFERRED_VERIFIED: active protected JVM, unchanged version files and usable dependencies.'
+    }
     if ($Legacy189Distribution) {
         $sharedHome = $env:MOONS_HOME
         $frozenInstaller = Join-Path $Legacy189Distribution 'Moons-install.exe'
@@ -165,6 +187,6 @@ try {
         Run-Tool $loader '--verify-dependencies' 0
         Write-Output 'LEGACY_189_PACKAGE_VERIFIED: actual frozen installer resources, Java8 package, independent libraries/legacy/1.8.9, actual frozen loader verification and shared data.'
     }
-    Write-Output 'LAUNCHER_PACKAGES_VERIFIED: isolated roles, read-only loader, selected-version offline install, idempotence, 26.4 extraction, failed extraction preservation, UI/YSM repair, relocatable retirement.'
+    Write-Output 'LAUNCHER_PACKAGES_VERIFIED: isolated roles, read-only loader, selected-version offline install, idempotence, 26.4 extraction, failed extraction preservation, UI/YSM repair, retirement safety.'
 }
 finally { $env:MOONS_HOME = $previousHome }

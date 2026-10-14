@@ -132,7 +132,8 @@ public final class SilentAuraRuntime {
                         MODES.packets().rebase(start.yaw(), start.pitch());
                     })) return;
         }
-        MODES.rotation().track(client, target, point, deltaSeconds);
+        MODES.rotation()
+                .track(client, target, point, deltaSeconds, MODES.targets().aimThroughBlocks());
         if (SilentAuraConfig.learnedAssist()) observeLearned(client, target, point);
         syncLease();
     }

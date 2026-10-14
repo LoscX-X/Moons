@@ -40,6 +40,8 @@ public final class SilentAuraConfig {
     private static final DoubleSetting MAX_CPS = decimal("silentaura.maxCps", 14D, 1D, 20D);
     private static final DoubleSetting RANGE = decimal("silentaura.range", 3.7D, 1.0D, 6.0D);
     private static final BooleanSetting THROUGH_BLOCKS = bool("silentaura.throughBlocks", false);
+    private static final BooleanSetting PRE_AIM_THROUGH_WALLS =
+            bool("silentaura.preAimThroughWalls", false);
     private static final DoubleSetting SCAN_EXTRA =
             decimal("silentaura.scanExtra", 2.5D, 0.0D, 7.0D);
     private static final DoubleSetting FOV = decimal("silentaura.fov", 180.0D, 1.0D, 360.0D);
@@ -195,6 +197,10 @@ public final class SilentAuraConfig {
             THROUGH_BLOCKS.describe(
                     "through_blocks", "Through blocks", SilentAura::setThroughBlocks),
             SCAN_EXTRA.describe("scan_extra", "Scan range increase", .1, SilentAura::setScanExtra),
+            PRE_AIM_THROUGH_WALLS.describe(
+                    "pre_aim_through_walls",
+                    "Pre-aim through walls",
+                    SilentAura::setPreAimThroughWalls),
             FOV.describe("fov", "FOV", 1, SilentAura::setFov),
             TARGET_MODE.describe("target_mode", "Target mode", SilentAura::setTargetMode),
             HURT_TIME.describe("hurt_time", "Maximum hurt time", 1, SilentAura::setHurtTime),
@@ -319,8 +325,7 @@ public final class SilentAuraConfig {
                             .05,
                             SilentAura::setPredictionResponse)
                     .visibleWhen(() -> SilentAuraConfig.traditionalAim()),
-            MATRIX_COMPATIBILITY
-                    .describe("matrix", "Optimize", SilentAura::setMatrixCompatibility),
+            MATRIX_COMPATIBILITY.describe("matrix", "Optimize", SilentAura::setMatrixCompatibility),
             PACKET_PLANNER.describe(
                     "packet_planner", "Packet planner", SilentAura::setPacketPlanner),
             PACKET_PLANNER_TICKS
@@ -490,6 +495,14 @@ public final class SilentAuraConfig {
 
     public static void throughBlocks(boolean value) {
         THROUGH_BLOCKS.set(value);
+    }
+
+    public static boolean preAimThroughWalls() {
+        return PRE_AIM_THROUGH_WALLS.get();
+    }
+
+    public static void preAimThroughWalls(boolean value) {
+        PRE_AIM_THROUGH_WALLS.set(value);
     }
 
     public static double scanExtra() {

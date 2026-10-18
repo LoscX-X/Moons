@@ -4,7 +4,6 @@ import com.blanoir.moons.client.manager.targeting.Targeting;
 import com.blanoir.moons.client.utils.math.MathUtils;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.phys.AABB;
@@ -104,7 +103,7 @@ public final class AssistTargetSelector {
 
         return target.angle()
                 + distance * 0.32D
-                + Mth.clamp(healthRatio, 0.0D, 1.5D) * 1.15D
+                + Math.clamp(healthRatio, 0.0D, 1.5D) * 1.15D
                 + hurtFramePenalty
                 + threatBonus;
     }

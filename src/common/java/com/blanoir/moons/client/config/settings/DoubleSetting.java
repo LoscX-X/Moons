@@ -3,7 +3,6 @@ package com.blanoir.moons.client.config.settings;
 import com.blanoir.moons.client.config.Settings;
 import com.blanoir.moons.client.module.framework.ModuleRegistry;
 
-import net.minecraft.util.Mth;
 
 public final class DoubleSetting {
     private final String key;
@@ -47,7 +46,7 @@ public final class DoubleSetting {
     public void set(double value) {
         if (!Double.isFinite(value))
             throw new IllegalArgumentException("Setting value must be finite: " + key);
-        this.value = Mth.clamp(value, min, max);
+        this.value = Math.clamp(value, min, max);
         Settings.setDouble(key, this.value);
     }
 

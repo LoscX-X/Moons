@@ -26,7 +26,6 @@ import com.blanoir.moons.client.utils.rotation.aim.VisibleAimPoints;
 import com.blanoir.moons.client.utils.rotation.smooth.CameraAssistBlend;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.phys.AABB;
@@ -187,7 +186,7 @@ public final class AimAssist {
 
         currentPlayer.setYRot(nextYaw);
 
-        currentPlayer.setXRot(Mth.clamp(nextPitch, -90.0F, 90.0F));
+        currentPlayer.setXRot(Math.clamp(nextPitch, -90.0F, 90.0F));
     }
 
     public static AimForecast forecastAttack(Minecraft client, Entity target, int ticksAhead) {

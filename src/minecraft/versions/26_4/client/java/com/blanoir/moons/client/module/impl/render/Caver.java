@@ -9,7 +9,7 @@ import net.minecraft.client.Minecraft;
 /**
  * Caver: the through-wall terrain X-ray.
  *
- * <p>On Minecraft 26.4-snapshot-1, normal block-model generation and face culling are retained.
+ * <p>On Minecraft 26.4-snapshot-4, normal block-model generation and face culling are retained.
  * Quads emitted by SectionCompiler are rendered at about 38% opacity.
  */
 public final class Caver {
@@ -35,7 +35,7 @@ public final class Caver {
                 client,
                 "Caver "
                         + statusText()
-                        + ". Minecraft 26.4-snapshot-1 terrain quads render at about 38% opacity.");
+                        + ". Minecraft 26.4-snapshot-4 terrain quads render at about 38% opacity.");
     }
 
     public static void toggle(Minecraft client) {

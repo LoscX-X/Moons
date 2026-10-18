@@ -6,7 +6,6 @@ import com.blanoir.moons.client.utils.raytrace.RaytraceUtils;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.util.Mth;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -27,13 +26,13 @@ public final class FullLockAimSolver {
             LivingEntity target,
             Vec3 point,
             double rawDelta) {
-        double delta = Mth.clamp(rawDelta, 1.0D / 1000.0D, 1.0D / 20.0D);
+        double delta = Math.clamp(rawDelta, 1.0D / 1000.0D, 1.0D / 20.0D);
         float previousYaw = state.yaw;
         float previousPitch = state.pitch;
         Vec3 leadPoint = fullLockLeadPoint(state, parameters, client, target, point, delta);
         Rotation desired = AimAngles.rotationTo(client.player.getEyePosition(), leadPoint);
         state.yaw += MathUtils.wrappedAngleDifference(state.yaw, desired.yaw());
-        state.pitch = Mth.clamp(desired.pitch(), -90.0F, 90.0F);
+        state.pitch = Math.clamp(desired.pitch(), -90.0F, 90.0F);
         state.yawVelocity =
                 MathUtils.wrappedAngleDifference(previousYaw, state.yaw) / (float) delta;
         state.pitchVelocity = (state.pitch - previousPitch) / (float) delta;

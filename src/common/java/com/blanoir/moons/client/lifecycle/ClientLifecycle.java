@@ -27,6 +27,7 @@ import com.blanoir.moons.client.module.impl.combat.TriggerBot;
 import com.blanoir.moons.client.module.impl.combat.Velocity;
 import com.blanoir.moons.client.module.impl.combat.aim.AimAssist;
 import com.blanoir.moons.client.module.impl.combat.critical.Critical;
+import com.blanoir.moons.client.module.impl.combat.cushionaura.CushionAura;
 import com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraBlock;
 import com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraRuntime;
 import com.blanoir.moons.client.module.impl.misc.AntiNick;
@@ -72,6 +73,7 @@ import com.blanoir.moons.client.module.impl.world.AutoTool;
 import com.blanoir.moons.client.module.impl.world.ChestStealer;
 import com.blanoir.moons.client.module.impl.world.FastBreak;
 import com.blanoir.moons.client.module.impl.world.FastPlace;
+import com.blanoir.moons.client.module.impl.world.Ignore;
 import com.blanoir.moons.client.module.impl.world.LightningTracker;
 import com.blanoir.moons.client.module.impl.world.scaffold.Scaffold;
 import com.blanoir.moons.client.module.impl.world.scaffold.ScaffoldManager;
@@ -96,6 +98,7 @@ final class ClientLifecycle {
         RotationManager.init();
         HotbarLease.init();
         FreeLook.init();
+        Ignore.init();
 
         AutoMLG.init();
         OreScanner.init();
@@ -120,6 +123,7 @@ final class ClientLifecycle {
         AutoMace.init();
         SprintReset.init();
         SilentAura.init();
+        CushionAura.init();
         Animations.bindCombatState(
                 () -> AutoBlock.isEnabled() || SilentAuraBlock.isEnabled(),
                 client ->
@@ -230,6 +234,7 @@ final class ClientLifecycle {
                 () -> AimCollect.shutdown(),
                 () -> Disabler.discardPending(),
                 () -> FakeLag.discardPending(),
+                () -> CushionAura.shutdown(client),
                 () -> RotationManager.reset(),
                 () -> FreeLook.reset(client),
                 () -> AutoBlock.suspend(client),

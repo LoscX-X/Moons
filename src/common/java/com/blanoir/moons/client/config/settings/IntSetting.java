@@ -3,7 +3,6 @@ package com.blanoir.moons.client.config.settings;
 import com.blanoir.moons.client.config.Settings;
 import com.blanoir.moons.client.module.framework.ModuleRegistry;
 
-import net.minecraft.util.Mth;
 
 public final class IntSetting {
     private final String key;
@@ -42,7 +41,7 @@ public final class IntSetting {
     }
 
     public void set(int value) {
-        this.value = Mth.clamp(value, min, max);
+        this.value = Math.clamp(value, min, max);
         Settings.setInt(key, this.value);
     }
 

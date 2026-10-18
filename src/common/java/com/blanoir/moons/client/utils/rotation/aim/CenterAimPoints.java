@@ -96,12 +96,12 @@ public final class CenterAimPoints {
             boolean changed = state.anchorTargetId != target.getId() || state.wanderFrom == null;
             Vec3 previous = changed ? null : wanderFractions(state, tick);
             state.anchorTargetId = target.getId();
-            double spread = 0.5D * Mth.clamp(wander, 0.0D, 1.0D);
+            double spread = 0.5D * Math.clamp(wander, 0.0D, 1.0D);
             state.anchorFractionX = RandomMath.between(0.5D - spread, 0.5D + spread);
             // Centre vertical wander on the closest (normally horizontal)
             // upper-body ray. It is an offset, not a random head-to-feet pick.
             double rawEyeFractionY = (eye.y - box.minY) / Math.max(box.getYsize(), 0.1D);
-            double closestFractionY = Mth.clamp(rawEyeFractionY, UPPER_BODY_FLOOR, 0.90D);
+            double closestFractionY = Math.clamp(rawEyeFractionY, UPPER_BODY_FLOOR, 0.90D);
             double verticalSpread = spread * 0.18D;
             boolean balanceCanStayLevel =
                     keepLevel && rawEyeFractionY >= UPPER_BODY_FLOOR && rawEyeFractionY <= 0.90D;
@@ -135,7 +135,7 @@ public final class CenterAimPoints {
 
     private static Vec3 wanderFractions(State state, int tick) {
         double progress =
-                Mth.clamp(
+                Math.clamp(
                         (double) (tick - state.anchorStartTick)
                                 / Math.max(1, state.nextAnchorTick - state.anchorStartTick),
                         0.0D,
@@ -154,7 +154,7 @@ public final class CenterAimPoints {
         Vec3 inset = closest.lerp(box.getCenter(), 0.18D);
         double lowerAimY = Mth.lerp(0.58D, box.minY, box.maxY);
         double upperAimY = Mth.lerp(0.92D, box.minY, box.maxY);
-        return new Vec3(inset.x, Mth.clamp(closest.y, lowerAimY, upperAimY), inset.z);
+        return new Vec3(inset.x, Math.clamp(closest.y, lowerAimY, upperAimY), inset.z);
     }
 
     public static Vec3 center(AABB box) {
@@ -164,7 +164,7 @@ public final class CenterAimPoints {
     public static Vec3 center(AABB box, double verticalFactor) {
         return new Vec3(
                 (box.minX + box.maxX) * 0.5D,
-                Mth.lerp(Mth.clamp(verticalFactor, 0.0D, 1.0D), box.minY, box.maxY),
+                Mth.lerp(Math.clamp(verticalFactor, 0.0D, 1.0D), box.minY, box.maxY),
                 (box.minZ + box.maxZ) * 0.5D);
     }
 }

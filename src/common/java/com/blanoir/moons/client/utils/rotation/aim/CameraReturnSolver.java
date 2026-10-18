@@ -3,7 +3,6 @@ package com.blanoir.moons.client.utils.rotation.aim;
 import com.blanoir.moons.client.utils.math.MathUtils;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 
-import net.minecraft.util.Mth;
 
 /**
  * Camera-return angle solution, separate from target tracking. Preserves the original
@@ -33,7 +32,7 @@ public final class CameraReturnSolver {
         Rotation exactReturn = new Rotation(state.returnYaw, state.returnPitch);
         double remaining = MathUtils.angularDistance(state.yaw, state.pitch, exactReturn);
         double variationBlend =
-                Mth.clamp((remaining - RETURN_DONE_ANGLE * 1.8D) / 18.0D, 0.0D, 1.0D);
+                Math.clamp((remaining - RETURN_DONE_ANGLE * 1.8D) / 18.0D, 0.0D, 1.0D);
         double yawCurve =
                 SeededMotionNoise.sample(time * 1.73D, state.returnMotionSeed)
                         * Math.min(0.65D, remaining * 0.018D)

@@ -231,23 +231,26 @@ namespace Moons.WindowsLauncher
             passed &= String.Equals(MatchSupportedVersion("net.minecraft.client.main.Main --version 26.3"), "26.3", StringComparison.Ordinal);
             passed &= String.Equals(MatchSupportedVersion(@"C:\Users\coffe\AppData\Roaming\.minecraft\versions\26.3\26.3.jar"), "26.3", StringComparison.Ordinal);
             passed &= String.Equals(MatchSupportedVersion("26.3.jar"), "26.3", StringComparison.Ordinal);
-            passed &= String.Equals(NormalizeConfiguredVersion("26.4-snapshot-1"), "26.4-snapshot-1", StringComparison.Ordinal);
-            passed &= String.Equals(MatchSupportedVersion("net.minecraft.client.main.Main --version 26.4-snapshot-1"), "26.4-snapshot-1", StringComparison.Ordinal);
-            passed &= String.Equals(MatchSupportedVersion(@"C:\Users\coffe\AppData\Roaming\.minecraft\versions\26.4-snapshot-1\26.4-snapshot-1.jar"), "26.4-snapshot-1", StringComparison.Ordinal);
-            foreach (string unsupported in new[] { "26.4", "26.4-snapshot-2", "26.4-snapshot-10", "26.4-pre-1", "126.4-snapshot-1", "26.4-snapshot-1-custom" })
+            passed &= String.Equals(MatchSupportedVersion("net.neoforged.fml.startup.Client --version 26.3-NeoForge_26.3.0.90"), "26.3", StringComparison.Ordinal);
+            passed &= String.Equals(MatchSupportedVersion(@"C:\Games\Minecraft\versions\26.3-NeoForge_26.3.0.90\26.3-NeoForge_26.3.0.90.jar"), "26.3", StringComparison.Ordinal);
+            passed &= String.Equals(NormalizeConfiguredVersion("26.4-snapshot-4"), "26.4-snapshot-4", StringComparison.Ordinal);
+            passed &= String.Equals(MatchSupportedVersion("net.minecraft.client.main.Main --version 26.4-snapshot-4"), "26.4-snapshot-4", StringComparison.Ordinal);
+            passed &= String.Equals(MatchSupportedVersion(@"C:\Users\coffe\AppData\Roaming\.minecraft\versions\26.4-snapshot-4\26.4-snapshot-4.jar"), "26.4-snapshot-4", StringComparison.Ordinal);
+            foreach (string unsupported in new[] { "26.4", "26.4-snapshot-1", "26.4-snapshot-2", "26.4-snapshot-3", "26.4-snapshot-40", "26.4-pre-1", "126.4-snapshot-4", "26.4-snapshot-4-custom" })
             {
                 passed &= NormalizeConfiguredVersion(unsupported) == null;
                 passed &= MatchSupportedVersion(unsupported) == null;
             }
             foreach (string unsupported in new[] { "26.3-pre-3", "26.3-rc-1", "26.3-rc-2", "26.3-rc-3",
-                "26.3-rc-30", "26.3-snapshot", "26.3-custom", "26.3.1", "126.3", "26.30", "26.3_custom" })
+                "26.3-rc-30", "26.3-snapshot", "26.3-custom", "26.3.1", "126.3", "26.30", "26.3_custom",
+                "26.3-NeoForge_26.4.0.90", "26.3-NeoForge_26.3.0.90-custom" })
             {
                 passed &= NormalizeConfiguredVersion(unsupported) == null;
                 passed &= MatchSupportedVersion(unsupported) == null;
                 passed &= MatchSupportedVersion(@"C:\Games\Minecraft\versions\" + unsupported + @"\" + unsupported + ".jar") == null;
             }
             passed &= MatchSupportedVersion("26.2 and 26.3") == null;
-            passed &= MatchSupportedVersion("26.3 and 26.4-snapshot-1") == null;
+            passed &= MatchSupportedVersion("26.3 and 26.4-snapshot-4") == null;
             passed &= MatchSupportedVersion("Minecraft 1.21.5") == null;
             passed &= MatchSupportedVersion("26.1.2 and 26.2") == null;
             passed &= IsMinecraftTargetEvidence(

@@ -1,13 +1,12 @@
 package com.blanoir.moons.client.utils.prediction;
 
-import net.minecraft.util.Mth;
 
 /** Attack-charge and overcharge timing in ticks; callers own attack policy. */
 public final class CooldownPrediction {
     private CooldownPrediction() {}
 
     public static double chargeAt(double currentCharge, double attackDelay, int ticks) {
-        return Mth.clamp(currentCharge + ticks / attackDelay, 0.0D, 1.0D);
+        return Math.clamp(currentCharge + ticks / attackDelay, 0.0D, 1.0D);
     }
 
     public static int ticksUntilThreshold(

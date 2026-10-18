@@ -1,6 +1,5 @@
 package com.blanoir.moons.client.utils.input;
 
-import net.minecraft.util.Mth;
 
 /**
  * Existing mouse-activity influence on assistance. Computes one multiplier from
@@ -17,10 +16,10 @@ public final class MouseAssistInfluence {
             return 1.0D;
         }
 
-        double velocityInfluence = Mth.clamp(velocityPxPerSecond / 250.0D, 0.0D, 1.0D);
+        double velocityInfluence = Math.clamp(velocityPxPerSecond / 250.0D, 0.0D, 1.0D);
 
         double accelerationInfluence =
-                Mth.clamp(accelerationPxPerSecondSquared / 2000.0D, 0.0D, 1.0D);
+                Math.clamp(accelerationPxPerSecondSquared / 2000.0D, 0.0D, 1.0D);
 
         double influence = Math.max(velocityInfluence, accelerationInfluence);
 

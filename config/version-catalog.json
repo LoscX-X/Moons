@@ -36,19 +36,19 @@
       "javaVersion": 25,
       "payloadFamily": "modern",
       "backend": "windows-x64-jvmti",
-      "evidencePattern": "(?<![0-9A-Za-z_.\\-])26\\.3(?=\\.jar(?:$|[^0-9A-Za-z_.\\-])|$|[^0-9A-Za-z_.\\-])"
+      "evidencePattern": "(?<![0-9A-Za-z_.\\-])26\\.3(?:-NeoForge_26\\.3\\.[0-9]+(?:\\.[0-9]+)*)?(?=\\.jar(?:$|[^0-9A-Za-z_.\\-])|$|[^0-9A-Za-z_.\\-])"
     },
     {
       "profileId": "26_4",
-      "gameId": "26.4-snapshot-1",
-      "aliases": ["26.4-snapshot-1"],
-      "artifactId": "26.4-snapshot-1",
+      "gameId": "26.4-snapshot-4",
+      "aliases": ["26.4-snapshot-4"],
+      "artifactId": "26.4-snapshot-4",
       "status": "active",
       "available": true,
       "javaVersion": 25,
       "payloadFamily": "modern",
       "backend": "windows-x64-jvmti",
-      "evidencePattern": "(?<![0-9A-Za-z_.\\-])26\\.4-snapshot-1(?=\\.jar(?:$|[^0-9A-Za-z_.\\-])|$|[^0-9A-Za-z_.\\-])"
+      "evidencePattern": "(?<![0-9A-Za-z_.\\-])26\\.4-snapshot-4(?=\\.jar(?:$|[^0-9A-Za-z_.\\-])|$|[^0-9A-Za-z_.\\-])"
     },
     {
       "profileId": "1_8_9",

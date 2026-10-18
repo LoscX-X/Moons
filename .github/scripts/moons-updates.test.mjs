@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { requestBot, main } from './moons-updates.mjs';
+import { requestBot, main, validateManifest, makePayload, fingerprint, addNextBatch } from './moons-updates.mjs';
 
 const env = { MOONS_BOT_URL: 'https://bot.example.com/ci/build', MOONS_BOT_SECRET: 'test-ci-secret' };
 test('bot errors identify branch and immutable-batch failures without exposing response data', async () => {
@@ -46,4 +47,50 @@ test('notify does not retry permanent configuration failures', async t => {
   try { await assert.rejects(main(['notify', path], env), /Branch mismatch/); }
   finally { globalThis.fetch = original; }
   assert.equal(calls, 1);
+});
+
+const buildEnv = {
+  GITHUB_REPOSITORY: 'LoscX-X/Moons', GITHUB_REF_NAME: 'latest', GITHUB_SHA: 'a'.repeat(40),
+  GITHUB_RUN_ID: '1', GITHUB_RUN_ATTEMPT: '1', GITHUB_RUN_NUMBER: '1', CLIENT_VERSION: '1.0.1.2-Release',
+};
+const scopedManifest = changes => ({ schema: 1, batches: [{
+  id: '2026-10-14-02', summary: 'Moons 客户端与服务器更新', changes,
+}] });
+test('new Moons batches require explicit client/server classification', () => {
+  for (const scope of [undefined, null, 'bot', 'internal', 'website', '']) {
+    assert.throws(() => validateManifest(scopedManifest([{ type: 'feat', text: '更新内容', scope }])), /client\/server scope/);
+  }
+  for (const id of ['2026-10-14-10', '2026-10-15-01', '2026-11-01-01', 'new-batch']) {
+    const manifest = scopedManifest([{ type: 'feat', text: '未分类内容' }]);
+    manifest.batches[0].id = id;
+    assert.throws(() => makePayload(manifest, buildEnv), /client\/server scope/);
+  }
+});
+test('client/server entries keep the existing bot protocol and renderable content', () => {
+  const manifest = scopedManifest([
+    { type: 'feat', text: '客户端瞄准更新', scope: 'client' },
+    { type: 'fix', text: '游戏服务器场地修复', scope: 'server' },
+  ]);
+  const validated = validateManifest(manifest);
+  assert.deepEqual(validated, manifest.batches);
+  const payload = makePayload(manifest, buildEnv);
+  assert.deepEqual(payload.updates[0].changes, [
+    { type: 'feat', text: '客户端瞄准更新' }, { type: 'fix', text: '游戏服务器场地修复' },
+  ]);
+  assert.equal(fingerprint(validated[0]), createHash('sha256').update(JSON.stringify(payload.updates[0])).digest('hex'));
+  const receipt = { id: validated[0].id, status: 'pushed', pushed_at: '2026-10-14T06:00:00Z', fingerprint: fingerprint(validated[0]) };
+  const next = addNextBatch(manifest, receipt, '2026-10-14-03');
+  assert.deepEqual(next.batches[0], manifest.batches[0], 'Rotation must retain classification in saved snapshots');
+  assert.deepEqual(next.batches.at(-1).changes, []);
+});
+test('frozen legacy snapshots and receipt fingerprints remain unchanged', async () => {
+  const manifest = JSON.parse(await readFile(new URL('../moons-updates.json', import.meta.url), 'utf8'));
+  const legacy = manifest.batches.filter(batch => batch.id <= '2026-10-14-01');
+  assert.equal(legacy.length, 15);
+  const payload = makePayload({ schema: 1, batches: legacy }, buildEnv);
+  assert.deepEqual(payload.updates, legacy);
+  for (const batch of legacy) {
+    assert.equal(fingerprint(batch), createHash('sha256').update(JSON.stringify(batch)).digest('hex'));
+  }
+  assert.deepEqual(validateManifest(scopedManifest([]))[0].changes, []);
 });

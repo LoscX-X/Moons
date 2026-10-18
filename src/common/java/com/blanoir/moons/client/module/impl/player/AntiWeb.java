@@ -786,8 +786,8 @@ public final class AntiWeb {
 
     private static Vec3 pointOnFace(BlockPos block, Direction face, double first, double second) {
         double limit = 0.5D - FACE_INSET;
-        first = Mth.clamp(first, -limit, limit);
-        second = Mth.clamp(second, -limit, limit);
+        first = Math.clamp(first, -limit, limit);
+        second = Math.clamp(second, -limit, limit);
         return BlockPlacementUtils.fullBlockFaceOffset(block, face, first, second);
     }
 

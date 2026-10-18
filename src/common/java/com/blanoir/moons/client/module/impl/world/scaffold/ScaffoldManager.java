@@ -1657,8 +1657,8 @@ public final class ScaffoldManager {
         double closestDistance = Double.MAX_VALUE;
         for (VoxelShape collision : client.level.getCollisions(client.player, feet)) {
             for (AABB box : collision.toAabbs()) {
-                double closestX = Mth.clamp(centerX, box.minX, box.maxX);
-                double closestZ = Mth.clamp(centerZ, box.minZ, box.maxZ);
+                double closestX = Math.clamp(centerX, box.minX, box.maxX);
+                double closestZ = Math.clamp(centerZ, box.minZ, box.maxZ);
                 double xDistance = Math.abs(centerX - closestX);
                 double zDistance = Math.abs(centerZ - closestZ);
                 closestDistance = Math.min(closestDistance, Math.max(xDistance, zDistance));
@@ -1835,7 +1835,7 @@ public final class ScaffoldManager {
         List<WorldOverlayRenderer.ColoredBox> boxes = new ArrayList<>();
         for (PlacedMark mark : PLACED) {
             if (mark.pos().equals(renderTarget)) continue;
-            float remaining = (float) Mth.clamp(1.0D - (now - mark.time()) / 700.0D, 0.0D, 1.0D);
+            float remaining = (float) Math.clamp(1.0D - (now - mark.time()) / 700.0D, 0.0D, 1.0D);
             float alpha = OUTLINE_FADE.get() ? 0.38F * remaining * remaining : 0.25F;
             ScaffoldTargetRenderer.placed(boxes, mark.pos(), alpha);
         }

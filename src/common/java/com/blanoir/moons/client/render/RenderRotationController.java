@@ -147,8 +147,8 @@ public final class RenderRotationController {
 
         state.fullLockTargetYaw =
                 state.fullLockPreviousYaw + Mth.wrapDegrees(targetYaw - state.fullLockPreviousYaw);
-        state.fullLockTargetPitch = Mth.clamp(targetPitch, -90.0F, 90.0F);
-        float progress = Mth.clamp(partialTick, 0.0F, 1.0F);
+        state.fullLockTargetPitch = Math.clamp(targetPitch, -90.0F, 90.0F);
+        float progress = Math.clamp(partialTick, 0.0F, 1.0F);
         Rotation next =
                 TickAngleInterpolation.interpolate(
                         new Rotation(state.fullLockPreviousYaw, state.fullLockPreviousPitch),
@@ -160,7 +160,7 @@ public final class RenderRotationController {
 
     static float frameSeconds(BodyRotationState state, long now) {
         float result =
-                (float) Mth.clamp((now - state.lastFrameNanos) / 1_000_000_000.0D, 0.0D, 0.1D);
+                (float) Math.clamp((now - state.lastFrameNanos) / 1_000_000_000.0D, 0.0D, 0.1D);
         state.lastFrameNanos = now;
         return result;
     }

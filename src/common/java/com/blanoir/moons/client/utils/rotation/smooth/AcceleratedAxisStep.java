@@ -1,6 +1,5 @@
 package com.blanoir.moons.client.utils.rotation.smooth;
 
-import net.minecraft.util.Mth;
 
 /**
  * Existing one-axis acceleration/braking step. Numeric inputs only; random envelope
@@ -26,10 +25,10 @@ public final class AcceleratedAxisStep {
                         Math.copySign(
                                 Math.min(Math.abs(demand), Math.min(maxStep, brakingSpeed)),
                                 demand);
-        double errorBlend = Mth.clamp(Math.abs(demand) / 5.0D, 0.18D, 1.0D);
+        double errorBlend = Math.clamp(Math.abs(demand) / 5.0D, 0.18D, 1.0D);
         desiredStep =
-                Mth.clamp(desiredStep + (float) (constantError * errorBlend), -maxStep, maxStep);
+                Math.clamp(desiredStep + (float) (constantError * errorBlend), -maxStep, maxStep);
         return previousStep
-                + (float) Mth.clamp(desiredStep - previousStep, -acceleration, acceleration);
+                + (float) Math.clamp(desiredStep - previousStep, -acceleration, acceleration);
     }
 }

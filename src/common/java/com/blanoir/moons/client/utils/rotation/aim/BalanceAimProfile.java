@@ -3,7 +3,6 @@ package com.blanoir.moons.client.utils.rotation.aim;
 import com.blanoir.moons.client.utils.math.RandomMath;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 
-import net.minecraft.util.Mth;
 
 /** Existing Balance constants and sampled correction. History is supplied by the mode; reset and lazy random seed timing are preserved. */
 public final class BalanceAimProfile implements AimProfile {
@@ -80,7 +79,7 @@ public final class BalanceAimProfile implements AimProfile {
 
     @Override
     public double arriveEase(double settle, double settledJitter) {
-        return 1.0D - 0.25D * settle * Mth.clamp(settledJitter, 0.0D, 1.0D);
+        return 1.0D - 0.25D * settle * Math.clamp(settledJitter, 0.0D, 1.0D);
     }
 
     @Override

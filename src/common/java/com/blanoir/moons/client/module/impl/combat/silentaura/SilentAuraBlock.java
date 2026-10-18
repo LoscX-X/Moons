@@ -17,6 +17,10 @@ public final class SilentAuraBlock {
         return SilentAuraRuntime.activationHeld(client);
     }
 
+    public static boolean ownsNativeUse(Minecraft client) {
+        return LegacyBlock.ownsNativeUse(client);
+    }
+
     public static boolean shouldRenderBlock(Minecraft client) {
         return SilentAuraConfig.legacyCombat()
                 ? LegacyBlock.shouldRenderBlock(client)
@@ -40,6 +44,6 @@ public final class SilentAuraBlock {
     }
 
     public static boolean isEnabled() {
-        return SilentAuraConfig.enabled() && SilentAuraConfig.block();
+        return SilentAuraRuntime.enabled() && SilentAuraConfig.block();
     }
 }

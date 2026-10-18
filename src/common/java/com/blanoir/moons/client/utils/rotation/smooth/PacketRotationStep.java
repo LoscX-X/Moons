@@ -2,7 +2,6 @@ package com.blanoir.moons.client.utils.rotation.smooth;
 
 import com.blanoir.moons.client.utils.rotation.Rotation;
 
-import net.minecraft.util.Mth;
 
 /** Existing packet-domain acceleration stepping only. Sampling, random envelopes,
  * tick caching, final quantization and sent-angle history stay with the owner. */
@@ -37,7 +36,7 @@ public final class PacketRotationStep {
                         MAX_PITCH_STEP);
         if (!limitOverlap) return result;
         float yawStep =
-                Mth.clamp(result.yaw() - base.yaw(), -OVERLAP_MAX_YAW_STEP, OVERLAP_MAX_YAW_STEP);
+                Math.clamp(result.yaw() - base.yaw(), -OVERLAP_MAX_YAW_STEP, OVERLAP_MAX_YAW_STEP);
         return new Rotation(base.yaw() + yawStep, result.pitch());
     }
 
@@ -74,7 +73,7 @@ public final class PacketRotationStep {
                         (float) Math.max(0.0D, maxPitchStep));
         // Point-space noise is already present in demand; do not add synthetic pitch counts.
         return new Rotation(
-                base.yaw() + yawStep, Mth.clamp(base.pitch() + pitchStep, -90.0F, 90.0F));
+                base.yaw() + yawStep, Math.clamp(base.pitch() + pitchStep, -90.0F, 90.0F));
     }
 
     /**
@@ -93,7 +92,7 @@ public final class PacketRotationStep {
             double maxYawStep,
             double maxPitchStep,
             int planningTicks) {
-        int horizon = Mth.clamp(planningTicks, 1, 5);
+        int horizon = Math.clamp(planningTicks, 1, 5);
         float yawStep =
                 plannedAxisStep(
                         yawDemand,
@@ -111,7 +110,7 @@ public final class PacketRotationStep {
                         (float) Math.max(0.0D, maxPitchStep),
                         horizon);
         return new Rotation(
-                base.yaw() + yawStep, Mth.clamp(base.pitch() + pitchStep, -90.0F, 90.0F));
+                base.yaw() + yawStep, Math.clamp(base.pitch() + pitchStep, -90.0F, 90.0F));
     }
 
     static float plannedAxisStep(
@@ -129,11 +128,11 @@ public final class PacketRotationStep {
                 2.0D * (demand - horizon * previousStep) / (horizon * (horizon + 1.0D));
         double next =
                 previousStep
-                        + Mth.clamp(requiredAcceleration, -acceleration, acceleration);
-        double capped = Mth.clamp(next, -maxStep, maxStep);
+                        + Math.clamp(requiredAcceleration, -acceleration, acceleration);
+        double capped = Math.clamp(next, -maxStep, maxStep);
         // A newly reduced cap (for example the 18-degree overlap cap) is itself
         // approached through the acceleration envelope instead of snapping.
         return previousStep
-                + (float) Mth.clamp(capped - previousStep, -acceleration, acceleration);
+                + (float) Math.clamp(capped - previousStep, -acceleration, acceleration);
     }
 }

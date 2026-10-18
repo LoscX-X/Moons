@@ -77,7 +77,7 @@ public final class Animations {
 
     private Animations() {}
 
-    /** Submit the already extracted hand item; 26.4-snapshot-1 rendering no longer takes a live player. */
+    /** Submit the already extracted hand item; 26.4-snapshot-4 rendering no longer takes a live player. */
     public static boolean submit(Object[] args) {
         if (args.length != 11) return false;
         var state =

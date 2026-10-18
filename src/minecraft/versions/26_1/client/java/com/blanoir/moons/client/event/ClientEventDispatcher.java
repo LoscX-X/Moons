@@ -134,7 +134,8 @@ public final class ClientEventDispatcher {
                             || com.blanoir.moons.client.render.VisualModelCapture.requested();
             case "combat.reach.pick" ->
                     Reach.isEnabled() || EventBus.PICK_RESULT.listenerCount() != 0;
-            case "render.freelook.turn", "render.freelook.rotation" -> FreeLook.isEnabled();
+            case "render.freelook.turn", "render.freelook.rotation", "render.freelook.distance" ->
+                    FreeLook.isCameraActive();
             default -> true;
         };
     }
@@ -151,6 +152,10 @@ public final class ClientEventDispatcher {
             case "render.freelook.rotation" -> {
                 if (hook.argument() instanceof Float index && hook.value() instanceof Float value)
                     hook.value(FreeLook.cameraAngle(hook.owner(), index, value));
+            }
+            case "render.freelook.distance" -> {
+                if (hook.value() instanceof Float value)
+                    hook.value(FreeLook.cameraDistance(hook.owner(), value));
             }
             case "placement.item-ray" -> hook.value(PlacementRaycast.itemRay(hook.value()));
             case "client.timer-speed" -> {
@@ -572,6 +577,10 @@ public final class ClientEventDispatcher {
         PickResultEvent event = new PickResultEvent(client, client.hitResult);
         EventBus.PICK_RESULT.post(event);
         client.hitResult = event.result();
+        client.crosshairPickEntity =
+                event.result() instanceof net.minecraft.world.phys.EntityHitResult hit
+                        ? hit.getEntity()
+                        : null;
     }
 
     private static void silentYaw(RuntimeEvents.MethodHook hook) {

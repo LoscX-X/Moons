@@ -30,8 +30,8 @@ public final class GodBridgeTargetSelector {
     }
 
     public static List<BlockPos> cells(AABB feet, Vec3 velocity, AABB intended, int row) {
-        double dx = Mth.clamp(velocity.x, -.5, .5);
-        double dz = Mth.clamp(velocity.z, -.5, .5);
+        double dx = Math.clamp(velocity.x, -.5, .5);
+        double dz = Math.clamp(velocity.z, -.5, .5);
         AABB predicted = feet.move(dx, 0, dz);
         AABB sweep = feet.expandTowards(dx, 0, dz).minmax(intended);
         List<BlockPos> cells = new ArrayList<>();

@@ -15,16 +15,16 @@ public final class BoundedRotationStep {
         float yawDelta = Mth.wrapDegrees(to.yaw() - from.yaw()) / steps;
         float pitchDelta = (to.pitch() - from.pitch()) / steps;
         return new Rotation(
-                from.yaw() + (float) Mth.clamp(yawDelta, -degrees, degrees),
-                from.pitch() + (float) Mth.clamp(pitchDelta, -degrees, degrees));
+                from.yaw() + (float) Math.clamp(yawDelta, -degrees, degrees),
+                from.pitch() + (float) Math.clamp(pitchDelta, -degrees, degrees));
     }
 
     public static Rotation boundedTurn(Rotation from, Rotation to, double degrees) {
         return new Rotation(
                 from.yaw()
                         + (float)
-                                Mth.clamp(
+                                Math.clamp(
                                         Mth.wrapDegrees(to.yaw() - from.yaw()), -degrees, degrees),
-                from.pitch() + (float) Mth.clamp(to.pitch() - from.pitch(), -degrees, degrees));
+                from.pitch() + (float) Math.clamp(to.pitch() - from.pitch(), -degrees, degrees));
     }
 }

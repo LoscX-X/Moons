@@ -15,7 +15,7 @@ final class YsmInput {
                 && (org.lwjgl.sdl.SDLMouse.nSDL_GetMouseState(0L, 0L) & (1 << glfwButton)) != 0;
     }
 
-    // Matched by key name against the actual 26.2 and 26.4-snapshot-1 InputConstants tables.
+    // Matched by key name against the actual 26.2 and 26.4-snapshot-4 InputConstants tables.
     static int scanCode(int glfwKey) {
         return switch (glfwKey) {
             case 48 -> InputConstants.KEY_0;

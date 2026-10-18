@@ -13,7 +13,7 @@ public final class LatestBlock {
     private LatestBlock() {}
 
     public static boolean shouldRender(Minecraft client) {
-        if (!SilentAuraConfig.enabled()
+        if (!SilentAuraRuntime.enabled()
                 || !SilentAuraConfig.block()
                 || !ClientReady.aliveGameplay(client)
                 || !client.player.getMainHandItem().is(ItemTags.SWORDS)

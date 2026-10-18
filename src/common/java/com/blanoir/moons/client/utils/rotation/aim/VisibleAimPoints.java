@@ -184,7 +184,7 @@ public final class VisibleAimPoints {
             this.eye = eye;
             this.look = look;
             this.rangeSquared = range * range;
-            this.preferredY = Mth.lerp(Mth.clamp(preferredHeight, 0.0D, 1.0D), box.minY, box.maxY);
+            this.preferredY = Mth.lerp(Math.clamp(preferredHeight, 0.0D, 1.0D), box.minY, box.maxY);
             this.height = Math.max(box.getYsize(), 0.1D);
             this.visible = visible;
         }
@@ -193,7 +193,7 @@ public final class VisibleAimPoints {
             double distanceSquared = eye.distanceToSqr(point);
             if (distanceSquared > rangeSquared || !visible.test(point)) return;
             Vec3 direction = point.subtract(eye).normalize();
-            double angularCost = 1.0D - Mth.clamp(look.dot(direction), -1.0D, 1.0D);
+            double angularCost = 1.0D - Math.clamp(look.dot(direction), -1.0D, 1.0D);
             double lowAimPenalty = Math.max(0.0D, preferredY - point.y) / height;
             double score = angularCost * 32.0D + distanceSquared * 0.002D + lowAimPenalty * 1.35D;
             if (score < bestScore) {

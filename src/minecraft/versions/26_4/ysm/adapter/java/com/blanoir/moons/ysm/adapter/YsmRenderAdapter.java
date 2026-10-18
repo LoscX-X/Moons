@@ -11,14 +11,14 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.entity.state.AvatarRenderState;
-import net.minecraft.client.renderer.texture.DynamicTexture;
+import net.minecraft.client.renderer.texture.TextureResources;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.resources.Identifier;
 
 import java.io.*;
 import java.util.*;
 
-/** Minecraft 26.4-snapshot-1 rendering and observations. This class belongs to this version only. */
+/** Minecraft 26.4-snapshot-4 rendering and observations. This class belongs to this version only. */
 final class YsmRenderAdapter implements AutoCloseable {
     private final LocalYsmModel model;
     private final boolean handlesFallFlyingPitch;
@@ -69,14 +69,12 @@ final class YsmRenderAdapter implements AutoCloseable {
     }
 
     static void upload(Identifier id, byte[] png) throws IOException {
-        NativeImage pixels = NativeImage.read(new ByteArrayInputStream(png));
-        DynamicTexture uploaded = null;
-        try {
-            uploaded = new DynamicTexture(() -> "Moons YSM", pixels);
+        TextureResources uploaded = null;
+        try (NativeImage pixels = NativeImage.read(new ByteArrayInputStream(png))) {
+            uploaded = TextureResources.from2dImage(() -> "Moons YSM", pixels);
             Minecraft.getInstance().getTextureManager().register(id, uploaded);
         } catch (Throwable failure) {
             if (uploaded != null) uploaded.close();
-            else pixels.close();
             throw failure;
         }
     }

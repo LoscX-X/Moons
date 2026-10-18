@@ -9,6 +9,7 @@ import com.blanoir.moons.client.manager.rotation.RotationManager;
 import com.blanoir.moons.client.manager.rotation.RotationRequest;
 import com.blanoir.moons.client.manager.rotation.SilentPacketRotation;
 import com.blanoir.moons.client.manager.targeting.Targeting;
+import com.blanoir.moons.client.module.impl.combat.cushionaura.CushionAura;
 import com.blanoir.moons.client.utils.client.ClientReady;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 
@@ -73,6 +74,15 @@ public final class SilentAuraRuntime {
             activeMatrix = SilentAuraConfig.matrixCompatibility();
             activePacketPlanner = SilentAuraConfig.packetPlanner();
             activePacketPlannerTicks = SilentAuraConfig.packetPlannerTicks();
+        }
+        if (CushionAura.isEnabled() && !CushionAura.canAttack(client)) {
+            SilentAuraCombat.stop(client);
+            MODES.clearRotations();
+            MODES.resetPackets();
+            sent = SentRotation.invalid();
+            ROTATION_LEASE.release();
+            selectPlacementTarget(client);
+            return;
         }
         if (externallyPreempted()) {
             pauseForExternalRotation();
@@ -168,8 +178,22 @@ public final class SilentAuraRuntime {
     public static boolean activationHeld(Minecraft client) {
         return baseCanRun(client)
                 && Targeting.isHoldingTriggerWeapon(client)
-                && (!SilentAuraConfig.requireLeftClick()
-                        || PhysicalInput.isGameplayKeyDown(client, client.options.keyAttack));
+                && (CushionAura.isEnabled()
+                        ? CushionAura.canAttack(client)
+                        : !SilentAuraConfig.requireLeftClick()
+                                || PhysicalInput.isGameplayKeyDown(
+                                        client, client.options.keyAttack));
+    }
+
+    public static boolean enabled() {
+        return SilentAuraConfig.enabled() || CushionAura.isEnabled();
+    }
+
+    /** Uses the same selector/lock history as attacks without owning rotation or dispatching attacks. */
+    public static LivingEntity selectPlacementTarget(Minecraft client) {
+        return baseCanRun(client)
+                ? MODES.targets().select(client, client.player.getViewVector(1.0F))
+                : null;
     }
 
     public static boolean shouldApplyRotation() {
@@ -215,7 +239,7 @@ public final class SilentAuraRuntime {
             return;
         }
         if (event.packet() instanceof ServerboundUseItemPacket use
-                && SilentAuraConfig.enabled()
+                && enabled()
                 && !SilentPacketRotation.isUseRotationLocked()
                 && !SilentPacketRotation.shouldApplyRotation()
                 && RotationManager.latest().tick() != currentPlayer.tickCount) {
@@ -439,14 +463,14 @@ public final class SilentAuraRuntime {
     }
 
     private static boolean canApply(Minecraft client) {
-        return (SilentAuraConfig.enabled() || stopping)
+        return (enabled() || stopping)
                 && ClientReady.world(client)
                 && !SilentPacketRotation.shouldApplyRotation()
                 && !RotationLease.busyFor(ROTATION_LEASE);
     }
 
     private static boolean baseCanRun(Minecraft client) {
-        return SilentAuraConfig.enabled() && ClientReady.gameplay(client);
+        return enabled() && ClientReady.gameplay(client);
     }
 
     private static boolean externallyPreempted() {

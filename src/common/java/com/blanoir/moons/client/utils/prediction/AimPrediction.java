@@ -37,7 +37,7 @@ public final class AimPrediction {
         if (baseLead <= 0.0D || maximumTicks <= 0.0D) return 0.0D;
         double turnTicks = Math.abs(yawError) / Math.max(maxYawPerTick, 1.0E-4D);
         double responseTicks = 1.0D / Math.max(responsePerTick, 1.0E-4D);
-        return Mth.clamp(baseLead * (1.0D + responseTicks + turnTicks), 0.0D, maximumTicks);
+        return Math.clamp(baseLead * (1.0D + responseTicks + turnTicks), 0.0D, maximumTicks);
     }
 
     /** Signed bearing velocity in degrees/tick; relative velocity is target minus observer. */
@@ -101,7 +101,7 @@ public final class AimPrediction {
         int ticksUntilAligned;
 
         if (enabled) {
-            double effectiveSmooth = Mth.clamp(smooth * inputMultiplier, 0.01D, 0.99D);
+            double effectiveSmooth = Math.clamp(smooth * inputMultiplier, 0.01D, 0.99D);
 
             ticksUntilAligned = estimateAlignmentTicks(angularError, effectiveSmooth, minimumAngle);
         } else {
@@ -110,7 +110,7 @@ public final class AimPrediction {
 
         double targetSpeed = targetMotion.length();
 
-        double motionUncertainty = Mth.clamp(targetSpeed * ticks * 0.18D, 0.0D, 0.75D);
+        double motionUncertainty = Math.clamp(targetSpeed * ticks * 0.18D, 0.0D, 0.75D);
 
         double angleConfidence = Math.exp(-angularError / 28.0D);
 
@@ -128,7 +128,7 @@ public final class AimPrediction {
 
         double confidence =
                 visible
-                        ? Mth.clamp(
+                        ? Math.clamp(
                                 angleConfidence * alignmentConfidence * (1.0D - motionUncertainty),
                                 0.0D,
                                 1.0D)
@@ -190,7 +190,7 @@ public final class AimPrediction {
         double exitZ = axisExitTicks(eye.z, relativeZ, corridor.minZ, corridor.maxZ);
         double exitTicks = Math.min(exitX, exitZ);
         if (!Double.isFinite(exitTicks) || exitTicks < 0.0D) return 0.0D;
-        return Mth.clamp(exitTicks + 0.65D, 0.75D, CROSSING_EXIT_LOOKAHEAD_TICKS);
+        return Math.clamp(exitTicks + 0.65D, 0.75D, CROSSING_EXIT_LOOKAHEAD_TICKS);
     }
 
     private static double axisExitTicks(

@@ -21,6 +21,23 @@ import net.minecraft.world.scores.PlayerTeam;
 public final class MinecraftClientAccess {
     private MinecraftClientAccess() {}
 
+    /** Transfers the GPU texture to Minecraft and releases the uploaded CPU pixels. */
+    public static void registerDynamicTexture(
+            net.minecraft.resources.Identifier id,
+            com.mojang.blaze3d.platform.NativeImage image,
+            String label) {
+        net.minecraft.client.renderer.texture.TextureResources texture = null;
+        try (image) {
+            texture =
+                    net.minecraft.client.renderer.texture.TextureResources.from2dImage(
+                            () -> label, image);
+            Minecraft.getInstance().getTextureManager().register(id, texture);
+        } catch (RuntimeException | Error failure) {
+            if (texture != null) texture.close();
+            throw failure;
+        }
+    }
+
     public static void piercingAttack(
             Minecraft client, net.minecraft.world.item.component.PiercingWeapon weapon) {
         client.gameMode.piercingAttack(
@@ -57,7 +74,7 @@ public final class MinecraftClientAccess {
 
     public static void rebuildLevelRenderer(Minecraft client) {
         if (client != null && client.level != null) {
-            // 26.4-snapshot-1 owns terrain invalidation in LevelExtractor. allChanged()
+            // 26.4-snapshot-4 owns terrain invalidation in LevelExtractor. allChanged()
             // rebuilds its SectionUpdateTracker with every section dirty and
             // defers compiled-geometry invalidation to the next extract pass.
             client.levelExtractor.allChanged();
@@ -139,7 +156,7 @@ public final class MinecraftClientAccess {
             net.minecraft.client.player.LocalPlayer player,
             net.minecraft.world.InteractionHand hand,
             boolean visible) {
-        // 26.4-snapshot-1's use-item packet triggers server animation; Punch is an attack action.
+        // 26.4-snapshot-4's use-item packet triggers server animation; Punch is an attack action.
         if (visible) player.swing(hand, player.getItemInHand(hand).getInteractAnimation(), false);
     }
 

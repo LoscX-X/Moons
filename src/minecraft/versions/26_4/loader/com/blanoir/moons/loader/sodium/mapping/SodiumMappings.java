@@ -5,7 +5,7 @@ import com.blanoir.moons.loader.common.mapping.TargetMethod;
 
 import java.util.List;
 
-/** Optional Sodium targets for Minecraft 26.4-snapshot-1; missing targets do not become startup requirements. */
+/** Optional Sodium targets for Minecraft 26.4-snapshot-4; missing targets do not become startup requirements. */
 public final class SodiumMappings {
     private SodiumMappings() {}
 

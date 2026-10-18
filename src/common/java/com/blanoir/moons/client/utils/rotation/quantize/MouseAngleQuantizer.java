@@ -32,7 +32,7 @@ public final class MouseAngleQuantizer {
     }
 
     public static float quantizeMouseStep(float lastSent, float desired, double sensitivity) {
-        double step = mouseSensitivityStep(Mth.clamp(sensitivity, 0.0D, 1.0D));
+        double step = mouseSensitivityStep(Math.clamp(sensitivity, 0.0D, 1.0D));
         return quantizeYawWithStep(lastSent, desired, step);
     }
 
@@ -47,11 +47,11 @@ public final class MouseAngleQuantizer {
     }
 
     public static float quantizePitchWithStep(float base, float desired, double step) {
-        if (!Double.isFinite(step) || step <= 1.0E-7D) return Mth.clamp(desired, -90, 90);
-        return Mth.clamp(base + (float) (Math.round((desired - base) / step) * step), -90, 90);
+        if (!Double.isFinite(step) || step <= 1.0E-7D) return Math.clamp(desired, -90, 90);
+        return Math.clamp(base + (float) (Math.round((desired - base) / step) * step), -90, 90);
     }
 
     public static double mouseSensitivityGcd(double sensitivity) {
-        return mouseSensitivityStep(Mth.clamp(sensitivity, 0.0D, 1.0D));
+        return mouseSensitivityStep(Math.clamp(sensitivity, 0.0D, 1.0D));
     }
 }

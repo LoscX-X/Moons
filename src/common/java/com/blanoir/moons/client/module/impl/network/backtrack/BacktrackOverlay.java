@@ -17,7 +17,6 @@ import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.client.renderer.state.level.LevelRenderState;
 import net.minecraft.util.LightCoordsUtil;
-import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityDimensions;
 import net.minecraft.world.entity.LivingEntity;
@@ -34,7 +33,7 @@ final class BacktrackOverlay {
     private final int wireFill = color("wireframe.color", 0xffffffff);
     private final int wireOutline = color("wireframe.outlineColor", 0xff000000);
     private final float modelLight =
-            Mth.clamp(Settings.getInt("backtrack.esp.model.lightPercent", 100), 0, 100) * 0.01F;
+            Math.clamp(Settings.getInt("backtrack.esp.model.lightPercent", 100), 0, 100) * 0.01F;
     private BacktrackWireframePlayer wireframe;
     private Vec3 previousRenderPosition;
     private Vec3 currentRenderPosition;
@@ -79,7 +78,7 @@ final class BacktrackOverlay {
         return previousRenderPosition.add(
                 currentRenderPosition
                         .subtract(previousRenderPosition)
-                        .scale(Mth.clamp(partialTick, 0.0F, 1.0F)));
+                        .scale(Math.clamp(partialTick, 0.0F, 1.0F)));
     }
 
     void renderEsp(WorldRenderEvent event, LivingEntity target, Vec3 real) {
@@ -149,11 +148,11 @@ final class BacktrackOverlay {
         state.distanceToCameraSq = camera.pos.distanceToSqr(state.x, state.y, state.z);
         state.lightCoords =
                 LightCoordsUtil.pack(
-                        Mth.clamp(
+                        Math.clamp(
                                 Math.round(LightCoordsUtil.block(state.lightCoords) * modelLight),
                                 0,
                                 15),
-                        Mth.clamp(
+                        Math.clamp(
                                 Math.round(LightCoordsUtil.sky(state.lightCoords) * modelLight),
                                 0,
                                 15));

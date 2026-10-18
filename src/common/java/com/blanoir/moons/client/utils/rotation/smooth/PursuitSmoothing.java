@@ -6,7 +6,6 @@ import com.blanoir.moons.client.utils.math.MathUtils;
 import com.blanoir.moons.client.utils.math.Smoothing;
 import com.blanoir.moons.client.utils.rotation.Rotation;
 
-import net.minecraft.util.Mth;
 
 /**
  * Existing frame pursuit with optional velocity inertia. Used by Lock/Balance and return.
@@ -29,7 +28,7 @@ public final class PursuitSmoothing {
 
     public static Motion track(
             Motion current, Rotation desired, double rawDelta, Tracking profile) {
-        double delta = Mth.clamp(rawDelta, 0.0D, 1.0D / 20.0D);
+        double delta = Math.clamp(rawDelta, 0.0D, 1.0D / 20.0D);
         if (delta <= 0.0D) return current;
         float yaw = current.yaw();
         float pitch = current.pitch();
@@ -41,18 +40,18 @@ public final class PursuitSmoothing {
         float pitchDifference = desired.pitch() - pitch;
         double responseFraction =
                 Smoothing.exponentialResponse(Math.max(0.01D, profile.response()), delta);
-        double yawCap = profile.maxYawSpeed() * delta * Mth.clamp(yawStepScale, 0.62D, 1.42D);
-        double pitchCap = profile.maxPitchSpeed() * delta * Mth.clamp(pitchStepScale, 0.62D, 1.42D);
+        double yawCap = profile.maxYawSpeed() * delta * Math.clamp(yawStepScale, 0.62D, 1.42D);
+        double pitchCap = profile.maxPitchSpeed() * delta * Math.clamp(pitchStepScale, 0.62D, 1.42D);
         float yawStep =
                 Math.abs(yawDifference) <= profile.deadzone()
                         ? 0.0F
-                        : (float) Mth.clamp(yawDifference * responseFraction, -yawCap, yawCap);
-        yawStep = (float) Mth.clamp(yawStep + profile.yawFeedForward() * delta, -yawCap, yawCap);
+                        : (float) Math.clamp(yawDifference * responseFraction, -yawCap, yawCap);
+        yawStep = (float) Math.clamp(yawStep + profile.yawFeedForward() * delta, -yawCap, yawCap);
         float pitchStep =
                 Math.abs(pitchDifference) <= profile.deadzone()
                         ? 0.0F
                         : (float)
-                                Mth.clamp(pitchDifference * responseFraction, -pitchCap, pitchCap);
+                                Math.clamp(pitchDifference * responseFraction, -pitchCap, pitchCap);
         if (profile.inertial()) {
             // Integrate the acceleration ramp using the average old/new velocity.
             float nextYawVelocity =
@@ -75,7 +74,7 @@ public final class PursuitSmoothing {
         }
         // Wrap differences only; keep the accumulated yaw continuous across +/-180.
         yaw += yawStep;
-        pitch = Mth.clamp(pitch + pitchStep, -90.0F, 90.0F);
+        pitch = Math.clamp(pitch + pitchStep, -90.0F, 90.0F);
         return new Motion(yaw, pitch, yawVelocity, pitchVelocity);
     }
 }

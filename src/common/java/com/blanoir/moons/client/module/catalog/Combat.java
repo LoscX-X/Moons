@@ -8,6 +8,7 @@ import com.blanoir.moons.client.module.impl.combat.*;
 import com.blanoir.moons.client.module.impl.combat.aim.AimAssist;
 import com.blanoir.moons.client.module.impl.combat.critical.Critical;
 import com.blanoir.moons.client.module.impl.combat.critical.mode.Predict;
+import com.blanoir.moons.client.module.impl.combat.cushionaura.CushionAura;
 import com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraConfig;
 import com.blanoir.moons.client.module.impl.movement.JumpReset;
 import com.blanoir.moons.client.utils.registry.RegistryLists;
@@ -15,6 +16,17 @@ import com.blanoir.moons.client.utils.registry.RegistryLists;
 /** Defines combat module descriptors; ordering is owned by ModuleCatalog. */
 final class Combat {
     private Combat() {}
+
+    static ModuleRegistry.Module cushionAura() {
+        return module(
+                "cushionaura",
+                "CushionAura",
+                ModuleCategories.EXPERIMENT,
+                CushionAura::isEnabled,
+                CushionAura::setEnabled,
+                CushionAura::statusTag,
+                CushionAura.settings());
+    }
 
     static ModuleRegistry.Module hitSelect() {
         return module(

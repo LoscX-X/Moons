@@ -6,7 +6,7 @@ import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.resources.Identifier;
 
-/** 26.4-snapshot-1 supplies world entity materials with matching RenderPearl/OIT pipelines. */
+/** 26.4-snapshot-4 supplies world entity materials with matching RenderPearl/OIT pipelines. */
 final class YsmRenderTypes {
     private final YsmOpaqueEmissive opaqueEmissive = new YsmOpaqueEmissive();
 

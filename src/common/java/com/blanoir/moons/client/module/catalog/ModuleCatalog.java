@@ -1,6 +1,7 @@
 package com.blanoir.moons.client.module.catalog;
 
 import com.blanoir.moons.client.module.framework.ModuleRegistry;
+import com.blanoir.moons.client.module.impl.combat.cushionaura.CushionAura;
 
 /** Defines module initialization and presentation order. */
 public final class ModuleCatalog {
@@ -15,6 +16,7 @@ public final class ModuleCatalog {
         ModuleRegistry.add(Combat.hitSelect());
         ModuleRegistry.add(Combat.sprintReset());
         ModuleRegistry.add(Combat.silentAura());
+        if (CushionAura.supported()) ModuleRegistry.add(Combat.cushionAura());
         ModuleRegistry.add(Combat.autoBlock());
         ModuleRegistry.add(Combat.aimAssist());
         ModuleRegistry.add(Combat.triggerBot());
@@ -59,6 +61,7 @@ public final class ModuleCatalog {
         ModuleRegistry.add(Xray.xray());
         ModuleRegistry.add(Xray.targets());
         ModuleRegistry.add(World.autoTool());
+        ModuleRegistry.add(World.ignore());
         ModuleRegistry.add(World.structureLocate());
         ModuleRegistry.add(World.scaffold());
         ModuleRegistry.add(World.fastBreak());

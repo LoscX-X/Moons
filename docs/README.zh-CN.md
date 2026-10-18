@@ -33,11 +33,13 @@ Moons 是面向 Windows 的免费开源 Minecraft Java Edition 注入式客户�
 >
 > **本项目按现状提供，使用风险由使用者在法律允许的范围内自行承担。** 使用前请阅读 [完整免责声明](DISCLAIMER.zh-CN.md)。依法不得排除的责任及法定权利不受影响。
 
-支持 **26.1.2**、**26.2**、**26.3** 和 **26.4-snapshot-1**。
+支持 **26.1.2**、**26.2**、**26.3** 和 **26.4-snapshot-4**。
+
+Minecraft 26.3 同时支持 NeoForge **26.3.0.90**。
 
 ## 版本支持
 
-[`latest`](https://github.com/LoscX-X/Moons/tree/latest) 主分支维护四个 Minecraft 版本档案：**26.1.2**、**26.2**、**26.3** 和 **26.4-snapshot-1**。新增版本档案时，较旧档案逐步退出这个维护窗口。
+[`latest`](https://github.com/LoscX-X/Moons/tree/latest) 主分支维护四个 Minecraft 版本档案：**26.1.2**、**26.2**、**26.3** 和 **26.4-snapshot-4**。新增版本档案时，较旧档案逐步退出这个维护窗口。
 
 快照、预发布版和候选发布版仅支持即将推出的最新 Minecraft 版本，以这里列出的具体构建为准；支持一个预览构建不代表兼容其他预览构建。
 

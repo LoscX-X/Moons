@@ -29,7 +29,7 @@ internal static class CacheMaintenanceVerification
         File.WriteAllText(Path.Combine(libraries, "moons-ui-runtime.current"), Hash(4) + "/moons-ui-runtime.jar\n");
         for (int index = 0; index < 16; index++) Make(Path.Combine(launcher, Hash(index), "moons-26.1.jar"), 2);
         for (int index = 0; index < 36; index++) Make(Path.Combine(modules, Hash(index) + ".jar"), 2);
-        Make(Path.Combine(launcher, Hash(96), "moons-26.4-snapshot-1.jar"), 2);
+        Make(Path.Combine(launcher, Hash(96), "moons-26.4-snapshot-4.jar"), 2);
         Make(Path.Combine(launcher, Hash(97), "moons-1.8.9.jar"), 2);
         Make(Path.Combine(modules, "builtin-core-features.jar"), 2);
         Make(Path.Combine(legacy, Hash(1), "moons-runtime.jar"), 40);

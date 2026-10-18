@@ -20,9 +20,9 @@ public final class BodyYawIntegration {
             float maxSpeed,
             float acceleration) {
         float difference = Mth.wrapDegrees(targetYaw - yaw);
-        float desiredVelocity = Mth.clamp(difference * response, -maxSpeed, maxSpeed);
+        float desiredVelocity = Math.clamp(difference * response, -maxSpeed, maxSpeed);
         float velocityChange = acceleration * seconds;
-        velocity = Mth.clamp(desiredVelocity, velocity - velocityChange, velocity + velocityChange);
+        velocity = Math.clamp(desiredVelocity, velocity - velocityChange, velocity + velocityChange);
         float step = velocity * seconds;
         if (Math.signum(step) == Math.signum(difference) && Math.abs(step) > Math.abs(difference)) {
             step = difference;

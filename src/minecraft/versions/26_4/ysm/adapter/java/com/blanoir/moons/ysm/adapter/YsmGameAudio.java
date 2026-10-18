@@ -92,7 +92,7 @@ final class YsmGameAudio {
                             true,
                             false,
                             16);
-            resolved = new WeighedSoundEvents(identifier, null);
+            resolved = new WeighedSoundEvents(null);
             resolved.addSound(sound);
         }
 

@@ -262,6 +262,12 @@ public final class CommonMappings {
                                 "(F)F",
                                 TargetMethod.HookKind.FLOAT_HEAD_BOOLEAN_GATE),
                         new TargetMethod(
+                                "render.freelook.distance",
+                                List.of("net/minecraft/client/Camera"),
+                                List.of("getMaxZoom"),
+                                "(F)F",
+                                TargetMethod.HookKind.FLOAT_ARGUMENTS),
+                        new TargetMethod(
                                 "render.frustum-visible",
                                 List.of("net/minecraft/client/renderer/culling/Frustum"),
                                 List.of("isVisible"),

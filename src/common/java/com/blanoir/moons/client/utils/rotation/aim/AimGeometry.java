@@ -25,15 +25,15 @@ public final class AimGeometry {
     /** Converts normalized box coordinates to a world point, clamping each axis. */
     public static Vec3 localPoint(AABB box, double x, double y, double z) {
         return new Vec3(
-                Mth.lerp(Mth.clamp(x, 0.0D, 1.0D), box.minX, box.maxX),
-                Mth.lerp(Mth.clamp(y, 0.0D, 1.0D), box.minY, box.maxY),
-                Mth.lerp(Mth.clamp(z, 0.0D, 1.0D), box.minZ, box.maxZ));
+                Mth.lerp(Math.clamp(x, 0.0D, 1.0D), box.minX, box.maxX),
+                Mth.lerp(Math.clamp(y, 0.0D, 1.0D), box.minY, box.maxY),
+                Mth.lerp(Math.clamp(z, 0.0D, 1.0D), box.minZ, box.maxZ));
     }
 
     /** Degenerate box axes use their midpoint instead of an unstable quotient. */
     public static double fraction(double value, double minimum, double maximum) {
         double size = maximum - minimum;
-        return size <= 1.0E-6D ? 0.5D : Mth.clamp((value - minimum) / size, 0.0D, 1.0D);
+        return size <= 1.0E-6D ? 0.5D : Math.clamp((value - minimum) / size, 0.0D, 1.0D);
     }
 
     public static Vec3 resolve(Mode mode, AABB box, Vec3 eye, Vec3 look, double maxDistance) {

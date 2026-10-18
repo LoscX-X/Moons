@@ -23,7 +23,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-/** Through-walls Backtrack box renderer for the 26.4-snapshot-1 staged-buffer API. */
+/** Through-walls Backtrack box renderer for the 26.4-snapshot-4 staged-buffer API. */
 public final class BacktrackRenderer {
     private static final RenderPipeline FILLED_PIPELINE =
             registerPipeline("pipeline/moons_backtrack_filled", PrimitiveTopology.QUADS);
@@ -149,7 +149,7 @@ public final class BacktrackRenderer {
     }
 
     public static void close() {
-        // WorldOverlayBuffer owns the shared 26.4-snapshot-1 GPU staging lifecycle.
+        // WorldOverlayBuffer owns the shared 26.4-snapshot-4 GPU staging lifecycle.
     }
 
     private static RenderPipeline registerPipeline(String name, PrimitiveTopology topology) {

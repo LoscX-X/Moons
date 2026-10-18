@@ -7,7 +7,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.tags.DamageTypeTags;
-import net.minecraft.util.Mth;
 import net.minecraft.world.damagesource.CombatRules;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.effect.MobEffectInstance;
@@ -165,9 +164,9 @@ public final class PlayerHitEstimator {
     private static float damageAfterArmor(
             float damage, float armor, float toughness, int breachLevel) {
         float toughnessFactor = 2.0F + toughness / 4.0F;
-        float effectiveArmor = Mth.clamp(armor - damage / toughnessFactor, armor * 0.2F, 20.0F);
+        float effectiveArmor = Math.clamp(armor - damage / toughnessFactor, armor * 0.2F, 20.0F);
         float armorEffectiveness = effectiveArmor / 25.0F;
-        armorEffectiveness = Mth.clamp(armorEffectiveness - 0.15F * breachLevel, 0.0F, 1.0F);
+        armorEffectiveness = Math.clamp(armorEffectiveness - 0.15F * breachLevel, 0.0F, 1.0F);
         return damage * (1.0F - armorEffectiveness);
     }
 }

@@ -81,8 +81,7 @@ public final class VelocityPacketListener {
                             java.util.Optional.of(transformed),
                             explosion.explosionParticle(),
                             explosion.explosionSound(),
-                            explosion.blockParticles(),
-                            explosion.playSound());
+                            explosion.blockParticles());
         }
         return null;
     }

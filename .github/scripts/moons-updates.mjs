@@ -6,8 +6,19 @@ import { setTimeout as delay } from 'node:timers/promises';
 
 const manifestPath = '.github/moons-updates.json';
 const types = new Set(['feat', 'fix', 'perf', 'refactor', 'docs', 'build', 'chore']);
+const scopes = new Set(['client', 'server']);
+// Batches through 2026-10-14-01 are already frozen without scope metadata.
+const requiresScope = id => {
+  const match = /^(\d{4}-\d{2}-\d{2})-(\d+)$/.exec(id);
+  return !match || match[1] > '2026-10-14' || (match[1] === '2026-10-14' && Number(match[2]) > 1);
+};
 const text = (v, n) => typeof v === 'string' && v.trim().length > 0 && v.length <= n;
-export const fingerprint = batch => createHash('sha256').update(JSON.stringify(batch)).digest('hex');
+// Scope is local classification; retain the bot's existing immutable wire format.
+const notificationBatch = batch => ({
+  id: batch.id, summary: batch.summary,
+  changes: batch.changes.map(({ type, text }) => ({ type, text })),
+});
+export const fingerprint = batch => createHash('sha256').update(JSON.stringify(notificationBatch(batch))).digest('hex');
 
 const typeLabels = { feat: '新增', fix: '修复', perf: '优化', refactor: '调整', docs: '说明', build: '构建与发布', chore: '维护' };
 export function renderNotes(current) {
@@ -24,7 +35,12 @@ export function validateManifest(manifest) {
         !Array.isArray(b.changes) || b.changes.length > 60 || (!b.changes.length && i !== manifest.batches.length - 1) ||
         b.changes.some(c => !c || !types.has(c.type) || !text(c.text, 300))) throw new Error(`Invalid batch at index ${i}`);
     ids.add(b.id);
-    return { id: b.id, summary: b.summary.trim(), changes: b.changes.map(c => ({ type: c.type, text: c.text.trim() })) };
+    if (b.changes.some(c => (c.scope !== undefined && !scopes.has(c.scope)) || (requiresScope(b.id) && !scopes.has(c.scope)))) {
+      throw new Error(`Moons batch ${b.id} requires client/server scope; bot and unrelated updates do not belong in this manifest`);
+    }
+    return { id: b.id, summary: b.summary.trim(), changes: b.changes.map(c => ({
+      type: c.type, text: c.text.trim(), ...(c.scope !== undefined ? { scope: c.scope } : {}),
+    })) };
   });
 }
 
@@ -39,7 +55,7 @@ export function makePayload(manifest, env) {
       repository: env.GITHUB_REPOSITORY, branch: env.GITHUB_REF_NAME, commit: env.GITHUB_SHA,
       run_id: env.GITHUB_RUN_ID, run_attempt: env.GITHUB_RUN_ATTEMPT, build_no: env.GITHUB_RUN_NUMBER, version: env.CLIENT_VERSION,
     },
-    updates: validateManifest(manifest).filter(b => b.changes.length),
+    updates: validateManifest(manifest).filter(b => b.changes.length).map(notificationBatch),
   };
 }
 
@@ -95,7 +111,7 @@ export function addNextBatch(manifest, receipt, id) {
   if (receipt?.id !== current.id || receipt.status !== 'pushed' || !receipt.pushed_at || receipt.fingerprint !== fingerprint(current)) {
     throw new Error('Current batch has no matching successful push receipt; do not rotate or clear it');
   }
-  const next = { schema: 1, batches: [...batches, { id, summary: '下一次 Moons 更新', changes: [] }] };
+  const next = { schema: 1, batches: [...batches, { id, summary: '下一次 Moons 客户端与服务器更新', changes: [] }] };
   validateManifest(next);
   return next;
 }

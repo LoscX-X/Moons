@@ -21,6 +21,22 @@ import net.minecraft.world.scores.PlayerTeam;
 public final class MinecraftClientAccess {
     private MinecraftClientAccess() {}
 
+    /** Transfers the image and its texture to Minecraft, closing both on failure. */
+    public static void registerDynamicTexture(
+            net.minecraft.resources.Identifier id,
+            com.mojang.blaze3d.platform.NativeImage image,
+            String label) {
+        net.minecraft.client.renderer.texture.DynamicTexture texture = null;
+        try {
+            texture = new net.minecraft.client.renderer.texture.DynamicTexture(() -> label, image);
+            Minecraft.getInstance().getTextureManager().register(id, texture);
+        } catch (RuntimeException | Error failure) {
+            if (texture == null) image.close();
+            else texture.close();
+            throw failure;
+        }
+    }
+
     public static void piercingAttack(
             Minecraft client, net.minecraft.world.item.component.PiercingWeapon weapon) {
         client.gameMode.piercingAttack(

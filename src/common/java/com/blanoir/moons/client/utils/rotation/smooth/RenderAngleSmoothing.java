@@ -10,7 +10,7 @@ public final class RenderAngleSmoothing {
 
     public static Rotation render(
             Rotation current, Rotation target, double rawDelta, double response) {
-        double delta = Mth.clamp(rawDelta, 0.0D, 0.05D);
+        double delta = Math.clamp(rawDelta, 0.0D, 0.05D);
         float blend = (float) (1.0D - Math.exp(-response * delta));
         float yaw = current.yaw();
         float pitch = current.pitch();

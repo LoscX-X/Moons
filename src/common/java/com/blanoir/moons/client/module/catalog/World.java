@@ -13,6 +13,38 @@ import com.blanoir.moons.client.utils.registry.RegistryLists;
 final class World {
     private World() {}
 
+    static ModuleRegistry.Module ignore() {
+        return module(
+                "ignore",
+                "Ignore",
+                ModuleCategories.EXPERIMENT,
+                Ignore::isEnabled,
+                Ignore::setEnabled,
+                Ignore::statusTag,
+                bool("signs", "Signs", "ignore.signs", true, Ignore::setSigns),
+                bool(
+                        "anti_obsidian",
+                        "AntiObsidian",
+                        "ignore.antiObsidian",
+                        false,
+                        Ignore::setAntiObsidian),
+                choice(
+                                "anti_obsidian_target",
+                                "Escape target",
+                                "ignore.antiObsidianTarget",
+                                "auto",
+                                Ignore.antiObsidianTargets(),
+                                Ignore::setAntiObsidianTarget)
+                        .visibleWhen(Ignore::antiObsidianEnabled),
+                RegistryLists.setting(
+                        "blocks",
+                        "Extra ignored blocks",
+                        "block",
+                        Ignore::selectedBlocks,
+                        Ignore::setSelectedBlocks,
+                        new com.google.gson.JsonArray()));
+    }
+
     static ModuleRegistry.Module structureLocate() {
         return module(
                         "structurelocate",

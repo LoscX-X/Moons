@@ -1,6 +1,5 @@
 package com.blanoir.moons.client.utils.rotation.aim;
 
-import net.minecraft.util.Mth;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
@@ -35,7 +34,7 @@ public final class HitboxJitter {
             long seed,
             double strength,
             double speed) {
-        double amount = Mth.clamp(strength, 0.0D, 1.0D);
+        double amount = Math.clamp(strength, 0.0D, 1.0D);
         if (amount <= 0.0D || box == null) return base;
 
         // Inset must vanish with strength too. Otherwise, 0 -> epsilon snaps a
@@ -52,10 +51,10 @@ public final class HitboxJitter {
 
         Vec3 safeBase =
                 new Vec3(
-                        Mth.clamp(base.x, minX, maxX),
-                        Mth.clamp(base.y, minY, maxY),
-                        Mth.clamp(base.z, minZ, maxZ));
-        double time = seconds * Mth.clamp(speed, 0.1D, 3.0D);
+                        Math.clamp(base.x, minX, maxX),
+                        Math.clamp(base.y, minY, maxY),
+                        Math.clamp(base.z, minZ, maxZ));
+        double time = seconds * Math.clamp(speed, 0.1D, 3.0D);
         double horizontalSize = Math.min(box.getXsize(), box.getZsize());
         double lateralAmplitude =
                 Math.min(
@@ -85,8 +84,8 @@ public final class HitboxJitter {
                 SeededMotionNoise.sample(time * 0.58D, seed ^ 0xD1B54A32D192ED03L) * amplitudeY;
 
         return new Vec3(
-                Mth.clamp(safeBase.x + rightX * lateral + forwardX * depth, minX, maxX),
-                Mth.clamp(safeBase.y + vertical, minY, maxY),
-                Mth.clamp(safeBase.z + rightZ * lateral + forwardZ * depth, minZ, maxZ));
+                Math.clamp(safeBase.x + rightX * lateral + forwardX * depth, minX, maxX),
+                Math.clamp(safeBase.y + vertical, minY, maxY),
+                Math.clamp(safeBase.z + rightZ * lateral + forwardZ * depth, minZ, maxZ));
     }
 }

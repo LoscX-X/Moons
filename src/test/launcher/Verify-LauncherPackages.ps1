@@ -116,10 +116,10 @@ try {
     Run-Tool $loader '--verify-dependencies' 1
     Run-Tool $installer '--install-only' 0
     Run-Tool $loader '--verify-dependencies' 0
-    Run-Tool $installer '--install-only --minecraft-version 26.4-snapshot-1' 0
-    Run-Tool $loader '--extract-only --minecraft-version 26.4-snapshot-1' 0
+    Run-Tool $installer '--install-only --minecraft-version 26.4-snapshot-4' 0
+    Run-Tool $loader '--extract-only --minecraft-version 26.4-snapshot-4' 0
     $snapshotPayload = Get-ChildItem -LiteralPath (Join-Path $env:MOONS_HOME 'cache/launcher') `
-        -Recurse -File -Filter 'moons-26.4-snapshot-1.jar' | Select-Object -First 1
+        -Recurse -File -Filter 'moons-26.4-snapshot-4.jar' | Select-Object -First 1
     if ($null -eq $snapshotPayload -or $snapshotPayload.Length -eq 0) {
         throw '26.4 snapshot payload was not extracted.'
     }
@@ -153,11 +153,11 @@ try {
         Write-Output 'LEGACY_EXE_VIEW_VERIFIED: actual old installer -> new installer -> actual old loader, unchanged dependencies and shared user configuration.'
     }
     $beforeRetirement = Installed-State
-    $retired = Run-Tool $installer '--retire-version 26.4-snapshot-1' 0 -AllowRetirementDeferred
-    Run-Tool $loader '--verify-dependencies --minecraft-version 26.4-snapshot-1' 0
+    $retired = Run-Tool $installer '--retire-version 26.4-snapshot-4' 0 -AllowRetirementDeferred
+    Run-Tool $loader '--verify-dependencies --minecraft-version 26.4-snapshot-4' 0
     if ($retired) {
-        if (Test-Path -LiteralPath (Join-Path $env:MOONS_HOME 'libraries/latest/26.4-snapshot-1')) { throw 'Retirement left the original version directory.' }
-        if (-not (Test-Path -LiteralPath (Join-Path $env:MOONS_HOME 'libraries/legacy/26.4-snapshot-1'))) { throw 'Retired version was not moved to legacy.' }
+        if (Test-Path -LiteralPath (Join-Path $env:MOONS_HOME 'libraries/latest/26.4-snapshot-4')) { throw 'Retirement left the original version directory.' }
+        if (-not (Test-Path -LiteralPath (Join-Path $env:MOONS_HOME 'libraries/legacy/26.4-snapshot-4'))) { throw 'Retired version was not moved to legacy.' }
         Write-Output 'LAUNCHER_RETIREMENT_VERIFIED: idle version moved to legacy and dependencies remain usable.'
     } else {
         $afterRetirement = Installed-State
@@ -165,8 +165,8 @@ try {
         foreach ($name in $beforeRetirement.Keys) {
             if ($beforeRetirement[$name] -ne $afterRetirement[$name]) { throw "Deferred retirement changed a file: $name" }
         }
-        if (-not (Test-Path -LiteralPath (Join-Path $env:MOONS_HOME 'libraries/latest/26.4-snapshot-1')) -or
-            (Test-Path -LiteralPath (Join-Path $env:MOONS_HOME 'libraries/legacy/26.4-snapshot-1'))) { throw 'Deferred retirement moved the protected version.' }
+        if (-not (Test-Path -LiteralPath (Join-Path $env:MOONS_HOME 'libraries/latest/26.4-snapshot-4')) -or
+            (Test-Path -LiteralPath (Join-Path $env:MOONS_HOME 'libraries/legacy/26.4-snapshot-4'))) { throw 'Deferred retirement moved the protected version.' }
         Write-Output 'LAUNCHER_RETIREMENT_DEFERRED_VERIFIED: active protected JVM, unchanged version files and usable dependencies.'
     }
     if ($Legacy189Distribution) {

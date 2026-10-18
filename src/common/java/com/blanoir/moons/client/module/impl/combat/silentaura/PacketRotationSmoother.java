@@ -167,14 +167,14 @@ public final class PacketRotationSmoother {
         float yawDemand = MathUtils.wrappedAngleDifference(sampledBaseYaw, desiredYaw);
         float pitchDemand = desiredPitch - sampledBasePitch;
         double demand = Math.hypot(yawDemand, pitchDemand);
-        double urgency = Mth.clamp(demand / 55.0D, 0.0D, 1.0D);
+        double urgency = Math.clamp(demand / 55.0D, 0.0D, 1.0D);
 
         // The switch is a real compatibility escape hatch: disabled FullLock
         // retains its original direct step and does not consume motion samples.
         if (fullLockMode && !packetPlanner) {
             double cap =
-                    Mth.clamp(fullLockAngleStep, 0, 180)
-                            * (1 - .5 * Mth.clamp(fullLockSmoothing, 0, 1));
+                    Math.clamp(fullLockAngleStep, 0, 180)
+                            * (1 - .5 * Math.clamp(fullLockSmoothing, 0, 1));
             sampled =
                     sampleFullLock(
                             desiredYaw,
@@ -224,8 +224,8 @@ public final class PacketRotationSmoother {
         double pitchMax;
         if (fullLockMode) {
             double cap =
-                    Mth.clamp(fullLockAngleStep, 0, 180)
-                            * (1 - .5 * Mth.clamp(fullLockSmoothing, 0, 1));
+                    Math.clamp(fullLockAngleStep, 0, 180)
+                            * (1 - .5 * Math.clamp(fullLockSmoothing, 0, 1));
             yawMax = pitchMax = cap;
             sampled =
                     sampleFullLock(

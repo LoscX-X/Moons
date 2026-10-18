@@ -126,7 +126,9 @@ final class Misc {
                 FreeLook::isEnabled,
                 FreeLook::setEnabled,
                 FreeLook::statusTag,
-                bool("hold", "Hold key", "freelook.hold", true, FreeLook::setHold));
+                bool("hold", "Hold key", "freelook.hold", true, FreeLook::setHold),
+                FreeLook.TRANSITION_MS.describe(
+                        "transition_ms", "Transition (ms)", 10, FreeLook::setTransitionMs));
     }
 
     static ModuleRegistry.Module antiNick() {

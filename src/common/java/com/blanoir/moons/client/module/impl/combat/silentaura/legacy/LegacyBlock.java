@@ -168,6 +168,10 @@ public final class LegacyBlock {
         if (USE.start(client, rotation)) blockedTick = tick;
     }
 
+    public static boolean ownsNativeUse(Minecraft client) {
+        return USE.ownsNativeUse(client);
+    }
+
     public static boolean attackPending() {
         return attackReadyTick != Integer.MIN_VALUE;
     }
@@ -228,6 +232,6 @@ public final class LegacyBlock {
     }
 
     public static boolean isEnabled() {
-        return legacy() && SilentAuraConfig.enabled() && SilentAuraConfig.block();
+        return legacy() && SilentAuraRuntime.enabled() && SilentAuraConfig.block();
     }
 }

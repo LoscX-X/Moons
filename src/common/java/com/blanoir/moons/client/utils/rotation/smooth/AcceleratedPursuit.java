@@ -31,13 +31,13 @@ public final class AcceleratedPursuit {
         float pitchDifference = target.pitch() - packetPitch;
         float desiredYawVelocity =
                 (float)
-                        Mth.clamp(
+                        Math.clamp(
                                 yawDifference * response,
                                 -limits.maxYawSpeed(),
                                 limits.maxYawSpeed());
         float desiredPitchVelocity =
                 (float)
-                        Mth.clamp(
+                        Math.clamp(
                                 pitchDifference * response,
                                 -limits.maxPitchSpeed(),
                                 limits.maxPitchSpeed());
@@ -65,7 +65,7 @@ public final class AcceleratedPursuit {
             pitchVelocity = 0.0F;
         }
         packetYaw += yawStep;
-        packetPitch = Mth.clamp(packetPitch + pitchStep, -90.0F, 90.0F);
+        packetPitch = Math.clamp(packetPitch + pitchStep, -90.0F, 90.0F);
         return new Motion(packetYaw, packetPitch, yawVelocity, pitchVelocity);
     }
 }

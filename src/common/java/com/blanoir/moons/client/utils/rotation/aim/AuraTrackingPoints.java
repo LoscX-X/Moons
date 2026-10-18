@@ -6,7 +6,6 @@ import com.blanoir.moons.client.utils.combat.CombatReach;
 import com.blanoir.moons.client.utils.raytrace.RaytraceUtils;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.util.Mth;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -198,7 +197,7 @@ public final class AuraTrackingPoints {
         double maximumY = box.minY + height * 0.75D;
         return new Vec3(
                 (box.minX + box.maxX) * 0.5D,
-                Mth.clamp(eye.y, minimumY, maximumY),
+                Math.clamp(eye.y, minimumY, maximumY),
                 (box.minZ + box.maxZ) * 0.5D);
     }
 

@@ -85,9 +85,9 @@ final class WorldLabelPipeline {
                     new NativeImage(upload.getWidth(), upload.getHeight(), false)) {
                 MemoryUtil.memByteBuffer(image.getPointer(), upload.getRgba().length)
                         .put(upload.getRgba());
-                RenderSystem.getDevice()
-                        .createCommandEncoder()
-                        .writeToTexture(texture, image, 0, 0, upload.getX(), upload.getY());
+                image.writeToGpuTexture(
+                        RenderSystem.getDevice().createCommandEncoder(),
+                        texture, 0, 0, upload.getX(), upload.getY());
             }
         }
         if (buffer == null) buffer = new StagedVertexBuffer(() -> "Moons world labels", 131_072);

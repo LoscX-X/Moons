@@ -2,6 +2,7 @@ package com.blanoir.moons.client.manager.combat;
 
 import com.blanoir.moons.client.module.impl.combat.SilentAura;
 import com.blanoir.moons.client.module.impl.combat.TriggerBot;
+import com.blanoir.moons.client.module.impl.combat.cushionaura.CushionAura;
 
 import net.minecraft.client.Minecraft;
 
@@ -43,6 +44,7 @@ public final class CombatModuleCoordinator {
                 }
                 return;
             }
+            if (CushionAura.isEnabled()) CushionAura.setEnabled(client, false);
             if (SilentAura.isEnabled()) {
                 SilentAura.setEnabled(client, false);
             }
@@ -52,12 +54,12 @@ public final class CombatModuleCoordinator {
     }
 
     public static void reconcileConfiguredState(Minecraft client) {
-        if (SilentAura.isEnabled()) {
+        if (SilentAura.isEnabled() || CushionAura.isEnabled()) {
             beforeEnable(client, Role.SILENT_AURA);
         }
     }
 
     public static boolean isAuraActive() {
-        return SilentAura.isEnabled();
+        return SilentAura.isEnabled() || CushionAura.isEnabled();
     }
 }

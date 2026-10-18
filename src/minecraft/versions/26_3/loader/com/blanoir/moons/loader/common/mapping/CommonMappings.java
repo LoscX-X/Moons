@@ -181,7 +181,7 @@ public final class CommonMappings {
                         new TargetMethod(
                                 "player.position",
                                 List.of("net/minecraft/client/player/LocalPlayer"),
-                                List.of("sendPosition"),
+                                List.of("sendChanges"),
                                 "()V",
                                 TargetMethod.HookKind.PLAYER_POSITION),
                         new TargetMethod(
@@ -257,6 +257,12 @@ public final class CommonMappings {
                                 List.of("getMaxZoom"),
                                 "(F)F",
                                 TargetMethod.HookKind.FLOAT_HEAD_BOOLEAN_GATE),
+                        new TargetMethod(
+                                "render.freelook.distance",
+                                List.of("net/minecraft/client/Camera"),
+                                List.of("getMaxZoom"),
+                                "(F)F",
+                                TargetMethod.HookKind.FLOAT_ARGUMENTS),
                         new TargetMethod(
                                 "render.frustum-visible",
                                 List.of("net/minecraft/client/renderer/culling/Frustum"),

@@ -751,7 +751,7 @@ public final class AutoWeb {
             Minecraft client, Player target, boolean upperBodyOnly) {
         Vec3 velocity = TrajectoryPrediction.observedVelocity(target);
         int horizon =
-                Mth.clamp(
+                Math.clamp(
                         PREDICTION_TICKS.get(),
                         MIN_WALL_PREDICTION_TICKS,
                         MAX_WALL_PREDICTION_TICKS);
@@ -1072,7 +1072,7 @@ public final class AutoWeb {
     private static double rotationCost(Minecraft client, Vec3 point) {
         Vec3 toward = point.subtract(client.player.getEyePosition()).normalize();
         Vec3 look = client.player.getLookAngle().normalize();
-        return 1.0D - Mth.clamp(look.dot(toward), -1.0D, 1.0D);
+        return 1.0D - Math.clamp(look.dot(toward), -1.0D, 1.0D);
     }
 
     private static BlockHitResult validatePlan(Minecraft client, PlacementPlan plan) {
@@ -1420,7 +1420,7 @@ public final class AutoWeb {
                 latencyMs = Math.max(0, info.getLatency());
             }
         }
-        return Mth.clamp((int) Math.ceil(latencyMs / 50.0D) + 3, 8, MAX_PLACE_CONFIRM_TICKS);
+        return Math.clamp((int) Math.ceil(latencyMs / 50.0D) + 3, 8, MAX_PLACE_CONFIRM_TICKS);
     }
 
     private enum WebActionPhase {

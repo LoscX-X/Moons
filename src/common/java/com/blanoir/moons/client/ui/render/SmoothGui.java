@@ -1,11 +1,11 @@
 package com.blanoir.moons.client.ui.render;
 
+import com.blanoir.moons.client.access.MinecraftClientAccess;
 import com.mojang.blaze3d.platform.NativeImage;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.renderer.RenderPipelines;
-import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.resources.Identifier;
 
 import java.util.HashMap;
@@ -121,15 +121,7 @@ public final class SmoothGui {
         Identifier id =
                 Identifier.fromNamespaceAndPath(
                         "moons", "dynamic/gui/rounded_" + width + "_" + height + "_" + radius);
-        DynamicTexture texture = null;
-        try {
-            texture = new DynamicTexture(() -> "Moons rounded GUI mask", image);
-            Minecraft.getInstance().getTextureManager().register(id, texture);
-        } catch (RuntimeException | Error failure) {
-            if (texture == null) image.close();
-            else texture.close();
-            throw failure;
-        }
+        MinecraftClientAccess.registerDynamicTexture(id, image, "Moons rounded GUI mask");
         MASKS.put(shape, id);
         maskPixels += pixels;
         return id;

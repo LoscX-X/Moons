@@ -9,13 +9,13 @@ final class FreeLookAngles {
 
     void begin(float yaw, float pitch) {
         this.yaw = Mth.wrapDegrees(yaw);
-        this.pitch = Mth.clamp(pitch, -90, 90);
+        this.pitch = Math.clamp(pitch, -90, 90);
     }
 
     void turn(double horizontal, double vertical) {
         if (!Double.isFinite(horizontal) || !Double.isFinite(vertical)) return;
         yaw = Mth.wrapDegrees(yaw + (float) (horizontal * .15));
-        pitch = Mth.clamp(pitch + (float) (vertical * .15), -90, 90);
+        pitch = Math.clamp(pitch + (float) (vertical * .15), -90, 90);
     }
 
     float yaw() {

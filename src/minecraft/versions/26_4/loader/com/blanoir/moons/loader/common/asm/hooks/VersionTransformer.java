@@ -6,7 +6,7 @@ import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.*;
 
-/** Injection boundaries verified against 26.4-snapshot-1's extracted renderer. */
+/** Injection boundaries verified against 26.4-snapshot-4's extracted renderer. */
 public final class VersionTransformer {
     private VersionTransformer() {}
 

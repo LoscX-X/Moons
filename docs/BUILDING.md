@@ -1,6 +1,6 @@
 # 构建与更新
 
-在仓库根目录运行 PowerShell。当前构建目标为 Minecraft **26.1.2、26.2、26.3、26.4-snapshot-1**；26.3 仅支持正式版，26.4 目前仅支持此快照。
+在仓库根目录运行 PowerShell。当前构建目标为 Minecraft **26.1.2、26.2、26.3、26.4-snapshot-4**；26.3 支持原版及 NeoForge 26.3.0.90，26.4 目前仅支持此快照。
 
 仓库默认主分支为 `latest`，现代版本的自动打包使用该分支；Minecraft 1.8.9 使用独立的 `legacy/1.8.9` 分支。
 
@@ -84,7 +84,7 @@ Get-Item .\build\dist\moon.exe | Select-Object FullName, LastWriteTime, Length
 
 # 局部修改只跑相关检查
 .\gradlew.bat verifyYsmCore verifyYsmRenderSetup '-Pminecraft_version=26.3'
-.\gradlew.bat check '-Pminecraft_version=26.4-snapshot-1'
+.\gradlew.bat check '-Pminecraft_version=26.4-snapshot-4'
 .\gradlew.bat verifyYsmCore '-Pysm_test_model=C:\Models\example.ysm'
 .\gradlew.bat verifyYsmPackage
 .\gradlew.bat verifyLauncherPackages # 隔离目录验证两个真实 EXE，不注入游戏

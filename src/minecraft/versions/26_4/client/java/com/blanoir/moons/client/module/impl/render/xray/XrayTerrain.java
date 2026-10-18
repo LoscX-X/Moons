@@ -9,13 +9,13 @@ import net.minecraft.util.ARGB;
 /**
  * Controls the real through-wall terrain X-ray.
  *
- * <p>Minecraft 26.4-snapshot-1 processes Caver at the final BlockQuadOutput boundary. Blocks
+ * <p>Minecraft 26.4-snapshot-4 processes Caver at the final BlockQuadOutput boundary. Blocks
  * still follow the normal model and face-culling path; only quads Minecraft actually
  * emits are redirected to the translucent layer and receive the Caver alpha.
  */
 public final class XrayTerrain {
     /**
-     * 96/255 is visible enough to preserve terrain context in the 26.4-snapshot-1 pipeline.
+     * 96/255 is visible enough to preserve terrain context in the 26.4-snapshot-4 pipeline.
      */
     private static final int BACKGROUND_ALPHA = 96;
 

@@ -68,10 +68,8 @@ public final class NativeItemIconCapture {
                                             9,
                                             (long) SIZE * SIZE * 4));
             var encoder = RenderSystem.getDevice().createCommandEncoder();
-            encoder.copyTextureToBuffer(
-                    slot.textureView().texture(),
-                    buffer,
-                    0L,
+            encoder.copyTextureToBuffer(slot.textureView().texture(), buffer, 0L, 0);
+            RenderSystem.queueFencedTask(
                     () -> {
                         byte[] pixels = null;
                         try (var mapped = buffer.map(true, false)) {
@@ -85,8 +83,7 @@ public final class NativeItemIconCapture {
                             pixels = null;
                         }
                         result.complete(pixels);
-                    },
-                    0);
+                    });
         } catch (RuntimeException failure) {
             result.complete(null);
         }

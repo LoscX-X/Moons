@@ -11,7 +11,6 @@ import com.blanoir.moons.client.utils.prediction.VerticalPrediction.VerticalStat
 import com.blanoir.moons.client.utils.raytrace.RaytraceUtils;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.Attributes;
@@ -166,8 +165,8 @@ public final class CombatDecisionEngine {
             return Decision.abort("invalid-target");
         }
 
-        int horizon = Mth.clamp(lookaheadTicks, 0, MAX_FORECAST_TICKS);
-        int earliest = Mth.clamp(earliestAttackTick, 0, horizon);
+        int horizon = Math.clamp(lookaheadTicks, 0, MAX_FORECAST_TICKS);
+        int earliest = Math.clamp(earliestAttackTick, 0, horizon);
         double currentCharge = client.player.getAttackStrengthScale(0.5F);
         boolean currentReach = !CombatGeometry.outsideVanillaRange(client, target);
         boolean currentDamageable = livingTarget.hurtTime <= 0;
@@ -307,7 +306,7 @@ public final class CombatDecisionEngine {
 
             double damage = DamagePrediction.meleeDamage(client, target, charge, true);
             double confidence =
-                    Mth.clamp(
+                    Math.clamp(
                             1.0D - targetVelocity.horizontalDistance() * tick * 0.035D,
                             0.55D,
                             1.0D);

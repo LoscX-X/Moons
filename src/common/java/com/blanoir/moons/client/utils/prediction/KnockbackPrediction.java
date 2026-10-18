@@ -1,7 +1,6 @@
 package com.blanoir.moons.client.utils.prediction;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.util.Mth;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.Vec3;
@@ -138,7 +137,7 @@ public final class KnockbackPrediction {
                 levels
                         * 0.5D
                         * (1.0D
-                                - Mth.clamp(
+                                - Math.clamp(
                                         target.getAttributeValue(Attributes.KNOCKBACK_RESISTANCE),
                                         0.0D,
                                         1.0D));

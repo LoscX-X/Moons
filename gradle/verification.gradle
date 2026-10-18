@@ -92,6 +92,7 @@ tasks.register('verifyRasterPipeline', JavaExec) {
         verifyRemoteConfig: 'com.blanoir.moons.client.service.web.RemoteConfigVerification',
         verifySettingsPersistence: 'com.blanoir.moons.client.config.SettingsPersistenceVerification',
         verifySilentAuraPoints: 'com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraPointVerification',
+        verifyCushionAura: 'com.blanoir.moons.client.module.impl.combat.cushionaura.CushionAuraVerification',
         verifyLearnedAim: 'com.blanoir.moons.client.module.impl.combat.silentaura.LearnedAimVerification',
         verifyBacktrackFlow: 'com.blanoir.moons.client.module.impl.network.backtrack.BacktrackFlowVerification',
         verifyInventoryActions: 'com.blanoir.moons.client.module.impl.player.invmanager.InventoryActionVerification',

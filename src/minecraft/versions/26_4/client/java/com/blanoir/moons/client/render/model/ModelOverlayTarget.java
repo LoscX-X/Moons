@@ -99,9 +99,7 @@ public final class ModelOverlayTarget implements AutoCloseable {
         if (!outlineUploaded || uploadedOutlineColor != opaqueColor) {
             try (NativeImage pixel = new NativeImage(1, 1, false)) {
                 pixel.setPixel(0, 0, opaqueColor);
-                RenderSystem.getDevice()
-                        .createCommandEncoder()
-                        .writeToTexture(outlineTexture, pixel);
+                pixel.writeToGpuTexture(RenderSystem.getDevice().createCommandEncoder(), outlineTexture);
             }
             uploadedOutlineColor = opaqueColor;
             outlineUploaded = true;

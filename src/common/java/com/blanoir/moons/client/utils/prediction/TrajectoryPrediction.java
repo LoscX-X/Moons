@@ -122,9 +122,9 @@ public final class TrajectoryPrediction {
         AABB box = entity.getBoundingBox();
         double remaining = Math.max(0.0D, ticks);
         double velocityX =
-                velocity.x + Mth.clamp(acceleration.x, -0.08D, 0.08D) * Math.min(1.0D, remaining);
+                velocity.x + Math.clamp(acceleration.x, -0.08D, 0.08D) * Math.min(1.0D, remaining);
         double velocityZ =
-                velocity.z + Mth.clamp(acceleration.z, -0.08D, 0.08D) * Math.min(1.0D, remaining);
+                velocity.z + Math.clamp(acceleration.z, -0.08D, 0.08D) * Math.min(1.0D, remaining);
         while (remaining > 1.0E-6D) {
             double fraction = Math.min(1.0D, remaining);
             Vec3 moved =
@@ -212,7 +212,7 @@ public final class TrajectoryPrediction {
     }
 
     public static AABB boundedLinearBox(AABB box, Vec3 smoothedVelocity, double ticksAhead) {
-        double ticks = Mth.clamp(ticksAhead, 0.0D, 3.0D);
+        double ticks = Math.clamp(ticksAhead, 0.0D, 3.0D);
         return box.move(smoothedVelocity.scale(ticks));
     }
 }

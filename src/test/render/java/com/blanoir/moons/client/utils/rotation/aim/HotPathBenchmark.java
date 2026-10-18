@@ -115,11 +115,11 @@ public final class HotPathBenchmark {
             }
         Vec3 best = null;
         double bestScore = Double.POSITIVE_INFINITY;
-        double preferredY = Mth.lerp(Mth.clamp(height, 0.0D, 1.0D), box.minY, box.maxY);
+        double preferredY = Mth.lerp(Math.clamp(height, 0.0D, 1.0D), box.minY, box.maxY);
         for (Vec3 point : points) {
             if (eye.distanceToSqr(point) > range * range || !visible.test(point)) continue;
             Vec3 direction = point.subtract(eye).normalize();
-            double angularCost = 1.0D - Mth.clamp(look.dot(direction), -1.0D, 1.0D);
+            double angularCost = 1.0D - Math.clamp(look.dot(direction), -1.0D, 1.0D);
             double lowAimPenalty =
                     Math.max(0.0D, preferredY - point.y) / Math.max(box.getYsize(), .1D);
             double score =

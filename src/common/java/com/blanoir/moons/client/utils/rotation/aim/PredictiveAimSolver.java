@@ -159,7 +159,7 @@ public final class PredictiveAimSolver {
                         AimAngles.rotationTo(yawEye, new Vec3(yawCentre.x, yawEye.y, yawCentre.z))
                                 .yaw();
             }
-            double crossingDelta = Mth.clamp(deltaSeconds, 0.0D, 1.0D / 20.0D);
+            double crossingDelta = Math.clamp(deltaSeconds, 0.0D, 1.0D / 20.0D);
             // Keep the 20 TPS target step below the consecutive >20
             // degree snap threshold. The packet smoother applies an 18-degree
             // backstop in case render sampling carries momentum into the box.
@@ -179,7 +179,7 @@ public final class PredictiveAimSolver {
                     && crossingTurn * state.crossingTurnDirection < 0.0F) {
                 crossingTurn += Math.copySign(360.0F, state.crossingTurnDirection);
             }
-            state.crossingHeadYaw += Mth.clamp(crossingTurn, -yawLimit, yawLimit);
+            state.crossingHeadYaw += Math.clamp(crossingTurn, -yawLimit, yawLimit);
             boolean eyeInsideTarget = targetBox.inflate(CROSSING_ENTER_MARGIN).contains(eye);
             // Inside the body, preserve valid pitch. Above it, use actual exit
             // geometry; a fixed 2-5 degree yaw-coupled pitch had no geometric basis.
@@ -208,7 +208,7 @@ public final class PredictiveAimSolver {
                     approach(
                             state.pathJitterBlend,
                             0.0F,
-                            (float) (Mth.clamp(deltaSeconds, 0.0D, 0.05D) * 12.0D));
+                            (float) (Math.clamp(deltaSeconds, 0.0D, 0.05D) * 12.0D));
             return;
         }
 
@@ -232,18 +232,18 @@ public final class PredictiveAimSolver {
         float pathDemand =
                 (float)
                         Math.max(
-                                Mth.clamp((remaining - 0.35D) / 6.0D, 0.0D, 1.0D),
-                                Mth.clamp(angularSpeed / 260.0D, 0.0D, 0.75D));
+                                Math.clamp((remaining - 0.35D) / 6.0D, 0.0D, 1.0D),
+                                Math.clamp(angularSpeed / 260.0D, 0.0D, 0.75D));
         double blendRate = pathDemand > state.pathJitterBlend ? 5.5D : 9.0D;
         state.pathJitterBlend =
                 approach(
                         state.pathJitterBlend,
                         pathDemand,
-                        (float) (Mth.clamp(deltaSeconds, 0.0D, 0.05D) * blendRate));
+                        (float) (Math.clamp(deltaSeconds, 0.0D, 0.05D) * blendRate));
         // Preserve a small settled orbit instead of freezing on one point.
         // Full jitter is reserved for the active turn path.
         double effectiveJitter =
-                Mth.clamp(
+                Math.clamp(
                         state.noiseStrength * (0.28D + state.pathJitterBlend * 0.72D), 0.0D, 1.0D);
         effectiveJitter *= profile.jitterScale();
         // A lower-body point means the selector could not see the preferred
@@ -284,14 +284,14 @@ public final class PredictiveAimSolver {
                         target,
                         anchoredPoint,
                         lowerBodyFallback);
-        double predictionStrength = Mth.clamp(parameters.prediction(), 0.0D, 3.0D);
-        double assist = Mth.clamp(Math.abs(targetYawRate) / 8.0D * predictionStrength, 0.0D, 1.0D);
+        double predictionStrength = Math.clamp(parameters.prediction(), 0.0D, 3.0D);
+        double assist = Math.clamp(Math.abs(targetYawRate) / 8.0D * predictionStrength, 0.0D, 1.0D);
         // Motion feed-forward follows the changing bearing even when the
         // positional lead has reached the edge of the current hitbox.
         state.yawFeedForward =
                 lowerBodyFallback
                         ? 0.0D
-                        : Mth.clamp(
+                        : Math.clamp(
                                 targetYawRate * 20.0D * Math.min(predictionStrength, 1.0D),
                                 -profile.maxYawSpeed(),
                                 profile.maxYawSpeed());
@@ -324,7 +324,7 @@ public final class PredictiveAimSolver {
         // inside the hitbox, and the softened response lets it overshoot and
         // correct like a hand instead of snapping on a straight spring path.
         // Only the small target-local offset is sampled; geometry stays live.
-        double settle = Mth.clamp(1.0D - remaining / 2.2D, 0.0D, 1.0D);
+        double settle = Math.clamp(1.0D - remaining / 2.2D, 0.0D, 1.0D);
         // The pursuit base (movingPoint) stays live every frame so sent rays
         // keep intersecting a strafing target; only the humanizing orbit
         // offset is held in bursts. The deadzone on the offset keeps the
@@ -379,14 +379,14 @@ public final class PredictiveAimSolver {
             // Stay inside the same valid hitbox while choosing a height closer
             // to our moving eye. This reduces needless head nodding during our
             // own jump without weakening the pitch needed to keep the ray valid.
-            double calmY = Mth.clamp(eye.y, bodyFloor, upperBodyCeiling);
+            double calmY = Math.clamp(eye.y, bodyFloor, upperBodyCeiling);
             desiredY = Mth.lerp(AIRBORNE_AIM_HEIGHT_BLEND, desiredY, calmY);
         }
         desiredPoint =
                 new Vec3(
-                        Mth.clamp(desiredPoint.x, aimBox.minX + insetX, aimBox.maxX - insetX),
-                        Mth.clamp(desiredY, bodyFloor, upperBodyCeiling),
-                        Mth.clamp(desiredPoint.z, aimBox.minZ + insetZ, aimBox.maxZ - insetZ));
+                        Math.clamp(desiredPoint.x, aimBox.minX + insetX, aimBox.maxX - insetX),
+                        Math.clamp(desiredY, bodyFloor, upperBodyCeiling),
+                        Math.clamp(desiredPoint.z, aimBox.minZ + insetZ, aimBox.maxZ - insetZ));
         if (!RaytraceUtils.canRayTraceTo(client, eye, desiredPoint, parameters.throughBlocks())) {
             // Prediction/jitter can move an originally visible top-edge point
             // behind the ledge when attacking downward. Recover the selector's
@@ -482,7 +482,7 @@ public final class PredictiveAimSolver {
             double time,
             double blend) {
         double strength =
-                Mth.clamp(parameters.settledJitter(), 0.0D, 1.0D) * blend * state.noiseStrength;
+                Math.clamp(parameters.settledJitter(), 0.0D, 1.0D) * blend * state.noiseStrength;
         if (strength <= 0.0D) return movingPoint;
         double distance = Math.max(eye.distanceTo(basePoint), 0.3D);
         AABB box = target.getBoundingBox();
@@ -544,9 +544,9 @@ public final class PredictiveAimSolver {
                         state, profile, parameters, client, eye, desired.yaw(), state.pitch, box);
         if (currentMargin <= 0.0D) return desired;
 
-        double predictionStrength = Mth.clamp(parameters.prediction(), 0.0D, 3.0D);
+        double predictionStrength = Math.clamp(parameters.prediction(), 0.0D, 3.0D);
         double horizonTicks =
-                Mth.clamp(
+                Math.clamp(
                         parameters.predictionLead()
                                 * predictionStrength
                                 * profile.pitchPredictionScale(),
@@ -578,17 +578,17 @@ public final class PredictiveAimSolver {
                                     state,
                                     profile,
                                     parameters,
-                                    Mth.clamp(
+                                    Math.clamp(
                                             futureMargin / Math.max(safety, 1.0E-4D), 0.0D, 1.0D));
             double predictionBlend =
-                    futureUrgency * Mth.clamp(predictionStrength / 1.5D, 0.0D, 1.0D);
+                    futureUrgency * Math.clamp(predictionStrength / 1.5D, 0.0D, 1.0D);
             trackingPitch =
                     (float) Mth.lerp(predictionBlend, trackingPitch, futureRotation.pitch());
         }
 
         double safeFraction = profile.pitchCorridorSafetyFraction();
         double safeDepth =
-                Mth.clamp(
+                Math.clamp(
                         Math.min(currentMargin, futureMargin) / Math.max(safeFraction, 1.0E-4D),
                         0.0D,
                         1.0D);
@@ -623,13 +623,13 @@ public final class PredictiveAimSolver {
             return 0.0D;
         }
         double height = Math.max(box.getYsize(), 0.1D);
-        double fraction = Mth.clamp((hit.get().y - box.minY) / height, 0.0D, 1.0D);
+        double fraction = Math.clamp((hit.get().y - box.minY) / height, 0.0D, 1.0D);
         return Math.min(fraction, 1.0D - fraction);
     }
 
     public static double smoothStep(
             AimState state, AimProfile profile, AimParameters parameters, double value) {
-        double clamped = Mth.clamp(value, 0.0D, 1.0D);
+        double clamped = Math.clamp(value, 0.0D, 1.0D);
         return MathUtils.cubicSmoothStep(clamped);
     }
 
@@ -665,7 +665,7 @@ public final class PredictiveAimSolver {
         AABB box = target.getBoundingBox();
         double minimum = Mth.lerp(bodyFloorFraction, box.minY, box.maxY);
         double maximum = Mth.lerp(UPPER_BODY_CEILING, box.minY, box.maxY);
-        double preferred = Mth.clamp(desired.y, minimum, maximum);
+        double preferred = Math.clamp(desired.y, minimum, maximum);
         if (targetChanged || !Double.isFinite(state.stickyAimY)) {
             state.stickyAimY = preferred;
             state.lastTargetMinY = box.minY;
@@ -681,18 +681,18 @@ public final class PredictiveAimSolver {
         }
         state.lastTargetMinY = box.minY;
 
-        double delta = Mth.clamp(rawDelta, 0.0D, 1.0D / 20.0D);
+        double delta = Math.clamp(rawDelta, 0.0D, 1.0D / 20.0D);
         boolean lowerBodyFallback = bodyFloorFraction < UPPER_BODY_FLOOR;
         if (lowerBodyFallback) {
             // Move promptly but continuously from the old chest anchor into
             // the exposed lower region. This is frame-rate independent and
             // avoids one-packet pitch snaps when cover enters the view.
             state.stickyAimY = approach(state.stickyAimY, preferred, 8.0D * delta);
-            return new Vec3(desired.x, Mth.clamp(state.stickyAimY, minimum, maximum), desired.z);
+            return new Vec3(desired.x, Math.clamp(state.stickyAimY, minimum, maximum), desired.z);
         }
 
         boolean anchorWasInside = state.stickyAimY >= minimum && state.stickyAimY <= maximum;
-        if (anchorWasInside) state.stickyAimY = Mth.clamp(state.stickyAimY, minimum, maximum);
+        if (anchorWasInside) state.stickyAimY = Math.clamp(state.stickyAimY, minimum, maximum);
         if (state.stickyAimY < minimum) {
             state.stickyAimY = Math.min(minimum, state.stickyAimY + 2.35D * delta);
         } else if (state.stickyAimY > maximum) {
@@ -702,16 +702,16 @@ public final class PredictiveAimSolver {
             // slow correction toward the requested body point.
             state.stickyAimY = approach(state.stickyAimY, preferred, 0.12D * delta);
         }
-        return new Vec3(desired.x, Mth.clamp(state.stickyAimY, minimum, maximum), desired.z);
+        return new Vec3(desired.x, Math.clamp(state.stickyAimY, minimum, maximum), desired.z);
     }
 
     public static double bodyFloorFraction(
             AimState state, AimProfile profile, AimParameters parameters, Vec3 point, AABB box) {
         double height = Math.max(box.getYsize(), 0.1D);
         double fraction =
-                Mth.clamp((point.y - box.minY) / height, LOWER_BODY_FLOOR, UPPER_BODY_CEILING);
+                Math.clamp((point.y - box.minY) / height, LOWER_BODY_FLOOR, UPPER_BODY_CEILING);
         if (fraction >= UPPER_BODY_FLOOR) return UPPER_BODY_FLOOR;
-        return Mth.clamp(fraction - 0.025D, LOWER_BODY_FLOOR, UPPER_BODY_FLOOR);
+        return Math.clamp(fraction - 0.025D, LOWER_BODY_FLOOR, UPPER_BODY_FLOOR);
     }
 
     public static Vec3 deepestVisibleInset(

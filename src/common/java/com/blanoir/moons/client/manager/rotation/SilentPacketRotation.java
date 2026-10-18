@@ -298,7 +298,7 @@ public final class SilentPacketRotation {
         double deltaSeconds =
                 lastRotationFrameNanos == 0L
                         ? 1.0D / 60.0D
-                        : Mth.clamp(
+                        : Math.clamp(
                                 (now - lastRotationFrameNanos) / NANOS_PER_SECOND,
                                 1.0D / 1000.0D,
                                 1.0D / 30.0D);
@@ -310,7 +310,7 @@ public final class SilentPacketRotation {
             // may keep moving, but the offset still reaches zero in a fixed
             // duration, so return can neither chase forever nor snap on timeout.
             double linear =
-                    Mth.clamp(
+                    Math.clamp(
                             (now - rotationStartedAtNanos) / (durationSeconds * NANOS_PER_SECOND),
                             0.0D,
                             1.0D);

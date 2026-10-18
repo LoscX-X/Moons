@@ -6,7 +6,7 @@ import com.blanoir.moons.loader.common.asm.hooks.YsmHooks;
 
 import java.util.List;
 
-/** Exact logical-to-runtime targets for Minecraft 26.4-snapshot-1 release. */
+/** Exact logical-to-runtime targets for Minecraft 26.4-snapshot-4 release. */
 public final class CommonMappings {
     private CommonMappings() {}
 
@@ -91,7 +91,7 @@ public final class CommonMappings {
                                 "client.world-render",
                                 List.of("net/minecraft/client/renderer/LevelRenderer"),
                                 List.of("render"),
-                                "(Lcom/mojang/blaze3d/resource/GraphicsResourceAllocator;ZLnet/minecraft/client/renderer/state/level/CameraRenderState;Lcom/mojang/renderpearl/api/buffers/GpuBufferSlice;Lorg/joml/Vector4f;ZZ)V",
+                                "(Lcom/mojang/blaze3d/resource/GraphicsResourceAllocator;ZLnet/minecraft/client/renderer/state/level/CameraRenderState;Lcom/mojang/renderpearl/api/buffers/GpuBufferSlice;Z)V",
                                 TargetMethod.HookKind.VERSION_SPECIFIC,
                                 VersionTransformer::load),
                         new TargetMethod(
@@ -181,7 +181,7 @@ public final class CommonMappings {
                         new TargetMethod(
                                 "player.position",
                                 List.of("net/minecraft/client/player/LocalPlayer"),
-                                List.of("sendPosition"),
+                                List.of("sendChanges"),
                                 "()V",
                                 TargetMethod.HookKind.PLAYER_POSITION),
                         new TargetMethod(
@@ -257,6 +257,12 @@ public final class CommonMappings {
                                 List.of("getMaxZoom"),
                                 "(F)F",
                                 TargetMethod.HookKind.FLOAT_HEAD_BOOLEAN_GATE),
+                        new TargetMethod(
+                                "render.freelook.distance",
+                                List.of("net/minecraft/client/Camera"),
+                                List.of("getMaxZoom"),
+                                "(F)F",
+                                TargetMethod.HookKind.FLOAT_ARGUMENTS),
                         new TargetMethod(
                                 "render.frustum-visible",
                                 List.of("net/minecraft/client/renderer/culling/Frustum"),
@@ -451,7 +457,7 @@ public final class CommonMappings {
                                 "render.chams-frame",
                                 List.of("net/minecraft/client/renderer/LevelRenderer"),
                                 List.of("render"),
-                                "(Lcom/mojang/blaze3d/resource/GraphicsResourceAllocator;ZLnet/minecraft/client/renderer/state/level/CameraRenderState;Lcom/mojang/renderpearl/api/buffers/GpuBufferSlice;Lorg/joml/Vector4f;ZZ)V",
+                                "(Lcom/mojang/blaze3d/resource/GraphicsResourceAllocator;ZLnet/minecraft/client/renderer/state/level/CameraRenderState;Lcom/mojang/renderpearl/api/buffers/GpuBufferSlice;Z)V",
                                 TargetMethod.HookKind.VERSION_SPECIFIC,
                                 VersionTransformer::load),
                         new TargetMethod(

@@ -17,9 +17,9 @@ public final class MathUtils {
             return Vec3.ZERO;
         }
         return new Vec3(
-                Mth.clamp(point.x, box.minX, box.maxX),
-                Mth.clamp(point.y, box.minY, box.maxY),
-                Mth.clamp(point.z, box.minZ, box.maxZ));
+                Math.clamp(point.x, box.minX, box.maxX),
+                Math.clamp(point.y, box.minY, box.maxY),
+                Math.clamp(point.z, box.minZ, box.maxZ));
     }
 
     public static double squaredDistanceToBox(Vec3 point, AABB box) {
@@ -27,9 +27,9 @@ public final class MathUtils {
             return Double.MAX_VALUE;
         }
         return point.distanceToSqr(
-                Mth.clamp(point.x, box.minX, box.maxX),
-                Mth.clamp(point.y, box.minY, box.maxY),
-                Mth.clamp(point.z, box.minZ, box.maxZ));
+                Math.clamp(point.x, box.minX, box.maxX),
+                Math.clamp(point.y, box.minY, box.maxY),
+                Math.clamp(point.z, box.minZ, box.maxZ));
     }
 
     public static AABB inset(AABB box, double requestedInset, double maxSizeFraction) {
@@ -37,7 +37,7 @@ public final class MathUtils {
             return null;
         }
         double amount = Math.max(0.0D, requestedInset);
-        double fraction = Mth.clamp(maxSizeFraction, 0.0D, 0.499D);
+        double fraction = Math.clamp(maxSizeFraction, 0.0D, 0.499D);
         double x = Math.min(amount, box.getXsize() * fraction);
         double y = Math.min(amount, box.getYsize() * fraction);
         double z = Math.min(amount, box.getZsize() * fraction);
@@ -55,7 +55,7 @@ public final class MathUtils {
         double horizontal = Math.hypot(deltaX, deltaZ);
         float yaw = (float) Math.toDegrees(Math.atan2(deltaZ, deltaX)) - 90.0F;
         float pitch = (float) -Math.toDegrees(Math.atan2(deltaY, horizontal));
-        return new Rotation(Mth.wrapDegrees(yaw), Mth.clamp(pitch, -90.0F, 90.0F));
+        return new Rotation(Mth.wrapDegrees(yaw), Math.clamp(pitch, -90.0F, 90.0F));
     }
 
     public static double angularDistance(float yaw, float pitch, Rotation target) {
@@ -80,16 +80,16 @@ public final class MathUtils {
 
     /** Moves a scalar by at most the caller's step; this is not exponential smoothing. */
     public static float approach(float current, float target, float maxChange) {
-        return current + Mth.clamp(target - current, -maxChange, maxChange);
+        return current + Math.clamp(target - current, -maxChange, maxChange);
     }
 
     public static double approach(double current, double target, double maxChange) {
-        return current + Mth.clamp(target - current, -maxChange, maxChange);
+        return current + Math.clamp(target - current, -maxChange, maxChange);
     }
 
     /** Limits the shortest yaw turn while retaining the current whole-turn domain. */
     public static float approachWrapped(float current, float target, float maxChange) {
-        return current + Mth.clamp(wrappedAngleDifference(current, target), -maxChange, maxChange);
+        return current + Math.clamp(wrappedAngleDifference(current, target), -maxChange, maxChange);
     }
 
     /** Cubic interpolation polynomial; callers retain their own input clamping. */
@@ -106,7 +106,7 @@ public final class MathUtils {
             return 0.0D;
         }
         double dot = first.normalize().dot(second.normalize());
-        return Math.toDegrees(Math.acos(Mth.clamp(dot, -1.0D, 1.0D)));
+        return Math.toDegrees(Math.acos(Math.clamp(dot, -1.0D, 1.0D)));
     }
 
     /** Three-dimensional visual angle from a view direction to a world point. */
@@ -123,7 +123,7 @@ public final class MathUtils {
      */
     public static boolean withinFov(double viewAngle, double configuredFov) {
         return Double.isFinite(viewAngle)
-                && viewAngle <= Mth.clamp(configuredFov, 0.0D, 360.0D) * 0.5D + EPSILON;
+                && viewAngle <= Math.clamp(configuredFov, 0.0D, 360.0D) * 0.5D + EPSILON;
     }
 
     public static float yawTo(Vec3 from, Vec3 to) {
@@ -141,7 +141,7 @@ public final class MathUtils {
                         ? rayDirection.normalize()
                         : new Vec3(0.0D, 0.0D, 1.0D);
         double along =
-                Mth.clamp(point.subtract(rayStart).dot(direction), 0.0D, Math.max(0.0D, rayLength));
+                Math.clamp(point.subtract(rayStart).dot(direction), 0.0D, Math.max(0.0D, rayLength));
         return point.distanceToSqr(rayStart.add(direction.scale(along)));
     }
 

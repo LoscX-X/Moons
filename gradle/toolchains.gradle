@@ -1,7 +1,7 @@
 import java.util.regex.Pattern
 
 /* Lazily resolve host tools only when a task needs them. */
-def windowsHost = moonsBuild.windowsHost
+def windowsHost = temposBuild.windowsHost
 
 def locateCmake = {
     def executableName = windowsHost ? "cmake.exe" : "cmake"
@@ -65,15 +65,41 @@ def locateCSharpCompiler = {
     return compiler
 }
 
+def launcherCommonSources = files(
+        'src/tools/common/Hashing.cs', 'src/tools/common/StagedFile.cs',
+        'src/tools/launcher/csharp/RuntimeMetadata.cs',
+        'src/tools/launcher/csharp/VersionCatalog.cs', temposVersions.launcherSource,
+        'src/tools/launcher/csharp/DependencyRuntime.cs', 'src/tools/launcher/csharp/ProcessEvidenceCache.cs')
+
+// Keep resource insertion order and source path order identical to the existing csc invocations.
+def csharpExe = { Exec task, output, sources, List options, Map resources = [:] ->
+    task.inputs.files(sources, resources.values())
+    task.inputs.property('cscOptions', options)
+    task.inputs.property('resourceNames', resources.keySet().toList())
+    task.outputs.file(output)
+    task.doFirst {
+        if (!windowsHost) throw new GradleException("${task.name} requires Windows")
+        def destination = output.get().asFile
+        destination.parentFile.mkdirs()
+        task.executable locateCSharpCompiler().absolutePath
+        task.args '/nologo'
+        task.args options
+        task.args "/out:${destination.absolutePath}"
+        task.args resources.collect { name, path -> "/resource:${path.get().asFile.absolutePath},${name}" }
+        task.args sources.files.collect { it.absolutePath }.sort()
+    }
+}
+
 def nestedGradleArguments = { List<String> arguments ->
     def result = new ArrayList<String>(arguments)
-    result.addAll(["--console=plain", "--no-daemon"])
+    result.addAll(["--console=plain", "--no-daemon", "--no-parallel",
+            "--max-workers=${gradle.startParameter.maxWorkerCount}".toString()])
     // Gradle tracks previous task outputs in the project cache. Sharing that cache
     // across build directories lets a child delete its parent's compiled classes
     // as stale outputs, even when the builds execute sequentially.
-    def buildArgument = arguments.find { it.startsWith('-Pmoons_build_directory=') }
+    def buildArgument = arguments.find { it.startsWith('-Ptempos_build_directory=') }
     if (buildArgument != null) {
-        def buildPath = buildArgument.substring('-Pmoons_build_directory='.length())
+        def buildPath = buildArgument.substring('-Ptempos_build_directory='.length())
         result.addAll(['--project-cache-dir', new File(file(buildPath), '.gradle-project-cache').absolutePath])
     }
     if (gradle.startParameter.offline) {
@@ -91,10 +117,12 @@ def nestedGradleArguments = { List<String> arguments ->
     return result
 }
 
-ext.moonsToolchains = [
+ext.temposToolchains = [
         locateCmake          : locateCmake,
         locateJdkHome        : locateJdkHome,
         locateCSharpCompiler : locateCSharpCompiler,
+        csharpExe            : csharpExe,
+        launcherCommonSources: launcherCommonSources,
         gradleExecutable     : new File(gradle.gradleHomeDir, windowsHost ? "bin/gradle.bat" : "bin/gradle"),
         nestedGradleArguments: nestedGradleArguments
 ].asImmutable()

@@ -1,24 +1,24 @@
-<h1 align="center">Moons</h1>
+<h1 align="center">Tempos</h1>
 
 <p align="center">简体中文 · <a href="../readme.md">English</a></p>
 
 <p align="center">
   <a href="https://github.com/journey-ad/Moe-Counter">
-    <img src="https://count.getloli.com/@LoscX-X.Moons?theme=booru-lewd&amp;padding=7&amp;align=top&amp;scale=1&amp;pixelated=1&amp;darkmode=auto" alt="Moons README 访问计数 · 由 Moe Counter 提供" />
+    <img src="https://count.getloli.com/@LoscX-X.Moons?theme=booru-lewd&amp;padding=7&amp;align=top&amp;scale=1&amp;pixelated=1&amp;darkmode=auto" alt="Tempos README 访问计数 · 由 Moe Counter 提供" />
   </a>
 </p>
 <p align="center"><sub>README 访问计数 · 累计图片请求次数，非去重访客人数。</sub></p>
 
-Moons 是面向 Windows 的免费开源 Minecraft Java Edition 注入式客户端，基于 Java 和 JVMTI，提供功能模块、本地配置和 YSM 模型支持。
+Tempos 是面向 Windows 的免费开源 Minecraft Java Edition 注入式客户端，基于 Java 和 JVMTI，提供功能模块、本地配置和 YSM 模型支持。
 
-**官方网站：** [moons.cendreal.com](https://moons.cendreal.com/) · [English website](https://moons.cendreal.com/en/)
+**官方网站：** [Tempos 官网](https://moons.cendreal.com/) · [English website](https://moons.cendreal.com/en/)
 
 > [!WARNING]
 > **安全问题请提供代码与证据。**
 >
 > 如您认为本项目存在任何安全问题，请立即 [提交 Issue](https://github.com/LoscX-X/Moons/issues/new)，并注明对应代码位置（文件路径及行号）、受影响版本、复现步骤和相关证据。
 >
-> Moons 自身代码未主动混淆，源码公开可审查。这一说明仅针对 Moons 自有代码；Minecraft 名称映射和第三方组件请按各自说明核查。
+> Tempos 自身代码未主动混淆，源码公开可审查。这一说明仅针对 Tempos 自有代码；Minecraft 名称映射和第三方组件请按各自说明核查。
 >
 > 我们欢迎有依据的质疑。请基于代码和可验证事实讨论，不要将未经验证的推测当作已经证实的问题。
 
@@ -33,13 +33,13 @@ Moons 是面向 Windows 的免费开源 Minecraft Java Edition 注入式客户�
 >
 > **本项目按现状提供，使用风险由使用者在法律允许的范围内自行承担。** 使用前请阅读 [完整免责声明](DISCLAIMER.zh-CN.md)。依法不得排除的责任及法定权利不受影响。
 
-支持 **26.1.2**、**26.2**、**26.3** 和 **26.4-snapshot-4**。
+支持 **26.1.2**、**26.2**、**26.3** 和 **26.4-pre-2**。
 
-Minecraft 26.3 同时支持 NeoForge **26.3.0.90**。
+同时支持 NeoForge：**26.1.2（26.1.2.122）**、**26.2（26.2.0.88）** 和 **26.3（26.3.0.90）**。
 
 ## 版本支持
 
-[`latest`](https://github.com/LoscX-X/Moons/tree/latest) 主分支维护四个 Minecraft 版本档案：**26.1.2**、**26.2**、**26.3** 和 **26.4-snapshot-4**。新增版本档案时，较旧档案逐步退出这个维护窗口。
+[`latest`](https://github.com/LoscX-X/Moons/tree/latest) 主分支维护四个 Minecraft 版本档案：**26.1.2**、**26.2**、**26.3** 和 **26.4-pre-2**。新增版本档案时，较旧档案逐步退出这个维护窗口。
 
 快照、预发布版和候选发布版仅支持即将推出的最新 Minecraft 版本，以这里列出的具体构建为准；支持一个预览构建不代表兼容其他预览构建。
 
@@ -47,7 +47,7 @@ Minecraft 26.3 同时支持 NeoForge **26.3.0.90**。
 
 Minecraft **1.8.9** 在 [`legacy/1.8.9`](https://github.com/LoscX-X/Moons/tree/legacy/1.8.9) 分支独立开发，等待游戏实测；**请使用者自行构建该分支**，步骤见该分支 README 和构建说明。不占用四版维护窗口，也不包含在主发行包的安装器和加载器中。
 
-Moons 客户端版本使用 **`X.Y.Z.x-Experiment`** 或 **`X.Y.Z.x-Release`**，例如 `1.0.0.0-Experiment`。前三段表示发行基线，第四段表示补丁顺序。`Experiment` 为预发布实验版，不覆盖 GitHub 的 Latest；`Release` 为正式版并标记 Latest。提交哈希后缀用于区分构建，不代替补丁顺序。Minecraft 版本号与 Moons 客户端版本号分别维护。
+Tempos 客户端版本使用 **`X.Y.Z.x-Experiment`** 或 **`X.Y.Z.x-Release`**，例如 `1.0.0.0-Experiment`。前三段表示发行基线，第四段表示补丁顺序。`Experiment` 为预发布实验版，不覆盖 GitHub 的 Latest；`Release` 为正式版并标记 Latest。提交哈希后缀用于区分构建，不代替补丁顺序。Minecraft 版本号与 Tempos 客户端版本号分别维护。
 
 ## 风险与责任声明
 
@@ -60,14 +60,11 @@ Moons 客户端版本使用 **`X.Y.Z.x-Experiment`** 或 **`X.Y.Z.x-Release`**�
 
 ## 如何使用
 
-1. 从同一次 [Release](https://github.com/LoscX-X/Moons/releases) 下载 `moon-install-<版本>-<commit>.exe` 和 `moon-<版本>-<commit>.exe`。
-2. 运行安装器，选择 Minecraft 版本，点击 **Install** 安装该版本依赖。
-3. 启动受支持版本的 Minecraft，再运行加载器，选择游戏进程并加载 Moons。
-4. 按 **右 Shift** 打开 ClickGUI，这是默认按键。
+1. 从 [Release](https://github.com/LoscX-X/Moons/releases) 下载 `tempos-<版本>-<commit>.exe`。
+2. 启动受支持版本的 Minecraft，再运行 EXE，选择游戏进程并加载 Tempos。
+3. 按 **右 Shift** 打开 ClickGUI，这是默认按键。
 
-依赖编号不变且已安装文件完好时，只需更新加载器；依赖有变化时再运行匹配版本的安装器。安装器内置 UI runtime 和 YSM 依赖，支持离线安装。开发构建可从 [Actions](https://github.com/LoscX-X/Moons/actions) 获取。
-
-依赖按游戏版本存于 `libraries/latest/<版本>` 或 `libraries/legacy/<版本>`。安装器只安装所选版本；缓存保留最近一次成功运行。
+EXE 内置完整运行库和 YSM 依赖，支持离线加载。运行时需要的文件释放到临时会话，退出后清理。开发构建可从 [Actions](https://github.com/LoscX-X/Moons/actions) 获取。
 
 ## 如何保存配置
 
@@ -75,9 +72,11 @@ Moons 客户端版本使用 **`X.Y.Z.x-Experiment`** 或 **`X.Y.Z.x-Release`**�
 2. 输入名称，点击 **Create**，再点击 **Save** 保存当前设置。
 3. 之后选中已保存的配置，点击 **Load** 应用。
 
+参数和命名配置在游戏退出后保存回加载器 EXE，请将 EXE 放在可写位置。在 Configs 页面点击 **Import** / **Export** 可导入、导出 JSON 参数包。首次使用会自动读取旧 Moons 参数；确认写回成功、模型迁移完成后才清理旧目录。存在未知文件或冲突时保留旧目录。
+
 ## 如何使用 YSM 模型
 
-1. 将模型放入 YSM 页面显示的目录，默认位置为 `%APPDATA%\.moons\data\ysm\models`。
+1. 将模型放入 YSM 页面显示的目录，默认位置为 `%APPDATA%\models`。点击 **Browse** 从当前目录开始选择，也可以输入其他目录更改扫描位置。
 2. 打开 **ClickGUI → YSM**，点击 **Refresh**，选中模型后点击 **Apply**。
 3. 点击 **Use vanilla** 可恢复原版玩家模型。
 
@@ -86,10 +85,10 @@ Moons 客户端版本使用 **`X.Y.Z.x-Experiment`** 或 **`X.Y.Z.x-Release`**�
 准备 Windows x64、JDK 25，以及 [BUILDING.md](BUILDING.md) 列出的本地编译工具。在项目目录打开 PowerShell：
 
 ```powershell
-.\gradlew.bat moonsBuild
+.\gradlew.bat temposBuild
 ```
 
-该命令完成四版检查、发行打包和两个 EXE 的隔离验收，产物位于 `build/dist`。仅需打包时使用 `moonsPackages`。使用 IDE 时，以 JDK 25 导入 Gradle 项目并执行同名任务。
+该命令完成四版检查、单 EXE 打包和真实 EXE 的隔离验收，产物位于 `build/dist`。仅需打包时使用 `temposPackages`。使用 IDE 时，以 JDK 25 导入 Gradle 项目并执行同名任务。
 
 ## 如何参与开发
 
@@ -98,7 +97,7 @@ Moons 客户端版本使用 **`X.Y.Z.x-Experiment`** 或 **`X.Y.Z.x-Release`**�
 
 ## 项目活跃度
 
-![Moons 仓库活跃度](https://repobeats.axiom.co/api/embed/fbaacbea8a2feb78305a937b23e2981cf6bf564a.svg "Repobeats analytics image")
+![Tempos 仓库活跃度](https://repobeats.axiom.co/api/embed/fbaacbea8a2feb78305a937b23e2981cf6bf564a.svg "Repobeats analytics image")
 
 ## Inspired Projects
 

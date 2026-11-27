@@ -2,7 +2,7 @@
 def requests = [:]
 def builds = [:]
 def directories = [:]
-moonsVersions.profiles.each { profile ->
+temposVersions.profiles.each { profile ->
     def profileRequests = []
     requests[profile.profileId] = profileRequests
     def nestedBuild = layout.buildDirectory.dir("versions/${profile.profileId}").get().asFile
@@ -13,24 +13,24 @@ moonsVersions.profiles.each { profile ->
         if (previous != null) mustRunAfter previous
         mustRunAfter 'check'
         workingDir project.projectDir
-        executable moonsToolchains.gradleExecutable.absolutePath
+        executable temposToolchains.gradleExecutable.absolutePath
         doFirst {
             def targets = profileRequests.findAll { gradle.taskGraph.hasTask(it.task.get()) }
                     .collectMany { it.targets }.toSet()
             // Verify before publishing this version's payload or dependency package.
             def orderedTargets = targets.contains('check') ? ['check'] + (targets - 'check') : targets.toList()
             if (orderedTargets.isEmpty()) throw new GradleException('Use a version build entry point')
-            setArgs(moonsToolchains.nestedGradleArguments(orderedTargets + [
+            setArgs(temposToolchains.nestedGradleArguments(orderedTargets + [
                     "-Pminecraft_version=${profile.gameId}",
-                    "-Pmoons_build_directory=${nestedBuild.absolutePath}",
-                    "-Pmoons_jar_output_directory=dist/agent/${profile.profileId}"
+                    "-Ptempos_build_directory=${nestedBuild.absolutePath}",
+                    "-Ptempos_jar_output_directory=dist/agent/${profile.profileId}"
             ].collect { it.toString() }))
-            logger.lifecycle("MOONS_VERSION_BUILD ${profile.gameId}: ${orderedTargets.join(' ')}")
+            logger.lifecycle("TEMPOS_VERSION_BUILD ${profile.gameId}: ${orderedTargets.join(' ')}")
         }
     }
 }
 
-ext.moonsMultiVersion = [
+ext.temposMultiVersion = [
         directories: directories.asImmutable(),
         register: { String profileId, String name, String groupName, String summary, List<String> targets ->
             def entry = tasks.register(name) {

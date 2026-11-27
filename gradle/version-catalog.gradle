@@ -61,7 +61,7 @@ def frozenProfiles = profiles.collect { profile ->
     (profile + [aliases: profile.aliases.asImmutable()]).asImmutable()
 }.asImmutable()
 def buildProfiles = frozenProfiles.findAll { it.available && it.status != 'legacy' }.asImmutable()
-ext.moonsVersions = [
+ext.temposVersions = [
         catalogProfiles: frozenProfiles,
         activeWindow: catalog.activeWindow,
         profiles: buildProfiles,
@@ -72,12 +72,12 @@ ext.moonsVersions = [
 
 tasks.register('launcherVersionCatalog') {
     inputs.file(catalogFile)
-    outputs.file(moonsVersions.launcherSource)
+    outputs.file(temposVersions.launcherSource)
     doLast {
         // C# string literals generated from data; no JSON library is needed in the EXE.
         def literal = { String value -> groovy.json.JsonOutput.toJson(value) }
         def entries = buildProfiles.withIndex().collect { profile, index ->
-            def resource = "Moons.Payload.${profile.profileId}." + (index == 0 ? 'jar' : 'patch')
+            def resource = "Tempos.Payload.${profile.profileId}." + (index == 0 ? 'jar' : 'patch')
             ('            new SupportProfile(' + [profile.profileId, profile.gameId, profile.artifactId,
                     profile.status, resource, profile.evidencePattern].collect(literal).join(', ')
                     + ', new string[] { ' + profile.aliases.collect(literal).join(', ') + ' }, ' + profile.javaVersion + ')')
@@ -85,10 +85,10 @@ tasks.register('launcherVersionCatalog') {
         def legacyEntries = frozenProfiles.findAll { it.available && it.status == 'legacy' }.collectMany { profile ->
             profile.aliases.collect { alias -> '            { ' + literal(alias) + ', ' + literal(profile.releaseLock) + ' }' }
         }
-        def output = moonsVersions.launcherSource.get().asFile
+        def output = temposVersions.launcherSource.get().asFile
         output.parentFile.mkdirs()
         output.setText('// Generated from config/version-catalog.json.\n'
-                + 'namespace Moons.WindowsLauncher\n{\n'
+                + 'namespace Tempos.WindowsLauncher\n{\n'
                 + '    internal static partial class VersionCatalog\n    {\n'
                 + '        internal static readonly SupportProfile[] Profiles = {\n'
                 + entries.join(',\n') + '\n        };\n'

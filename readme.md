@@ -1,24 +1,24 @@
-<h1 align="center">Moons</h1>
+<h1 align="center">Tempos</h1>
 
 <p align="center"><a href="docs/README.zh-CN.md">简体中文</a> · English</p>
 
 <p align="center">
   <a href="https://github.com/journey-ad/Moe-Counter">
-    <img src="https://count.getloli.com/@LoscX-X.Moons?theme=booru-lewd&amp;padding=7&amp;align=top&amp;scale=1&amp;pixelated=1&amp;darkmode=auto" alt="Moons README view counter · Powered by Moe Counter" />
+    <img src="https://count.getloli.com/@LoscX-X.Moons?theme=booru-lewd&amp;padding=7&amp;align=top&amp;scale=1&amp;pixelated=1&amp;darkmode=auto" alt="Tempos README view counter · Powered by Moe Counter" />
   </a>
 </p>
 <p align="center"><sub>README views · Counts image requests, not unique visitors.</sub></p>
 
-Moons is a free, open-source Minecraft Java Edition injection client for Windows, built with Java and JVMTI, with configurable modules, local presets and YSM models.
+Tempos is a free, open-source Minecraft Java Edition injection client for Windows, built with Java and JVMTI, with configurable modules, local presets and YSM models.
 
-**Website:** [moons.cendreal.com](https://moons.cendreal.com/) · [English website](https://moons.cendreal.com/en/)
+**Website:** [Tempos website](https://moons.cendreal.com/) · [English website](https://moons.cendreal.com/en/)
 
 > [!WARNING]
 > **Security concerns: report them with evidence.**
 >
 > If you believe this project has a security issue, please [open an Issue](https://github.com/LoscX-X/Moons/issues/new) immediately and include the relevant code file and line numbers, the affected version, reproduction steps, and supporting evidence.
 >
-> Moons' own code is publicly available for review and is not deliberately obfuscated. This statement applies specifically to Moons-owned code; review Minecraft name mappings and third-party components according to their respective documentation.
+> Tempos' own code is publicly available for review and is not deliberately obfuscated. This statement applies specifically to Tempos-owned code; review Minecraft name mappings and third-party components according to their respective documentation.
 >
 > We welcome evidence-based scrutiny. Please base claims on code and verifiable facts, and do not present unverified speculation as an established finding.
 
@@ -33,13 +33,13 @@ Moons is a free, open-source Minecraft Java Edition injection client for Windows
 >
 > **Provided as is; users bear the risks of use to the extent permitted by law.** Read the [full disclaimer](docs/DISCLAIMER.md) before use. Non-excludable liability and statutory rights remain unaffected.
 
-Supports **26.1.2**, **26.2**, **26.3**, and **26.4-snapshot-4**.
+Supports **26.1.2**, **26.2**, **26.3**, and **26.4-pre-2**.
 
-Minecraft 26.3 also supports NeoForge **26.3.0.90**.
+NeoForge is also supported for **26.1.2 (26.1.2.122)**, **26.2 (26.2.0.88)** and **26.3 (26.3.0.90)**.
 
 ## Version Support
 
-The [`latest`](https://github.com/LoscX-X/Moons/tree/latest) branch maintains four Minecraft version profiles: **26.1.2**, **26.2**, **26.3**, and **26.4-snapshot-4**. As new profiles are added, older profiles leave this maintenance window.
+The [`latest`](https://github.com/LoscX-X/Moons/tree/latest) branch maintains four Minecraft version profiles: **26.1.2**, **26.2**, **26.3**, and **26.4-pre-2**. As new profiles are added, older profiles leave this maintenance window.
 
 Snapshots, pre-releases and release candidates are supported only for the newest upcoming Minecraft version, using the exact build listed above. Support for one preview build does not imply support for other previews.
 
@@ -47,7 +47,7 @@ Older preview builds and retired Minecraft versions may remain available through
 
 Minecraft **1.8.9** is developed separately on [`legacy/1.8.9`](https://github.com/LoscX-X/Moons/tree/legacy/1.8.9), pending game testing. Users must build that branch themselves; see its README and build instructions. It is outside the four-profile window and is not included in the main installer or loader.
 
-Moons client versions use **`X.Y.Z.x-Experiment`** or **`X.Y.Z.x-Release`**, for example `1.0.0.0-Experiment`. The first three numbers identify the release baseline; the fourth is the patch sequence. `Experiment` builds are prereleases and do not replace GitHub's Latest release. `Release` builds are stable releases marked Latest. The commit suffix distinguishes builds; it does not replace the patch sequence. Minecraft version numbers and Moons client version numbers are separate.
+Tempos client versions use **`X.Y.Z.x-Experiment`** or **`X.Y.Z.x-Release`**, for example `1.0.0.0-Experiment`. The first three numbers identify the release baseline; the fourth is the patch sequence. `Experiment` builds are prereleases and do not replace GitHub's Latest release. `Release` builds are stable releases marked Latest. The commit suffix distinguishes builds; it does not replace the patch sequence. Minecraft version numbers and Tempos client version numbers are separate.
 
 ## Risk and Responsibility Notice
 
@@ -60,14 +60,11 @@ Moons client versions use **`X.Y.Z.x-Experiment`** or **`X.Y.Z.x-Release`**, for
 
 ## How to Use
 
-1. Download `moon-install-<version>-<commit>.exe` and `moon-<version>-<commit>.exe` from the same [release](https://github.com/LoscX-X/Moons/releases).
-2. Run the installer, select your Minecraft version, and click **Install** to install its dependencies.
-3. Start a supported Minecraft version, then run the loader to select the game and load Moons.
-4. Press **Right Shift** to open ClickGUI (default binding).
+1. Download `tempos-<version>-<commit>.exe` from a [release](https://github.com/LoscX-X/Moons/releases).
+2. Start a supported Minecraft version, then run the EXE to select the game and load Tempos.
+3. Press **Right Shift** to open ClickGUI (default binding).
 
-If the dependency version is unchanged and the installed files are intact, only the loader needs updating. Otherwise, run the matching installer. The installer includes the complete UI runtime and YSM dependencies and works offline. Development builds are available from [Actions](https://github.com/LoscX-X/Moons/actions).
-
-Dependencies are isolated under `libraries/latest/<game-version>` or `libraries/legacy/<game-version>`. The installer installs only the selected version; the cache retains the latest successful run.
+The EXE includes the complete runtime and YSM dependencies and works offline. Files needed during play are extracted to a temporary session and cleaned after exit. Development builds are available from [Actions](https://github.com/LoscX-X/Moons/actions).
 
 ## How to Save a Config
 
@@ -75,9 +72,11 @@ Dependencies are isolated under `libraries/latest/<game-version>` or `libraries/
 2. Enter a name, choose **Create**, then **Save** to store your current settings.
 3. Select a saved config and choose **Load** to apply it.
 
+Parameters and named profiles are saved back into the loader EXE after the game exits. Keep the EXE in a writable location. Use **Import** and **Export** on the Configs page to exchange JSON parameter bundles. Existing Moons parameters are imported automatically; the old directory is removed only after a verified save and model migration. Unrecognized or conflicting files keep the old directory in place.
+
 ## How to Use YSM Models
 
-1. Put your model in the folder shown on the YSM page. The default is `%APPDATA%\.moons\data\ysm\models`.
+1. Put your model in the folder shown on the YSM page. The default is `%APPDATA%\models`. **Browse** opens the selected folder; enter another path or choose a folder to change where models are scanned.
 2. Open **ClickGUI → YSM**, choose **Refresh**, select the model, then **Apply**.
 3. Choose **Use vanilla** to restore the original player model.
 
@@ -86,10 +85,10 @@ Dependencies are isolated under `libraries/latest/<game-version>` or `libraries/
 Prepare Windows x64, JDK 25 and the native build tools listed in [BUILDING.md](docs/BUILDING.md). Open PowerShell in the project folder:
 
 ```powershell
-.\gradlew.bat moonsBuild
+.\gradlew.bat temposBuild
 ```
 
-This checks all supported versions, builds `build/dist/moon-install.exe`, `build/dist/moon.exe` and the matching runtime, then verifies both executables in isolation. Use `moonsPackages` to package without checks. In an IDE, import the Gradle project with JDK 25 and run the same task.
+This checks all supported versions, builds `build/dist/tempos.exe` with its runtime embedded, then verifies the real EXE in isolation. Use `temposPackages` to package without checks. In an IDE, import the Gradle project with JDK 25 and run the same task.
 
 ## How to Contribute
 
@@ -98,7 +97,7 @@ This checks all supported versions, builds `build/dist/moon-install.exe`, `build
 
 ## Project Activity
 
-![Moons repository activity](https://repobeats.axiom.co/api/embed/fbaacbea8a2feb78305a937b23e2981cf6bf564a.svg "Repobeats analytics image")
+![Tempos repository activity](https://repobeats.axiom.co/api/embed/fbaacbea8a2feb78305a937b23e2981cf6bf564a.svg "Repobeats analytics image")
 
 ## Inspired Projects
 

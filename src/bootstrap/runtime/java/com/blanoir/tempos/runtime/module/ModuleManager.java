@@ -1,0 +1,442 @@
+package com.blanoir.tempos.runtime.module;
+
+import com.blanoir.tempos.api.Branding;
+import com.blanoir.tempos.api.ModuleServices;
+import com.blanoir.tempos.api.TemposModule;
+import com.blanoir.tempos.runtime.RuntimeEvents;
+import com.blanoir.tempos.runtime.lifecycle.DefaultResourceScope;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.FileSystems;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardWatchEventKinds;
+import java.nio.file.WatchEvent;
+import java.nio.file.WatchKey;
+import java.nio.file.WatchService;
+import java.security.MessageDigest;
+import java.util.HexFormat;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
+
+/** Transactional loader for built-in and externally overridden feature JARs. */
+public final class ModuleManager implements AutoCloseable {
+    private static final String BUILTIN_ENTRY = "META-INF/tempos/modules/tempos-core-features.jar";
+
+    private final Path home;
+    private final Path outerJar;
+    private final Path moduleDirectory;
+    private final Path libraryDirectory;
+    private final Path cacheDirectory;
+    private final Path dependencyRoot;
+    private final Path dependencyModule;
+    private final boolean temporaryDependencies;
+    private String pinnedModuleId;
+    private final RuntimeEvents events;
+    private final ModuleServices services = new ModuleServices();
+    private final String minecraftVersion;
+    private final Map<String, LoadedModule> loaded = new LinkedHashMap<>();
+    private final ConcurrentLinkedQueue<Path> reloadQueue = new ConcurrentLinkedQueue<>();
+    private final java.util.Set<Path> queuedReloads = ConcurrentHashMap.newKeySet();
+    private WatchService watchService;
+    private Thread watchThread;
+    private Path builtinModule;
+    private volatile boolean closed;
+    private final java.util.List<String> startupDiagnostics = new java.util.ArrayList<>();
+
+    public ModuleManager(Path home, Path outerJar, RuntimeEvents events, String minecraftVersion) {
+        this(home, outerJar, events, minecraftVersion, null, null);
+    }
+
+    public ModuleManager(
+            Path home,
+            Path outerJar,
+            RuntimeEvents events,
+            String minecraftVersion,
+            Path dependencyRoot,
+            Path dependencyModule) {
+        this.home = home;
+        this.outerJar = outerJar;
+        this.moduleDirectory = home.resolve("modules");
+        this.libraryDirectory = home.resolve("libraries");
+        this.dependencyRoot =
+                dependencyRoot == null ? null : dependencyRoot.toAbsolutePath().normalize();
+        this.dependencyModule =
+                dependencyModule == null ? null : dependencyModule.toAbsolutePath().normalize();
+        if ((this.dependencyRoot == null) != (this.dependencyModule == null))
+            throw new IllegalArgumentException("Incomplete dependency context");
+        this.temporaryDependencies = this.dependencyRoot != null
+                && this.dependencyRoot.equals(outerJar.toAbsolutePath().normalize().getParent());
+        this.cacheDirectory = (temporaryDependencies ? this.dependencyRoot : home).resolve("cache/modules");
+        this.events = events;
+        this.minecraftVersion =
+                java.util.Objects.requireNonNull(minecraftVersion, "minecraftVersion");
+    }
+
+    public synchronized void start() throws Exception {
+        Files.createDirectories(moduleDirectory);
+        if (!temporaryDependencies) Files.createDirectories(libraryDirectory);
+        Files.createDirectories(cacheDirectory);
+        Path builtin = extractBuiltin();
+        builtinModule = builtin;
+
+        Map<String, Path> selected = new LinkedHashMap<>();
+        ModuleDescriptor builtinDescriptor = ModuleDescriptor.read(builtin);
+        selected.put(builtinDescriptor.id(), builtin);
+        if (dependencyModule != null) {
+            ModuleDescriptor descriptor = ModuleDescriptor.read(dependencyModule);
+            if (!descriptor.supportsMinecraft(minecraftVersion)
+                    || descriptor.id().equals(builtinDescriptor.id()))
+                throw new IOException("Invalid installed dependency module");
+            pinnedModuleId = descriptor.id();
+            selected.put(descriptor.id(), dependencyModule);
+        }
+        try (var files = Files.list(moduleDirectory)) {
+            for (Path candidate : files.filter(ModuleManager::isJar).sorted().toList()) {
+                try {
+                    ModuleDescriptor descriptor = ModuleDescriptor.read(candidate);
+                    if (!descriptor.supportsMinecraft(minecraftVersion)) continue;
+                    if (descriptor.id().equals(pinnedModuleId)) continue;
+                    selected.put(descriptor.id(), candidate);
+                } catch (Throwable failure) {
+                    recordStartupDiagnostic(candidate, failure);
+                }
+            }
+        }
+        for (var entry : selected.entrySet()) {
+            try {
+                replace(entry.getValue());
+            } catch (Throwable failure) {
+                if (entry.getKey().equals("core-features")) throw failure;
+                recordStartupDiagnostic(entry.getValue(), failure);
+            }
+        }
+        startWatcher();
+    }
+
+    /** Applies watcher notifications from the Minecraft client thread. */
+    public void drainReloads() {
+        Path source;
+        while ((source = reloadQueue.poll()) != null) {
+            queuedReloads.remove(source);
+            try {
+                if (Files.isRegularFile(source)) replace(source);
+                else removeDeletedSource(source);
+            } catch (Throwable failure) {
+                System.err.println(
+                        Branding.prefix() + " Module reload failed for " + source + ": " + failure);
+                failure.printStackTrace(System.err);
+            }
+        }
+    }
+
+    public synchronized void replace(Path source) throws Exception {
+        if (closed) throw new IllegalStateException("Module manager is closed");
+        source = source.toAbsolutePath().normalize();
+        Path cached = cacheCopy(source);
+        ModuleDescriptor descriptor = ModuleDescriptor.read(cached);
+        if (!descriptor.supportsMinecraft(minecraftVersion)) return;
+        if (descriptor.id().equals(pinnedModuleId) && !source.equals(dependencyModule)) return;
+        Path libraries =
+                source.equals(dependencyModule)
+                        ? dependencyRoot.resolve("libraries")
+                        : libraryDirectory;
+        var cachedLibraries = new java.util.ArrayList<Path>();
+        for (String library : descriptor.libraries()) {
+            cachedLibraries.add(cacheCopy(libraries.resolve(library)));
+        }
+        LoadedModule previous = loaded.get(descriptor.id());
+        if (previous != null
+                && previous.cachedJar.equals(cached)
+                && previous.cachedLibraries.equals(cachedLibraries)) {
+            return;
+        }
+        LoadedModule candidate = loadCandidate(source, cached, cachedLibraries, descriptor);
+        try {
+            if (previous != null && previous.enabled) {
+                previous.disable();
+            }
+            candidate.enable();
+            loaded.put(candidate.descriptor.id(), candidate);
+        } catch (Throwable failure) {
+            try {
+                candidate.close();
+            } catch (Throwable cleanup) {
+                failure.addSuppressed(cleanup);
+            }
+            if (previous != null && !previous.enabled) {
+                try {
+                    previous.enable();
+                } catch (Throwable restore) {
+                    failure.addSuppressed(restore);
+                }
+            }
+            throw failure;
+        }
+        if (previous != null) previous.close();
+        System.out.println(
+                Branding.prefix()
+                        + " Module active: "
+                        + candidate.descriptor.id()
+                        + "@"
+                        + candidate.descriptor.version());
+    }
+
+    public synchronized Map<String, String> modules() {
+        Map<String, String> snapshot = new LinkedHashMap<>();
+        loaded.forEach((id, module) -> snapshot.put(id, module.descriptor.version()));
+        return Map.copyOf(snapshot);
+    }
+
+    private void recordStartupDiagnostic(Path source, Throwable failure) {
+        String diagnostic = source.getFileName() + ": " + failure;
+        startupDiagnostics.add(diagnostic);
+        System.err.println(Branding.prefix() + " Optional module unavailable: " + diagnostic);
+    }
+
+    public synchronized java.util.List<String> startupDiagnostics() {
+        return java.util.List.copyOf(startupDiagnostics);
+    }
+
+    public synchronized boolean isEnabled(String id) {
+        LoadedModule module = loaded.get(id);
+        return !closed && module != null && module.enabled;
+    }
+
+    public synchronized boolean setEnabled(String id, boolean enabled) throws Exception {
+        LoadedModule module = loaded.get(id);
+        if (module == null) return false;
+        if (module.enabled == enabled) return true;
+        if (enabled) module.enable();
+        else module.disable();
+        return true;
+    }
+
+    public synchronized boolean unload(String id) throws Exception {
+        LoadedModule module = loaded.remove(id);
+        if (module == null) return false;
+        module.close();
+        return true;
+    }
+
+    private LoadedModule loadCandidate(
+            Path source,
+            Path cached,
+            java.util.List<Path> cachedLibraries,
+            ModuleDescriptor descriptor)
+            throws Exception {
+        if (descriptor.api() != 1) {
+            throw new IOException(
+                    "Unsupported API version " + descriptor.api() + " for " + descriptor.id());
+        }
+        if (!descriptor.supportsMinecraft(minecraftVersion)) {
+            throw new IOException(
+                    "Module "
+                            + descriptor.id()
+                            + " supports Minecraft "
+                            + descriptor.minecraft()
+                            + ", but the runtime is "
+                            + minecraftVersion);
+        }
+        ClassLoader runtimeLoader = ModuleManager.class.getClassLoader();
+        var urls = new java.util.ArrayList<java.net.URL>();
+        urls.add(cached.toUri().toURL());
+        for (Path library : cachedLibraries) urls.add(library.toUri().toURL());
+        ModuleClassLoader loader =
+                new ModuleClassLoader(urls.toArray(java.net.URL[]::new), runtimeLoader);
+        DefaultResourceScope resources = new DefaultResourceScope();
+        try {
+            Class<?> entrypoint = Class.forName(descriptor.entrypoint(), true, loader);
+            TemposModule instance = (TemposModule) entrypoint.getDeclaredConstructor().newInstance();
+            Files.createDirectories(home.resolve("data").resolve(descriptor.id()));
+            LoadedModule module =
+                    new LoadedModule(
+                            descriptor,
+                            source,
+                            cached,
+                            cachedLibraries,
+                            loader,
+                            resources,
+                            instance,
+                            home.resolve("data").resolve(descriptor.id()),
+                            Map.of(RuntimeEvents.class, events, ModuleServices.class, services));
+            module.load();
+            return module;
+        } catch (Throwable failure) {
+            try {
+                resources.close();
+            } catch (Throwable cleanup) {
+                failure.addSuppressed(cleanup);
+            }
+            try {
+                loader.close();
+            } catch (Throwable cleanup) {
+                failure.addSuppressed(cleanup);
+            }
+            throw failure;
+        }
+    }
+
+    private Path cacheCopy(Path source) throws Exception {
+        byte[] bytes = Files.readAllBytes(source);
+        String digest =
+                HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
+        Path target = cacheDirectory.resolve(digest + ".jar");
+        if (!Files.isRegularFile(target)) {
+            Path temporary =
+                    cacheDirectory.resolve(digest + ".tmp-" + ProcessHandle.current().pid());
+            Files.write(temporary, bytes);
+            Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
+        }
+        try {
+            Files.setLastModifiedTime(target, java.nio.file.attribute.FileTime.from(java.time.Instant.now()));
+        } catch (IOException ignored) {
+            // Mark reuse for the latest-run cache policy without changing module loading.
+        }
+        return target;
+    }
+
+    private Path extractBuiltin() throws IOException {
+        try (JarFile jar = new JarFile(outerJar.toFile())) {
+            JarEntry entry = jar.getJarEntry(BUILTIN_ENTRY);
+            if (entry == null)
+                throw new IOException("Missing built-in module payload: " + BUILTIN_ENTRY);
+            Path target = cacheDirectory.resolve("builtin-core-features.jar");
+            try (InputStream input = jar.getInputStream(entry)) {
+                Files.copy(input, target, StandardCopyOption.REPLACE_EXISTING);
+            }
+            return target;
+        }
+    }
+
+    private void startWatcher() throws IOException {
+        watchService = FileSystems.getDefault().newWatchService();
+        moduleDirectory.register(
+                watchService,
+                StandardWatchEventKinds.ENTRY_CREATE,
+                StandardWatchEventKinds.ENTRY_MODIFY,
+                StandardWatchEventKinds.ENTRY_DELETE);
+        if (Files.isDirectory(libraryDirectory)) {
+            libraryDirectory.register(
+                    watchService,
+                    StandardWatchEventKinds.ENTRY_CREATE,
+                    StandardWatchEventKinds.ENTRY_MODIFY,
+                    StandardWatchEventKinds.ENTRY_DELETE);
+        }
+        watchThread =
+                Thread.ofPlatform()
+                        .name(Branding.name() + "-Module-Watcher")
+                        .daemon(true)
+                        .start(this::watchLoop);
+    }
+
+    private void watchLoop() {
+        while (!closed) {
+            try {
+                WatchKey key = watchService.take();
+                for (WatchEvent<?> event : key.pollEvents()) {
+                    if (event.context() instanceof Path relative && isJar(relative)) {
+                        Path watchedDirectory = (Path) key.watchable();
+                        Path source =
+                                watchedDirectory.resolve(relative).toAbsolutePath().normalize();
+                        try {
+                            // Editors commonly emit several MODIFY events. A short
+                            // stability window prevents loading a partially copied JAR.
+                            if (event.kind() != StandardWatchEventKinds.ENTRY_DELETE) {
+                                Thread.sleep(200L);
+                            }
+                            if (watchedDirectory.equals(libraryDirectory)) {
+                                queueLibraryDependents(relative.getFileName().toString());
+                            } else if (queuedReloads.add(source)) {
+                                reloadQueue.add(source);
+                            }
+                        } catch (InterruptedException interrupted) {
+                            Thread.currentThread().interrupt();
+                            return;
+                        } catch (Throwable failure) {
+                            System.err.println(
+                                    Branding.prefix()
+                                            + " Module watch failed for "
+                                            + source
+                                            + ": "
+                                            + failure);
+                        }
+                    }
+                }
+                if (!key.reset()) break;
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                break;
+            } catch (Throwable failure) {
+                if (!closed)
+                    System.err.println(Branding.prefix() + " Module watcher failed: " + failure);
+            }
+        }
+    }
+
+    private static boolean isJar(Path path) {
+        return path.getFileName().toString().toLowerCase(java.util.Locale.ROOT).endsWith(".jar");
+    }
+
+    private synchronized void queueLibraryDependents(String library) {
+        for (LoadedModule module : loaded.values()) {
+            if (module.descriptor.libraries().contains(library)
+                    && queuedReloads.add(module.source)) {
+                reloadQueue.add(module.source);
+            }
+        }
+    }
+
+    private synchronized void removeDeletedSource(Path source) throws Exception {
+        Path normalized = source.toAbsolutePath().normalize();
+        LoadedModule matched =
+                loaded.values().stream()
+                        .filter(
+                                module ->
+                                        module.source
+                                                .toAbsolutePath()
+                                                .normalize()
+                                                .equals(normalized))
+                        .findFirst()
+                        .orElse(null);
+        if (matched == null) return;
+        if (matched.descriptor.id().equals("core-features") && builtinModule != null) {
+            replace(builtinModule);
+            return;
+        }
+        loaded.remove(matched.descriptor.id());
+        matched.close();
+        System.out.println(Branding.prefix() + " Module removed: " + matched.descriptor.id());
+    }
+
+    @Override
+    public synchronized void close() {
+        if (closed) return;
+        closed = true;
+        if (watchThread != null) watchThread.interrupt();
+        if (watchService != null) {
+            try {
+                watchService.close();
+            } catch (IOException ignored) {
+            }
+        }
+        LoadedModule[] modules = loaded.values().toArray(LoadedModule[]::new);
+        loaded.clear();
+        reloadQueue.clear();
+        queuedReloads.clear();
+        for (int index = modules.length - 1; index >= 0; index--) {
+            try {
+                modules[index].close();
+            } catch (Throwable failure) {
+                System.err.println(
+                        Branding.prefix() + " Module did not unload cleanly: " + failure);
+            }
+        }
+    }
+}

@@ -36,48 +36,42 @@ tasks.named('compileYsmCoreJava', JavaCompile) {
     options.compilerArgs.addAll(['-Xmaxwarns', '1'])
 }
 
-tasks.register('verifyModuleLibraries', JavaExec) {
-    group = 'verification'
-    description = 'Checks external library replacement, rollback and selector service ownership.'
-    dependsOn tasks.named('loaderTestClasses')
-    classpath = sourceSets.loaderTest.runtimeClasspath
-    mainClass = 'com.blanoir.moons.runtime.module.ModuleLibrariesVerification'
-}
-
-tasks.register('benchmarkYsm', JavaExec) {
-    group = 'verification'
-    description = 'Reports repeatable YSM CPU mesh time and allocation without a GPU.'
-    dependsOn tasks.named('ysmTestClasses')
-    classpath = sourceSets.ysmTest.runtimeClasspath
-    mainClass = 'com.blanoir.moons.ysm.YsmPerformanceVerification'
-    maxHeapSize = '512m'
-}
+temposJavaChecks([
+        verifyModuleLibraries: [sourceSet: 'loaderTest', main: 'com.blanoir.tempos.runtime.module.ModuleLibrariesVerification',
+                description: 'Checks external library replacement, rollback and selector service ownership.'],
+        benchmarkYsm: [sourceSet: 'ysmTest', main: 'com.blanoir.tempos.ysm.YsmPerformanceVerification',
+                description: 'Reports repeatable YSM CPU mesh time and allocation without a GPU.', maxHeap: '512m'],
+        verifyYsmRenderSetup: [sourceSet: 'ysmAdapterTest', main: 'com.blanoir.tempos.ysm.adapter.YsmRenderSetupVerification',
+                description: 'Constructs every YSM material with real Minecraft classes, without a GPU context.'],
+        verifyYsmQueries: [sourceSet: 'ysmAdapterTest', main: 'com.blanoir.tempos.ysm.adapter.YsmQueryVerification',
+                description: 'Verifies YSM query semantics using real item, entity and potion components.', buildWorkDir: true],
+        verifyYsmCore: [sourceSet: 'ysmTest', main: 'com.blanoir.tempos.ysm.YsmCoreVerification',
+                description: 'Runs shared YSM behavior with the selected game version libraries.',
+                classpath: { sourceSets.ysm.compileClasspath + sourceSets.ysmImages.output + sourceSets.ysmTest.output }]
+])
 
 def coreJar = tasks.register('ysmCoreJar', Jar) {
-    group = 'build'
-    archiveFileName = 'moons-ysm-core.jar'
+    archiveFileName = 'tempos-ysm-core.jar'
     destinationDirectory = layout.buildDirectory.dir('dist/libraries')
     from sourceSets.ysmCore.output
-    manifest { attributes('Moons-Ysm-Core-API': '1') }
+    manifest { attributes('Tempos-Ysm-Core-API': '1') }
 }
 
 def imagesJar = tasks.register('ysmImagesJar', Jar) {
-    group = 'build'
-    archiveFileName = 'moons-ysm-images.jar'
+    archiveFileName = 'tempos-ysm-images.jar'
     destinationDirectory = layout.buildDirectory.dir('dist/libraries')
     from sourceSets.ysmImages.output
     into('META-INF') { from('src/libraries/ysm-images/README.md') { rename { 'ImageStream-provenance.md' } } }
 }
 
 def codecsJar = tasks.register('ysmCodecsJar', Jar) {
-    group = 'build'
-    archiveFileName = 'moons-ysm-codecs.jar'
+    archiveFileName = 'tempos-ysm-codecs.jar'
     destinationDirectory = layout.buildDirectory.dir('dist/libraries')
     from sourceSets.ysmCodecs.output
 }
 
-def ysmVersion = moonsBuild.minecraftVersion
-def ysmDirectory = moonsBuild.versionDirectory
+def ysmVersion = temposBuild.minecraftVersion
+def ysmDirectory = temposBuild.versionDirectory
 
 sourceSets {
     ysm {
@@ -92,62 +86,40 @@ sourceSets {
     }
 }
 
-tasks.register('verifyYsmRenderSetup', JavaExec) {
-    group = 'verification'
-    description = 'Constructs every YSM material with real Minecraft classes, without a GPU context.'
-    dependsOn tasks.named('ysmAdapterTestClasses')
-    classpath = sourceSets.ysmAdapterTest.runtimeClasspath
-    mainClass = 'com.blanoir.moons.ysm.adapter.YsmRenderSetupVerification'
-}
-
-tasks.register('verifyYsmCore', JavaExec) {
-    group = 'verification'
-    description = 'Runs shared YSM behavior with the selected game version libraries.'
-    dependsOn 'ysmTestClasses', 'ysmClasses', 'ysmImagesClasses'
-    classpath = sourceSets.ysm.compileClasspath + sourceSets.ysmImages.output + sourceSets.ysmTest.output
-    mainClass = 'com.blanoir.moons.ysm.YsmCoreVerification'
+tasks.named('verifyYsmCore', JavaExec) {
+    dependsOn 'ysmClasses', 'ysmImagesClasses'
     if (providers.gradleProperty('ysm_test_model').isPresent()) args providers.gradleProperty('ysm_test_model').get()
 }
 
-tasks.register('verifyYsmQueries', JavaExec) {
-    group = 'verification'
-    description = 'Verifies YSM query semantics using real item, entity and potion components.'
-    dependsOn tasks.named('ysmAdapterTestClasses')
-    classpath = sourceSets.ysmAdapterTest.runtimeClasspath
-    mainClass = 'com.blanoir.moons.ysm.adapter.YsmQueryVerification'
-    workingDir layout.buildDirectory.get().asFile
-}
-
 tasks.register('ysmJar', Jar) {
-    group = 'build'
     description = "Builds the independent Fabric-free YSM module for Minecraft ${ysmVersion}."
     dependsOn tasks.named('ysmClasses')
-    archiveFileName = "moons-ysm-${ysmVersion}.jar"
+    archiveFileName = "tempos-ysm-${ysmVersion}.jar"
     destinationDirectory = layout.buildDirectory.dir("dist/modules/${ysmDirectory}")
     from sourceSets.ysm.output
 }
 
 tasks.register('ysmBundle', Zip) {
     group = 'build'
-    description = "Packages the shared YSM libraries and the ${ysmVersion} module for MOONS_HOME."
-    archiveFileName = "moons-ysm-${ysmVersion}.zip"
+    description = "Packages the shared YSM libraries and the ${ysmVersion} module for TEMPOS_HOME."
+    archiveFileName = "tempos-ysm-${ysmVersion}.zip"
     destinationDirectory = layout.buildDirectory.dir('dist')
     into('libraries') { from coreJar.flatMap { it.archiveFile }; from codecsJar.flatMap { it.archiveFile }; from imagesJar.flatMap { it.archiveFile } }
     into('modules') { from tasks.named('ysmJar', Jar).flatMap { it.archiveFile } }
 }
 
 tasks.named('check') {
-    dependsOn 'verifyYsmRenderSetup', 'verifyYsmQueries', 'verifyModuleLibraries', 'verifyYsmPackage'
+    dependsOn 'verifyYsmRenderSetup', 'verifyYsmQueries', 'verifyModuleLibraries'
 }
 
 def ysmBundles = []
-moonsBuild.supportedVersions.each { version, directory ->
-    def bundle = moonsMultiVersion.register(directory, "ysmBundleMinecraft${directory}", 'build',
+temposBuild.supportedVersions.each { version, directory ->
+    def bundle = temposMultiVersion.register(directory, "ysmBundleMinecraft${directory}", null,
             "Builds the YSM adapter package for Minecraft ${version}.", ['ysmBundle'])
     bundle.configure {
-        def nestedPackage = new File(moonsMultiVersion.directories[directory], "dist/moons-ysm-${version}.zip")
+        def nestedPackage = new File(temposMultiVersion.directories[directory], "dist/tempos-ysm-${version}.zip")
         inputs.file(nestedPackage)
-        outputs.file(layout.buildDirectory.file("dist/moons-ysm-${version}.zip"))
+        outputs.file(layout.buildDirectory.file("dist/tempos-ysm-${version}.zip"))
         doLast {
             copy {
                 from nestedPackage
@@ -159,22 +131,21 @@ moonsBuild.supportedVersions.each { version, directory ->
 }
 
 def universalYsm = tasks.register('ysmUniversalBundle', Zip) {
-    group = 'build'
     description = 'Packages one shared YSM runtime and every supported game adapter.'
     dependsOn ysmBundles
-    archiveFileName = 'moons-ysm-all.zip'
+    archiveFileName = 'tempos-ysm-all.zip'
     destinationDirectory = layout.buildDirectory.dir('dist')
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-    moonsBuild.supportedVersions.each { version, directory ->
-        from({ zipTree(layout.buildDirectory.file("dist/moons-ysm-${version}.zip").get().asFile) })
+    temposBuild.supportedVersions.each { version, directory ->
+        from({ zipTree(layout.buildDirectory.file("dist/tempos-ysm-${version}.zip").get().asFile) })
     }
     doFirst {
         def shared = [:]
-        moonsBuild.supportedVersions.each { version, directory ->
-            def archive = new java.util.zip.ZipFile(layout.buildDirectory.file("dist/moons-ysm-${version}.zip").get().asFile)
+        temposBuild.supportedVersions.each { version, directory ->
+            def archive = new java.util.zip.ZipFile(layout.buildDirectory.file("dist/tempos-ysm-${version}.zip").get().asFile)
             try {
                 ['core', 'codecs', 'images'].each { library ->
-                    def name = "libraries/moons-ysm-${library}.jar"
+                    def name = "libraries/tempos-ysm-${library}.jar"
                     def entry = archive.getEntry(name)
                     if (entry == null) throw new GradleException("Missing ${name} for ${version}")
                     def bytes = archive.getInputStream(entry).withCloseable { it.readAllBytes() }
@@ -186,36 +157,6 @@ def universalYsm = tasks.register('ysmUniversalBundle', Zip) {
             } finally { archive.close() }
         }
     }
-}
-
-def packageCheckExe = tasks.register('ysmPackageVerificationExe', Exec) {
-    dependsOn 'launcherVersionCatalog'
-    onlyIf { moonsBuild.windowsHost }
-    def sources = files('src/tools/launcher/csharp/YsmPackage.cs',
-            'src/tools/launcher/csharp/CacheMaintenance.cs',
-            'src/tools/launcher/csharp/ProcessEvidenceCache.cs',
-            'src/tools/launcher/csharp/DependencyRuntime.cs',
-            'src/tools/launcher/csharp/VersionCatalog.cs', moonsVersions.launcherSource, 'src/tools/launcher/csharp/RuntimeMetadata.cs',
-            'src/tools/common/StagedFile.cs', 'src/tools/common/DirectoryJunction.cs',
-            'src/tools/launcher/csharp/ZipEntries.cs', 'src/tools/common/Hashing.cs',
-            'src/test/launcher/YsmPackageVerification.cs')
-    def output = layout.buildDirectory.file('verification/ysm-package.exe')
-    inputs.files(sources)
-    outputs.file(output)
-    doFirst {
-        output.get().asFile.parentFile.mkdirs()
-        executable moonsToolchains.locateCSharpCompiler().absolutePath
-        args '/nologo', '/target:exe', '/reference:System.IO.Compression.dll', '/reference:System.Management.dll',
-                "/out:${output.get().asFile.absolutePath}"
-        args sources.files.collect { it.absolutePath }.sort()
-    }
-}
-tasks.register('verifyYsmPackage', Exec) {
-    group = 'verification'
-    description = 'Verifies automatic YSM install, update, idempotence and rollback on Windows.'
-    onlyIf { moonsBuild.windowsHost }
-    dependsOn packageCheckExe
-    executable layout.buildDirectory.file('verification/ysm-package.exe').get().asFile.absolutePath
 }
 
 tasks.register('ysmAllVersions') {

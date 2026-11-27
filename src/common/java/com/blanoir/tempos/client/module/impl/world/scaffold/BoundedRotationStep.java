@@ -1,0 +1,30 @@
+package com.blanoir.tempos.client.module.impl.world.scaffold;
+
+import com.blanoir.tempos.client.utils.rotation.Rotation;
+
+import net.minecraft.util.Mth;
+
+/**
+ * Existing bounded Scaffold placement and return steps.
+ * The divided and undivided paths retain distinct arithmetic; no time or packet ownership.
+ */
+public final class BoundedRotationStep {
+    private BoundedRotationStep() {}
+
+    public static Rotation limitedStep(Rotation from, Rotation to, float steps, double degrees) {
+        float yawDelta = Mth.wrapDegrees(to.yaw() - from.yaw()) / steps;
+        float pitchDelta = (to.pitch() - from.pitch()) / steps;
+        return new Rotation(
+                from.yaw() + (float) Math.clamp(yawDelta, -degrees, degrees),
+                from.pitch() + (float) Math.clamp(pitchDelta, -degrees, degrees));
+    }
+
+    public static Rotation boundedTurn(Rotation from, Rotation to, double degrees) {
+        return new Rotation(
+                from.yaw()
+                        + (float)
+                                Math.clamp(
+                                        Mth.wrapDegrees(to.yaw() - from.yaw()), -degrees, degrees),
+                from.pitch() + (float) Math.clamp(to.pitch() - from.pitch(), -degrees, degrees));
+    }
+}

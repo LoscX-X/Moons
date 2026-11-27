@@ -43,12 +43,12 @@ int wmain(int argc, wchar_t** argv) {
 
     const jvmtiError error = argc > 3 && std::wstring(argv[3]) == L"raw"
             ? jvmti->AddToBootstrapClassLoaderSearch(path.c_str())
-            : moons::add_bootstrap_jar(env, jvmti, path, log_line);
+            : tempos::add_bootstrap_jar(env, jvmti, path, log_line);
     std::cout << "ACP=" << GetACP() << " JVMTI=" << error << '\n';
     bool passed = std::wstring(argv[2]) == L"rejected"
             ? error == JVMTI_ERROR_ILLEGAL_ARGUMENT : error == JVMTI_ERROR_NONE;
     if (passed && error == JVMTI_ERROR_NONE) {
-        jclass probe = env->FindClass("moons/test/BootstrapPathProbe");
+        jclass probe = env->FindClass("tempos/test/BootstrapPathProbe");
         if (probe == nullptr || env->ExceptionCheck()) {
             passed = false;
         } else {

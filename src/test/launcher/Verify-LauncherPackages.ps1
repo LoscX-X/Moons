@@ -1,192 +1,138 @@
-param([Parameter(Mandatory=$true)][string]$Distribution, [Parameter(Mandatory=$true)][string]$FixtureRoot, [string]$LegacyDistribution, [string]$Legacy189Distribution)
+param([Parameter(Mandatory=$true)][string]$Distribution,
+    [Parameter(Mandatory=$true)][string]$FixtureRoot,
+    [string]$JavaVerifierClasspath, [string]$JavaExecutable = 'java.exe')
 $ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.IO.Compression
+Add-Type -AssemblyName System.IO.Compression.FileSystem
 $Distribution = [IO.Path]::GetFullPath($Distribution)
 $fixture = Join-Path ([IO.Path]::GetFullPath($FixtureRoot)) ([Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $fixture -Force | Out-Null
-$previousHome = $env:MOONS_HOME
-$env:MOONS_HOME = Join-Path $fixture 'home'
-# Run the installer alone, away from build outputs and standalone runtime JARs.
-$installer = Join-Path $fixture 'moon-install.exe'
-Copy-Item -LiteralPath (Join-Path $Distribution 'moon-install.exe') -Destination $installer
-$loader = Join-Path $Distribution 'moon.exe'
+$previousHome = $env:TEMPOS_HOME
+$previousAppData = $env:APPDATA
+$previousTemp = $env:TEMP
+$previousTmp = $env:TMP
+$env:TEMPOS_HOME = Join-Path $fixture 'user-data'
+$env:APPDATA = Join-Path $fixture 'appdata'
+$env:TEMP = Join-Path $fixture 'temp'
+$env:TMP = $env:TEMP
+New-Item -ItemType Directory -Path $env:APPDATA -Force | Out-Null
+New-Item -ItemType Directory -Path $env:TEMP -Force | Out-Null
+$loader = Join-Path $fixture 'tempos.exe'
+Copy-Item -LiteralPath (Join-Path $Distribution 'tempos.exe') -Destination $loader
 $script:attempt = 0
 
-function Run-Tool([string]$Executable, [string]$Argument, [int]$Expected, [switch]$AllowRetirementDeferred) {
+function Run-Tool([string]$Argument, [int]$Expected) {
     $script:attempt++
-    $log = Join-Path $fixture ("run-" + $script:attempt)
-    $process = Start-Process -FilePath $Executable -ArgumentList $Argument -WindowStyle Hidden -Wait -PassThru `
+    $log = Join-Path $fixture ('run-' + $script:attempt)
+    $process = Start-Process -FilePath $loader -ArgumentList $Argument -WindowStyle Hidden -Wait -PassThru `
         -RedirectStandardOutput ($log + '.out') -RedirectStandardError ($log + '.err')
-    if ($AllowRetirementDeferred -and $process.ExitCode -eq 2) {
-        $output = Get-Content ($log + '.out') -Raw
-        if ($output -notmatch 'Retirement deferred:') { throw 'Unexpected retirement deferral output.' }
-        $busy = [Reflection.Assembly]::LoadFile($Executable).GetType('Moons.WindowsLauncher.CacheMaintenance').GetMethod(
-            'JavaRunning', [Reflection.BindingFlags]'Static, NonPublic').Invoke($null, @())
-        if (-not $busy) { throw 'Retirement was deferred without an active protected JVM.' }
-        return $false
-    }
-    if ($process.ExitCode -ne $Expected) {
-        throw "Unexpected exit code $($process.ExitCode), expected ${Expected}: $Executable $Argument`nstdout: $(Get-Content ($log + '.out') -Raw)`nstderr: $(Get-Content ($log + '.err') -Raw)"
-    }
-    if ($AllowRetirementDeferred) { return $true }
+    if ($process.ExitCode -ne $Expected) { throw "Unexpected exit $($process.ExitCode), expected ${Expected}: $Argument`n$(Get-Content ($log + '.err') -Raw)" }
+    return (Get-Content ($log + '.out') -Raw)
 }
-
-function Installed-State {
-    $state = @{}
-    Get-ChildItem -LiteralPath $env:MOONS_HOME -File -Recurse | ForEach-Object {
-        $hash = [Security.Cryptography.SHA256]::Create()
-        $stream = [IO.File]::OpenRead($_.FullName)
-        try { $length = $stream.Length; $digest = [BitConverter]::ToString($hash.ComputeHash($stream)) }
-        finally { $stream.Dispose(); $hash.Dispose() }
-        # NTFS refreshes per-link directory metadata on read; compare the actual stream bytes.
-        $state[$_.FullName] = "${length}:$digest"
-    }
-    return $state
+function Hash-Bytes([byte[]]$Bytes) {
+    $hash = [Security.Cryptography.SHA256]::Create()
+    try { return [BitConverter]::ToString($hash.ComputeHash($Bytes)) } finally { $hash.Dispose() }
 }
-
+function Read-Entry($Entry) {
+    $stream = $Entry.Open(); $buffer = New-Object IO.MemoryStream
+    try { $stream.CopyTo($buffer); return ,$buffer.ToArray() } finally { $buffer.Dispose(); $stream.Dispose() }
+}
+function Check-Archive([byte[]]$Expected, [byte[]]$Actual, [string]$Label) {
+    $expectedStream = New-Object IO.MemoryStream(,$Expected)
+    $actualStream = New-Object IO.MemoryStream(,$Actual)
+    $expectedZip = New-Object IO.Compression.ZipArchive($expectedStream, [IO.Compression.ZipArchiveMode]::Read)
+    $actualZip = New-Object IO.Compression.ZipArchive($actualStream, [IO.Compression.ZipArchiveMode]::Read)
+    try {
+        $entries = @($expectedZip.Entries | Where-Object { -not $_.FullName.EndsWith('/') })
+        if ($entries.Count -ne @($actualZip.Entries | Where-Object { -not $_.FullName.EndsWith('/') }).Count) { throw "Entry count mismatch: $Label" }
+        foreach ($entry in $entries) {
+            if ($entry.FullName -match 'localfabric|fabric\.mod\.json|tempos-local|^org/jetbrains/(skia|skiko)/|^androidx/|(^|/)icudtl\.dat$|skiko-.*\.dll$') { throw "Removed dependency or Mod entry remains: $Label/$($entry.FullName)" }
+            $found = $actualZip.GetEntry($entry.FullName)
+            if ($null -eq $found) { throw "Missing entry: $Label/$($entry.FullName)" }
+            $a = Read-Entry $entry; $b = Read-Entry $found
+            if ($entry.FullName.EndsWith('.jar')) { Check-Archive $a $b ($Label + '/' + $entry.FullName) }
+            elseif ((Hash-Bytes $a) -ne (Hash-Bytes $b)) { throw "Changed entry: $Label/$($entry.FullName)" }
+        }
+    } finally { $expectedZip.Dispose(); $actualZip.Dispose(); $expectedStream.Dispose(); $actualStream.Dispose() }
+}
 try {
-    Run-Tool $loader '--self-test-version-detection' 0
-    Run-Tool $installer '--version' 0
-    $installerVersion = Get-Content (Join-Path $fixture ('run-' + $script:attempt + '.out')) -Raw
-    Run-Tool $loader '--version' 0
-    $loaderVersion = Get-Content (Join-Path $fixture ('run-' + $script:attempt + '.out')) -Raw
-    if ($installerVersion -ne $loaderVersion -or $loaderVersion -cnotmatch 'client.version=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+-(Experiment|Release)(\r?\n|$)' -or
-        $loaderVersion -notmatch 'dependencies.version=[0-9a-f]{12}') { throw 'Mismatched package version metadata.' }
-    $installerResources = [Reflection.Assembly]::LoadFile($installer).GetManifestResourceNames()
-    $loaderResources = [Reflection.Assembly]::LoadFile($loader).GetManifestResourceNames()
-    if ($installerResources -notcontains 'Moons.Ysm.zip' -or
-        $installerResources -contains 'Moons.Bridge.dll' -or
-        $loaderResources -contains 'Moons.Ysm.zip' -or
-        $loaderResources -notcontains 'Moons.Bridge.dll' -or
-        $installerResources -notcontains 'Moons.UiRuntime.jar' -or
-        $loaderResources -contains 'Moons.UiRuntime.jar' -or
-        $loaderResources -notcontains 'Moons.Payload.26_4.patch') { throw 'Incorrect installer/loader resource split.' }
-
-    # A clean loader must report missing dependencies without creating the installation.
-    Run-Tool $loader '--verify-dependencies' 1
-    if (Test-Path -LiteralPath $env:MOONS_HOME) { throw 'Loader modified a missing installation.' }
-    Run-Tool $installer '--install-only' 0
-    Run-Tool $loader '--verify-dependencies' 0
-    Run-Tool $loader '--verify-dependencies --minecraft-version 26.2' 1
-    if (Test-Path -LiteralPath (Join-Path $env:MOONS_HOME 'modules/moons-ysm-26.2.jar')) { throw 'Installer wrote unselected root adapter.' }
-    if (Test-Path -LiteralPath (Join-Path $env:MOONS_HOME 'installations')) { throw 'Installer created a second root installation layout.' }
-    Run-Tool $installer '--install-only --minecraft-version 26.2' 0
-    Run-Tool $loader '--verify-dependencies --minecraft-version 26.2' 0
-    Run-Tool $loader '--dependency-context --minecraft-version 26.2' 0
-    $selectedContext = (Get-Content (Join-Path $fixture ('run-' + $script:attempt + '.out')) -Raw).Trim()
-    if ($selectedContext -notlike '*libraries\latest\26.2\*') { throw 'Selected version is not isolated under libraries/latest.' }
-    $before = Installed-State
-    Run-Tool $loader '--verify-dependencies' 0
-    Run-Tool $installer '--install-only' 0
-    $after = Installed-State
-    if ($before.Count -ne $after.Count) { throw 'Repeat installation changed the file set.' }
-    foreach ($name in $before.Keys) {
-        # The small current-runtime pointer may be atomically republished by the installer.
-        if ($name.EndsWith('moons-ui-runtime.current')) { continue }
-        if ($before[$name] -ne $after[$name]) { throw "Unchanged dependency was rewritten: $name" }
+    $null = Run-Tool '--self-test-version-detection' 0
+    $version = Run-Tool '--version' 0
+    if ($version -cnotmatch 'client.version=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+-(Experiment|Release)(\r?\n|$)') { throw 'Invalid client version metadata.' }
+    $assembly = [Reflection.Assembly]::LoadFile($loader)
+    $resources = $assembly.GetManifestResourceNames()
+    foreach ($name in 'Tempos.UiRuntime.jar','Tempos.Ysm.zip','Tempos.Api.jar','Tempos.Bridge.dll','Tempos.Finalizer.exe','Tempos.Payload.26_1.jar','Tempos.Payload.26_4.patch') {
+        if ($resources -notcontains $name) { throw "Missing embedded resource: $name" }
     }
-
-    Run-Tool $loader '--dependency-context --minecraft-version 26.1.2' 0
-    $baseContext = (Get-Content (Join-Path $fixture ('run-' + $script:attempt + '.out')) -Raw).Trim()
-    $baseRoot = Split-Path (Split-Path $baseContext -Parent) -Parent
-    $ui = Join-Path $baseRoot 'ui/moons-ui-runtime.jar'
-    [IO.File]::WriteAllText($ui, 'damaged UI')
-    $damaged = Installed-State
-    Run-Tool $loader '--verify-dependencies' 1
-    $after = Installed-State
-    if ($damaged.Count -ne $after.Count) { throw 'Loader changed the dependency file set.' }
-    foreach ($name in $damaged.Keys) {
-        if ($damaged[$name] -ne $after[$name]) { throw "Loader changed damaged installation: $name" }
+    $static = [Reflection.BindingFlags]'Static, NonPublic'; $instance = [Reflection.BindingFlags]'Instance, NonPublic'
+    $catalog = $assembly.GetType('Tempos.WindowsLauncher.VersionCatalog')
+    $program = $assembly.GetType('Tempos.WindowsLauncher.Program')
+    $sessions = $assembly.GetType('Tempos.WindowsLauncher.TemporaryPayloadSession')
+    $profiles = Get-Content (Join-Path $PSScriptRoot '../../../config/version-catalog.json') -Raw | ConvertFrom-Json
+    foreach ($item in @($profiles.profiles | Where-Object { $_.available -and $_.payloadFamily -eq 'modern' })) {
+        $profile = $catalog.GetMethod('FindArtifact', $static).Invoke($null, @($item.artifactId))
+        $package = $sessions.GetMethod('Create', $static).Invoke($null, @($profile))
+        $root = $sessions.GetField('Root', $instance).GetValue($package)
+        try {
+            $payload = $program.GetMethod('ExtractPayload', $static).Invoke($null, @($root, $item.artifactId))
+            $null = $program.GetMethod('ExtractBootstrapApi', $static).Invoke($null, @($root))
+            $null = $program.GetMethod('ExtractBridge', $static).Invoke($null, @($root))
+            $original = Join-Path (Split-Path $Distribution -Parent) ('universal/' + $item.artifactId + '/tempos.jar')
+            Check-Archive ([IO.File]::ReadAllBytes($original)) ([IO.File]::ReadAllBytes($payload)) $item.gameId
+            $jars = @(Get-ChildItem -LiteralPath $root -Filter '*.jar' -Recurse)
+            if ($jars.Count -ne 7) { throw "Unexpected payload/library set: $($item.gameId)" }
+            foreach ($jar in $jars) { $bytes = [IO.File]::ReadAllBytes($jar.FullName); Check-Archive $bytes $bytes $jar.Name }
+            $context = $sessions.GetField('Context', $instance).GetValue($package)
+            $manifest = $context.GetType().GetField('Path', $instance).GetValue($context)
+            $hash = $context.GetType().GetField('Hash', $instance).GetValue($context)
+            if ([IO.File]::ReadAllText($manifest) -notmatch '(?m)^format=4$') { throw 'Wrong temporary context format.' }
+            if ($JavaVerifierClasspath) {
+                $data = "home=$env:TEMPOS_HOME`npayload=$payload`nmanifest=$manifest`nhash=$hash`nprofile=$($item.gameId)`n"
+                [IO.File]::WriteAllText((Join-Path $fixture 'dependency-fixture.properties'), $data, (New-Object Text.UTF8Encoding($false)))
+                & $JavaExecutable -cp $JavaVerifierClasspath com.blanoir.tempos.agent.core.DependencyContextVerification $fixture
+                if ($LASTEXITCODE -ne 0) { throw 'Java rejected the real temporary package.' }
+            }
+        } finally { $package.Dispose() }
+        if (Test-Path -LiteralPath $root) { throw 'Unretained session was not removed.' }
+        $extracted = Run-Tool ('--extract-only --minecraft-version ' + $item.gameId) 0
+        if ($extracted -notmatch 'TEMPORARY_PACKAGE_VERIFIED') { throw 'Real EXE extraction did not complete.' }
+        $null = Run-Tool ('--verify-dependencies --minecraft-version ' + $item.gameId) 0
+        Write-Output "SINGLE_EXE_PAYLOAD_VERIFIED: $($item.gameId), full entry comparison, libraries and temporary cleanup."
     }
-
-    # A locked damaged runtime must leave the installation intact and clean up staging.
-    $locked = [IO.File]::Open($ui, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
-    try { Run-Tool $installer '--install-only' 1 }
-    finally { $locked.Dispose() }
-    $after = Installed-State
-    if ($damaged.Count -ne $after.Count) { throw 'Failed extraction changed the file set.' }
-    foreach ($name in $damaged.Keys) {
-        if ($damaged[$name] -ne $after[$name]) { throw "Failed extraction changed installation: $name" }
-    }
-    if (Get-ChildItem -LiteralPath $env:MOONS_HOME -Filter '*.tmp*' -Recurse) { throw 'Failed extraction left staging files.' }
-    # Repair using only the embedded resource, even when an unrelated local JAR is present.
-    [IO.File]::WriteAllText((Join-Path $fixture 'moons-ui-runtime.jar'), 'unrelated runtime')
-    Run-Tool $installer '--install-only' 0
-    $ysm = Join-Path $baseRoot 'libraries/moons-ysm-core.jar'
-    [IO.File]::WriteAllText($ysm, 'old YSM')
-    Run-Tool $loader '--verify-dependencies' 1
-    Run-Tool $installer '--install-only' 0
-    Run-Tool $loader '--verify-dependencies' 0
-    Run-Tool $installer '--install-only --minecraft-version 26.4-snapshot-4' 0
-    Run-Tool $loader '--extract-only --minecraft-version 26.4-snapshot-4' 0
-    $snapshotPayload = Get-ChildItem -LiteralPath (Join-Path $env:MOONS_HOME 'cache/launcher') `
-        -Recurse -File -Filter 'moons-26.4-snapshot-4.jar' | Select-Object -First 1
-    if ($null -eq $snapshotPayload -or $snapshotPayload.Length -eq 0) {
-        throw '26.4 snapshot payload was not extracted.'
-    }
-    if ($LegacyDistribution) {
-        $currentHome = $env:MOONS_HOME
-        $env:MOONS_HOME = Join-Path $fixture 'old-home'
-        $oldInstaller = Join-Path $LegacyDistribution 'moon-install.exe'
-        $oldLoader = Join-Path $LegacyDistribution 'moon.exe'
-        Run-Tool $oldInstaller '--install-only' 0
-        Run-Tool $oldLoader '--verify-dependencies' 0
-        $oldUi = (Get-Content -LiteralPath (Join-Path $env:MOONS_HOME 'libraries/moons-ui-runtime.current') -Raw).Trim()
-        $oldFiles = @{}
-        Get-ChildItem -LiteralPath (Join-Path $env:MOONS_HOME 'libraries') -Filter 'moons-ysm-*.jar' | ForEach-Object {
-            $oldFiles['libraries/' + $_.Name] = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
-        }
-        Get-ChildItem -LiteralPath (Join-Path $env:MOONS_HOME 'modules') -Filter 'moons-ysm-*.jar' | ForEach-Object {
-            $oldFiles['modules/' + $_.Name] = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
-        }
-        $sharedData = Join-Path $env:MOONS_HOME 'data/core-features/config'
-        New-Item -ItemType Directory -Path $sharedData -Force | Out-Null
-        [IO.File]::WriteAllText((Join-Path $sharedData 'moons.properties'), 'existing-user-setting=true')
-        Run-Tool $installer '--install-only' 0
-        foreach ($name in $oldFiles.Keys) {
-            $path = Join-Path $env:MOONS_HOME $name
-            if ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ne $oldFiles[$name]) { throw 'New installer changed old dependencies.' }
-        }
-        Run-Tool $oldLoader '--verify-dependencies' 0
-        $linkedConfig = Join-Path $env:MOONS_HOME 'data/core-features/config/moons.properties'
-        if ([IO.File]::ReadAllText($linkedConfig) -ne 'existing-user-setting=true') { throw 'Old installation view reset user configuration.' }
-        $env:MOONS_HOME = $currentHome
-        Write-Output 'LEGACY_EXE_VIEW_VERIFIED: actual old installer -> new installer -> actual old loader, unchanged dependencies and shared user configuration.'
-    }
-    $beforeRetirement = Installed-State
-    $retired = Run-Tool $installer '--retire-version 26.4-snapshot-4' 0 -AllowRetirementDeferred
-    Run-Tool $loader '--verify-dependencies --minecraft-version 26.4-snapshot-4' 0
-    if ($retired) {
-        if (Test-Path -LiteralPath (Join-Path $env:MOONS_HOME 'libraries/latest/26.4-snapshot-4')) { throw 'Retirement left the original version directory.' }
-        if (-not (Test-Path -LiteralPath (Join-Path $env:MOONS_HOME 'libraries/legacy/26.4-snapshot-4'))) { throw 'Retired version was not moved to legacy.' }
-        Write-Output 'LAUNCHER_RETIREMENT_VERIFIED: idle version moved to legacy and dependencies remain usable.'
-    } else {
-        $afterRetirement = Installed-State
-        if ($beforeRetirement.Count -ne $afterRetirement.Count) { throw 'Deferred retirement changed the file set.' }
-        foreach ($name in $beforeRetirement.Keys) {
-            if ($beforeRetirement[$name] -ne $afterRetirement[$name]) { throw "Deferred retirement changed a file: $name" }
-        }
-        if (-not (Test-Path -LiteralPath (Join-Path $env:MOONS_HOME 'libraries/latest/26.4-snapshot-4')) -or
-            (Test-Path -LiteralPath (Join-Path $env:MOONS_HOME 'libraries/legacy/26.4-snapshot-4'))) { throw 'Deferred retirement moved the protected version.' }
-        Write-Output 'LAUNCHER_RETIREMENT_DEFERRED_VERIFIED: active protected JVM, unchanged version files and usable dependencies.'
-    }
-    if ($Legacy189Distribution) {
-        $sharedHome = $env:MOONS_HOME
-        $frozenInstaller = Join-Path $Legacy189Distribution 'Moons-install.exe'
-        $frozenLoader = Join-Path $Legacy189Distribution 'Moons.exe'
-        $userFile = Join-Path $sharedHome 'data/storage-verification.txt'
-        New-Item -ItemType Directory -Path (Split-Path $userFile -Parent) -Force | Out-Null
-        [IO.File]::WriteAllText($userFile, 'shared-config')
-        Run-Tool $installer ('--install-only --minecraft-version 1.8.9 --legacy-installer "' + $frozenInstaller + '"') 0
-        $result = Get-Content (Join-Path $fixture ('run-' + $script:attempt + '.out')) -Raw
-        $legacyHome = ($result -split '\r?\n' | Where-Object { $_.StartsWith('Legacy MOONS_HOME=') } | Select-Object -First 1).Substring(18)
-        if ($legacyHome -notlike '*libraries\legacy\1.8.9\*') { throw 'Frozen dependencies were not isolated by game version.' }
-        $env:MOONS_HOME = $legacyHome
-        Run-Tool $frozenLoader '--verify-dependencies' 0
-        if ([IO.File]::ReadAllText((Join-Path $legacyHome 'data/storage-verification.txt')) -ne 'shared-config') { throw 'Legacy home lost shared user data.' }
-        $env:MOONS_HOME = $sharedHome
-        Run-Tool $loader '--verify-dependencies' 0
-        Write-Output 'LEGACY_189_PACKAGE_VERIFIED: actual frozen installer resources, Java8 package, independent libraries/legacy/1.8.9, actual frozen loader verification and shared data.'
-    }
-    Write-Output 'LAUNCHER_PACKAGES_VERIFIED: isolated roles, read-only loader, selected-version offline install, idempotence, 26.4 extraction, failed extraction preservation, UI/YSM repair, retirement safety.'
-}
-finally { $env:MOONS_HOME = $previousHome }
+    $null = Run-Tool '--verify-dependencies --minecraft-version unsupported' 1
+    if (Test-Path -LiteralPath $env:TEMPOS_HOME) { throw 'Single-file extraction wrote a persistent home.' }
+    $lifetimeSource = Join-Path $fixture 'PackageLifetime.java'
+    [IO.File]::WriteAllText($lifetimeSource, 'class PackageLifetime { public static void main(String[] args) throws Exception { Thread.sleep(60000); } }')
+    $target = Start-Process $JavaExecutable -ArgumentList ('"' + $lifetimeSource + '"') -WindowStyle Hidden -PassThru
+    try {
+        $driverScript = Join-Path $PSScriptRoot 'Verify-PortableSession.ps1'
+        $driverArguments = '-NoProfile -ExecutionPolicy Bypass -File "' + $driverScript + '" -Executable "' + $loader + '" -Fixture "' + $fixture + '" -TargetPid ' + $target.Id
+        $driver = Start-Process powershell.exe -ArgumentList $driverArguments -WindowStyle Hidden -PassThru `
+            -RedirectStandardOutput (Join-Path $fixture 'portable-driver.out') -RedirectStandardError (Join-Path $fixture 'portable-driver.err')
+        try {
+            # Retain the native handle before exit so Windows PowerShell can read its exit code.
+            $null = $driver.Handle
+            # Wait for this driver only: Start-Process -Wait also waits its finalizer descendant.
+            if (-not $driver.WaitForExit(30000)) { throw 'Portable lifecycle driver did not exit.' }
+            $driver.Refresh()
+            if ($driver.ExitCode -ne 0) { throw "Portable lifecycle driver failed: $(Get-Content (Join-Path $fixture 'portable-driver.err') -Raw)" }
+        } finally { if (-not $driver.HasExited) { Stop-Process -Id $driver.Id }; $driver.Dispose() }
+        $state = Get-Content (Join-Path $fixture 'portable-session.json') -Raw | ConvertFrom-Json
+        $target.Refresh()
+        if ($target.HasExited) { throw 'Disposable Java exited before the retained-session assertion.' }
+        if (-not (Test-Path -LiteralPath $state.root)) { throw 'Live process lost its lazy-load libraries.' }
+        Stop-Process -Id $target.Id; $target.WaitForExit()
+        $deadline = [DateTime]::UtcNow.AddSeconds(20)
+        while (((Test-Path -LiteralPath $state.root) -or (Test-Path -LiteralPath $state.helper)) -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 100 }
+        if (Test-Path -LiteralPath $state.root) { throw 'Parameter finalizer left the completed session on disk.' }
+        if (Test-Path -LiteralPath $state.helper) { throw 'Parameter finalizer did not remove its helper directory.' }
+        $portable = $assembly.GetType('Tempos.WindowsLauncher.PortableConfig')
+        $cached = $portable.GetMethod('Read', $static).Invoke($null, @([string]$loader))
+        if ($null -eq $cached) { throw 'Parameter finalizer did not save the EXE cache.' }
+        $saved = [Text.Encoding]::UTF8.GetString($cached) | ConvertFrom-Json
+        if ($saved.profiles.default.values.'clickgui.theme.rgb.speed' -ne $state.expected) { throw 'EXE cache did not retain the latest saved parameter.' }
+        if (Test-Path -LiteralPath $env:TEMPOS_HOME) { throw 'Portable lifecycle wrote a persistent home.' }
+        Write-Output 'PORTABLE_EXE_PARAMETERS_VERIFIED: independent launcher exit, live Java retention, changed parameter writeback and session/helper cleanup.'
+    } finally { if (-not $target.HasExited) { Stop-Process -Id $target.Id }; $target.Dispose() }
+    Write-Output 'LAUNCHER_PACKAGES_VERIFIED: one offline EXE, full four-version payloads, no installed libs, no Skia/Skiko/ICU/Compose/Mod entry, process identity rejection, parameter writeback and cleanup after target exit.'
+} finally { $env:TEMPOS_HOME = $previousHome; $env:APPDATA = $previousAppData; $env:TEMP = $previousTemp; $env:TMP = $previousTmp }

@@ -1,0 +1,172 @@
+package com.blanoir.tempos.client.module.impl.render.xray;
+
+import com.blanoir.tempos.client.config.TemposConfig;
+
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.block.state.BlockState;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+
+public final class OreCache {
+    private static final Map<BlockPos, XrayTarget> XRAY_POSITIONS =
+            Collections.synchronizedMap(new HashMap<>());
+    private static volatile List<CachedXrayBlock> cachedEntries = List.of();
+
+    private OreCache() {}
+
+    /**
+     * 返回 true 表示这是新发现。
+     * 返回 false 表示之前已经缓存过相同类型。
+     */
+    public static boolean add(BlockPos pos, XrayTarget target) {
+        synchronized (XRAY_POSITIONS) {
+            BlockPos immutablePos = pos.immutable();
+            XrayTarget oldTarget = XRAY_POSITIONS.get(immutablePos);
+
+            if (oldTarget == target) {
+                return false;
+            }
+
+            XRAY_POSITIONS.put(immutablePos, target);
+            cachedEntries = null;
+            return true;
+        }
+    }
+
+    public static boolean add(BlockPos pos) {
+        return add(pos, XrayBlockTarget.DIAMOND);
+    }
+
+    public static int size() {
+        synchronized (XRAY_POSITIONS) {
+            return XRAY_POSITIONS.size();
+        }
+    }
+
+    public static void clear() {
+        synchronized (XRAY_POSITIONS) {
+            XRAY_POSITIONS.clear();
+            cachedEntries = List.of();
+        }
+    }
+
+    public static List<BlockPos> snapshot() {
+        synchronized (XRAY_POSITIONS) {
+            return new ArrayList<>(XRAY_POSITIONS.keySet());
+        }
+    }
+
+    public static List<CachedXrayBlock> snapshotEntries() {
+        List<CachedXrayBlock> snapshot = cachedEntries;
+        if (snapshot != null) {
+            return snapshot;
+        }
+        synchronized (XRAY_POSITIONS) {
+            if (cachedEntries != null) {
+                return cachedEntries;
+            }
+            List<CachedXrayBlock> entries = new ArrayList<>(XRAY_POSITIONS.size());
+
+            XRAY_POSITIONS.forEach((pos, target) -> entries.add(new CachedXrayBlock(pos, target)));
+            cachedEntries = List.copyOf(entries);
+            return cachedEntries;
+        }
+    }
+
+    public static void removeFarPositions(Minecraft client) {
+        if (!OreScanner.isClientWorldReady(client)) {
+            return;
+        }
+
+        ChunkPos center = client.player.chunkPosition();
+        int maxDistance = TemposConfig.SCAN_RADIUS_CHUNKS + 2;
+
+        synchronized (XRAY_POSITIONS) {
+            Iterator<BlockPos> iterator = XRAY_POSITIONS.keySet().iterator();
+
+            while (iterator.hasNext()) {
+                BlockPos pos = iterator.next();
+
+                int chunkX = pos.getX() >> 4;
+                int chunkZ = pos.getZ() >> 4;
+
+                int dx = Math.abs(chunkX - center.x());
+                int dz = Math.abs(chunkZ - center.z());
+
+                if (dx > maxDistance || dz > maxDistance) {
+                    iterator.remove();
+                    cachedEntries = null;
+                }
+            }
+        }
+    }
+
+    public static void removeInvalidPositions(Minecraft client) {
+        if (!OreScanner.isClientWorldReady(client)) {
+            return;
+        }
+
+        synchronized (XRAY_POSITIONS) {
+            boolean removed =
+                    XRAY_POSITIONS
+                            .entrySet()
+                            .removeIf(
+                                    entry -> {
+                                        BlockPos pos = entry.getKey();
+                                        XrayTarget target = entry.getValue();
+
+                                        if (!target.isEnabled()) {
+                                            return true;
+                                        }
+
+                                        BlockState current = client.level.getBlockState(pos);
+                                        if (PluginXrayTargets.blocksVanillaFallback(current)
+                                                && PluginXrayTargets.find(current) != target)
+                                            return true;
+
+                                        if (target.requiresCurrentState()) {
+                                            return !target.matches(client.level.getBlockState(pos));
+                                        }
+
+                                        /*
+                                         * Keep a detected block rendered until the server/client state becomes air.
+                                         * Some servers temporarily mask ores as another non-air block; removing only
+                                         * on air avoids dropping a real target just because it is currently disguised.
+                                         */
+                                        return client.level.getBlockState(pos).isAir();
+                                    });
+            if (removed) {
+                cachedEntries = null;
+            }
+        }
+    }
+
+    public static void removePosition(BlockPos pos) {
+        synchronized (XRAY_POSITIONS) {
+            if (XRAY_POSITIONS.remove(pos) != null) {
+                cachedEntries = null;
+            }
+        }
+    }
+
+    public static void removeStaleStateTarget(BlockPos pos, BlockState state) {
+        synchronized (XRAY_POSITIONS) {
+            XrayTarget target = XRAY_POSITIONS.get(pos);
+            if (target != null
+                    && target.requiresCurrentState()
+                    && (!target.isEnabled() || !target.matches(state))) {
+                XRAY_POSITIONS.remove(pos);
+                cachedEntries = null;
+            }
+        }
+    }
+
+    public record CachedXrayBlock(BlockPos pos, XrayTarget target) {}
+}

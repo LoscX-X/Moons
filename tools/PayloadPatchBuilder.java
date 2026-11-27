@@ -14,8 +14,8 @@ import java.util.zip.ZipOutputStream;
 
 /** Builds the compact 26.2 payload overlay embedded by the universal launcher. */
 public final class PayloadPatchBuilder {
-    private static final String FEATURES_JAR = "META-INF/moons/modules/moons-core-features.jar";
-    private static final String METADATA = "META-INF/moons-patch/";
+    private static final String FEATURES_JAR = "META-INF/tempos/modules/tempos-core-features.jar";
+    private static final String METADATA = "META-INF/tempos-patch/";
 
     private PayloadPatchBuilder() {}
 
@@ -58,7 +58,7 @@ public final class PayloadPatchBuilder {
         }
 
         System.out.printf(
-                "MOONS_PAYLOAD_PATCH outerChanged=%d outerDeleted=%d "
+                "TEMPOS_PAYLOAD_PATCH outerChanged=%d outerDeleted=%d "
                         + "featuresChanged=%d featuresDeleted=%d bytes=%d%n",
                 outerChanges.size(),
                 outerDeletes.size(),
@@ -78,7 +78,7 @@ public final class PayloadPatchBuilder {
         }
         assertSame("feature module", readZip(expectedFeatures), readZip(actualFeatures));
         System.out.printf(
-                "MOONS_PAYLOAD_VERIFIED outerEntries=%d featureEntries=%d%n",
+                "TEMPOS_PAYLOAD_VERIFIED outerEntries=%d featureEntries=%d%n",
                 expected.size(), readZip(expectedFeatures).size());
     }
 

@@ -40,15 +40,15 @@
     },
     {
       "profileId": "26_4",
-      "gameId": "26.4-snapshot-4",
-      "aliases": ["26.4-snapshot-4"],
-      "artifactId": "26.4-snapshot-4",
+      "gameId": "26.4-pre-2",
+      "aliases": ["26.4-pre-2"],
+      "artifactId": "26.4-pre-2",
       "status": "active",
       "available": true,
       "javaVersion": 25,
       "payloadFamily": "modern",
       "backend": "windows-x64-jvmti",
-      "evidencePattern": "(?<![0-9A-Za-z_.\\-])26\\.4-snapshot-4(?=\\.jar(?:$|[^0-9A-Za-z_.\\-])|$|[^0-9A-Za-z_.\\-])"
+      "evidencePattern": "(?<![0-9A-Za-z_.\\-])26\\.4-pre-2(?=\\.jar(?:$|[^0-9A-Za-z_.\\-])|$|[^0-9A-Za-z_.\\-])"
     },
     {
       "profileId": "1_8_9",

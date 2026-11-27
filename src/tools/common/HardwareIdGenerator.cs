@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Management;
 using System.Text;
 
-namespace Moons.Shared
+namespace Tempos.Shared
 {
     internal static class HardwareIdGenerator
     {
@@ -25,7 +25,7 @@ namespace Moons.Shared
             values.Sort(StringComparer.Ordinal);
             byte[] digest = Hashing.Sha256Bytes(Encoding.UTF8.GetBytes(String.Join("\n", values)));
 
-            StringBuilder result = new StringBuilder("MOONS");
+            StringBuilder result = new StringBuilder("TEMPOS");
             for (int group = 0; group < 6; group++)
             {
                 result.Append('-');

@@ -11,7 +11,7 @@ if (-not [IO.Path]::IsPathRooted($BuildDirectory)) {
 }
 $verifier = Join-Path $BuildDirectory "Release/bootstrap-path-verification.exe"
 if (-not (Test-Path -LiteralPath $verifier)) {
-    throw "Build bootstrap-path-verification with MOONS_BUILD_NATIVE_TESTS=ON first."
+    throw "Build bootstrap-path-verification with TEMPOS_BUILD_NATIVE_TESTS=ON first."
 }
 $fixtures = Join-Path $BuildDirectory "fixtures"
 $classes = Join-Path $fixtures "classes"
@@ -31,13 +31,13 @@ $chineseDirectory = Join-Path $username $cache
 foreach ($directory in @("ascii space", $chineseDirectory)) {
     $targetDirectory = Join-Path $fixtures $directory
     New-Item -ItemType Directory -Force -Path $targetDirectory | Out-Null
-    Copy-Item -LiteralPath $jar -Destination (Join-Path $targetDirectory "moons-api.jar")
+    Copy-Item -LiteralPath $jar -Destination (Join-Path $targetDirectory "tempos-api.jar")
 }
 [IO.File]::WriteAllBytes((Join-Path $fixtures "empty.jar"), [byte[]]@())
 [IO.File]::WriteAllText((Join-Path $fixtures "corrupt.jar"), "not a jar")
 $cases = @(
-    @("ascii space/moons-api.jar", "ok"),
-    @((Join-Path $chineseDirectory "moons-api.jar"), "ok"),
+    @("ascii space/tempos-api.jar", "ok"),
+    @((Join-Path $chineseDirectory "tempos-api.jar"), "ok"),
     @(("missing-" + [Guid]::NewGuid().ToString("N") + ".jar"), "rejected"),
     @("empty.jar", "rejected"),
     @("corrupt.jar", "rejected"),

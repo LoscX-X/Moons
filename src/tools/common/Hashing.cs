@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using System.Security.Cryptography;
 
-namespace Moons.Shared
+namespace Tempos.Shared
 {
     /// <summary>Digest primitives; callers own identifiers, truncation and verification policy.</summary>
     internal static class Hashing

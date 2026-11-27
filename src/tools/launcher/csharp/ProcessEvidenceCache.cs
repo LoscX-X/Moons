@@ -4,7 +4,7 @@ using System.Diagnostics;
 using System.Management;
 using System.Runtime.InteropServices;
 
-namespace Moons.WindowsLauncher
+namespace Tempos.WindowsLauncher
 {
     /** Caches expensive WMI evidence for the lifetime of one exact PID. */
     internal static class ProcessEvidenceCache

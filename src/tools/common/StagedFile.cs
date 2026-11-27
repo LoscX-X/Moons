@@ -2,7 +2,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 
-namespace Moons.Shared
+namespace Tempos.Shared
 {
     /// <summary>Owns a process-local temporary file and publishes it atomically.</summary>
     internal static class StagedFile

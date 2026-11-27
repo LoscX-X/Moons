@@ -10,7 +10,7 @@ Updated: 2026-09-25
 
 ## 1. Scope and License Priority
 
-This notice covers Moons source code, builds, and accompanying materials published through this repository. “Project parties” means authors, maintainers, and contributors with respect to their own participation.
+This notice covers Tempos source code, builds, and accompanying materials published through this repository. “Project parties” means authors, maintainers, and contributors with respect to their own participation.
 
 Project code is governed by the [GPL-3.0 license](../LICENSE). Third-party components retain their own licenses; recorded sources appear in [third-party notices](../THIRD_PARTY_NOTICES.md). This notice adds no license restrictions. Mandatory law and applicable licenses prevail. Read GPL sections 15–17 as well.
 

@@ -5,7 +5,7 @@ using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32.SafeHandles;
 
-namespace Moons.WindowsLauncher
+namespace Tempos.WindowsLauncher
 {
     // One outstanding UI frame, even when the UI thread is busy. WM_TIMER cannot
     // reliably pace a high-refresh display; a waitable timer wakes only this worker.
@@ -77,7 +77,7 @@ namespace Moons.WindowsLauncher
             int activeGeneration = Interlocked.Increment(ref generation);
             thread = new Thread(delegate() { Run(activeGeneration, rate); });
             thread.IsBackground = true;
-            thread.Name = "Moons UI animation";
+            thread.Name = "Tempos UI animation";
             thread.Start();
         }
 

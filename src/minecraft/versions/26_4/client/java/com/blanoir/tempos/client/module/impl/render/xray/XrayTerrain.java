@@ -1,0 +1,55 @@
+package com.blanoir.tempos.client.module.impl.render.xray;
+
+import com.blanoir.tempos.client.module.impl.render.Caver;
+import com.mojang.blaze3d.vertex.QuadInstance;
+
+import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
+import net.minecraft.util.ARGB;
+
+/**
+ * Controls the real through-wall terrain X-ray.
+ *
+ * <p>Minecraft 26.4-pre-2 processes Caver at the final BlockQuadOutput boundary. Blocks
+ * still follow the normal model and face-culling path; only quads Minecraft actually
+ * emits are redirected to the translucent layer and receive the Caver alpha.
+ */
+public final class XrayTerrain {
+    /**
+     * 96/255 is visible enough to preserve terrain context in the 26.4-pre-2 pipeline.
+     */
+    private static final int BACKGROUND_ALPHA = 96;
+
+    private static final ThreadLocal<Boolean> RENDERING_BACKGROUND =
+            ThreadLocal.withInitial(() -> false);
+
+    private XrayTerrain() {}
+
+    public static boolean isEnabled() {
+        return Caver.isEnabled();
+    }
+
+    public static boolean isRenderingBackground() {
+        return RENDERING_BACKGROUND.get();
+    }
+
+    public static void beginBackground() {
+        RENDERING_BACKGROUND.set(true);
+    }
+
+    public static void endBackground() {
+        RENDERING_BACKGROUND.set(false);
+    }
+
+    public static ChunkSectionLayer forceTranslucentLayer(ChunkSectionLayer original) {
+        return isEnabled() && isRenderingBackground() ? ChunkSectionLayer.TRANSLUCENT : original;
+    }
+
+    public static void applyAlpha(QuadInstance quadInstance) {
+        if (!isEnabled() || !isRenderingBackground()) {
+            return;
+        }
+
+        float alpha = BACKGROUND_ALPHA / 255.0f;
+        quadInstance.setColor(ARGB.multiplyAlpha(quadInstance.getColor(), alpha));
+    }
+}

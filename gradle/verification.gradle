@@ -7,8 +7,7 @@ tasks.named("test", Test) {
 sourceSets {
     renderTest {
         java.setSrcDirs(['src/test/render/java'])
-        kotlin.setSrcDirs(['src/test/render/kotlin'])
-        kotlin.exclude('**/frame/RasterFramePipelineVerification.kt')
+        kotlin.setSrcDirs([])
         resources.setSrcDirs(['src/test/render/resources'])
         compileClasspath += sourceSets.client.output + sourceSets.client.compileClasspath + sourceSets.loader.output + sourceSets.runtime.output + sourceSets.api.output + configurations.loaderRuntimeClasspath
         runtimeClasspath += compileClasspath
@@ -21,19 +20,9 @@ sourceSets {
         compileClasspath += sourceSets.renderTest.compileClasspath
         runtimeClasspath += compileClasspath
     }
-    rasterTest {
-        java.setSrcDirs([])
-        kotlin.setSrcDirs(['src/common/kotlin', 'src/test/render/kotlin'])
-        kotlin.include('**/frame/RasterFramePipeline.kt',
-                '**/frame/RasterFrameBuffer.kt', '**/frame/RasterRegion.kt',
-                '**/frame/RasterFramePipelineVerification.kt')
-        resources.setSrcDirs([])
-        compileClasspath += sourceSets.client.compileClasspath
-        runtimeClasspath += sourceSets.client.runtimeClasspath
-    }
     taskScopeTest {
         java.setSrcDirs(['src/common/java', 'src/test/render/java'])
-        java.include('**/threads/*.java', '**/lifecycle/ActivationGate.java', '**/lifecycle/CleanupSequence.java')
+        java.include('**/concurrent/*.java', '**/lifecycle/ActivationGate.java', '**/lifecycle/CleanupSequence.java')
         kotlin.setSrcDirs([])
         resources.setSrcDirs([])
         compileClasspath += sourceSets.runtime.output + sourceSets.api.output
@@ -57,129 +46,102 @@ sourceSets {
     }
 }
 
-tasks.register('verifyTaskScope', JavaExec) {
-    group = 'verification'
-    description = 'Checks real task termination, bounded admission, stale dispatch and result disposal without a game.'
-    dependsOn 'taskScopeTestClasses'
-    classpath = sourceSets.taskScopeTest.runtimeClasspath
-    mainClass = 'com.blanoir.moons.client.threads.TaskScopeVerification'
-}
-
-tasks.register('verifyInputBindings', JavaExec) {
-    group = 'verification'
-    description = 'Checks callback/poll deduplication, held activation, focus loss and binding changes without a window.'
-    dependsOn 'renderTestClasses'
-    classpath = sourceSets.renderTest.runtimeClasspath
-    mainClass = 'com.blanoir.moons.client.input.InputBindingVerification'
-    systemProperty 'moons.home', layout.buildDirectory.dir('verification/input-bindings/home').get().asFile.absolutePath
-}
-
-tasks.register('verifyRasterPipeline', JavaExec) {
-    group = 'verification'
-    description = 'Compares real raster pixels and lifecycle behavior through a fake GPU transport.'
-    dependsOn 'rasterTestClasses'
-    classpath = sourceSets.rasterTest.runtimeClasspath + configurations.minecraftNatives
-    mainClass = 'com.blanoir.moons.client.render.frame.RasterFramePipelineVerification'
-}
-
-[
-        verifyAutoMace: 'com.blanoir.moons.client.module.impl.combat.AutoMaceVerification',
-        verifyAutoTotem: 'com.blanoir.moons.client.module.impl.player.AutoTotemVerification',
-        verifyDamagePrediction: 'com.blanoir.moons.client.utils.prediction.DamagePredictionVerification',
-        verifyAutoSpearFakeLag: 'com.blanoir.moons.client.module.impl.combat.AutoSpearFakeLagVerification',
-        verifyAimCollect: 'com.blanoir.moons.client.module.impl.misc.aimdata.AimCollectVerification',
-        verifyStructureLocate: 'com.blanoir.moons.client.module.impl.world.structure.StructureLocateVerification',
-        verifyRemoteConfig: 'com.blanoir.moons.client.service.web.RemoteConfigVerification',
-        verifySettingsPersistence: 'com.blanoir.moons.client.config.SettingsPersistenceVerification',
-        verifySilentAuraPoints: 'com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraPointVerification',
-        verifyCushionAura: 'com.blanoir.moons.client.module.impl.combat.cushionaura.CushionAuraVerification',
-        verifyLearnedAim: 'com.blanoir.moons.client.module.impl.combat.silentaura.LearnedAimVerification',
-        verifyBacktrackFlow: 'com.blanoir.moons.client.module.impl.network.backtrack.BacktrackFlowVerification',
-        verifyInventoryActions: 'com.blanoir.moons.client.module.impl.player.invmanager.InventoryActionVerification',
-        verifyInventoryFailures: 'com.blanoir.moons.client.manager.inventory.InventoryFailureVerification',
-        verifyGodBridgeSafety: 'com.blanoir.moons.client.module.impl.world.scaffold.GodBridgeSafetyVerification',
-        verifyScaffoldSettings: 'com.blanoir.moons.client.module.catalog.ScaffoldSettingsVerification',
-        verifyPlacementRays: 'com.blanoir.moons.client.utils.world.placement.PlacementRaycastVerification'
-].each { taskName, entryPoint ->
-    tasks.register(taskName, JavaExec) {
-        group = 'verification'
-        description = 'Checks target filtering, packet flow, bounded interaction cycles or placement geometry without a GPU.'
-        dependsOn 'renderTestClasses'
-        classpath = sourceSets.renderTest.runtimeClasspath
-        mainClass = entryPoint
-        systemProperty 'moons.home', layout.buildDirectory.dir("${taskName}-fixture/home").get().asFile.absolutePath
-        workingDir layout.buildDirectory.get().asFile
+// Resolve a suite only for a requested check. Default check continues to compile its small suites.
+ext.temposJavaChecks = { Map declarations ->
+    declarations.each { taskName, spec ->
+        tasks.register(taskName, JavaExec) {
+            group = 'verification'
+            description = spec.description
+            def suite = sourceSets.getByName(spec.sourceSet)
+            dependsOn suite.classesTaskName
+            classpath = spec.classpath ? spec.classpath() : suite.runtimeClasspath
+            if (spec.natives) classpath += configurations.minecraftNatives
+            mainClass = spec.main
+            if (spec.home) systemProperty 'tempos.home', layout.buildDirectory.dir(spec.home).get().asFile.absolutePath
+            if (spec.buildWorkDir) workingDir layout.buildDirectory.get().asFile
+            if (spec.argumentDir) args layout.buildDirectory.dir(spec.argumentDir).get().asFile.absolutePath
+            if (spec.jvmArgs) jvmArgs spec.jvmArgs
+            if (spec.maxHeap) maxHeapSize = spec.maxHeap
+            if (spec.fixture) {
+                def directory = layout.buildDirectory.dir(spec.fixture)
+                doFirst {
+                    directory.get().asFile.mkdirs()
+                    args directory.get().asFile.absolutePath
+                }
+            }
+        }
     }
 }
 
-tasks.register('simulateSilentAuraRotation', JavaExec) {
-    group = 'verification'
-    description = 'Runs seeded frame/packet rotation experiments and exports component metrics and traces.'
-    dependsOn 'renderTestClasses'
-    classpath = sourceSets.renderTest.runtimeClasspath
-    mainClass = 'com.blanoir.moons.client.module.impl.combat.silentaura.SilentAuraRotationSimulation'
-    args layout.buildDirectory.dir('rotation-simulation').get().asFile.absolutePath
-    systemProperty 'moons.home', layout.buildDirectory.dir('rotation-simulation/home').get().asFile.absolutePath
-    workingDir layout.buildDirectory.get().asFile
+def featureChecks = [
+        verifyModuleControls: 'com.blanoir.tempos.client.ui.clickgui.ModuleControlsVerification',
+        verifyAutoMace: 'com.blanoir.tempos.client.module.impl.combat.AutoMaceVerification',
+        verifyAutoTotem: 'com.blanoir.tempos.client.module.impl.player.AutoTotemVerification',
+        verifyDamagePrediction: 'com.blanoir.tempos.client.utils.prediction.DamagePredictionVerification',
+        verifyAutoSpearFakeLag: 'com.blanoir.tempos.client.module.impl.combat.AutoSpearFakeLagVerification',
+        verifyAimCollect: 'com.blanoir.tempos.client.module.impl.misc.aimdata.AimCollectVerification',
+        verifyStructureLocate: 'com.blanoir.tempos.client.module.impl.world.structure.StructureLocateVerification',
+        verifySettingsPersistence: 'com.blanoir.tempos.client.config.SettingsPersistenceVerification',
+        verifyParameterArchive: 'com.blanoir.tempos.client.config.ParameterArchiveVerification',
+        verifySilentAuraPoints: 'com.blanoir.tempos.client.module.impl.combat.silentaura.SilentAuraPointVerification',
+        verifyCushionAura: 'com.blanoir.tempos.client.module.impl.combat.cushionaura.CushionAuraVerification',
+        verifyLearnedAim: 'com.blanoir.tempos.client.module.impl.combat.silentaura.LearnedAimVerification',
+        verifyBacktrackFlow: 'com.blanoir.tempos.client.module.impl.network.backtrack.BacktrackFlowVerification',
+        verifyInventoryActions: 'com.blanoir.tempos.client.module.impl.player.invmanager.InventoryActionVerification',
+        verifyInventoryFailures: 'com.blanoir.tempos.client.manager.inventory.InventoryFailureVerification',
+        verifyGodBridgeSafety: 'com.blanoir.tempos.client.module.impl.world.scaffold.GodBridgeSafetyVerification',
+        verifyScaffoldSettings: 'com.blanoir.tempos.client.module.catalog.ScaffoldSettingsVerification',
+        verifyPlacementRays: 'com.blanoir.tempos.client.utils.world.placement.PlacementRaycastVerification'
+].collectEntries { name, entryPoint ->
+    [(name): [sourceSet: 'renderTest', main: entryPoint, home: "${name}-fixture/home", buildWorkDir: true,
+            description: 'Checks target filtering, packet flow, bounded interaction cycles or placement geometry without a GPU.']]
 }
 
-tasks.register('verifyMisplace', JavaExec) {
-    group = 'verification'
-    description = 'Checks causal latency bounds, packet ordering and delayed knockback with independent timelines.'
-    dependsOn 'misplaceTestClasses'
-    classpath = sourceSets.misplaceTest.runtimeClasspath
-    mainClass = 'com.blanoir.moons.client.module.impl.combat.misplace.MisplaceVerification'
-    workingDir layout.buildDirectory.get().asFile
-}
+temposJavaChecks(featureChecks + [
+        verifyTaskScope: [sourceSet: 'taskScopeTest', main: 'com.blanoir.tempos.client.concurrent.TaskScopeVerification',
+                description: 'Checks real task termination, bounded admission, stale dispatch and result disposal without a game.'],
+        verifyUiAccent: [sourceSet: 'renderTest', main: 'com.blanoir.tempos.client.ui.theme.AccentClockVerification',
+                description: 'Checks the phase and contrast of native UI accent colors.'],
+        verifyInputBindings: [sourceSet: 'renderTest', main: 'com.blanoir.tempos.client.input.InputBindingVerification',
+                description: 'Checks callback/poll deduplication, held activation, focus loss and binding changes without a window.',
+                home: 'verification/input-bindings/home'],
+        simulateSilentAuraRotation: [sourceSet: 'renderTest', main: 'com.blanoir.tempos.client.module.impl.combat.silentaura.SilentAuraRotationSimulation',
+                description: 'Runs seeded frame/packet rotation experiments and exports component metrics and traces.',
+                home: 'rotation-simulation/home', argumentDir: 'rotation-simulation', buildWorkDir: true],
+        verifyMisplace: [sourceSet: 'misplaceTest', main: 'com.blanoir.tempos.client.module.impl.combat.misplace.MisplaceVerification',
+                description: 'Checks causal latency bounds, packet ordering and delayed knockback with independent timelines.', buildWorkDir: true],
+        verifyHitSelect: [sourceSet: 'hitSelectTest', main: 'com.blanoir.tempos.client.module.impl.combat.hitselect.HitSelectVerification',
+                description: 'Checks attack timing, TriggerBot exclusion and displaced combat geometry.',
+                home: 'hitselect-fixture/home', buildWorkDir: true],
+        simulateMisplace: [sourceSet: 'misplaceTest', main: 'com.blanoir.tempos.client.module.impl.combat.misplace.MisplaceSimulation',
+                description: 'Simulates two clients, FIFO links, server ticks and delayed knockback; exports traces and predictions.',
+                argumentDir: 'misplace-simulation', buildWorkDir: true],
+        benchmarkHotPaths: [sourceSet: 'renderTest', main: 'com.blanoir.tempos.client.utils.rotation.aim.HotPathBenchmark',
+                description: 'Reports CPU/allocation comparisons for surface scanning, overlay vertices and inference; no GPU or FPS measurement.',
+                jvmArgs: ['-Xms512m', '-Xmx512m']],
+        verifyGameAccess: [sourceSet: 'gameAccessTest', main: 'com.blanoir.tempos.client.access.GameAccessVerification',
+                description: 'Resolves private Minecraft members used by the version-specific access bridges.', natives: true],
+        verifyMinecraftTransformers: [sourceSet: 'loaderTest', main: "com.blanoir.tempos.loader.asm.TransformerVerification",
+                description: "Transforms and bytecode-verifies every supported hook against the actual Minecraft JAR."],
+        verifyNeoForgeTransformers: [sourceSet: 'loaderTest', main: 'com.blanoir.tempos.loader.asm.TransformerVerification',
+                description: 'Verifies production hooks against an installed NeoForge patched client.'],
+        verifyNeoForgeGameAccess: [sourceSet: 'gameAccessTest', main: 'com.blanoir.tempos.client.access.GameAccessVerification',
+                description: 'Resolves private members and visual pipelines against an installed NeoForge profile.', classpath: { files() }],
+        verifyNeoForgeYsmRenderSetup: [sourceSet: 'ysmAdapterTest', main: 'com.blanoir.tempos.ysm.adapter.YsmRenderSetupVerification',
+                description: 'Constructs YSM materials and resolves private entity members in an installed NeoForge profile.', classpath: { files() }],
+        verifyRuntimeStartup: [sourceSet: 'loaderTest', main: 'com.blanoir.tempos.runtime.RuntimeStartupVerification',
+                description: 'Checks real core initialization, first-tick readiness and failure cleanup without a game.',
+                fixture: 'verification/runtime-startup'],
+        verifyPayloadCache: [sourceSet: 'loaderTest', main: 'com.blanoir.tempos.agent.PayloadCacheVerification',
+                description: 'Verifies nested runtime extraction stays inside TEMPOS_HOME and reuses its cached copy.',
+                fixture: 'verification/payload-cache']
+])
 
-tasks.register('verifyHitSelect', JavaExec) {
-    group = 'verification'
-    description = 'Checks attack timing, TriggerBot exclusion and displaced combat geometry.'
-    dependsOn 'hitSelectTestClasses'
-    classpath = sourceSets.hitSelectTest.runtimeClasspath
-    mainClass = 'com.blanoir.moons.client.module.impl.combat.hitselect.HitSelectVerification'
-    systemProperty 'moons.home', layout.buildDirectory.dir('hitselect-fixture/home').get().asFile.absolutePath
-    workingDir layout.buildDirectory.get().asFile
-}
-
-tasks.register('simulateMisplace', JavaExec) {
-    group = 'verification'
-    description = 'Simulates two clients, FIFO links, server ticks and delayed knockback; exports traces and predictions.'
-    dependsOn 'misplaceTestClasses'
-    classpath = sourceSets.misplaceTest.runtimeClasspath
-    mainClass = 'com.blanoir.moons.client.module.impl.combat.misplace.MisplaceSimulation'
-    args layout.buildDirectory.dir('misplace-simulation').get().asFile.absolutePath
-    workingDir layout.buildDirectory.get().asFile
-}
-
-tasks.register('benchmarkHotPaths', JavaExec) {
-    group = 'verification'
-    description = 'Reports CPU/allocation comparisons for surface scanning, overlay vertices and inference; no GPU or FPS measurement.'
-    dependsOn 'renderTestClasses'
-    classpath = sourceSets.renderTest.runtimeClasspath
-    mainClass = 'com.blanoir.moons.client.utils.rotation.aim.HotPathBenchmark'
-    jvmArgs '-Xms512m', '-Xmx512m'
-}
-
-tasks.named('compileRenderTestKotlin', moonsPluginTypes.kotlinCompile) {
+tasks.named('compileRenderTestKotlin', temposPluginTypes.kotlinCompile) {
     compilerOptions.freeCompilerArgs.add('-Xfriend-paths=' + layout.buildDirectory.dir('classes/kotlin/client').get().asFile.absolutePath)
 }
 
-tasks.register('verifyGameAccess', JavaExec) {
-    group = 'verification'
-    description = 'Resolves private Minecraft members used by the version-specific access bridges.'
-    dependsOn 'gameAccessTestClasses'
-    // 26.1 overlay descriptors also initialize their native vertex allocators.
-    classpath = sourceSets.gameAccessTest.runtimeClasspath + configurations.minecraftNatives
-    mainClass = 'com.blanoir.moons.client.access.GameAccessVerification'
-}
-
-tasks.register("verifyMinecraftTransformers", JavaExec) {
-    group = "verification"
-    description = "Transforms and bytecode-verifies every supported hook against the actual Minecraft JAR."
-    dependsOn tasks.named("loaderTestClasses")
-    classpath = sourceSets.loaderTest.runtimeClasspath
-    mainClass = "com.blanoir.moons.loader.common.asm.transform.TransformerVerification"
+tasks.named('verifyMinecraftTransformers', JavaExec) {
     doFirst {
         def minecraftJars = sourceSets.client.compileClasspath.files.findAll {
             it.name.toLowerCase(Locale.ROOT).startsWith("minecraft-")
@@ -196,28 +158,35 @@ tasks.register("verifyMinecraftTransformers", JavaExec) {
 
 // Opt-in checks use a locally installed NeoForge profile, not the unpatched Loom JAR.
 def neoForgeClientJar = {
-    def path = providers.gradleProperty('moons_neoforge_client_jar').orNull
+    def path = providers.gradleProperty('tempos_neoforge_client_jar').orNull
     if (path == null || !file(path).isFile()) {
-        throw new GradleException('Set -Pmoons_neoforge_client_jar to the patched Minecraft client JAR')
+        throw new GradleException('Set -Ptempos_neoforge_client_jar to the patched Minecraft client JAR')
     }
-    return file(path)
+    def client = file(path)
+    new java.util.jar.JarFile(client).withCloseable { jar ->
+        def entry = jar.getJarEntry('net/minecraft/client/KeyMapping.class')
+        def interfaces = entry == null ? [] : jar.getInputStream(entry).withCloseable { input ->
+            java.lang.classfile.ClassFile.of().parse(input.readAllBytes()).interfaces()
+                    .collect { it.asInternalName() }
+        }
+        if (!interfaces.contains('net/neoforged/neoforge/client/extensions/IKeyMappingExtension')) {
+            throw new GradleException('Expected the NeoForge-patched client from libraries/net/neoforged/'
+                    + 'minecraft-client-patched; the versions profile JAR may be unmodified Minecraft: ' + client)
+        }
+    }
+    return client
 }
 
-tasks.register('verifyNeoForgeTransformers', JavaExec) {
-    group = 'verification'
-    description = 'Verifies production hooks against an installed NeoForge patched client.'
-    dependsOn 'loaderTestClasses'
-    classpath = sourceSets.loaderTest.runtimeClasspath
-    mainClass = 'com.blanoir.moons.loader.common.asm.transform.TransformerVerification'
+tasks.named('verifyNeoForgeTransformers', JavaExec) {
     doFirst {
         args = [neoForgeClientJar().absolutePath]
     }
 }
 
 def neoForgeRuntimeClasspath = { vanillaClasspath ->
-    def path = providers.gradleProperty('moons_neoforge_profile_json').orNull
+    def path = providers.gradleProperty('tempos_neoforge_profile_json').orNull
     if (path == null || !file(path).isFile()) {
-        throw new GradleException('Set -Pmoons_neoforge_profile_json to the installed version JSON')
+        throw new GradleException('Set -Ptempos_neoforge_profile_json to the installed version JSON')
     }
     def profileFile = file(path)
     def profile = new groovy.json.JsonSlurper().parse(profileFile)
@@ -239,44 +208,40 @@ def neoForgeRuntimeClasspath = { vanillaClasspath ->
         }
         new File(librariesRoot, artifactPath)
     }.findAll { it.isFile() && !it.name.startsWith('minecraft-client-patched-') }
-    return files(neoForgeClientJar(), universal, libraries,
+    // The explicitly validated patched client must win over any profile/base Minecraft classes.
+    def patched = neoForgeClientJar()
+    libraries = libraries.findAll { library ->
+        !library.path.replace('\\', '/').contains('/net/minecraft/') && library != patched
+    }
+    return files(patched, universal, libraries,
             vanillaClasspath.files.findAll { !it.name.startsWith('minecraft-') })
 }
 
-tasks.register('verifyNeoForgeGameAccess', JavaExec) {
-    group = 'verification'
-    description = 'Resolves private members and visual pipelines against an installed NeoForge profile.'
-    dependsOn 'gameAccessTestClasses'
-    mainClass = 'com.blanoir.moons.client.access.GameAccessVerification'
+tasks.named('verifyNeoForgeGameAccess', JavaExec) {
+    systemProperty 'tempos.verification.neoforge', 'true'
     doFirst {
         classpath = neoForgeRuntimeClasspath(sourceSets.gameAccessTest.runtimeClasspath + configurations.minecraftNatives)
     }
 }
 
-tasks.register('verifyNeoForgeYsmRenderSetup', JavaExec) {
-    group = 'verification'
-    description = 'Constructs YSM materials and resolves private entity members in an installed NeoForge profile.'
-    dependsOn 'ysmAdapterTestClasses'
-    mainClass = 'com.blanoir.moons.ysm.adapter.YsmRenderSetupVerification'
+tasks.named('verifyNeoForgeYsmRenderSetup', JavaExec) {
     doFirst {
         classpath = neoForgeRuntimeClasspath(sourceSets.ysmAdapterTest.runtimeClasspath + configurations.minecraftNatives)
     }
 }
 
-
 tasks.named("check").configure {
     dependsOn "clientClasses", "verifyMinecraftTransformers", "verifyGameAccess",
-            "verifyLoadSession", "verifyCacheMaintenance", "verifyPayloadCache"
+            "verifyLoadSession", "verifyPayloadCache"
 }
 
 def versionChecks = []
-moonsBuild.supportedVersions.each { minecraftVersion, directory ->
-    def versionCheck = moonsMultiVersion.register(directory, "checkMinecraft${directory}", 'verification',
+temposBuild.supportedVersions.each { minecraftVersion, directory ->
+    def versionCheck = temposMultiVersion.register(directory, "checkMinecraft${directory}", 'verification',
             "Compiles production sources and verifies hooks and YSM behavior for Minecraft ${minecraftVersion}.",
             ['check'])
     versionChecks.add(versionCheck)
 }
-
 
 tasks.register("checkAllVersions") {
     group = "verification"
@@ -284,130 +249,55 @@ tasks.register("checkAllVersions") {
     dependsOn versionChecks
 }
 
-
 def loadSessionCheckExe = tasks.register('loadSessionVerificationExe', Exec) {
-    onlyIf { moonsBuild.windowsHost }
+    onlyIf { temposBuild.windowsHost }
     def sources = files('src/tools/launcher/csharp/LoadSession.cs', 'src/test/launcher/LoadSessionVerification.cs')
     def output = layout.buildDirectory.file('verification/load-session.exe')
-    inputs.files(sources)
-    outputs.file(output)
-    doFirst {
-        output.get().asFile.parentFile.mkdirs()
-        executable moonsToolchains.locateCSharpCompiler().absolutePath
-        args '/nologo', '/target:exe', "/out:${output.get().asFile.absolutePath}"
-        args sources.files.collect { it.absolutePath }.sort()
-    }
+    temposToolchains.csharpExe(delegate, output, sources, ['/target:exe'])
 }
 
 tasks.register('verifyLoadSession', Exec) {
     group = 'verification'
     description = 'Checks launcher attempt isolation, startup logs and cancellation without injecting a process.'
-    onlyIf { moonsBuild.windowsHost }
+    onlyIf { temposBuild.windowsHost }
     dependsOn loadSessionCheckExe
     executable layout.buildDirectory.file('verification/load-session.exe').get().asFile.absolutePath
 }
 
-tasks.register('verifyRuntimeStartup', JavaExec) {
+def portableConfigCheckExe = tasks.register('portableConfigVerificationExe', Exec) {
+    onlyIf { temposBuild.windowsHost }
+    dependsOn 'sessionFinalizerExe'
+    def sources = files('src/tools/launcher/csharp/PortableConfig.cs',
+            'src/tools/launcher/csharp/LegacyConfigMigration.cs', 'src/tools/launcher/csharp/LegacyModelMigration.cs')
+    sources += fileTree('src/test/launcher') { include 'Portable*Verification.cs' }
+    def output = layout.buildDirectory.file('verification/portable-parameters.exe')
+    temposToolchains.csharpExe(delegate, output, sources, ['/target:exe', '/platform:x64',
+            '/main:PortableConfigVerification', '/reference:System.Web.Extensions.dll'],
+            ['Tempos.Finalizer.exe': layout.buildDirectory.file('generated/launcher/tempos-finalizer.exe')])
+}
+
+tasks.register('verifyPortableParameters', Exec) {
     group = 'verification'
-    description = 'Checks real core initialization, first-tick readiness and failure cleanup without a game.'
-    dependsOn 'loaderTestClasses'
-    classpath = sourceSets.loaderTest.runtimeClasspath
-    mainClass = 'com.blanoir.moons.runtime.RuntimeStartupVerification'
-    def fixture = layout.buildDirectory.dir('verification/runtime-startup')
-    doFirst { fixture.get().asFile.mkdirs(); args fixture.get().asFile.absolutePath }
+    description = 'Checks portable PE parameter archives, failed-save recovery and verified migration cleanup in isolated fixtures.'
+    onlyIf { temposBuild.windowsHost }
+    dependsOn portableConfigCheckExe
+    executable layout.buildDirectory.file('verification/portable-parameters.exe').get().asFile.absolutePath
+    args layout.buildDirectory.dir('verification/portable-parameters').get().asFile.absolutePath
 }
 
 tasks.register('verifyLauncherPackages', Exec) {
     group = 'verification'
-    description = 'Verifies the real installer and loader against an isolated dependency home without loading a game.'
-    onlyIf { moonsBuild.windowsHost }
-    dependsOn 'moonsPackages'
+    description = 'Verifies the standalone EXE, all embedded payloads and temporary dependency lifetimes without loading a game.'
+    onlyIf { temposBuild.windowsHost }
+    dependsOn 'temposPackages', 'loaderTestClasses'
+    inputs.files 'src/test/launcher/Verify-LauncherPackages.ps1', 'src/test/launcher/Verify-PortableSession.ps1'
     executable 'powershell.exe'
     args '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
             layout.projectDirectory.file('src/test/launcher/Verify-LauncherPackages.ps1').asFile.absolutePath,
             '-Distribution', layout.buildDirectory.dir('dist').get().asFile.absolutePath,
             '-FixtureRoot', layout.buildDirectory.dir('verification/launcher-packages').get().asFile.absolutePath
-    def legacy189 = layout.projectDirectory.dir('outputs/worktrees/legacy-1.8.9/build/1_8/dist').asFile
-    if (new File(legacy189, 'Moons-install.exe').isFile() && new File(legacy189, 'Moons.exe').isFile()) {
-        args '-Legacy189Distribution', legacy189.absolutePath
-    }
-}
-
-
-def cacheMaintenanceCheckExe = tasks.register('cacheMaintenanceVerificationExe', Exec) {
-    dependsOn 'launcherVersionCatalog'
-    onlyIf { moonsBuild.windowsHost }
-    def sources = files('src/tools/launcher/csharp/CacheMaintenance.cs',
-            'src/tools/launcher/csharp/DependencyRuntime.cs',
-            'src/tools/launcher/csharp/VersionCatalog.cs', moonsVersions.launcherSource, 'src/tools/launcher/csharp/RuntimeMetadata.cs',
-            'src/tools/launcher/csharp/ProcessEvidenceCache.cs',
-            'src/tools/common/Hashing.cs', 'src/tools/common/StagedFile.cs', 'src/tools/common/DirectoryJunction.cs',
-            'src/test/launcher/CacheMaintenanceVerification.cs')
-    def output = layout.buildDirectory.file('verification/cache-maintenance.exe')
-    inputs.files(sources)
-    outputs.file(output)
     doFirst {
-        output.get().asFile.parentFile.mkdirs()
-        executable moonsToolchains.locateCSharpCompiler().absolutePath
-        args '/nologo', '/target:exe', '/reference:System.Management.dll', "/out:${output.get().asFile.absolutePath}"
-        args sources.files.collect { it.absolutePath }.sort()
-    }
-}
-
-tasks.register('verifyCacheMaintenance', Exec) {
-    group = 'verification'
-    description = 'Checks cache retention budgets, live-file protection and path boundaries in an isolated fixture.'
-    onlyIf { moonsBuild.windowsHost }
-    dependsOn cacheMaintenanceCheckExe
-    executable layout.buildDirectory.file('verification/cache-maintenance.exe').get().asFile.absolutePath
-    args layout.buildDirectory.dir('verification/cache-maintenance').get().asFile.absolutePath
-}
-
-def dependencyContextsExe = tasks.register('dependencyContextsVerificationExe', Exec) {
-    dependsOn 'launcherVersionCatalog'
-    onlyIf { moonsBuild.windowsHost }
-    def sources = files('src/tools/launcher/csharp/DependencyRuntime.cs',
-            'src/tools/launcher/csharp/VersionCatalog.cs', moonsVersions.launcherSource,
-            'src/tools/launcher/csharp/RuntimeMetadata.cs', 'src/tools/launcher/csharp/CacheMaintenance.cs',
-            'src/tools/launcher/csharp/ProcessEvidenceCache.cs',
-            'src/tools/common/Hashing.cs', 'src/tools/common/StagedFile.cs', 'src/tools/common/DirectoryJunction.cs',
-            'src/test/launcher/DependencyContextsVerification.cs')
-    def output = layout.buildDirectory.file('verification/dependency-contexts.exe')
-    inputs.files(sources); outputs.file(output)
-    doFirst {
-        output.get().asFile.parentFile.mkdirs()
-        executable moonsToolchains.locateCSharpCompiler().absolutePath
-        args '/nologo', '/target:exe', '/reference:System.Management.dll', "/out:${output.get().asFile.absolutePath}"
-        args sources.files.collect { it.absolutePath }.sort()
-    }
-}
-def dependencyContextsFixture = layout.buildDirectory.dir('verification/dependency-contexts')
-def verifyCSharpContexts = tasks.register('verifyCSharpDependencyContexts', Exec) {
-    group = 'verification'
-    onlyIf { moonsBuild.windowsHost }
-    dependsOn dependencyContextsExe
-    executable layout.buildDirectory.file('verification/dependency-contexts.exe').get().asFile.absolutePath
-    doFirst { dependencyContextsFixture.get().asFile.mkdirs(); args dependencyContextsFixture.get().asFile.absolutePath }
-}
-tasks.register('verifyDependencyContexts', JavaExec) {
-    group = 'verification'
-    description = 'Checks dependency coexistence, profile closure, retention and the exact C#/Java handoff.'
-    onlyIf { moonsBuild.windowsHost }
-    dependsOn verifyCSharpContexts, 'loaderTestClasses'
-    classpath = sourceSets.loaderTest.runtimeClasspath
-    mainClass = 'com.blanoir.moons.agent.core.DependencyContextVerification'
-    doFirst { args dependencyContextsFixture.get().asFile.absolutePath }
-}
-
-tasks.register('verifyPayloadCache', JavaExec) {
-    group = 'verification'
-    description = 'Verifies nested runtime extraction stays inside MOONS_HOME and reuses its cached copy.'
-    dependsOn 'loaderTestClasses'
-    classpath = sourceSets.loaderTest.runtimeClasspath
-    mainClass = 'com.blanoir.moons.agent.PayloadCacheVerification'
-    def fixture = layout.buildDirectory.dir('verification/payload-cache')
-    doFirst {
-        fixture.get().asFile.mkdirs()
-        args fixture.get().asFile.absolutePath
+        args '-JavaVerifierClasspath', sourceSets.loaderTest.runtimeClasspath.asPath,
+                '-JavaExecutable', new File(temposToolchains.locateJdkHome(), 'bin/java.exe').absolutePath
     }
 }

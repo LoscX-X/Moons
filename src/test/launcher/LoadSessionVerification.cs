@@ -2,13 +2,13 @@ using System;
 using System.IO;
 using System.Text;
 using System.Threading;
-using Moons.WindowsLauncher;
+using Tempos.WindowsLauncher;
 
 internal static class LoadSessionVerification
 {
     private static void Main()
     {
-        string root = Path.Combine(Path.GetTempPath(), "moons-load-session-" + Guid.NewGuid().ToString("N"));
+        string root = Path.Combine(Path.GetTempPath(), "tempos-load-session-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
         int pid = System.Diagnostics.Process.GetCurrentProcess().Id;
         string log = Path.Combine(root, "bridge-dll.log");

@@ -1,17 +1,16 @@
 /* Production JNI/JVMTI bridge. */
-def windowsHost = moonsBuild.windowsHost
-def loaderStagingDirectory = moonsBuild.loaderStagingDirectory
-def locateCmake = moonsToolchains.locateCmake
-def locateJdkHome = moonsToolchains.locateJdkHome
+def windowsHost = temposBuild.windowsHost
+def loaderStagingDirectory = temposBuild.loaderStagingDirectory
+def locateCmake = temposToolchains.locateCmake
+def locateJdkHome = temposToolchains.locateJdkHome
 
 def nativeBridgeSourceDirectory = layout.projectDirectory.dir("native-bridge")
 def nativeBridgeBuildDirectory = layout.buildDirectory.dir("native-bridge")
-def nativeBridgeBuiltDll = nativeBridgeBuildDirectory.map { it.file("out/moons-bridge.dll") }
+def nativeBridgeBuiltDll = nativeBridgeBuildDirectory.map { it.file("out/tempos-bridge.dll") }
 def nativeBridgeStagedDll = layout.buildDirectory.file(
-        "${loaderStagingDirectory}/moons-bridge.dll")
+        "${loaderStagingDirectory}/tempos-bridge.dll")
 
 def configureNativeBridge = tasks.register("configureNativeBridge", Exec) {
-    group = "build"
     description = "Configures the Windows JNI bridge DLL for runtime load."
     onlyIf { windowsHost }
     inputs.files(fileTree(nativeBridgeSourceDirectory) {
@@ -35,8 +34,7 @@ def configureNativeBridge = tasks.register("configureNativeBridge", Exec) {
 }
 
 def compileNativeBridge = tasks.register("compileNativeBridge", Exec) {
-    group = "build"
-    description = "Builds moons-bridge.dll using the discovered Visual Studio toolchain."
+    description = "Builds tempos-bridge.dll using the discovered Visual Studio toolchain."
     dependsOn configureNativeBridge
     onlyIf { windowsHost }
     inputs.files(fileTree(nativeBridgeSourceDirectory) {
@@ -49,13 +47,12 @@ def compileNativeBridge = tasks.register("compileNativeBridge", Exec) {
                 locateCmake().absolutePath,
                 "--build", nativeBridgeBuildDirectory.get().asFile.absolutePath,
                 "--config", "Release",
-                "--target", "moons-bridge"
+                "--target", "tempos-bridge"
         )
     }
 }
 
 def bridgeDll = tasks.register("bridgeDll") {
-    group = "build"
     description = "Copies the JNI bridge DLL into build/dist."
     dependsOn compileNativeBridge
     onlyIf { windowsHost }

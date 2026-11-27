@@ -1,23 +1,22 @@
 /* Universal payload assembly and Windows distribution. */
-def locateJdkHome = moonsToolchains.locateJdkHome
-def locateCSharpCompiler = moonsToolchains.locateCSharpCompiler
+def locateJdkHome = temposToolchains.locateJdkHome
 def apiJar = tasks.named("apiJar", Jar)
 def bridgeDll = tasks.named("bridgeDll")
 def uiDependenciesJar = tasks.named("uiDependenciesJar")
-def profiles = moonsVersions.profiles
+def profiles = temposVersions.profiles
 def baseProfile = profiles.first()
 def payloadTasks = [:]
 def patchTasks = []
 profiles.eachWithIndex { profile, index ->
     def previous = index == 0 ? null : payloadTasks[profiles[index - 1].profileId]
-    def payloadTask = moonsMultiVersion.register(profile.profileId, "universalPayload${profile.profileId}", 'build',
-            "Builds the Minecraft ${profile.artifactId} payload for the universal loader.", ['moonsJar'])
+    def payloadTask = temposMultiVersion.register(profile.profileId, "universalPayload${profile.profileId}", null,
+            "Builds the Minecraft ${profile.artifactId} payload for the universal loader.", ['temposJar'])
     payloadTask.configure {
         if (previous != null) dependsOn previous
         else mustRunAfter apiJar, bridgeDll
-        def nestedPayload = new File(moonsMultiVersion.directories[profile.profileId],
-                "dist/agent/${profile.profileId}/moons.jar")
-        def publishedPayload = layout.buildDirectory.file("universal/${profile.artifactId}/moons.jar")
+        def nestedPayload = new File(temposMultiVersion.directories[profile.profileId],
+                "dist/agent/${profile.profileId}/tempos.jar")
+        def publishedPayload = layout.buildDirectory.file("universal/${profile.artifactId}/tempos.jar")
         inputs.file(nestedPayload)
         outputs.file(publishedPayload)
         doLast {
@@ -35,13 +34,12 @@ profiles.eachWithIndex { profile, index ->
         // Preserve the existing public 26.2 task name as a compatibility entry.
         def taskName = index == 1 ? 'universalPayloadPatch' : "universalPayload${profile.profileId}Patch"
         patchTasks.add(tasks.register(taskName, Exec) {
-            group = 'build'
             description = "Builds a compact ${profile.artifactId} overlay over the ${baseProfile.artifactId} payload."
             dependsOn payloadTask
             def source = layout.projectDirectory.file('tools/PayloadPatchBuilder.java')
-            def base = layout.buildDirectory.file("universal/${baseProfile.artifactId}/moons.jar")
-            def overlay = layout.buildDirectory.file("universal/${profile.artifactId}/moons.jar")
-            def output = layout.buildDirectory.file("universal/moons-${profile.artifactId}.patch.zip")
+            def base = layout.buildDirectory.file("universal/${baseProfile.artifactId}/tempos.jar")
+            def overlay = layout.buildDirectory.file("universal/${profile.artifactId}/tempos.jar")
+            def output = layout.buildDirectory.file("universal/tempos-${profile.artifactId}.patch.zip")
             inputs.files(source, base, overlay)
             outputs.file(output)
             doFirst {
@@ -51,42 +49,6 @@ profiles.eachWithIndex { profile, index ->
                         overlay.get().asFile.absolutePath, output.get().asFile.absolutePath
             }
         })
-    }
-}
-
-def moonsHwidExe = tasks.register("moonsHwidExe", Exec) {
-    group = "build"
-    description = "Builds the out-of-process Windows hardware ID helper."
-
-    def source = layout.projectDirectory.file("src/tools/hwid/csharp/MoonsHardwareId.cs")
-    def generator = layout.projectDirectory.file("src/tools/common/HardwareIdGenerator.cs")
-    def hashing = layout.projectDirectory.file("src/tools/common/Hashing.cs")
-    def output = layout.buildDirectory.file("dist/moons-hwid.exe")
-    inputs.file(source)
-    inputs.file(generator)
-    inputs.file(hashing)
-    outputs.file(output)
-
-    doFirst {
-        if (!System.getProperty("os.name").toLowerCase(java.util.Locale.ROOT).contains("windows")) {
-            throw new GradleException("moonsHwidExe currently requires Windows")
-        }
-        def compiler = locateCSharpCompiler()
-
-        output.get().asFile.parentFile.mkdirs()
-        executable compiler.absolutePath
-        args(
-                "/nologo",
-                "/target:winexe",
-                "/optimize+",
-                "/platform:x64",
-                "/reference:System.Management.dll",
-                "/reference:System.Windows.Forms.dll",
-                "/out:${output.get().asFile.absolutePath}",
-                generator.asFile.absolutePath,
-                hashing.asFile.absolutePath,
-                source.asFile.absolutePath
-        )
     }
 }
 
@@ -111,15 +73,15 @@ def launcherUiMetadata = tasks.register("launcherUiMetadata") {
     }
 }
 
-tasks.register("moonsUiRuntime") {
+tasks.register("temposUiRuntime") {
     group = "build"
     description = "Builds the standalone UI runtime JAR and SHA-256 sidecar."
     dependsOn launcherUiMetadata
 }
 
-// The installer owns dependency updates; the loader carries only game-loading payloads.
+// The standalone loader embeds its complete, matching runtime dependencies.
 def ysmMetadata = layout.buildDirectory.file("generated/launcher/ysm.properties")
-def ysmPackage = layout.buildDirectory.file('dist/moons-ysm-all.zip')
+def ysmPackage = layout.buildDirectory.file('dist/tempos-ysm-all.zip')
 def launcherDependencyMetadata = tasks.register('launcherDependencyMetadata') {
     dependsOn launcherUiMetadata, 'ysmUniversalBundle'
     inputs.file(ysmPackage)
@@ -144,7 +106,7 @@ def assemblyVersionSource = layout.buildDirectory.file('generated/launcher/Launc
 def clientVersion = project.version.toString()
 if (!(clientVersion ==~ /[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+-(?:Experiment|Release)/))
     throw new GradleException('load_version must use X.Y.Z.x-Experiment or X.Y.Z.x-Release; x is the patch sequence')
-def launcherBuildId = providers.gradleProperty('moons_build_id')
+def launcherBuildId = providers.gradleProperty('tempos_build_id')
         .getOrElse(providers.environmentVariable('GITHUB_SHA').getOrElse('local'))
 def launcherVersionMetadata = tasks.register('launcherVersionMetadata') {
     dependsOn launcherDependencyMetadata
@@ -154,7 +116,7 @@ def launcherVersionMetadata = tasks.register('launcherVersionMetadata') {
     outputs.files(releaseMetadata, assemblyVersionSource)
     doLast {
         if (!(launcherBuildId ==~ /[A-Za-z0-9._-]+/))
-            throw new GradleException('moons_build_id must contain only letters, digits, dots, underscores or dashes')
+            throw new GradleException('tempos_build_id must contain only letters, digits, dots, underscores or dashes')
         def numeric = clientVersion.split('[-+]')[0]
         if (numeric.split('\\.').any { it.toBigInteger() > 65534 })
             throw new GradleException('Version components must fit the Windows version resource (0..65534)')
@@ -177,83 +139,68 @@ def launcherVersionMetadata = tasks.register('launcherVersionMetadata') {
     }
 }
 
-def registerLauncher = { String taskName, String fileName, boolean installer ->
-    tasks.register(taskName, Exec) {
-        group = 'build'
-        description = installer ? 'Builds the dependency installer/updater.' : 'Builds the game loader using installed dependencies.'
-        dependsOn launcherVersionMetadata, 'launcherVersionCatalog'
-        if (!installer) dependsOn patchTasks, apiJar, bridgeDll, moonsHwidExe
-        def sources = files(
-                'src/tools/common/Hashing.cs', 'src/tools/common/StagedFile.cs', 'src/tools/common/DirectoryJunction.cs',
-                'src/tools/launcher/csharp/RuntimeMetadata.cs',
-                'src/tools/launcher/csharp/VersionCatalog.cs', moonsVersions.launcherSource,
-                'src/tools/launcher/csharp/DependencyRuntime.cs',
-                'src/tools/launcher/csharp/ProcessEvidenceCache.cs',
-                'src/tools/launcher/csharp/CacheMaintenance.cs', assemblyVersionSource)
-        sources += fileTree('src/tools/launcher/csharp/ui') { include '**/*.cs' }
-        if (installer) {
-            sources += files('src/tools/launcher/csharp/DependencyInstaller.cs',
-                    'src/tools/launcher/csharp/YsmPackage.cs', 'src/tools/launcher/csharp/ZipEntries.cs')
-        } else {
-            sources += files('src/tools/launcher/csharp/MoonsExeLauncher.cs',
-                    'src/tools/common/HardwareIdGenerator.cs',
-                    'src/tools/launcher/csharp/LoadSession.cs', 'src/tools/launcher/csharp/ZipEntries.cs')
-        }
-        def resources = [
-                'Moons.UiRuntime.properties': uiMetadata,
-                'Moons.Ysm.properties': ysmMetadata,
-                'Moons.Release.properties': releaseMetadata]
-        if (installer) {
-            resources['Moons.Ysm.zip'] = ysmPackage
-            resources['Moons.UiRuntime.jar'] = uiRuntime
-        } else {
-            profiles.eachWithIndex { profile, index ->
-                def suffix = index == 0 ? 'jar' : 'patch'
-                resources["Moons.Payload.${profile.profileId}.${suffix}"] = index == 0
-                        ? layout.buildDirectory.file("universal/${profile.artifactId}/moons.jar")
-                        : layout.buildDirectory.file("universal/moons-${profile.artifactId}.patch.zip")
-            }
-            resources['Moons.Api.jar'] = apiJar.flatMap { it.archiveFile }
-            resources['Moons.Bridge.dll'] = layout.buildDirectory.file("${moonsBuild.loaderStagingDirectory}/moons-bridge.dll")
-        }
-        def output = layout.buildDirectory.file("dist/${fileName}")
-        def manifest = file('src/tools/launcher/launcher.manifest')
-        inputs.files(sources)
-        inputs.file(manifest)
-        inputs.files(resources.values())
-        outputs.file(output)
-        doFirst {
-            if (!moonsBuild.windowsHost) throw new GradleException("${taskName} requires Windows")
-            output.get().asFile.parentFile.mkdirs()
-            executable locateCSharpCompiler().absolutePath
-            args '/nologo', '/target:winexe', '/optimize+', '/platform:x64',
-                    "/win32manifest:${manifest.absolutePath}",
-                    '/reference:System.Windows.Forms.dll', '/reference:System.Management.dll', '/reference:System.Web.Extensions.dll',
-                    '/reference:System.IO.Compression.dll', '/reference:System.IO.Compression.FileSystem.dll',
-                    "/out:${output.get().asFile.absolutePath}"
-            args resources.collect { name, path -> "/resource:${path.get().asFile.absolutePath},${name}" }
-            args sources.files.collect { it.absolutePath }.sort()
-        }
+def finalizerOutput = layout.buildDirectory.file('generated/launcher/tempos-finalizer.exe')
+def sessionFinalizerExe = tasks.register('sessionFinalizerExe', Exec) {
+    def sources = files('src/tools/launcher/csharp/SessionFinalizer.cs',
+            'src/tools/launcher/csharp/PortableConfig.cs', 'src/tools/launcher/csharp/LegacyConfigMigration.cs',
+            'src/tools/launcher/csharp/LegacyModelMigration.cs', 'src/tools/launcher/csharp/NativeDialogs.cs')
+    temposToolchains.csharpExe(delegate, finalizerOutput, sources, ['/target:winexe', '/optimize+',
+            '/platform:x64', '/main:Tempos.WindowsLauncher.SessionFinalizer', '/reference:System.Web.Extensions.dll',
+            '/reference:System.Windows.Forms.dll', '/reference:System.Drawing.dll'])
+}
+
+def temposExe = tasks.register('temposExe', Exec) {
+    group = 'build'
+    description = 'Builds the standalone game loader with all runtime dependencies embedded.'
+    dependsOn launcherVersionMetadata, 'launcherVersionCatalog', patchTasks, apiJar, bridgeDll, sessionFinalizerExe
+    def sources = temposToolchains.launcherCommonSources + files(assemblyVersionSource)
+    sources += fileTree('src/tools/launcher/csharp/ui') { include '**/*.cs' }
+    sources += files('src/tools/launcher/csharp/TemposExeLauncher.cs',
+            'src/tools/common/HardwareIdGenerator.cs',
+            'src/tools/launcher/csharp/TemporaryPayloadSession.cs',
+            'src/tools/launcher/csharp/PortableConfig.cs',
+            'src/tools/launcher/csharp/LegacyConfigMigration.cs',
+            'src/tools/launcher/csharp/LegacyModelMigration.cs',
+            'src/tools/launcher/csharp/LegacyMigration.cs',
+            'src/tools/launcher/csharp/LoadSession.cs', 'src/tools/launcher/csharp/ZipEntries.cs')
+    def resources = [
+            'Tempos.UiRuntime.properties': uiMetadata,
+            'Tempos.Ysm.properties': ysmMetadata,
+            'Tempos.Release.properties': releaseMetadata,
+            'Tempos.Ysm.zip': ysmPackage,
+            'Tempos.UiRuntime.jar': uiRuntime]
+    resources['Tempos.Finalizer.exe'] = finalizerOutput
+    profiles.eachWithIndex { profile, index ->
+        def suffix = index == 0 ? 'jar' : 'patch'
+        resources["Tempos.Payload.${profile.profileId}.${suffix}"] = index == 0
+                ? layout.buildDirectory.file("universal/${profile.artifactId}/tempos.jar")
+                : layout.buildDirectory.file("universal/tempos-${profile.artifactId}.patch.zip")
     }
+    resources['Tempos.Api.jar'] = apiJar.flatMap { it.archiveFile }
+    resources['Tempos.Bridge.dll'] = layout.buildDirectory.file("${temposBuild.loaderStagingDirectory}/tempos-bridge.dll")
+    def output = layout.buildDirectory.file('dist/tempos.exe')
+    def manifest = file('src/tools/launcher/launcher.manifest')
+    inputs.file(manifest)
+    temposToolchains.csharpExe(delegate, output, sources, ['/target:winexe', '/optimize+', '/platform:x64',
+            "/win32manifest:${manifest.absolutePath}", '/reference:System.Windows.Forms.dll',
+            '/reference:System.Management.dll', '/reference:System.Web.Extensions.dll',
+            '/reference:System.IO.Compression.dll', '/reference:System.IO.Compression.FileSystem.dll'], resources)
 }
 
-def moonsExe = registerLauncher('moonsExe', 'moon.exe', false)
-def moonsInstallExe = registerLauncher('moonsInstallExe', 'moon-install.exe', true)
-
-tasks.register('moonsPackages') {
+tasks.register('temposPackages') {
     group = 'build'
-    description = 'Builds moon-install.exe, moon.exe and the matching standalone UI runtime.'
-    dependsOn moonsExe, moonsInstallExe
+    description = 'Builds the standalone tempos.exe with its complete embedded runtime and release archive.'
+    dependsOn temposExe
 }
 
-tasks.register('moonsBuild') {
+tasks.register('temposBuild') {
     group = 'build'
-    description = 'Checks every supported version, packages the distribution and verifies both real EXEs.'
+    description = 'Checks every supported version, packages the standalone loader and verifies the real EXE.'
     dependsOn 'checkAllVersions', 'verifyLauncherPackages'
 }
 
 tasks.named('assemble').configure {
-    dependsOn tasks.named('moonsJar'), moonsExe, moonsInstallExe, bridgeDll
+    dependsOn tasks.named('temposJar'), temposExe, bridgeDll
 }
 
 publishing {

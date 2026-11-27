@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(moons_bridge LANGUAGES CXX)
+project(tempos_bridge LANGUAGES CXX)
 
 if(NOT DEFINED JAVA_HOME)
     if(DEFINED ENV{JAVA_HOME})
@@ -21,37 +21,37 @@ if(NOT EXISTS "${JAVA_INCLUDE_DIR}/jni.h")
     message(FATAL_ERROR "JAVA_HOME does not contain JNI headers: ${JAVA_HOME}")
 endif()
 
-add_library(moons-bridge SHARED src/moons_bridge.cpp src/bootstrap_search.cpp)
-target_compile_features(moons-bridge PRIVATE cxx_std_17)
-target_include_directories(moons-bridge PRIVATE
+add_library(tempos-bridge SHARED src/tempos_bridge.cpp src/bootstrap_search.cpp)
+target_compile_features(tempos-bridge PRIVATE cxx_std_17)
+target_include_directories(tempos-bridge PRIVATE
         "${JAVA_INCLUDE_DIR}"
         "${JAVA_PLATFORM_INCLUDE_DIR}")
-target_link_libraries(moons-bridge PRIVATE
+target_link_libraries(tempos-bridge PRIVATE
         "${JAVA_HOME}/lib/jvm.lib"
         shell32
         ole32
         uuid)
 
 if(MSVC)
-    target_compile_options(moons-bridge PRIVATE /W4 /EHsc /permissive- /utf-8)
+    target_compile_options(tempos-bridge PRIVATE /W4 /EHsc /permissive- /utf-8)
 else()
-    target_compile_options(moons-bridge PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(tempos-bridge PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
-set_target_properties(moons-bridge PROPERTIES
+set_target_properties(tempos-bridge PROPERTIES
         PREFIX ""
-        OUTPUT_NAME "moons-bridge"
+        OUTPUT_NAME "tempos-bridge"
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/out"
         LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/out")
 
 foreach(configuration DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)
-    set_target_properties(moons-bridge PROPERTIES
+    set_target_properties(tempos-bridge PROPERTIES
             RUNTIME_OUTPUT_DIRECTORY_${configuration} "${CMAKE_BINARY_DIR}/out"
             LIBRARY_OUTPUT_DIRECTORY_${configuration} "${CMAKE_BINARY_DIR}/out")
 endforeach()
 
-option(MOONS_BUILD_NATIVE_TESTS "Build the standalone JVM bootstrap path check" OFF)
-if(MOONS_BUILD_NATIVE_TESTS)
+option(TEMPOS_BUILD_NATIVE_TESTS "Build the standalone JVM bootstrap path check" OFF)
+if(TEMPOS_BUILD_NATIVE_TESTS)
     add_executable(bootstrap-path-verification
             tests/bootstrap_path_verification.cpp src/bootstrap_search.cpp)
     target_compile_features(bootstrap-path-verification PRIVATE cxx_std_17)

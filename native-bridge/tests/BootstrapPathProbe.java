@@ -1,4 +1,4 @@
-package moons.test;
+package tempos.test;
 
 public final class BootstrapPathProbe {
     public static int value() {

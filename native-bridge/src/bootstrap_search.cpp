@@ -8,7 +8,7 @@
 #include <utility>
 #include <vector>
 
-namespace moons {
+namespace tempos {
 namespace {
 
 bool decode_utf8(const std::string& value, std::wstring& wide) {
@@ -136,4 +136,4 @@ jvmtiError add_bootstrap_jar(JNIEnv* env, jvmtiEnv* jvmti,
     return JVMTI_ERROR_ILLEGAL_ARGUMENT;
 }
 
-}  // namespace moons
+}  // namespace tempos

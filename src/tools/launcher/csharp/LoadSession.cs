@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Collections.Generic;
 
-namespace Moons.WindowsLauncher
+namespace Tempos.WindowsLauncher
 {
     /** Owns a single target's load mutex, one-shot configuration and startup confirmation. */
     internal sealed class LoadSession : IDisposable
@@ -30,7 +30,7 @@ namespace Moons.WindowsLauncher
 
         internal static LoadSession Acquire(int processId, Func<bool> cancelled)
         {
-            Mutex mutex = new Mutex(false, "Local\\Moons-Load-" + processId);
+            Mutex mutex = new Mutex(false, "Local\\Tempos-Load-" + processId);
             DateTime deadline = DateTime.UtcNow.AddSeconds(5);
             try
             {

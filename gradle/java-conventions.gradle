@@ -1,16 +1,15 @@
 /* Source-set boundaries, dependency declarations, and compiler configuration. */
-def selectedVersionDirectory = moonsBuild.versionDirectory
-def selectedMinecraftVersion = moonsBuild.minecraftVersion
-def targetJavaVersion = moonsBuild.targetJavaVersion
+def selectedVersionDirectory = temposBuild.versionDirectory
+def selectedMinecraftVersion = temposBuild.minecraftVersion
+def targetJavaVersion = temposBuild.targetJavaVersion
 
 repositories {
     mavenCentral()
     google()
-    maven { url = uri("https://maven.pkg.jetbrains.space/public/p/compose/dev") }
 }
 
 configurations {
-    composeEmbedded
+    graphicsRuntime
 }
 
 sourceSets {
@@ -25,7 +24,7 @@ sourceSets {
     loader {
         java.setSrcDirs([
                 "src/bootstrap/loader/java",
-                "src/common/asm",
+                "src/common/loader",
                 "src/minecraft/versions/${selectedVersionDirectory}/loader"
         ])
         resources.setSrcDirs(["src/bootstrap/loader/resources"])
@@ -57,7 +56,7 @@ loom {
 }
 
 configurations.named("clientImplementation") {
-    extendsFrom configurations.composeEmbedded
+    extendsFrom configurations.graphicsRuntime
 }
 
 sourceSets.client.java.setSrcDirs([
@@ -75,32 +74,30 @@ sourceSets.client.resources.setSrcDirs([
 
 tasks.named("processClientResources") {
     inputs.property("minecraftVersion", selectedMinecraftVersion)
-    filesMatching("META-INF/moons-module.properties") {
+    filesMatching("META-INF/tempos-module.properties") {
         expand(minecraftVersion: selectedMinecraftVersion)
     }
     from(layout.projectDirectory.dir("src/libraries/models/aim")) {
         include("aim-gru128-epoch7.bin", "aim-gru128-epoch7.json")
-        into("assets/moons/models")
+        into("assets/tempos/models")
     }
 }
 
 // Loom creates the split client source set after the Kotlin plugin has applied.
 // Explicitly expose its Java roots to K2 so Kotlin can resolve the existing
 // module registry and Minecraft screen classes during joint compilation.
-tasks.named("compileClientKotlin", moonsPluginTypes.kotlinCompile) {
+tasks.named("compileClientKotlin", temposPluginTypes.kotlinCompile) {
     source(sourceSets.client.java)
 }
 
 dependencies {
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
 
-    // Compose renders as an independent final-frame overlay in the GLFW framebuffer.
-    // These artifacts are shaded into the hot-loaded feature payload below.
-    composeEmbedded(compose.desktop.currentOs)
-    composeEmbedded(compose.material3)
+    // GUI glyphs use Minecraft's STB runtime; world labels use the JDK rasterizer.
+    graphicsRuntime "org.jetbrains.kotlin:kotlin-stdlib:2.3.20"
 
     // The standalone loader is deliberately isolated from Fabric/Minecraft.
-    // Its only non-JDK dependency is ASM, which is folded into moons.jar.
+    // Its only non-JDK dependency is ASM, which is folded into tempos.jar.
     loaderImplementation "org.ow2.asm:asm:9.10.1"
     loaderImplementation "org.ow2.asm:asm-tree:9.10.1"
     loaderImplementation "org.ow2.asm:asm-util:9.10.1"
@@ -115,7 +112,7 @@ tasks.withType(JavaCompile).configureEach {
 
 kotlin {
     compilerOptions {
-        jvmTarget = moonsPluginTypes.jvmTarget25
+        jvmTarget = temposPluginTypes.jvmTarget25
     }
 }
 
@@ -135,8 +132,8 @@ sourceSets.client.compileClasspath += sourceSets.api.output + sourceSets.runtime
 
 // Compilation-only entry points remain available; CI runs the full version checks by default.
 def versionCompilations = []
-moonsBuild.supportedVersions.each { minecraftVersion, directory ->
-    def versionCompilation = moonsMultiVersion.register(directory, "compileMinecraft${directory}", 'build',
+temposBuild.supportedVersions.each { minecraftVersion, directory ->
+    def versionCompilation = temposMultiVersion.register(directory, "compileMinecraft${directory}", 'build',
             "Compiles production sources for Minecraft ${minecraftVersion} without verification.",
             ['clientClasses', 'loaderClasses', 'ysmClasses'])
     versionCompilations.add(versionCompilation)

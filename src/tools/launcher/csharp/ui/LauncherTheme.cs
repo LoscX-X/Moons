@@ -6,7 +6,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
-namespace Moons.WindowsLauncher
+namespace Tempos.WindowsLauncher
 {
     // Shared desktop controls for the installer, loader and their dialogs.
     internal static class LauncherTheme
@@ -639,9 +639,9 @@ namespace Moons.WindowsLauncher
 
     internal sealed class ThemeMessageDialog : ThemeForm
     {
-        internal ThemeMessageDialog(string title, string message) : base("Moons")
+        internal ThemeMessageDialog(string title, string message) : base("Tempos")
         {
-            Text = title + " — Moons";
+            Text = title + " — Tempos";
             ClientSize = new Size(600, 336);
             StartPosition = FormStartPosition.CenterParent;
             InstallChrome(false, "Notice");

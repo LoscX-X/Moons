@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 
-namespace Moons.WindowsLauncher
+namespace Tempos.WindowsLauncher
 {
     internal sealed class SupportProfile
     {
@@ -24,8 +24,8 @@ namespace Moons.WindowsLauncher
             evidence = new Regex(evidencePattern, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         }
 
-        internal string PayloadFileName { get { return "moons-" + ArtifactId + ".jar"; } }
-        internal string YsmModuleName { get { return "modules/moons-ysm-" + GameId + ".jar"; } }
+        internal string PayloadFileName { get { return "tempos-" + ArtifactId + ".jar"; } }
+        internal string YsmModuleName { get { return "modules/tempos-ysm-" + GameId + ".jar"; } }
         internal bool Matches(string value) { return evidence.IsMatch(value); }
     }
 
@@ -79,8 +79,8 @@ namespace Moons.WindowsLauncher
 
         internal static string[] YsmPackageNames()
         {
-            var names = new List<string> { "libraries/moons-ysm-core.jar", "libraries/moons-ysm-codecs.jar",
-                "libraries/moons-ysm-images.jar" };
+            var names = new List<string> { "libraries/tempos-ysm-core.jar", "libraries/tempos-ysm-codecs.jar",
+                "libraries/tempos-ysm-images.jar" };
             foreach (var profile in Profiles) names.Add(profile.YsmModuleName);
             return names.ToArray();
         }

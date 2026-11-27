@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace Moons.WindowsLauncher
+namespace Tempos.WindowsLauncher
 {
     /// <summary>Reads the runtime bundle's simple, case-insensitive key=value metadata.</summary>
     internal static class RuntimeMetadata

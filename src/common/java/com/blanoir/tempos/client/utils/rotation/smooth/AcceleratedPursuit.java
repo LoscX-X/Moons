@@ -1,0 +1,71 @@
+package com.blanoir.tempos.client.utils.rotation.smooth;
+
+import static com.blanoir.tempos.client.utils.math.Approach.approach;
+
+import com.blanoir.tempos.client.utils.rotation.Rotation;
+import com.blanoir.tempos.client.utils.rotation.smooth.PursuitSmoothing.Motion;
+
+import net.minecraft.util.Mth;
+
+/** Accelerated fixed-point pursuit with overshoot handling. Cubic return is CubicCameraReturn. */
+public final class AcceleratedPursuit {
+    private AcceleratedPursuit() {}
+
+    public record AccelerationLimits(
+            double maxYawSpeed,
+            double maxPitchSpeed,
+            double yawAcceleration,
+            double pitchAcceleration) {}
+
+    public static Motion approachTarget(
+            Motion current,
+            Rotation target,
+            double deltaSeconds,
+            double response,
+            AccelerationLimits limits) {
+        float packetYaw = current.yaw();
+        float packetPitch = current.pitch();
+        float yawVelocity = current.yawVelocity();
+        float pitchVelocity = current.pitchVelocity();
+        float yawDifference = Mth.wrapDegrees(target.yaw() - packetYaw);
+        float pitchDifference = target.pitch() - packetPitch;
+        float desiredYawVelocity =
+                (float)
+                        Math.clamp(
+                                yawDifference * response,
+                                -limits.maxYawSpeed(),
+                                limits.maxYawSpeed());
+        float desiredPitchVelocity =
+                (float)
+                        Math.clamp(
+                                pitchDifference * response,
+                                -limits.maxPitchSpeed(),
+                                limits.maxPitchSpeed());
+        yawVelocity =
+                approach(
+                        yawVelocity,
+                        desiredYawVelocity,
+                        (float) (limits.yawAcceleration() * deltaSeconds));
+        pitchVelocity =
+                approach(
+                        pitchVelocity,
+                        desiredPitchVelocity,
+                        (float) (limits.pitchAcceleration() * deltaSeconds));
+
+        float yawStep = yawVelocity * (float) deltaSeconds;
+        if (Math.signum(yawStep) == Math.signum(yawDifference)
+                && Math.abs(yawStep) > Math.abs(yawDifference)) {
+            yawStep = yawDifference;
+            yawVelocity = 0.0F;
+        }
+        float pitchStep = pitchVelocity * (float) deltaSeconds;
+        if (Math.signum(pitchStep) == Math.signum(pitchDifference)
+                && Math.abs(pitchStep) > Math.abs(pitchDifference)) {
+            pitchStep = pitchDifference;
+            pitchVelocity = 0.0F;
+        }
+        packetYaw += yawStep;
+        packetPitch = Math.clamp(packetPitch + pitchStep, -90.0F, 90.0F);
+        return new Motion(packetYaw, packetPitch, yawVelocity, pitchVelocity);
+    }
+}

@@ -1,27 +1,28 @@
 /* Production Java payload archives. */
-def versionedPayloadDirectory = moonsBuild.payloadDirectory
-def moonsJarOutputDirectory = moonsBuild.jarOutputDirectory
+def versionedPayloadDirectory = temposBuild.payloadDirectory
+def temposJarOutputDirectory = temposBuild.jarOutputDirectory
 
 jar {
     enabled = false
 }
 
 def apiJar = tasks.register("apiJar", Jar) {
-    archiveFileName = "moons-api.jar"
+    archiveFileName = "tempos-api.jar"
     destinationDirectory = layout.buildDirectory.dir(versionedPayloadDirectory)
     from sourceSets.api.output
 }
 
 def runtimeJar = tasks.register("runtimeJar", Jar) {
-    archiveFileName = "moons-runtime.jar"
+    archiveFileName = "tempos-runtime.jar"
     destinationDirectory = layout.buildDirectory.dir(versionedPayloadDirectory)
     from sourceSets.runtime.output
 }
 
-def uiDependenciesJar = tasks.register("uiDependenciesJar", moonsPluginTypes.shadowJar) {
-    archiveFileName = "moons-ui-runtime.jar"
+def uiDependenciesJar = tasks.register("uiDependenciesJar", temposPluginTypes.shadowJar) {
+    group = null
+    archiveFileName = "tempos-ui-runtime.jar"
     destinationDirectory = layout.buildDirectory.dir("dist/dependencies")
-    configurations = [project.configurations.composeEmbedded]
+    configurations = [project.configurations.graphicsRuntime]
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     mergeServiceFiles()
     exclude "META-INF/INDEX.LIST"
@@ -30,25 +31,32 @@ def uiDependenciesJar = tasks.register("uiDependenciesJar", moonsPluginTypes.sha
 }
 
 def clientModuleJar = tasks.register("clientModuleJar", Jar) {
-    archiveFileName = "moons-core-features.jar"
+    archiveFileName = "tempos-core-features.jar"
     destinationDirectory = layout.buildDirectory.dir(versionedPayloadDirectory)
     dependsOn tasks.named("clientClasses")
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     from sourceSets.client.output
 }
 
-tasks.register("moonsJar", Jar) {
+tasks.register("temposJar", Jar) {
     group = "build"
     description = "Builds the Java payload loaded by the JNI/JVMTI bridge."
     dependsOn apiJar, runtimeJar, clientModuleJar, tasks.named("loaderClasses")
 
-    archiveFileName = "moons.jar"
-    destinationDirectory = layout.buildDirectory.dir(moonsJarOutputDirectory)
+    archiveFileName = "tempos.jar"
+    destinationDirectory = layout.buildDirectory.dir(temposJarOutputDirectory)
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 
     from sourceSets.loader.output
     from({
-        configurations.loaderRuntimeClasspath
+        // Kotlin belongs to the shared runtime URL, not the pre-runtime loader.
+        // Fold in only the loader's ASM dependency family.
+        configurations.loaderRuntimeClasspath.incoming.artifactView {
+            componentFilter { component ->
+                component instanceof org.gradle.api.artifacts.component.ModuleComponentIdentifier
+                        && component.group == 'org.ow2.asm'
+            }
+        }.files
                 .findAll { it.isFile() }
                 .collect { zipTree(it) }
     }) {
@@ -56,19 +64,19 @@ tasks.register("moonsJar", Jar) {
         exclude "META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA"
         exclude "module-info.class"
     }
-    into("META-INF/moons/bootstrap") {
+    into("META-INF/tempos/bootstrap") {
         from(apiJar.flatMap { it.archiveFile })
     }
-    into("META-INF/moons/runtime") {
+    into("META-INF/tempos/runtime") {
         from(runtimeJar.flatMap { it.archiveFile })
     }
-    into("META-INF/moons/modules") {
+    into("META-INF/tempos/modules") {
         from(clientModuleJar.flatMap { it.archiveFile })
     }
 
     manifest {
         attributes(
-                "Implementation-Title": "Moons JNI/JVMTI payload",
+                "Implementation-Title": "Tempos JNI/JVMTI payload",
                 "Implementation-Version": project.version
         )
     }

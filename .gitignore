@@ -25,7 +25,7 @@ atlassian-ide-plugin.xml
 /outputs/
 # Local checks for the update bot; Actions only needs the runtime script and manifest.
 /.github/scripts/*.test.mjs
-!/.github/scripts/moons-updates.test.mjs
+!/.github/scripts/tempos-updates.test.mjs
 /website/
 /tools/aim_training/verification/
 /tools/aim_training/SHA256SUMS.json

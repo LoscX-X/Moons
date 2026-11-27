@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using System.IO.Compression;
 
-namespace Moons.WindowsLauncher
+namespace Tempos.WindowsLauncher
 {
     /// <summary>ZIP entry I/O without payload selection, patch prefixes or deletion policy.</summary>
     internal static class ZipEntries

@@ -27,7 +27,7 @@ public final class Choice extends Widget {
     @Override protected boolean focusable() { return true; }
     @Override protected boolean lightText() { return true; }
     @Override protected float textSize() { return Theme.Floating.FIELD_SIZE; }
-    @Override public float preferredHeight() { return 20 + caption.extraHeight(); }
+    @Override public float preferredHeight() { return 18 + caption.extraHeight(); }
     @Override protected void tick(long now) {
         String current = value.get();
         if (!current.equals(displayed)) {

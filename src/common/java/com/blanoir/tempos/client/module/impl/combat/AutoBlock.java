@@ -12,7 +12,9 @@ import com.blanoir.tempos.client.event.EventPriority;
 import com.blanoir.tempos.client.event.action.AttackInputEvent;
 import com.blanoir.tempos.client.event.network.PacketThread;
 import com.blanoir.tempos.client.input.PhysicalInput;
+import com.blanoir.tempos.client.lifecycle.ClientReady;
 import com.blanoir.tempos.client.manager.combat.BlockingUse;
+import com.blanoir.tempos.client.manager.combat.CombatModuleCoordinator;
 import com.blanoir.tempos.client.manager.input.CombatInputController;
 import com.blanoir.tempos.client.manager.lease.RotationLease;
 import com.blanoir.tempos.client.manager.placement.PlacementCoordinator;
@@ -24,7 +26,6 @@ import com.blanoir.tempos.client.module.framework.ModuleCategory;
 import com.blanoir.tempos.client.module.framework.ModuleInfo;
 import com.blanoir.tempos.client.module.framework.ModuleModel;
 import com.blanoir.tempos.client.module.framework.ModuleModel.Setting;
-import com.blanoir.tempos.client.lifecycle.ClientReady;
 import com.blanoir.tempos.client.utils.combat.CombatReach;
 import com.blanoir.tempos.client.utils.entity.EntityDistance;
 import com.blanoir.tempos.client.utils.math.ViewCone;
@@ -225,7 +226,8 @@ public final class AutoBlock extends ClientFeature {
     }
 
     private boolean canRun(Minecraft client) {
-        return this.enabled.get()
+        return !CombatModuleCoordinator.automationSuspended()
+                && this.enabled.get()
                 && ClientReady.aliveGameplay(client)
                 && client.player.getMainHandItem().is(ItemTags.SWORDS)
                 && (!this.requireRightClick.get()

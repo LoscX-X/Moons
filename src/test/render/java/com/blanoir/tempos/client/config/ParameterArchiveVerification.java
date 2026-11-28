@@ -26,7 +26,8 @@ import java.util.concurrent.TimeUnit;
 /** Offline checks against real profile IO and callbacks; this does not launch a game client. */
 public final class ParameterArchiveVerification {
     private static final String MODULE = "archive_fixture";
-    private static final String PARAMETER = "data/ysm/parameters/123e4567-e89b-32d3-a456-426614174000.json";
+    private static final String PARAMETER =
+            "data/ysm/parameters/123e4567-e89b-32d3-a456-426614174000.json";
 
     private ParameterArchiveVerification() {}
 
@@ -35,50 +36,94 @@ public final class ParameterArchiveVerification {
             child(args[0], Path.of(args[1]));
             return;
         }
-        Path base = Path.of(System.getProperty("tempos.home", System.getProperty("java.io.tmpdir")));
+        Path base =
+                Path.of(System.getProperty("tempos.home", System.getProperty("java.io.tmpdir")));
         Files.createDirectories(base);
         Path root = Files.createTempDirectory(base, "parameter-archive-");
         List<String> failed = new ArrayList<>();
-        for (String mode : List.of(
-                "roundtrip", "raw", "format", "range", "raw-range", "type", "traversal",
-                "profile-traversal", "case-names", "attachment-json", "publish", "apply",
-                "selected-publish", "raw-selected-publish", "dirty-retry")) {
+        for (String mode :
+                List.of(
+                        "roundtrip",
+                        "raw",
+                        "format",
+                        "range",
+                        "raw-range",
+                        "type",
+                        "traversal",
+                        "profile-traversal",
+                        "case-names",
+                        "attachment-json",
+                        "publish",
+                        "apply",
+                        "selected-publish",
+                        "raw-selected-publish",
+                        "dirty-retry")) {
             if (!fork(mode, root.resolve(mode))) failed.add(mode);
         }
-        require(failed.isEmpty(), "Parameter archive checks failed: " + failed + "; fixtures: " + root);
-        System.out.println("TEMPOS_PARAMETER_ARCHIVE_VERIFIED named-profiles selected-restart hidden-values keybinds window-values ysm-sidecars raw-import rejected-input publication-rollback apply-rollback dirty-retry offline-files");
+        require(
+                failed.isEmpty(),
+                "Parameter archive checks failed: " + failed + "; fixtures: " + root);
+        System.out.println(
+                "TEMPOS_PARAMETER_ARCHIVE_VERIFIED named-profiles selected-restart hidden-values keybinds window-values ysm-sidecars raw-import rejected-input publication-rollback apply-rollback dirty-retry offline-files");
     }
 
     private static final class Fixture {
-        final BooleanSetting enabled = new BooleanSetting.Builder().name("archive.enabled").defaultValue(false).build();
+        final BooleanSetting enabled =
+                new BooleanSetting.Builder().name("archive.enabled").defaultValue(false).build();
         boolean resourcesActive;
         boolean failApply;
         double hidden = Settings.getDouble("archive.hidden", 2);
         double primary = Settings.getDouble("archive.primary", 3);
-        final ModuleModel.Setting hiddenSetting = SettingFactory.numeric(
-                        "hidden", "Hidden option", "number", () -> hidden, 0, 100, 0.25,
-                        (client, value) -> {
-                            Settings.setDouble("archive.hidden", value);
-                            hidden = value;
-                        })
-                .withDefault(2).visibleWhen(() -> false);
-        final ModuleModel.Setting primarySetting = SettingFactory.numeric(
-                        "primary", "Primary option", "number", () -> primary, 0, 20, 1,
-                        (client, value) -> {
-                            if (failApply && value == 13) throw new IllegalStateException("archive fixture callback failure");
-                            Settings.setDouble("archive.primary", value);
-                            primary = value;
-                        })
-                .withDefault(3);
+        final ModuleModel.Setting hiddenSetting =
+                SettingFactory.numeric(
+                                "hidden",
+                                "Hidden option",
+                                "number",
+                                () -> hidden,
+                                0,
+                                100,
+                                0.25,
+                                (client, value) -> {
+                                    Settings.setDouble("archive.hidden", value);
+                                    hidden = value;
+                                })
+                        .withDefault(2)
+                        .visibleWhen(() -> false);
+        final ModuleModel.Setting primarySetting =
+                SettingFactory.numeric(
+                                "primary",
+                                "Primary option",
+                                "number",
+                                () -> primary,
+                                0,
+                                20,
+                                1,
+                                (client, value) -> {
+                                    if (failApply && value == 13)
+                                        throw new IllegalStateException(
+                                                "archive fixture callback failure");
+                                    Settings.setDouble("archive.primary", value);
+                                    primary = value;
+                                })
+                        .withDefault(3);
 
         Fixture() {
-            ModuleRegistry.installCatalog(() -> ModuleRegistry.add(ModuleModel.module(
-                    MODULE, "Archive fixture", ModuleCategory.MISC, enabled::get,
-                    (client, value) -> {
-                        enabled.set(value);
-                        resourcesActive = value;
-                        return 1;
-                    }, () -> "", hiddenSetting, primarySetting)));
+            ModuleRegistry.installCatalog(
+                    () ->
+                            ModuleRegistry.add(
+                                    ModuleModel.module(
+                                            MODULE,
+                                            "Archive fixture",
+                                            ModuleCategory.MISC,
+                                            enabled::get,
+                                            (client, value) -> {
+                                                enabled.set(value);
+                                                resourcesActive = value;
+                                                return 1;
+                                            },
+                                            () -> "",
+                                            hiddenSetting,
+                                            primarySetting)));
             ConfigProfiles.initialize();
         }
 
@@ -99,12 +144,20 @@ public final class ParameterArchiveVerification {
         }
 
         void matches(JsonObject expected) {
-            require(ConfigProfiles.capture().equals(expected), "Current complete profile differs from the archived document");
+            require(
+                    ConfigProfiles.capture().equals(expected),
+                    "Current complete profile differs from the archived document");
             JsonObject module = expected.getAsJsonObject("modules").getAsJsonObject(MODULE);
-            require(hidden == module.getAsJsonObject("settings").get("hidden").getAsDouble(), "Hidden cached parameter was not applied");
-            require(primary == module.getAsJsonObject("settings").get("primary").getAsDouble(), "Cached numeric parameter was not applied");
-            require(enabled.get() == module.get("enabled").getAsBoolean()
-                    && resourcesActive == enabled.get(), "Module lifecycle did not follow the restored enabled flag");
+            require(
+                    hidden == module.getAsJsonObject("settings").get("hidden").getAsDouble(),
+                    "Hidden cached parameter was not applied");
+            require(
+                    primary == module.getAsJsonObject("settings").get("primary").getAsDouble(),
+                    "Cached numeric parameter was not applied");
+            require(
+                    enabled.get() == module.get("enabled").getAsBoolean()
+                            && resourcesActive == enabled.get(),
+                    "Module lifecycle did not follow the restored enabled flag");
             require(!hiddenSetting.isVisible(), "Fixture must exercise a genuinely hidden setting");
         }
     }
@@ -118,7 +171,9 @@ public final class ParameterArchiveVerification {
         if (mode.equals("restart")) {
             JsonObject archive = json(home.resolve("roundtrip.json"));
             String selected = archive.get("selected").getAsString();
-            require(ConfigProfiles.selected().equals(selected), "Fresh JVM did not honor selected-profile.info");
+            require(
+                    ConfigProfiles.selected().equals(selected),
+                    "Fresh JVM did not honor selected-profile.info");
             fixture.matches(archive.getAsJsonObject("profiles").getAsJsonObject(selected));
             require(Settings.saveResult().saved(), "Restarted selected profile is not saved");
         } else if (mode.equals("roundtrip")) {
@@ -129,7 +184,8 @@ public final class ParameterArchiveVerification {
                 case "raw" -> raw(home, fixture);
                 case "publish" -> publishFailure(home, fixture);
                 case "apply" -> applyFailure(home, fixture);
-                case "selected-publish", "raw-selected-publish" -> selectedPublicationFailure(home, fixture, mode.startsWith("raw-"));
+                case "selected-publish", "raw-selected-publish" ->
+                        selectedPublicationFailure(home, fixture, mode.startsWith("raw-"));
                 case "dirty-retry" -> dirtyRetry(home, fixture);
                 default -> rejectedInput(home, fixture, mode);
             }
@@ -147,51 +203,97 @@ public final class ParameterArchiveVerification {
         fixture.values(3);
         ConfigProfiles.load("arena");
         var expected = new LinkedHashMap<String, JsonObject>();
-        for (String name : ConfigProfiles.list()) expected.put(name, ConfigStore.read(ConfigProfiles.path(name)));
+        for (String name : ConfigProfiles.list())
+            expected.put(name, ConfigStore.read(ConfigProfiles.path(name)));
         var extras = new LinkedHashMap<String, String>();
-        extras.put("data/ysm/ysm.properties", "# verbatim properties\r\nmodel=C\\:\\\\models\\\\\\u732b.ysm\r\nscale=1.125\r\n");
+        extras.put(
+                "data/ysm/ysm.properties",
+                "# verbatim properties\r\nmodel=C\\:\\\\models\\\\\\u732b.ysm\r\nscale=1.125\r\n");
         extras.put(PARAMETER, "{ \"scale\": 1.12345678901234567890, \"name\": \"参数\" }\n");
         extras.put(PARAMETER + ".pose.json", "{\"head\": {\"x\": 2.5, \"y\": -1}}\r\n");
         extras.put(PARAMETER + ".textures.json", "{ \"selected\": \"skin.png\" }\n");
+        extras.put(
+                PARAMETER + ".before-body-size-0123456789abcdef0123456789abcdef.bak",
+                "{\"scale\":1}\n");
+        extras.put(
+                "config/server/server-example.org-0123456789abcdef.json",
+                "{\"scope\":\"server:example.org\",\"name\":\"参数\"}\n");
+        extras.put(
+                "config/profiles/server/server-example.org-0123456789abcdef.json",
+                "{\"scope\":\"server:example.org\"}\n");
+        extras.put(
+                "config/legacy/conflicts/" + "a".repeat(64) + ".json",
+                "{\"path\":\"旧参数\",\"text\":\"中文原文\"}\n");
         for (var entry : extras.entrySet()) write(home.resolve(entry.getKey()), entry.getValue());
         String legacyKey = "config/legacy/moons-moons.properties";
-        byte[] legacyBytes = "# unchanged Latin-1 \u00e9\r\nunknown.custom=001\\literal\r\n"
-                .getBytes(StandardCharsets.ISO_8859_1);
+        byte[] legacyBytes =
+                "# unchanged Latin-1 \u00e9\r\nunknown.custom=001\\literal\r\n"
+                        .getBytes(StandardCharsets.ISO_8859_1);
         Files.createDirectories(home.resolve(legacyKey).getParent());
         Files.write(home.resolve(legacyKey), legacyBytes);
         Path archive = home.resolve("roundtrip.json");
         ConfigProfiles.exportParameters(archive);
         byte[] exported = Files.readAllBytes(archive);
         JsonObject document = json(archive);
-        require(document.get("selected").getAsString().equals("arena"), "Export lost the selected profile");
-        require(document.getAsJsonObject("profiles").keySet().equals(expected.keySet()), "Export lost a named profile");
-        for (var entry : extras.entrySet()) require(
-                document.getAsJsonObject("extras").has(entry.getKey())
-                        && document.getAsJsonObject("extras").get(entry.getKey()).getAsString().equals(entry.getValue()),
-                "Export lost or changed the YSM attachment " + entry.getKey());
-        require(document.getAsJsonObject("extras").has(legacyKey)
-                && Arrays.equals(document.getAsJsonObject("extras").get(legacyKey).getAsString()
-                    .getBytes(StandardCharsets.ISO_8859_1), legacyBytes), "Export did not preserve the original Latin-1 properties bytes");
+        require(
+                document.get("selected").getAsString().equals("arena"),
+                "Export lost the selected profile");
+        require(
+                document.getAsJsonObject("profiles").keySet().equals(expected.keySet()),
+                "Export lost a named profile");
+        for (var entry : extras.entrySet())
+            require(
+                    document.getAsJsonObject("extras").has(entry.getKey())
+                            && document.getAsJsonObject("extras")
+                                    .get(entry.getKey())
+                                    .getAsString()
+                                    .equals(entry.getValue()),
+                    "Export lost or changed the YSM attachment " + entry.getKey());
+        require(
+                document.getAsJsonObject("extras").has(legacyKey)
+                        && Arrays.equals(
+                                document.getAsJsonObject("extras")
+                                        .get(legacyKey)
+                                        .getAsString()
+                                        .getBytes(StandardCharsets.ISO_8859_1),
+                                legacyBytes),
+                "Export did not preserve the original Latin-1 properties bytes");
 
         ConfigProfiles.load("default");
         fixture.values(4);
         ConfigProfiles.load("arena");
         fixture.values(5);
         Files.delete(ConfigProfiles.path("旅行"));
-        for (var entry : extras.entrySet()) Files.writeString(home.resolve(entry.getKey()), "overwritten fixture");
+        for (var entry : extras.entrySet())
+            Files.writeString(home.resolve(entry.getKey()), "overwritten fixture");
         Files.writeString(home.resolve(legacyKey), "overwritten legacy attachment");
         ConfigProfiles.importParameters(archive);
-        require(ConfigProfiles.selected().equals("arena"), "Import did not restore the archive's selected profile");
-        require(Arrays.equals(exported, Files.readAllBytes(archive)), "Import rewrote its source archive");
-        for (var entry : extras.entrySet()) require(Files.readString(home.resolve(entry.getKey())).equals(entry.getValue()), "Attachment did not roundtrip verbatim: " + entry.getKey());
-        require(Arrays.equals(legacyBytes, Files.readAllBytes(home.resolve(legacyKey))), "Import changed the Latin-1 properties attachment bytes");
+        require(
+                ConfigProfiles.selected().equals("arena"),
+                "Import did not restore the archive's selected profile");
+        require(
+                Arrays.equals(exported, Files.readAllBytes(archive)),
+                "Import rewrote its source archive");
+        for (var entry : extras.entrySet())
+            require(
+                    Files.readString(home.resolve(entry.getKey())).equals(entry.getValue()),
+                    "Attachment did not roundtrip verbatim: " + entry.getKey());
+        require(
+                Arrays.equals(legacyBytes, Files.readAllBytes(home.resolve(legacyKey))),
+                "Import changed the Latin-1 properties attachment bytes");
         for (var entry : expected.entrySet()) {
-            require(ConfigStore.read(ConfigProfiles.path(entry.getKey())).equals(entry.getValue()), "Import did not restore named profile " + entry.getKey());
+            require(
+                    ConfigStore.read(ConfigProfiles.path(entry.getKey())).equals(entry.getValue()),
+                    "Import did not restore named profile " + entry.getKey());
             ConfigProfiles.load(entry.getKey());
             fixture.matches(entry.getValue());
         }
         ConfigProfiles.load("arena");
-        require(Files.readString(Settings.directory().resolve("selected-profile.info")).trim().equals("arena"), "Selected profile pointer was not persisted");
+        require(
+                Files.readString(Settings.directory().resolve("selected-profile.info"))
+                        .trim()
+                        .equals("arena"),
+                "Selected profile pointer was not persisted");
         require(fork("restart", home), "Fresh JVM selected-profile restoration failed");
     }
 
@@ -203,8 +305,12 @@ public final class ParameterArchiveVerification {
         String selected = ConfigProfiles.selected();
         ConfigProfiles.importParameters(source);
         fixture.matches(raw);
-        require(ConfigProfiles.selected().equals(selected), "Raw profile import unexpectedly changed the active profile name");
-        require(Arrays.equals(original, Files.readAllBytes(source)), "Raw format-2 source was rewritten");
+        require(
+                ConfigProfiles.selected().equals(selected),
+                "Raw profile import unexpectedly changed the active profile name");
+        require(
+                Arrays.equals(original, Files.readAllBytes(source)),
+                "Raw format-2 source was rewritten");
         require(Settings.saveResult().saved(), "Raw profile was not persisted");
     }
 
@@ -213,15 +319,27 @@ public final class ParameterArchiveVerification {
         JsonObject incoming = root.getAsJsonObject("profiles").getAsJsonObject("incoming");
         switch (mode) {
             case "format" -> root.addProperty("format", 42);
-            case "range", "raw-range" -> incoming.getAsJsonObject("modules").getAsJsonObject(MODULE).getAsJsonObject("settings").addProperty("hidden", 999);
-            case "type" -> incoming.getAsJsonObject("modules").getAsJsonObject(MODULE).getAsJsonObject("settings").addProperty("hidden", "wrong type");
-            case "traversal" -> root.getAsJsonObject("extras").addProperty("data/ysm/parameters/../../escape.json", "{}");
-            case "profile-traversal" -> root.getAsJsonObject("profiles").add("../escape", incoming.deepCopy());
+            case "range", "raw-range" ->
+                    incoming.getAsJsonObject("modules")
+                            .getAsJsonObject(MODULE)
+                            .getAsJsonObject("settings")
+                            .addProperty("hidden", 999);
+            case "type" ->
+                    incoming.getAsJsonObject("modules")
+                            .getAsJsonObject(MODULE)
+                            .getAsJsonObject("settings")
+                            .addProperty("hidden", "wrong type");
+            case "traversal" ->
+                    root.getAsJsonObject("extras")
+                            .addProperty("data/ysm/parameters/../../escape.json", "{}");
+            case "profile-traversal" ->
+                    root.getAsJsonObject("profiles").add("../escape", incoming.deepCopy());
             case "case-names" -> {
                 root.getAsJsonObject("profiles").add("Arena", incoming.deepCopy());
                 root.getAsJsonObject("profiles").add("arena", changedProfile(8, 43));
             }
-            case "attachment-json" -> root.getAsJsonObject("extras").addProperty(PARAMETER, "{ broken");
+            case "attachment-json" ->
+                    root.getAsJsonObject("extras").addProperty(PARAMETER, "{ broken");
             default -> throw new AssertionError("Unknown case " + mode);
         }
         Path source = home.resolve("rejected.json");
@@ -233,20 +351,31 @@ public final class ParameterArchiveVerification {
         Map<String, byte[]> disk = disk(home);
         expectIOException(() -> ConfigProfiles.importParameters(source));
         fixture.matches(runtime);
-        require(ConfigProfiles.selected().equals(selected), "Rejected input switched the selected profile");
+        require(
+                ConfigProfiles.selected().equals(selected),
+                "Rejected input switched the selected profile");
         sameDisk(disk, disk(home));
-        require(Arrays.equals(sourceBefore, Files.readAllBytes(source)), "Rejected import changed its input file");
+        require(
+                Arrays.equals(sourceBefore, Files.readAllBytes(source)),
+                "Rejected import changed its input file");
         var after = Settings.saveResult();
-        require(after.saved() && after.appliedRevision() == saved.appliedRevision()
-                && after.persistedRevision() == saved.persistedRevision(), "Validation failure mutated or dirtied current parameters");
-        require(!Files.exists(home.resolve("escape.json")), "Rejected archive published a path outside its parameter destination");
+        require(
+                after.saved()
+                        && after.appliedRevision() == saved.appliedRevision()
+                        && after.persistedRevision() == saved.persistedRevision(),
+                "Validation failure mutated or dirtied current parameters");
+        require(
+                !Files.exists(home.resolve("escape.json")),
+                "Rejected archive published a path outside its parameter destination");
     }
 
     private static void publishFailure(Path home, Fixture fixture) throws Exception {
         JsonObject root = bundle("incoming", changedProfile(7, 42));
         root.getAsJsonObject("extras").addProperty(PARAMETER, "{\"fixture\":1}");
         // Earlier profile writes succeed; the later attachment cannot create its parent directory.
-        write(home.resolve("data/ysm/parameters"), "a regular file prevents attachment publication");
+        write(
+                home.resolve("data/ysm/parameters"),
+                "a regular file prevents attachment publication");
         Path source = home.resolve("publish.json");
         write(source, root.toString());
         JsonObject runtime = ConfigProfiles.capture();
@@ -254,10 +383,16 @@ public final class ParameterArchiveVerification {
         Map<String, byte[]> before = disk(home);
         expectIOException(() -> ConfigProfiles.importParameters(source));
         fixture.matches(runtime);
-        require(ConfigProfiles.selected().equals(selected), "Mid-publication failure changed selection");
+        require(
+                ConfigProfiles.selected().equals(selected),
+                "Mid-publication failure changed selection");
         sameDisk(before, disk(home));
-        require(Settings.saveResult().saved(), "Failure before runtime application dirtied current parameters");
-        require(!Files.exists(ConfigProfiles.path("incoming")), "Failed publication leaked a newly imported profile");
+        require(
+                Settings.saveResult().saved(),
+                "Failure before runtime application dirtied current parameters");
+        require(
+                !Files.exists(ConfigProfiles.path("incoming")),
+                "Failed publication leaked a newly imported profile");
     }
 
     private static void applyFailure(Path home, Fixture fixture) throws Exception {
@@ -270,16 +405,26 @@ public final class ParameterArchiveVerification {
         fixture.failApply = true;
         expectIOException(() -> ConfigProfiles.importParameters(source));
         fixture.matches(runtime);
-        require(ConfigProfiles.selected().equals(selected), "Failed callback switched profile selection");
+        require(
+                ConfigProfiles.selected().equals(selected),
+                "Failed callback switched profile selection");
         sameDisk(before, disk(home));
-        require(Settings.saveResult().saved(), "Successfully restored callbacks left current parameters dirty");
+        require(
+                Settings.saveResult().saved(),
+                "Successfully restored callbacks left current parameters dirty");
     }
 
-    private static void selectedPublicationFailure(Path home, Fixture fixture, boolean raw) throws Exception {
+    private static void selectedPublicationFailure(Path home, Fixture fixture, boolean raw)
+            throws Exception {
         Path source = home.resolve("selected-publication.json");
-        write(source, (raw ? changedProfile(7, 42) : bundle("incoming", changedProfile(7, 42))).toString());
+        write(
+                source,
+                (raw ? changedProfile(7, 42) : bundle("incoming", changedProfile(7, 42)))
+                        .toString());
         byte[] originalSource = Files.readAllBytes(source);
-        require(Settings.flush().saved(), "Initial state was dirty before blocking selection publication");
+        require(
+                Settings.flush().saved(),
+                "Initial state was dirty before blocking selection publication");
         Path pointer = Settings.directory().resolve("selected-profile.info");
         byte[] previousPointer = Files.readAllBytes(pointer);
         Files.delete(pointer);
@@ -291,18 +436,28 @@ public final class ParameterArchiveVerification {
         Map<String, byte[]> before = disk(home);
         expectIOException(() -> ConfigProfiles.importParameters(source));
         fixture.matches(runtime);
-        require(ConfigProfiles.selected().equals(selected), "Selection-marker publication failure did not restore the active profile");
+        require(
+                ConfigProfiles.selected().equals(selected),
+                "Selection-marker publication failure did not restore the active profile");
         sameDisk(before, disk(home));
-        require(Arrays.equals(originalSource, Files.readAllBytes(source)), "Failed publication rewrote the source archive");
+        require(
+                Arrays.equals(originalSource, Files.readAllBytes(source)),
+                "Failed publication rewrote the source archive");
         var failed = Settings.saveResult();
-        require(!failed.saved() && !failed.error().isEmpty(), "A blocked selection marker was falsely reported saved");
+        require(
+                !failed.saved() && !failed.error().isEmpty(),
+                "A blocked selection marker was falsely reported saved");
         Files.delete(marker);
         Files.delete(pointer);
         Files.write(pointer, previousPointer);
         var retried = Settings.flush();
-        require(retried.saved() && retried.appliedRevision() == failed.appliedRevision(), "Retry did not persist the restored dirty revision");
+        require(
+                retried.saved() && retried.appliedRevision() == failed.appliedRevision(),
+                "Retry did not persist the restored dirty revision");
         fixture.matches(runtime);
-        require(ConfigStore.read(Settings.file()).equals(runtime), "Retry published the rejected import instead of the restored parameters");
+        require(
+                ConfigStore.read(Settings.file()).equals(runtime),
+                "Retry published the rejected import instead of the restored parameters");
     }
 
     private static void dirtyRetry(Path home, Fixture fixture) throws Exception {
@@ -318,21 +473,37 @@ public final class ParameterArchiveVerification {
             fixture.hiddenSetting.apply().apply(null, new com.google.gson.JsonPrimitive(55.5));
         }
         var failed = Settings.saveResult();
-        require(!failed.saved() && !failed.error().isEmpty() && failed.persistedRevision() == persisted,
+        require(
+                !failed.saved()
+                        && !failed.error().isEmpty()
+                        && failed.persistedRevision() == persisted,
                 "Failed config publication cleared the dirty revision");
-        require(fixture.hidden == 55.5 && Settings.getDouble("archive.hidden", -1) == 55.5,
+        require(
+                fixture.hidden == 55.5 && Settings.getDouble("archive.hidden", -1) == 55.5,
                 "Failed publication lost the applied runtime parameter");
         Path export = home.resolve("must-not-exist.json");
         expectIOException(() -> ConfigProfiles.exportParameters(export));
-        require(!Files.exists(export) && Arrays.equals(previous, Files.readAllBytes(backup))
-                && Files.readString(marker).equals("retain"), "Export bypassed failed persistence or damaged prior data");
+        require(
+                !Files.exists(export)
+                        && Arrays.equals(previous, Files.readAllBytes(backup))
+                        && Files.readString(marker).equals("retain"),
+                "Export bypassed failed persistence or damaged prior data");
         Files.delete(marker);
         Files.delete(target);
         Files.move(backup, target);
         var retried = Settings.flush();
-        require(retried.saved() && retried.appliedRevision() == failed.appliedRevision(), "Flush did not retry the existing dirty revision");
-        require(ConfigStore.read(target).getAsJsonObject("modules").getAsJsonObject(MODULE)
-                .getAsJsonObject("settings").get("hidden").getAsDouble() == 55.5, "Retry saved a stale hidden-value snapshot");
+        require(
+                retried.saved() && retried.appliedRevision() == failed.appliedRevision(),
+                "Flush did not retry the existing dirty revision");
+        require(
+                ConfigStore.read(target)
+                                .getAsJsonObject("modules")
+                                .getAsJsonObject(MODULE)
+                                .getAsJsonObject("settings")
+                                .get("hidden")
+                                .getAsDouble()
+                        == 55.5,
+                "Retry saved a stale hidden-value snapshot");
         ConfigProfiles.exportParameters(export);
         require(Files.isRegularFile(export), "Successful retry did not unblock export");
     }
@@ -372,8 +543,16 @@ public final class ParameterArchiveVerification {
     }
 
     private static void sameDisk(Map<String, byte[]> expected, Map<String, byte[]> actual) {
-        require(expected.keySet().equals(actual.keySet()), "Failed import changed the parameter file set: before=" + expected.keySet() + " after=" + actual.keySet());
-        for (String name : expected.keySet()) require(Arrays.equals(expected.get(name), actual.get(name)), "Failed import changed persisted bytes: " + name);
+        require(
+                expected.keySet().equals(actual.keySet()),
+                "Failed import changed the parameter file set: before="
+                        + expected.keySet()
+                        + " after="
+                        + actual.keySet());
+        for (String name : expected.keySet())
+            require(
+                    Arrays.equals(expected.get(name), actual.get(name)),
+                    "Failed import changed persisted bytes: " + name);
     }
 
     private static JsonObject json(Path path) throws IOException {
@@ -386,13 +565,22 @@ public final class ParameterArchiveVerification {
     }
 
     private static boolean fork(String mode, Path home) throws Exception {
-        String executable = System.getProperty("os.name", "").startsWith("Windows") ? "java.exe" : "java";
-        Process process = new ProcessBuilder(
-                Path.of(System.getProperty("java.home"), "bin", executable).toString(),
-                "-Dfile.encoding=UTF-8", "-Djava.awt.headless=true",
-                "-Djava.io.tmpdir=" + System.getProperty("java.io.tmpdir"),
-                "-cp", System.getProperty("java.class.path"), ParameterArchiveVerification.class.getName(),
-                mode, home.toString()).inheritIO().start();
+        String executable =
+                System.getProperty("os.name", "").startsWith("Windows") ? "java.exe" : "java";
+        Process process =
+                new ProcessBuilder(
+                                Path.of(System.getProperty("java.home"), "bin", executable)
+                                        .toString(),
+                                "-Dfile.encoding=UTF-8",
+                                "-Djava.awt.headless=true",
+                                "-Djava.io.tmpdir=" + System.getProperty("java.io.tmpdir"),
+                                "-cp",
+                                System.getProperty("java.class.path"),
+                                ParameterArchiveVerification.class.getName(),
+                                mode,
+                                home.toString())
+                        .inheritIO()
+                        .start();
         if (!process.waitFor(90, TimeUnit.SECONDS)) {
             process.destroyForcibly();
             throw new AssertionError("Child archive check timed out: " + mode);
@@ -401,11 +589,16 @@ public final class ParameterArchiveVerification {
     }
 
     @FunctionalInterface
-    private interface Operation { void run() throws Exception; }
+    private interface Operation {
+        void run() throws Exception;
+    }
 
     private static void expectIOException(Operation action) throws Exception {
-        try { action.run(); }
-        catch (IOException expected) { return; }
+        try {
+            action.run();
+        } catch (IOException expected) {
+            return;
+        }
         throw new AssertionError("Expected parameter IO to fail");
     }
 

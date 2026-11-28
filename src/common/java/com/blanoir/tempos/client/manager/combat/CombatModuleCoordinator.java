@@ -3,6 +3,7 @@ package com.blanoir.tempos.client.manager.combat;
 import com.blanoir.tempos.client.module.impl.combat.SilentAura;
 import com.blanoir.tempos.client.module.impl.combat.TriggerBot;
 import com.blanoir.tempos.client.module.impl.combat.cushionaura.CushionAura;
+import com.blanoir.tempos.client.module.impl.combat.cushionaura.CusionRun;
 
 import net.minecraft.client.Minecraft;
 
@@ -22,6 +23,11 @@ public final class CombatModuleCoordinator {
     private static BiConsumer<Minecraft, Boolean> aimAssistToggle = (client, enabled) -> {};
 
     private CombatModuleCoordinator() {}
+
+    /** Execution-only suspension; saved feature toggles and timing settings stay untouched. */
+    public static boolean automationSuspended() {
+        return CusionRun.INSTANCE.isEnabled();
+    }
 
     public static void bindAimAssist(
             BooleanSupplier enabled, BiConsumer<Minecraft, Boolean> toggle) {

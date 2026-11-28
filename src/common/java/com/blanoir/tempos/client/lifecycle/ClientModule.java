@@ -9,6 +9,11 @@ import com.blanoir.tempos.runtime.RuntimeEvents;
 
 /** Loads and owns the built-in client feature lifecycle. */
 public final class ClientModule implements TemposModule {
+    /** Stops feature-owned input and sessions while keeping the loaded core available. */
+    public static void releaseFeatureState(net.minecraft.client.Minecraft client) {
+        ClientLifecycle.panic(client);
+    }
+
     private RuntimeEventAdapter adapter;
     private final ActivationGate activation = new ActivationGate();
     private boolean enabled;

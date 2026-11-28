@@ -120,12 +120,14 @@ namespace Tempos.WindowsLauncher
         {
             return relative == "data/ysm/ysm.properties"
                 || Regex.IsMatch(relative ?? "", "^config/legacy/(moons|tempos)-(moons|tempos)\\.properties$")
-                || Regex.IsMatch(relative ?? "", "^data/ysm/parameters/[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)*\\.json$");
+                || Regex.IsMatch(relative ?? "", "^config/legacy/conflicts/[0-9a-f]{64}\\.json$")
+                || Regex.IsMatch(relative ?? "", "^config/(?:profiles/)?server/server-[A-Za-z0-9._-]{1,48}-[0-9a-f]{16}\\.json$")
+                || Regex.IsMatch(relative ?? "", "^data/ysm/parameters/[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)*\\.json(?:\\.before-body-size-[0-9a-f]{32}\\.bak)?$");
         }
 
         internal static Encoding ExtraEncoding(string relative)
         {
-            return relative.StartsWith("config/legacy/", StringComparison.Ordinal)
+            return relative.StartsWith("config/legacy/", StringComparison.Ordinal) && relative.EndsWith(".properties", StringComparison.Ordinal)
                 ? Encoding.GetEncoding(28591, EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback) : Utf8;
         }
 
@@ -254,17 +256,45 @@ namespace Tempos.WindowsLauncher
             } finally { if (File.Exists(temporary)) File.Delete(temporary); }
         }
 
+        /// <summary>Reads parameter data without executing or loading a selected old EXE.</summary>
+        internal static byte[] ReadImport(string path)
+        {
+            byte[] payload;
+            using (var stream = File.OpenRead(path)) {
+                bool executable = stream.ReadByte() == 'M' && stream.ReadByte() == 'Z';
+                if (executable) {
+                    payload = Read(path);
+                    if (payload == null) throw new InvalidDataException("This EXE has no saved configuration. Choose a used Tempos EXE or exported JSON.");
+                } else {
+                    if (stream.Length > MaxPayload) throw new InvalidDataException("Configuration is too large.");
+                    stream.Position = 0;
+                    using (var bytes = new MemoryStream()) { stream.CopyTo(bytes); payload = bytes.ToArray(); }
+                }
+            }
+            return Encode(Bundle(payload));
+        }
+
         internal static Prepared Prepare(string root, string executable, string importedPath)
+        {
+            return PrepareWithParameters(root, executable, importedPath, null);
+        }
+
+        internal static Prepared PrepareWithParameters(string root, string executable, string importedPath, byte[] importedParameters)
         {
             root = SessionRoot(root);
             string home = Path.Combine(root, "home"), profilesDirectory = Path.Combine(home, "config", "profiles");
             Directory.CreateDirectory(profilesDirectory);
             LegacyConfigMigration.Candidate legacy = null;
-            byte[] initial = importedPath == null ? Read(executable) : File.ReadAllBytes(importedPath);
+            bool explicitImport = importedParameters != null || importedPath != null;
+            byte[] initial = importedParameters ?? (importedPath == null ? Read(executable) : ReadImport(importedPath));
             object recoveredLegacy = null;
             var recoveries = new List<object>();
-            if (importedPath == null) RecoverParameters(root, executable, ref initial, ref recoveredLegacy, recoveries);
-            if (initial == null) { legacy = LegacyConfigMigration.Capture(); if (legacy != null) initial = legacy.Bundle; }
+            if (!explicitImport) RecoverParameters(root, executable, ref initial, ref recoveredLegacy, recoveries);
+            bool hadInitial = initial != null;
+            if (!explicitImport) {
+                legacy = LegacyConfigMigration.Capture();
+                if (legacy != null) initial = LegacyConfigMigration.Merge(initial, legacy);
+            }
             string selected = "default";
             if (initial != null) {
                 var bundle = Bundle(initial);
@@ -278,9 +308,9 @@ namespace Tempos.WindowsLauncher
                 }
             }
             if (legacy != null) {
-                if (initial != null) legacy.RestoreProfileTimes(profilesDirectory);
+                if (initial != null) { if (!hadInitial) legacy.RestoreProfileTimes(profilesDirectory); }
                 else legacy.CopyExtras(home);
-                legacy.CopyLegacyProperties(home);
+                if (!hadInitial) legacy.CopyLegacyProperties(home);
             }
             File.WriteAllText(Path.Combine(home, "config", "selected-profile.info"), selected + "\n", Utf8);
             ExtractDialogHelper(root);
@@ -345,8 +375,13 @@ namespace Tempos.WindowsLauncher
                 if (File.GetLastWriteTimeUtc(file) > latest) latest = File.GetLastWriteTimeUtc(file);
             string modelParameters = Path.Combine(home, "data", "ysm", "parameters");
             if (Directory.Exists(modelParameters))
-                foreach (string file in Directory.GetFiles(modelParameters, "*.json"))
+                foreach (string file in Directory.GetFiles(modelParameters))
                     if (File.GetLastWriteTimeUtc(file) > latest) latest = File.GetLastWriteTimeUtc(file);
+            foreach (string relative in new[] { "config/server", "config/profiles/server", "config/legacy/conflicts" }) {
+                string directory = Path.Combine(home, relative.Replace('/', Path.DirectorySeparatorChar));
+                if (Directory.Exists(directory)) foreach (string file in Directory.GetFiles(directory, "*.json"))
+                    if (File.GetLastWriteTimeUtc(file) > latest) latest = File.GetLastWriteTimeUtc(file);
+            }
             foreach (string file in new[] { Path.Combine(home, "config", "selected-profile.info"), Path.Combine(home, "data", "ysm", "ysm.properties") })
                 if (File.Exists(file) && File.GetLastWriteTimeUtc(file) > latest) latest = File.GetLastWriteTimeUtc(file);
             return latest;
@@ -451,14 +486,25 @@ namespace Tempos.WindowsLauncher
             string parameters = Path.Combine(ysm, "parameters");
             if (Directory.Exists(parameters)) {
                 if (IsLink(parameters)) throw new IOException("Linked model parameter folder.");
-                foreach (string file in Directory.GetFiles(parameters, "*.json"))
-                    ReadExtra(extras, "data/ysm/parameters/" + Path.GetFileName(file), file);
+                foreach (string file in Directory.GetFiles(parameters)) {
+                    string relative = "data/ysm/parameters/" + Path.GetFileName(file);
+                    if (ValidExtra(relative)) ReadExtra(extras, relative, file);
+                }
             }
             string legacy = Path.Combine(root, "home", "config", "legacy");
             if (Directory.Exists(legacy)) {
                 if (IsLink(legacy)) throw new IOException("Linked legacy parameter folder.");
                 foreach (string file in Directory.GetFiles(legacy, "*.properties"))
                     ReadExtra(extras, "config/legacy/" + Path.GetFileName(file), file);
+            }
+            foreach (string relative in new[] { "config/server", "config/profiles/server", "config/legacy/conflicts" }) {
+                string folder = Path.Combine(root, "home", relative.Replace('/', Path.DirectorySeparatorChar));
+                if (!Directory.Exists(folder)) continue;
+                if (IsLink(folder)) throw new IOException("Linked parameter folder.");
+                foreach (string file in Directory.GetFiles(folder, "*.json")) {
+                    string key = relative + "/" + Path.GetFileName(file);
+                    if (ValidExtra(key)) ReadExtra(extras, key, file);
+                }
             }
             byte[] bundle = Encode(NewBundle(selected, profiles, extras));
             Bundle(bundle);

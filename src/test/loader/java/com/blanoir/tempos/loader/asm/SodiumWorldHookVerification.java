@@ -70,7 +70,7 @@ public final class SodiumWorldHookVerification {
             if (!(id instanceof LdcInsnNode constant) || !(constant.cst instanceof String name) || !name.startsWith(HOOK)) continue;
             if (!(argument instanceof VarInsnNode load) || load.getOpcode() != Opcodes.ALOAD || load.var != layerLocal)
                 throw new AssertionError("Incorrect layer local for " + name + ": expected " + layerLocal);
-            if (!(receiver instanceof VarInsnNode ownerLoad) || ownerLoad.getOpcode() != Opcodes.ALOAD || ownerLoad.var != 0)
+            if (!(receiver instanceof VarInsnNode ownerLoad) || ownerLoad.getOpcode() != Opcodes.ALOAD || ownerLoad.var != (descriptor.equals(PEARL) ? 1 : 0))
                 throw new AssertionError("Incorrect Sodium world receiver");
             if (name.equals(HOOK)) starts++;else if (name.equals(HOOK + ".end")) ends++;
         }

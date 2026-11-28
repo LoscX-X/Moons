@@ -17,7 +17,7 @@ public final class Theme {
     /** Floating-window measurements are in logical GUI pixels. */
     public static final class Floating {
         private Floating() {}
-        public static final float WIDTH = 110, GAP = 8, HEADER = 18, ROW = 20, GROUP = 12, FOOTER = 20;
+        public static final float WIDTH = 110, GAP = 6, HEADER = 17, ROW = 18, GROUP = 11, FOOTER = 18;
         // Inter line-box sizes, in GUI pixels. Keep the reference hierarchy at the smaller requested scale.
         public static final float BRAND_SIZE = 7.3f, TEXT_SIZE = 6.65f, FIELD_SIZE = 6.15f, DETAIL_SIZE = 5.7f;
         public static final float RADIUS = 1.5f, SHADOW_BLUR = 2, BOTTOM = 2, MAX_HEIGHT = 300;

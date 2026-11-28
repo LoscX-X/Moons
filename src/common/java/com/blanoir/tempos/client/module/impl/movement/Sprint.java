@@ -38,6 +38,11 @@ public final class Sprint extends ClientFeature {
 
     /** Whether the local player should be sprinting during this movement tick. */
     public boolean shouldSprint(LocalPlayer player) {
+        return canSprint(player) && player.input.hasForwardImpulse();
+    }
+
+    /** Eligibility before directional input is chosen by a movement module. */
+    public boolean canSprint(LocalPlayer player) {
         if (!this.enabled.get() || player == null) {
             return false;
         }
@@ -54,7 +59,7 @@ public final class Sprint extends ClientFeature {
             return false;
         }
 
-        return player.input.hasForwardImpulse();
+        return true;
     }
 
     @Override

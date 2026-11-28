@@ -124,7 +124,8 @@ public final class TriggerBot extends ClientFeature {
 
     /** Samples the current view ray and submits before LocalPlayer movement. */
     private void playerUpdate(Minecraft client) {
-        if (client == null
+        if (CombatModuleCoordinator.automationSuspended()
+                || client == null
                 || client.player == null
                 || client.level == null
                 || client.gameMode == null
@@ -135,9 +136,8 @@ public final class TriggerBot extends ClientFeature {
             return;
         }
         if (!this.enabled.get()) return;
-        // Misplace remains visual for TriggerBot. Include Critical's synchronous
-        // forecast so its reach/timing cannot still use the displaced target.
-        CombatGeometry.withOriginalPositions(() -> playerUpdateCameraRay(client));
+        // Pick, range checks and Critical's forecast share Misplace's displayed geometry.
+        playerUpdateCameraRay(client);
     }
 
     /** Ordinary TriggerBot entry: use the player's current view within vanilla reach. */
@@ -338,9 +338,27 @@ public final class TriggerBot extends ClientFeature {
 
     private Entity getAttackableCrosshairTarget(Minecraft client) {
         if (client == null || client.player == null || client.level == null) return null;
+        return crosshairTarget(client, safeInteractionRange(client));
+    }
+
+    /** Read-only acquisition for movement; attack reach and dispatch retain their own gate. */
+    public Entity movementTarget(Minecraft client, double range) {
+        return isEnabled() && isHoldingSupportedItem(client)
+                ? crosshairTarget(client, range)
+                : null;
+    }
+
+    public boolean isMovementTarget(Minecraft client, Entity target) {
+        return isEnabled()
+                && isHoldingSupportedItem(client)
+                && Targeting.isConfiguredTarget(
+                        client, target, this.targetPlayers.get(), false, this.targetEntityTypes);
+    }
+
+    private Entity crosshairTarget(Minecraft client, double range) {
+        if (client == null || client.player == null || client.level == null) return null;
         var eye = client.player.getEyePosition();
         var look = client.player.getViewVector(1.0F);
-        double range = safeInteractionRange(client);
         boolean throughBlocks = this.throughBlockEnabled.get();
         // The shared camera hit can be stale or extended by Reach. Pick afresh,
         // retaining non-target entities as occluders instead of looking through them.

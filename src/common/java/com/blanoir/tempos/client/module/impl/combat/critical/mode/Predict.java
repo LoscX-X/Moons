@@ -573,7 +573,7 @@ public final class Predict extends SubFeature.Switchable<Critical> {
     }
 
     private boolean unavailable(Minecraft client) {
-        return !parent().predictMode()
+        return CombatModuleCoordinator.automationSuspended() || !parent().predictMode()
                 || !parent().configuredEnabled()
                 || client == null
                 || client.player == null

@@ -26,6 +26,7 @@ public final class ModuleRegistry {
     private static boolean catalogInitializing;
     private static volatile boolean catalogInitialized;
     private static List<Module> catalogSnapshot = List.of();
+    private static long activationRevision;
 
     private ModuleRegistry() {}
 
@@ -109,7 +110,13 @@ public final class ModuleRegistry {
         return mutate(module, () -> setting.apply().apply(Minecraft.getInstance(), value));
     }
 
+    /** Includes intervening on/off pairs, even when the final enabled set is unchanged. */
+    public static long activationRevision() {
+        return activationRevision;
+    }
+
     private static JsonObject mutate(Module module, Runnable action) {
+        boolean before = ModuleModel.safeEnabled(module.enabled());
         try {
             try (var batch = Settings.batch()) {
                 ClientChat.withoutNoticesOnCurrentThread(action);
@@ -117,6 +124,8 @@ public final class ModuleRegistry {
             return success(module.toJson());
         } catch (RuntimeException exception) {
             return error(messageOf(exception));
+        } finally {
+            if (before != ModuleModel.safeEnabled(module.enabled())) activationRevision++;
         }
     }
 

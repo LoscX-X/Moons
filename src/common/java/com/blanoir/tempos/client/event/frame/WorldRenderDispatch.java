@@ -15,12 +15,16 @@ import com.mojang.blaze3d.vertex.PoseStack;
 public final class WorldRenderDispatch {
     private static long frame;
     private static long renderedFrame = -1L;
+    private static Object pendingPass;
+    private static PoseStack pendingStack;
+    private static float pendingDelta;
 
     private WorldRenderDispatch() {}
 
     public static void beginFrame() {
         com.blanoir.tempos.client.render.VisualModelCapture.beginFrame();
         frame++;
+        clearPending();
         VisualRenderTargets.beginFrame();
     }
 
@@ -30,6 +34,29 @@ public final class WorldRenderDispatch {
         }
 
         renderedFrame = frame;
+        clearPending();
         EventBus.WORLD_RENDER.post(new WorldRenderEvent(poseStack, tickDelta));
+    }
+
+    /** RenderPearl terrain callers own the pass beyond Sodium's method return. */
+    public static void defer(Object pass, PoseStack poseStack, float tickDelta) {
+        if (pass == null || poseStack == null || renderedFrame == frame) return;
+        pendingPass = pass;
+        pendingStack = poseStack;
+        pendingDelta = tickDelta;
+    }
+
+    public static void afterPass(Object pass) {
+        if (pass == null || pass != pendingPass) return;
+        PoseStack matrices = pendingStack;
+        float delta = pendingDelta;
+        clearPending();
+        post(matrices, delta);
+    }
+
+    private static void clearPending() {
+        pendingPass = null;
+        pendingStack = null;
+        pendingDelta = 0;
     }
 }

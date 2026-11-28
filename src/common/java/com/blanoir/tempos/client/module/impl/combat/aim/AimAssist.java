@@ -107,7 +107,7 @@ public final class AimAssist extends ClientFeature {
      * Entire assist loop runs at render frequency.
      */
     private void frame(FrameEvent event) {
-        boolean enabled = this.enabled.get();
+        boolean enabled = this.enabled.get() && !CombatModuleCoordinator.automationSuspended();
         Minecraft client = event.client();
         var currentPlayer = client == null ? null : client.player;
 

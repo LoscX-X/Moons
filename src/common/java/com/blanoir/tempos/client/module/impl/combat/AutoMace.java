@@ -9,6 +9,8 @@ import com.blanoir.tempos.client.config.settings.IntSetting;
 import com.blanoir.tempos.client.event.EventBus;
 import com.blanoir.tempos.client.event.EventPriority;
 import com.blanoir.tempos.client.input.PhysicalInput;
+import com.blanoir.tempos.client.lifecycle.ClientReady;
+import com.blanoir.tempos.client.manager.combat.CombatModuleCoordinator;
 import com.blanoir.tempos.client.manager.input.CombatInputController;
 import com.blanoir.tempos.client.manager.lease.HotbarLease;
 import com.blanoir.tempos.client.manager.lease.RotationLease;
@@ -19,7 +21,6 @@ import com.blanoir.tempos.client.module.framework.ClientFeature;
 import com.blanoir.tempos.client.module.framework.ModuleCategory;
 import com.blanoir.tempos.client.module.framework.ModuleInfo;
 import com.blanoir.tempos.client.module.framework.ModuleModel.Setting;
-import com.blanoir.tempos.client.lifecycle.ClientReady;
 import com.blanoir.tempos.client.utils.combat.CombatReach;
 import com.blanoir.tempos.client.utils.player.HotbarQueries;
 import com.blanoir.tempos.client.utils.raytrace.EntityRaycast;
@@ -133,7 +134,8 @@ public final class AutoMace extends ClientFeature {
     }
 
     private static boolean ready(Minecraft client) {
-        return ClientReady.aliveGameplay(client)
+        return !CombatModuleCoordinator.automationSuspended()
+                && ClientReady.aliveGameplay(client)
                 && client.isWindowActive()
                 && !client.isPaused()
                 && !client.player.isSpectator()

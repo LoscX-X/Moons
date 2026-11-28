@@ -225,6 +225,7 @@ public final class ScaffoldManager {
     private static int tellyAirTicks;
     private static final GodBridgeRotation GOD_BRIDGE_ROTATION = new GodBridgeRotation();
     private static final GodBridgeSneak GOD_BRIDGE_EDGE_SNEAK = new GodBridgeSneak();
+    private static final GodBridgePath GOD_BRIDGE_PATH = new GodBridgePath();
     private static BlockPos lastTellyPlacePos;
     private static int lastTellyPlaceTick = Integer.MIN_VALUE;
     private static float outgoingYaw;
@@ -246,7 +247,6 @@ public final class ScaffoldManager {
     private static double forwardBps;
     private static int lastTellyReturnTick = Integer.MIN_VALUE;
     private static boolean tellyFlatStarted;
-    private static TellyPhase tellyPhase = TellyPhase.SELECT_POINT;
     private static ScaffoldPath scaffoldPath = ScaffoldPath.IDLE;
     private static boolean tellyTriggered;
     private static boolean tellyWasAirborne;
@@ -263,7 +263,6 @@ public final class ScaffoldManager {
                 "ScaffoldManager.context",
                 event -> {
                     disableState(null);
-                    ScaffoldPlacementDebugger.context(Minecraft.getInstance());
                     rotationInitialized =
                             placementRotationStarted = towerRotationInitialized = false;
                     serverPositionValid = false;
@@ -280,15 +279,6 @@ public final class ScaffoldManager {
         EventBus.WORLD_RENDER.register("ScaffoldManager.render", ScaffoldManager::render);
         EventBus.PACKET_SEND_POST.register(
                 "ScaffoldManager.onPacketSendPost", ScaffoldManager::onPacketSendPost);
-        EventBus.PACKET_RECEIVE_APPLY.register(
-                "ScaffoldManager.debugAlert",
-                event -> {
-                    if (event.packet()
-                            instanceof
-                            net.minecraft.network.protocol.game.ClientboundSystemChatPacket chat) {
-                        ScaffoldPlacementDebugger.alert(Minecraft.getInstance(), chat);
-                    }
-                });
         normalizeRanges();
         if (enabled()) enableState(Minecraft.getInstance());
     }
@@ -416,12 +406,6 @@ public final class ScaffoldManager {
         var currentPlayer = client == null ? null : client.player;
         if (currentPlayer == null) return;
         if (event.connection() != currentPlayer.connection.getConnection()) return;
-        if (DEBUGGER.get())
-            ScaffoldPlacementDebugger.packet(
-                    client,
-                    event,
-                    new Vec3(lastServerX, lastServerY, lastServerZ),
-                    serverPositionValid);
         if (placementRotationConnection != currentPlayer.connection) {
             placementRotationConnection = currentPlayer.connection;
             PLACEMENT_ROTATIONS.reset();
@@ -823,7 +807,6 @@ public final class ScaffoldManager {
                 ROTATION.acquire(new RotationRequest(outgoingYaw, outgoingPitch, 1, .35F, null));
             }
             clearTellyAim();
-            transitionTelly(TellyPhase.SELECT_POINT, "jump; holding backward view");
             return;
         }
         attemptTellyPlacement(
@@ -854,7 +837,6 @@ public final class ScaffoldManager {
         resolveScaffoldPath(client);
         if (scaffoldPath == ScaffoldPath.IDLE) {
             clearTellyAim();
-            transitionTelly(TellyPhase.SELECT_POINT, "waiting launch");
             return;
         }
 
@@ -863,7 +845,6 @@ public final class ScaffoldManager {
                 BlockPos belowFeet = tellyFeetPlacementPos(client);
                 if (client.player.onGround() || !client.level.getBlockState(belowFeet).isAir()) {
                     clearTellyAim();
-                    transitionTelly(TellyPhase.SELECT_POINT, "waiting until feet are over air");
                     return;
                 }
                 tellyTriggered = true;
@@ -879,7 +860,6 @@ public final class ScaffoldManager {
             int remainingAirDelay = Math.max(0, airDelay - tellyAirTicks);
             if (tellyBlocksThisJump > 0 && tellyFeetCovered(client)) {
                 clearTellyAim();
-                transitionTelly(TellyPhase.SELECT_POINT, "feet covered; waiting landing");
                 return;
             }
             if (remainingAirDelay > 0
@@ -887,7 +867,6 @@ public final class ScaffoldManager {
                             < TellyTiming.rotationStartTick(
                                     TELLY_EARLY_ROTATION.get(), tellyRotationDelay(), airDelay)) {
                 clearTellyAim();
-                transitionTelly(TellyPhase.SELECT_POINT, "waiting rotation delay");
                 return;
             }
             attemptTellyPlacement(client, intent, false, remainingAirDelay);
@@ -903,7 +882,6 @@ public final class ScaffoldManager {
                 if (!holdTowerRotation(client)) return;
                 // Enter vertical Tower with an emitted downward angle before the first use.
                 if (!RotationManager.latest().valid() || Math.abs(sentPitch() - 90.0F) > 0.01F) {
-                    tellyDebugReason = "waiting for downward rotation packet";
                     return;
                 }
             } else {
@@ -958,7 +936,6 @@ public final class ScaffoldManager {
         tellyWasAirborne = true;
         if (tellyTriggered) return;
         tellyTriggered = true;
-        transitionTelly(TellyPhase.SELECT_POINT, "airborne launch");
         if (TELLY_FLAT.get()) {
             tellyFlatStarted = true;
         }
@@ -971,7 +948,6 @@ public final class ScaffoldManager {
             boolean verticalTower,
             int remainingAirDelay) {
         if (!acquireRotation(client)) {
-            tellyDebugReason = "rotation lease busy";
             return;
         }
         Vec3 planningPosition = client.player.position();
@@ -989,11 +965,8 @@ public final class ScaffoldManager {
 
         renderTarget = aim == null ? intent.desired() : aim.target().placePos();
         renderHit = aim == null ? null : aim.hit();
-        transitionTelly(
-                TellyPhase.SELECT_POINT, intent.rescue() ? "selected rescue" : "selected point");
         if (aim == null || placementHand(client) == null || blockCount <= 0) {
             if (aim == null) clearTellyAim();
-            tellyDebugReason = aim == null ? "no reachable point" : "no blocks";
             return;
         }
 
@@ -1003,11 +976,9 @@ public final class ScaffoldManager {
                 lastTellyPlacePos = target.placePos();
                 lastTellyPlaceTick = client.player.tickCount;
             }
-            tellyDebugReason = "point already filled";
             return;
         }
 
-        transitionTelly(TellyPhase.ROTATE, "rotating");
         PlacementStep step =
                 verticalTower
                         ? PlacementStep.ready(aim)
@@ -1018,15 +989,11 @@ public final class ScaffoldManager {
             if (ROTATION.acquire(
                     new RotationRequest(rotation.yaw(), rotation.pitch(), 1, 0.35F, null))) {
                 publishTellyRotation(client, rotation.yaw(), rotation.pitch());
-                tellyDebugReason = "pre-rotating during air delay";
-            } else {
-                tellyDebugReason = "rotation lease busy";
             }
             return;
         }
         PlacementStep published = publishPlacementRotation(client, step, verticalTower);
         if (published == null) {
-            tellyDebugReason = "rotation lease busy";
             return;
         }
         placementRotationStarted = true;
@@ -1035,7 +1002,6 @@ public final class ScaffoldManager {
                 PlacementAngleSolver.distance(
                         aim.rotation(), published.rotation().yaw(), published.rotation().pitch());
         if (published.hit() == null || remaining > TELLY_PLACE_ANGLE.get()) {
-            tellyDebugReason = String.format(Locale.ROOT, "rotating %.1f deg", remaining);
             return;
         }
 
@@ -1044,15 +1010,12 @@ public final class ScaffoldManager {
             // only the upcoming look cannot repair that delta. Wait for a real
             // look send on a tick without UseItemOn, then select/trace again.
             publishSettlingRotation(client, verticalTower);
-            tellyDebugReason = "settling repeated rotation delta";
             return;
         }
 
-        transitionTelly(TellyPhase.PLACE, "rotation ready");
         Rotation finalRotation = packetRotation();
         if (smoothPlacementMotion(verticalTower)
                 && !AIM_MOTION.accepts(client.player.tickCount, finalRotation)) {
-            tellyDebugReason = "committed rotation outside packet motion budget; retry next tick";
             return;
         }
         if (PLACEMENT_ROTATIONS.wouldRepeatNext(finalRotation.yaw())) {
@@ -1060,7 +1023,6 @@ public final class ScaffoldManager {
             // That frozen look also needs validation: changing only the requested angle
             // cannot change the rotation that will accompany this interaction.
             publishSettlingRotation(client, verticalTower);
-            tellyDebugReason = "committed rotation repeats placement delta; waiting for look";
             return;
         }
         BlockHitResult finalHit = published.hit();
@@ -1079,7 +1041,6 @@ public final class ScaffoldManager {
             if (finalHit == null
                     || godBridgePlacement()
                             && !GodBridgeFacePoints.insideFace(finalHit, published.target())) {
-                tellyDebugReason = "committed rotation misses face; retry next tick";
                 return;
             }
         }
@@ -1089,11 +1050,6 @@ public final class ScaffoldManager {
                 lastTellyPlacePos = target.placePos();
                 lastTellyPlaceTick = client.player.tickCount;
             }
-            tellyDebugReason = "placed";
-        } else {
-            tellyDebugReason = "interaction rejected; retry next tick";
-            // useItemOn can send before returning PASS/FAIL. Preserve this
-            // attempt's angle for the following vanilla movement packet.
         }
         if (shouldSuppressSprint(client)) client.player.setSprinting(false);
     }
@@ -1187,17 +1143,11 @@ public final class ScaffoldManager {
         rotationInitialized = true;
     }
 
-    private static void transitionTelly(TellyPhase next, String reason) {
-        tellyPhase = next;
-        tellyDebugReason = reason;
-    }
-
     private static void finishTellyLanding() {
         tellyTriggered = false;
         tellyWasAirborne = false;
         scaffoldPath = ScaffoldPath.IDLE;
         clearTellyAim();
-        transitionTelly(TellyPhase.SELECT_POINT, "landed; jump ready");
     }
 
     private static boolean belowTellyTargetRow(Minecraft client) {
@@ -1217,7 +1167,6 @@ public final class ScaffoldManager {
         tellyBelowRowRescue = true;
         tellyTriggered = false;
         scaffoldPath = ScaffoldPath.RESCUE;
-        transitionTelly(TellyPhase.SELECT_POINT, "below row; rescue");
     }
 
     private static void finishBelowRowRescue() {
@@ -1227,7 +1176,6 @@ public final class ScaffoldManager {
         lastTellyPlacePos = null;
         scaffoldPath = ScaffoldPath.IDLE;
         clearTellyAim();
-        transitionTelly(TellyPhase.SELECT_POINT, "rescue landed; tower available");
     }
 
     private static BlockPos nextTellyPlacementPos(Minecraft client, Vec3 playerPosition) {
@@ -1297,7 +1245,6 @@ public final class ScaffoldManager {
     }
 
     private static void clearTellyAim() {
-        ScaffoldPlacementDebugger.clearAim();
         renderTarget = null;
         renderHit = null;
         // Missing a placeable cell between jumps must not turn Tower back to
@@ -1358,20 +1305,7 @@ public final class ScaffoldManager {
     }
 
     private static void playerUpdate(PlayerUpdateEvent event) {
-        ScaffoldPlacementDebugger.update(
-                event.client(),
-                DEBUGGER.get() && enabled() && ClientReady.gameplay(event.client()));
         tick(event.client());
-        if (DEBUGGER.get() && enabled() && ClientReady.gameplay(event.client())) {
-            ScaffoldPlacementDebugger.state(
-                    event.client(),
-                    "path="
-                            + scaffoldPath.configName()
-                            + " phase="
-                            + tellyPhase.configName()
-                            + " reason="
-                            + tellyDebugReason);
-        }
     }
 
     private static void moveInput(MoveInputEvent event) {
@@ -1397,9 +1331,6 @@ public final class ScaffoldManager {
         if (tellyTakeoff) {
             if (scaffoldPath != ScaffoldPath.TELLY) {
                 scaffoldPath = ScaffoldPath.TELLY;
-                transitionTelly(
-                        TellyPhase.SELECT_POINT,
-                        godBridgeMode() ? "godbridge active" : "jump requested");
             }
         }
 
@@ -1413,12 +1344,14 @@ public final class ScaffoldManager {
         if (!enabled() || placementSuspended() || !tellyMode() || !ClientReady.gameplay(client)) {
             resetTellyBpsState(client);
             GOD_BRIDGE_EDGE_SNEAK.reset();
+            GOD_BRIDGE_PATH.reset();
             return requested;
         }
         if (godBridgeMode()) {
             requested = filterGodBridgeSneak(client, requested);
         } else {
             GOD_BRIDGE_EDGE_SNEAK.reset();
+            GOD_BRIDGE_PATH.reset();
         }
         int tick = client.player.tickCount;
         if (forwardSampleTick != tick) {
@@ -1737,26 +1670,14 @@ public final class ScaffoldManager {
                 || !RAYS.canUse(
                         client, new BlockHitResult(hitVec, target.face(), target.support(), false)))
             return false;
-        var committed = RotationLease.submission();
-        ScaffoldPlacementDebugger.begin(
-                client,
-                target.support(),
-                target.face(),
-                hitVec,
-                committed == null ? null : committed.rotation());
-        InteractionResult result;
-        try {
-            result =
-                    client.gameMode.useItemOn(
-                            client.player,
-                            hand,
-                            new BlockHitResult(hitVec, target.face(), target.support(), false));
-        } catch (RuntimeException | Error failure) {
-            ScaffoldPlacementDebugger.result("threw " + failure.getClass().getSimpleName());
-            throw failure;
-        }
-        ScaffoldPlacementDebugger.result(result.toString());
+        InteractionResult result =
+                client.gameMode.useItemOn(
+                        client.player,
+                        hand,
+                        new BlockHitResult(hitVec, target.face(), target.support(), false));
         if (!result.consumesAction()) return false;
+        if (godBridgePlacement() && client.player.onGround() && !replaceable(client, target.placePos()))
+            GOD_BRIDGE_PATH.placed(target.placePos(), client.player.position());
         if (godBridgePlacement()
                 && GOD_BRIDGE_SNEAK.get()
                 && client.player.onGround()
@@ -1812,9 +1733,6 @@ public final class ScaffoldManager {
             int y = event.graphics().guiHeight() / 2 - client.font.lineHeight / 2;
             event.graphics()
                     .text(client.font, text, x, y, count > 0 ? 0xFFFFFFFF : 0xFFFF5555, true);
-        }
-        if (DEBUGGER.get() && tellyMode()) {
-            drawTellyDebugger(event, client);
         }
     }
 
@@ -1973,8 +1891,9 @@ public final class ScaffoldManager {
                         RAYS,
                         client,
                         eye,
-                        TrajectoryPrediction.nextInputBox(client, godBridgeInput(client)),
-                        desired.getY(),
+                        GOD_BRIDGE_PATH.cells(client.player.getBoundingBox(), client.player.getDeltaMovement(),
+                                TrajectoryPrediction.nextInputBox(client, godBridgeInput(client)), desired.getY(),
+                                cell -> tellyPointCovered(client, cell)),
                         new Rotation(outgoingYaw, outgoingPitch),
                         client.player.blockInteractionRange(),
                         cell -> tellyPointCovered(client, cell),
@@ -2173,6 +2092,7 @@ public final class ScaffoldManager {
     private static void enableState(Minecraft client) {
         GOD_BRIDGE_ROTATION.reset();
         GOD_BRIDGE_EDGE_SNEAK.reset();
+        GOD_BRIDGE_PATH.reset();
         var currentPlayer = client == null ? null : client.player;
         if (client != null && currentPlayer != null) {
             HOTBAR.userSelected(currentPlayer.getInventory().getSelectedSlot());
@@ -2201,8 +2121,6 @@ public final class ScaffoldManager {
         lastTellyPlacePos = null;
         lastTellyPlaceTick = Integer.MIN_VALUE;
         tellyFlatStarted = false;
-        tellyPhase = TellyPhase.SELECT_POINT;
-        tellyDebugReason = "enabled";
         scaffoldPath = ScaffoldPath.IDLE;
         tellyTriggered = false;
         tellyWasAirborne = false;
@@ -2217,7 +2135,7 @@ public final class ScaffoldManager {
         AIM_MOTION.rebase(new Rotation(0, 0));
         GOD_BRIDGE_ROTATION.reset();
         releaseGodBridgeSneaking(client);
-        ScaffoldPlacementDebugger.update(client, false);
+        GOD_BRIDGE_PATH.reset();
         HOTBAR.release(client);
         ROTATION.release();
         releaseLegitSneaking(client);
@@ -2229,8 +2147,6 @@ public final class ScaffoldManager {
         lastTellyPlacePos = null;
         lastTellyPlaceTick = Integer.MIN_VALUE;
         tellyFlatStarted = false;
-        tellyPhase = TellyPhase.SELECT_POINT;
-        tellyDebugReason = "disabled";
         scaffoldPath = ScaffoldPath.IDLE;
         tellyTriggered = false;
         tellyWasAirborne = false;
@@ -2339,26 +2255,6 @@ public final class ScaffoldManager {
         SMOOTH
     }
 
-    private enum TellyPhase {
-        SELECT_POINT(0xFF69D2E7),
-        ROTATE(0xFFFFD166),
-        PLACE(0xFF80ED99);
-
-        private final int color;
-
-        TellyPhase(int color) {
-            this.color = color;
-        }
-
-        int color() {
-            return color;
-        }
-
-        String configName() {
-            return name().toLowerCase(Locale.ROOT);
-        }
-    }
-
     private enum ScaffoldMode {
         LEGIT,
         TELLY,
@@ -2404,64 +2300,6 @@ public final class ScaffoldManager {
         String configName() {
             return name().toLowerCase(Locale.ROOT);
         }
-    }
-
-    // Debug
-    private static final BooleanSetting DEBUGGER = bool("scaffold.debugger", false);
-    private static String tellyDebugReason = "reset";
-
-    public static int setDebugger(Minecraft c, boolean v) {
-        DEBUGGER.set(v);
-        ScaffoldPlacementDebugger.update(c, v && enabled() && ClientReady.gameplay(c));
-        ClientChat.send(
-                c,
-                v
-                        ? "Scaffold debugger: first RotationPlace alert auto-saves to logs/tempos."
-                        : "Scaffold debugger stopped; recent trace queued for saving to logs/tempos.");
-        return 1;
-    }
-
-    private static void drawTellyDebugger(HudRenderEvent event, Minecraft client) {
-        List<String> lines =
-                new ArrayList<>(
-                        List.of(
-                                "Scaffold debugger",
-                                "path="
-                                        + scaffoldPath.configName()
-                                        + " phase="
-                                        + tellyPhase.configName(),
-                                "reason=" + tellyDebugReason,
-                                "point=" + debugPos(renderTarget),
-                                "triggered="
-                                        + tellyTriggered
-                                        + " rescue="
-                                        + tellyBelowRowRescue
-                                        + " ground="
-                                        + client.player.onGround(),
-                                String.format(
-                                        Locale.ROOT,
-                                        "air=%d placed=%d vy=%.3f",
-                                        tellyAirTicks,
-                                        tellyBlocksThisJump,
-                                        client.player.getDeltaMovement().y)));
-        lines.addAll(ScaffoldPlacementDebugger.lines());
-        int x = 6;
-        int y = 6;
-        for (int index = 0; index < lines.size(); index++) {
-            int color = index == 1 ? tellyPhase.color() : 0xFFE7F5FF;
-            event.graphics()
-                    .text(
-                            client.font,
-                            lines.get(index),
-                            x,
-                            y + index * (client.font.lineHeight + 1),
-                            color,
-                            true);
-        }
-    }
-
-    private static String debugPos(BlockPos pos) {
-        return pos == null ? "-" : pos.getX() + "," + pos.getY() + "," + pos.getZ();
     }
 
     /** Rotation deltas belonging to placements, observed only after packet sends. */

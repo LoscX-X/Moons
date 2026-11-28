@@ -22,6 +22,7 @@ import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.NonNull;
 
 import java.util.Set;
+import java.util.function.BooleanSupplier;
 import java.util.stream.Collectors;
 
 /** Normal knockback scaling and the original JumpReset behavior. */
@@ -69,6 +70,10 @@ public final class Velocity extends ClientFeature {
 
     public void registerJumpResetEvents() {
         jumpReset.registerEvents();
+    }
+
+    public void bindJumpResetAssist(BooleanSupplier active) {
+        jumpReset.bindAssist(active);
     }
 
     public void registerJumpResetPacketListeners() {

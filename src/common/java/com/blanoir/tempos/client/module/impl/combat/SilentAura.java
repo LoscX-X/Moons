@@ -1,11 +1,8 @@
 package com.blanoir.tempos.client.module.impl.combat;
 
-import com.blanoir.tempos.client.access.MinecraftClientAccess;
 import com.blanoir.tempos.client.chat.ClientChat;
 import com.blanoir.tempos.client.event.EventBus;
 import com.blanoir.tempos.client.event.EventPriority;
-import com.blanoir.tempos.client.event.frame.HudRenderEvent;
-import com.blanoir.tempos.client.manager.combat.CombatDecisionEngine;
 import com.blanoir.tempos.client.manager.combat.CombatModuleCoordinator;
 import com.blanoir.tempos.client.manager.targeting.Targeting;
 import com.blanoir.tempos.client.module.framework.ClientFeature;
@@ -20,12 +17,9 @@ import com.blanoir.tempos.client.module.impl.combat.silentaura.SilentAuraCombat;
 import com.blanoir.tempos.client.module.impl.combat.silentaura.SilentAuraConfig;
 import com.blanoir.tempos.client.module.impl.combat.silentaura.SilentAuraRuntime;
 import com.blanoir.tempos.client.module.impl.combat.silentaura.legacy.LegacyCombat;
-import com.blanoir.tempos.client.utils.combat.CombatReach;
-import com.blanoir.tempos.client.utils.raytrace.EntityRaycast;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.phys.Vec3;
 
 import java.util.Locale;
 
@@ -51,7 +45,6 @@ public final class SilentAura extends ClientFeature {
                 event -> disableIfDead(event.client()));
         SilentAuraRuntime.init();
         SilentAuraCombat.init();
-        EventBus.HUD_RENDER.register("SilentAura.debugger", SilentAura::drawDebugger);
     }
 
     private void disableIfDead(Minecraft client) {
@@ -448,118 +441,6 @@ public final class SilentAura extends ClientFeature {
         return SilentAuraConfig.legacyCombat()
                 ? "Legacy " + SilentAuraConfig.minCps() + "-" + SilentAuraConfig.maxCps() + " CPS"
                 : "Latest " + SilentAuraCombat.attackChargePercent(Minecraft.getInstance()) + "%";
-    }
-
-    // Debug
-    public static int setDebugger(Minecraft ignoredClient, boolean value) {
-        SilentAuraConfig.debugger(value);
-        return 1;
-    }
-
-    private static void drawDebugger(HudRenderEvent event) {
-        Minecraft client = Minecraft.getInstance();
-        if (!SilentAuraConfig.debugger()
-                || client.player == null
-                || client.level == null
-                || MinecraftClientAccess.isHudHidden(client)) return;
-
-        LivingEntity target = SilentAuraRuntime.currentTarget(client);
-        SilentAuraRuntime.AttackRotation candidate = SilentAuraRuntime.attackRotation(client);
-        SilentAuraRuntime.SentRotation sent = SilentAuraRuntime.sentRotation();
-        double reach = CombatReach.entityInteractionRange(client, SilentAuraConfig.aimRange());
-        String candidateRay =
-                rayState(
-                        client,
-                        target,
-                        candidate.valid(),
-                        candidate.eye(),
-                        candidate.look(),
-                        candidate.targetId(),
-                        reach);
-        String sentRay =
-                rayState(
-                        client,
-                        target,
-                        sent.valid(),
-                        sent.eye(),
-                        sent.look(),
-                        sent.targetId(),
-                        reach);
-        CombatDecisionEngine.Decision decision = Critical.INSTANCE.getPlannedDecision();
-        String targetText =
-                target == null ? "-" : target.getName().getString() + "#" + target.getId();
-        String gate = SilentAuraCombat.gate();
-        String[] lines = {
-            "SilentAura debugger",
-            "held="
-                    + SilentAuraRuntime.activationHeld(client)
-                    + " target="
-                    + targetText
-                    + " profile="
-                    + (SilentAuraConfig.fullLockMode()
-                            ? "full-lock"
-                            : SilentAuraConfig.matrixCompatibility() ? "optimize" : "generic")
-                    + (SilentAuraConfig.learnedAssist()
-                            ? " assist=" + SilentAuraRuntime.learnedStatus()
-                            : ""),
-            "candidate="
-                    + candidateRay
-                    + " sent="
-                    + sentRay
-                    + " crossing="
-                    + SilentAuraRuntime.crossingTarget(),
-            "gate=" + gate,
-            "critical="
-                    + Critical.INSTANCE.modeName()
-                    + " enabled="
-                    + Critical.INSTANCE.isEnabled()
-                    + " linked="
-                    + SilentAuraConfig.criticalIntegration()
-                    + " aimingWindow="
-                    + Critical.INSTANCE.isAimingWindowActive(),
-            "decision="
-                    + decision.attackKind().name().toLowerCase(Locale.ROOT)
-                    + "+"
-                    + decision.ticksAhead()
-                    + " "
-                    + decision.reason()
-        };
-        int x = 6;
-        int y = Math.max(6, event.graphics().guiHeight() / 2 - 42);
-        for (int index = 0; index < lines.length; index++) {
-            int color =
-                    index == 0
-                            ? 0xFFBFA3FF
-                            : index == 3
-                                            && (gate.contains("critical wait")
-                                                    || gate.contains("critical block"))
-                                    ? 0xFFFF7777
-                                    : 0xFFEDE9FF;
-            event.graphics()
-                    .text(
-                            client.font,
-                            lines[index],
-                            x,
-                            y + index * (client.font.lineHeight + 1),
-                            color,
-                            true);
-        }
-    }
-
-    private static String rayState(
-            Minecraft client,
-            LivingEntity target,
-            boolean valid,
-            Vec3 eye,
-            Vec3 look,
-            int targetId,
-            double reach) {
-        if (target == null) return "no-target";
-        if (!valid || targetId != target.getId()) return "waiting";
-        return EntityRaycast.traceEntity(
-                        client, eye, look, reach, target, SilentAuraConfig.throughBlocks())
-                .name()
-                .toLowerCase(Locale.ROOT);
     }
 
     @Override

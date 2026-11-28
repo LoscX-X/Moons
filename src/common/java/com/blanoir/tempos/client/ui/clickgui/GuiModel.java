@@ -22,6 +22,8 @@ public final class GuiModel {
     public static final class Row {
         private final Module module;
         private final String terms, hiddenKey;
+        private Row parent;
+        private final ArrayList<Row> children = new ArrayList<>();
         private boolean visible, enabled, hidden, hold;
         private String binding = "";
         private Row(Module module) {
@@ -32,7 +34,12 @@ public final class GuiModel {
             terms = text.toString().toLowerCase(Locale.ROOT);
         }
         public String id() { return module.id(); }
-        public String name() { return module.name(); }
+        public String name() {
+            if (parent != null && id().equals("xraydisplay")) return "Display";
+            if (parent != null && id().equals("xraytargets")) return "Targets";
+            return module.name();
+        }
+        public List<Row> children() { return List.copyOf(children); }
         public String description() { return module.description(); }
         public ModuleCategory category() { return module.category(); }
         public List<Setting> settings() { return module.settings(); }
@@ -43,7 +50,10 @@ public final class GuiModel {
         public boolean hasControls() { return true; }
         public boolean visible() { return visible; }
         public boolean hidden() { return hidden; }
-        public boolean matches(String lowercaseQuery) { return terms.contains(lowercaseQuery); }
+        public boolean matches(String lowercaseQuery) {
+            if (terms.contains(lowercaseQuery)) return true;
+            return children.stream().anyMatch(child -> !Settings.getBoolean(child.hiddenKey, false) && child.matches(lowercaseQuery));
+        }
         public boolean enabled() { return enabled; }
         public String binding() { return binding; }
         public boolean hold() { return hold; }
@@ -51,6 +61,7 @@ public final class GuiModel {
     }
     private final EnumMap<ModuleCategory, List<Row>> categories = new EnumMap<>(ModuleCategory.class);
     private final EnumMap<ModuleCategory, Row> expanded = new EnumMap<>(ModuleCategory.class);
+    private final java.util.Set<Row> expandedChildren = new java.util.HashSet<>();
     private final ArrayList<Row> rows = new ArrayList<>();
     private final boolean[] watched = new boolean[ModuleCategory.ordered().size()];
     private String query = "";
@@ -66,9 +77,15 @@ public final class GuiModel {
             rows.add(row);
             categories.get(module.category()).add(row);
         }
+        Row xray = rows.stream().filter(row -> row.id().equals("xray")).findFirst().orElse(null);
+        if (xray != null) for (String id : List.of("xraydisplay", "xraytargets")) {
+            Row child = rows.stream().filter(row -> row.id().equals(id)).findFirst().orElse(null);
+            if (child != null) { child.parent = xray; xray.children.add(child); }
+        }
         refresh(true);
     }
     public List<Row> rows(ModuleCategory category) { return categories.get(category); }
+    public List<Row> roots(ModuleCategory category) { return rows(category).stream().filter(row -> row.parent == null).toList(); }
     public boolean emptySearch() { return query.isEmpty(); }
     String query() { return query; }
     public long revision() { return revision; }
@@ -81,6 +98,7 @@ public final class GuiModel {
         String next = text.trim().toLowerCase(Locale.ROOT);
         if (next.equals(query)) return;
         expanded.clear();
+        expandedChildren.clear();
         cancelCapture();
         query = next;
         refresh(true);
@@ -103,19 +121,25 @@ public final class GuiModel {
             if (r.enabled != on) { r.enabled = on; revision++; }
             if (!settings) continue;
             r.hidden = Settings.getBoolean(r.hiddenKey, false);
-            boolean visible = !r.hidden && r.matches(query);
+            boolean visible = !r.hidden && (r.parent == null || !Settings.getBoolean(r.parent.hiddenKey, false)) && r.matches(query);
             if (visible != r.visible) { r.visible = visible; revision++; }
             if (!r.hasControls()) continue;
             var key = ModuleKeybinds.getBoundKey(r.id());
             r.binding = InputKeys.label(key);
             r.hold = r.supportsMode() && ModuleKeybinds.activationMode(r.id()) == BindActivationMode.HOLD;
         }
+        if (settings && !query.isEmpty()) for (Row r : rows) {
+            if (r.parent != null && r.visible && !r.parent.terms.contains(query)) expanded.put(r.category(), r.parent);
+        }
         if (binding != null && !binding.visible) cancelCapture();
         if (settings) revision++;
     }
-    public boolean expanded(Row r) { return expanded.get(r.category()) == r; }
+    public boolean expanded(Row r) { return r.parent == null ? expanded.get(r.category()) == r : expandedChildren.contains(r); }
     public void hidden(Row row, boolean value) {
-        if (value && expanded(row)) expanded.remove(row.category());
+        if (value) {
+            if (row.parent == null && expanded(row)) expanded.remove(row.category());
+            expandedChildren.remove(row);
+        }
         if (value) Settings.setBoolean(row.hiddenKey, true);
         else Settings.remove(row.hiddenKey);
         refresh(true);
@@ -127,7 +151,9 @@ public final class GuiModel {
         refresh(true);
     }
     public void expand(Row r) {
-        if (expanded(r)) expanded.remove(r.category());
+        if (r.parent != null) {
+            if (!expandedChildren.remove(r)) { expandedChildren.add(r); expanded.put(r.category(), r.parent); }
+        } else if (expanded(r)) expanded.remove(r.category());
         else expanded.put(r.category(), r);
         revision++;
     }

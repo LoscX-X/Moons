@@ -99,7 +99,7 @@ public final class Misplace extends ClientFeature {
     }
 
     private Misplace() {
-        super("misplace", "Misplace");
+        super("misplace", "Misplace [Beta]");
     }
 
     @Override

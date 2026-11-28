@@ -5,7 +5,8 @@ import java.util.List;
 import java.util.Random;
 
 public final class BacktrackFlowVerification {
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
+        BacktrackAdmissionVerification.verify();
         for (var mode :
                 new BacktrackConfig.TargetMode[] {
                     BacktrackConfig.TargetMode.ATTACK, BacktrackConfig.TargetMode.RANGE

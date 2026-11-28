@@ -180,6 +180,12 @@ public final class ModuleKeybinds {
 
         boolean consumed = false;
         List<Module> modules = modulesFor(key);
+        if (modules.stream().anyMatch(module -> module.id().equals("panic"))) {
+            // Panic is an action: other toggles/holds on this input must not re-enable features.
+            ModuleRegistry.setEnabled("panic", true);
+            HELD.reset();
+            return Dispatch.BINDING;
+        }
         if (!modules.isEmpty()) {
             List<Module> toggled =
                     modules.stream()

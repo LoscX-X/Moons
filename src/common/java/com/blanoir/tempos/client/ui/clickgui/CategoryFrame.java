@@ -39,7 +39,7 @@ final class CategoryFrame extends FloatingWindow {
         list.onScrollFinished(value -> {
             if (!searching) { savedScroll = (float)value; Settings.setDouble(prefix + "scroll", value); }
         });
-        for (var row : model.rows(category)) {
+        for (var row : model.roots(category)) {
             ModuleCard card = new ModuleCard(model, row);
             cards.add(card);
             list.add(card);
@@ -57,7 +57,7 @@ final class CategoryFrame extends FloatingWindow {
             folded(!searching && homeFolded);
             list.restore(searching ? 0 : savedScroll);
         }
-        var rows = model.rows(category);
+        var rows = model.roots(category);
         matches = false;
         for (int i = 0; i < cards.size(); i++) {
             boolean visible = rows.get(i).visible();

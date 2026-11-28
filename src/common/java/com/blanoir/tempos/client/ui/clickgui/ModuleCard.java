@@ -68,7 +68,10 @@ final class ModuleCard extends Widget {
         next = fill.value(now);
         if (next != enabled) { enabled = next; repaint(); }
     }
-    private boolean available(int i) { return fields.get(i) == null || fields.get(i).visible; }
+    private boolean available(int i) {
+        if (children.get(i) instanceof ModuleCard child) return child.row.visible();
+        return fields.get(i) == null || fields.get(i).visible;
+    }
     private void syncFields() {
         settingsVersion = Settings.revision();
         for (int i = 0; i < fields.size(); i++) {
@@ -96,6 +99,7 @@ final class ModuleCard extends Widget {
     }
     private void build() {
         built = true;
+        for (var child : row.children()) { fields.add(null); add(new ModuleCard(model, child)); }
         if (row.hasControls()) for (Setting setting : row.settings()) {
             Field field = new Field(setting);
             Widget editor = control(field);

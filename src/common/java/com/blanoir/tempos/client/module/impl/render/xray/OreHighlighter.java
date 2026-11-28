@@ -3,10 +3,12 @@ package com.blanoir.tempos.client.module.impl.render.xray;
 import com.blanoir.tempos.client.access.MinecraftClientAccess;
 import com.blanoir.tempos.client.chat.ClientChat;
 import com.blanoir.tempos.client.config.feature.HighlightDisplay;
+import com.blanoir.tempos.client.config.Settings;
 import com.blanoir.tempos.client.event.EventBus;
 import com.blanoir.tempos.client.event.frame.WorldRenderEvent;
 import com.blanoir.tempos.client.render.WorldOverlayRenderer;
 import com.blanoir.tempos.client.render.world.OverlayFrustum;
+import com.blanoir.tempos.client.render.world.BlockUnionMesh;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
@@ -22,6 +24,8 @@ public final class OreHighlighter {
     private static final int MAX_RENDER_BLOCKS = 12_900;
     private static final OverlayFrustum VIEW = new OverlayFrustum();
     private static final List<WorldOverlayRenderer.ColoredBox> VISIBLE = new ArrayList<>();
+    private static final List<BlockUnionMesh.Colored> CONNECTED = new ArrayList<>();
+    private static final OreGroups GROUPS = new OreGroups();
 
     private OreHighlighter() {}
 
@@ -53,6 +57,15 @@ public final class OreHighlighter {
 
     public static void close() {
         VISIBLE.clear();
+        CONNECTED.clear();
+        GROUPS.clear();
+    }
+
+    public static boolean mergeConnected() { return Settings.getBoolean("xray.display.mergeConnected", true); }
+    public static int setMergeConnected(Minecraft client, boolean value) {
+        Settings.setBoolean("xray.display.mergeConnected", value);
+        GROUPS.clear();
+        return 1;
     }
 
     private static void render(WorldRenderEvent context) {
@@ -64,6 +77,26 @@ public final class OreHighlighter {
         var renderCamera = MinecraftClientAccess.camera(client);
         Vec3 eye = renderCamera.position();
         VIEW.update(renderCamera);
+        if (mergeConnected()) {
+            for (var group : GROUPS.get(OreCache.snapshotEntries())) {
+                var mesh = group.mesh();
+                double dx=Math.max(Math.max(mesh.minX()-eye.x,eye.x-mesh.maxX()),0);
+                double dy=Math.max(Math.max(mesh.minY()-eye.y,eye.y-mesh.maxY()),0);
+                double dz=Math.max(Math.max(mesh.minZ()-eye.z,eye.z-mesh.maxZ()),0);
+                if(dx*dx+dy*dy+dz*dz>MAX_RENDER_DISTANCE_SQ
+                        || !VIEW.isVisible(mesh.minX(),mesh.minY(),mesh.minZ(),mesh.maxX(),mesh.maxY(),mesh.maxZ()))continue;
+                var target=group.target();
+                CONNECTED.add(new BlockUnionMesh.Colored(mesh,target.red()/255f,target.green()/255f,target.blue()/255f));
+                if(CONNECTED.size()>=MAX_RENDER_BLOCKS)break;
+            }
+            var matrices=context.poseStack();
+            matrices.pushPose();
+            try {
+                matrices.translate(-eye.x,-eye.y,-eye.z);
+                WorldOverlayRenderer.renderConnected(client,matrices,CONNECTED,"connected ore highlights");
+            } finally { matrices.popPose();CONNECTED.clear(); }
+            return;
+        }
         for (OreCache.CachedXrayBlock entry : OreCache.snapshotEntries()) {
             BlockPos pos = entry.pos();
             double x = pos.getX(), y = pos.getY(), z = pos.getZ();

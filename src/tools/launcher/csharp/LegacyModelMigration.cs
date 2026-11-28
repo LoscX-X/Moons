@@ -209,7 +209,7 @@ namespace Tempos.WindowsLauncher
             internal void Block(string root, string reason)
             { BlockedRoots.Add(root); Notes.Add(reason); }
 
-            private void AddAlias(string source, string target, string root)
+            internal void AddAlias(string source, string target, string root)
             {
                 string sourceFull = Path.GetFullPath(source), targetFull = Path.GetFullPath(target);
                 string sourceCanonical = Canonical(source), targetCanonical = Canonical(target);
@@ -415,7 +415,7 @@ namespace Tempos.WindowsLauncher
         private static extern SafeFileHandle CreateFile(string name, uint access, uint share, IntPtr security, uint disposition, uint flags, IntPtr template);
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         private static extern uint GetFinalPathNameByHandle(SafeFileHandle handle, StringBuilder path, uint length, uint flags);
-        private static string Canonical(string path)
+        internal static string Canonical(string path)
         {
             using (var handle = CreateFile(path, 0, 7, IntPtr.Zero, 3, 0x02000000, IntPtr.Zero)) {
                 if (handle.IsInvalid) throw new IOException("Could not resolve canonical model path.");

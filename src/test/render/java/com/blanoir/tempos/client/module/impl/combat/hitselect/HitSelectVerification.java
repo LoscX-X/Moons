@@ -176,16 +176,16 @@ public final class HitSelectVerification {
             require(CombatGeometry.searchPadding() == 5.5, "Aura keeps displaced target search");
             CombatGeometry.withOriginalPositions(
                     () -> {
-                        require(CombatGeometry.searchPadding() == 1, "TriggerBot uses raw search");
+                        require(CombatGeometry.searchPadding() == 1, "Movement uses raw search");
                         CombatGeometry.withOriginalPositions(
                                 () ->
                                         require(
                                                 CombatGeometry.searchPadding() == 1,
                                                 "Nested raw search"));
                         require(CombatGeometry.searchPadding() == 1, "Outer scope remains raw");
-                        require(Misplace.INSTANCE.isEnabled(), "TriggerBot does not toggle Misplace");
+                        require(Misplace.INSTANCE.isEnabled(), "Movement does not toggle Misplace");
                     });
-            require(CombatGeometry.searchPadding() == 5.5, "Following Aura search stays displaced");
+            require(CombatGeometry.searchPadding() == 5.5, "Following attack search stays displaced");
             try {
                 CombatGeometry.withOriginalPositions(
                         () -> {

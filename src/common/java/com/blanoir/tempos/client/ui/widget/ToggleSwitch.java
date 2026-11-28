@@ -25,7 +25,7 @@ public final class ToggleSwitch extends Button {
     @Override protected boolean lightText() { return true; }
     @Override protected boolean focusable() { return available.getAsBoolean(); }
     @Override protected boolean input(UiEvent event) { return available.getAsBoolean() && super.input(event); }
-    @Override public float preferredHeight() { return 15 + title.extraHeight(); }
+    @Override public float preferredHeight() { return 14 + title.extraHeight(); }
     @Override protected void tick(long now) {
         float target = value.getAsBoolean() ? 1 : 0;
         hover.to(hovered() || focused() ? 1 : 0,now,Theme.HOVER_MS);

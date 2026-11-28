@@ -11,6 +11,7 @@ import com.blanoir.tempos.client.config.settings.BooleanSetting;
 import com.blanoir.tempos.client.event.EventBus;
 import com.blanoir.tempos.client.event.EventPriority;
 import com.blanoir.tempos.client.input.PhysicalInput;
+import com.blanoir.tempos.client.lifecycle.ClientReady;
 import com.blanoir.tempos.client.manager.combat.CombatModuleCoordinator;
 import com.blanoir.tempos.client.manager.input.CombatInputController;
 import com.blanoir.tempos.client.manager.lease.HotbarLease;
@@ -27,7 +28,6 @@ import com.blanoir.tempos.client.module.impl.combat.cushionaura.CushionPlacement
 import com.blanoir.tempos.client.module.impl.combat.silentaura.SilentAuraBlock;
 import com.blanoir.tempos.client.module.impl.combat.silentaura.SilentAuraCombat;
 import com.blanoir.tempos.client.module.impl.combat.silentaura.SilentAuraRuntime;
-import com.blanoir.tempos.client.lifecycle.ClientReady;
 import com.blanoir.tempos.client.utils.world.placement.BlockPlacementUtils;
 
 import net.minecraft.client.Minecraft;
@@ -51,6 +51,8 @@ import java.util.Arrays;
         description =
                 "Places seats around the selected target and waits for a confirmed mount before attacking.")
 public final class CushionAura extends ClientFeature {
+    // Temporarily withheld from this build, including saved profiles and direct activation.
+    private static final boolean ENABLED_IN_BUILD = false;
     public static final CushionAura INSTANCE = new CushionAura();
 
     private final BooleanSetting enabled =
@@ -82,9 +84,13 @@ public final class CushionAura extends ClientFeature {
         return CushionAccess.supported();
     }
 
+    public static boolean available() {
+        return ENABLED_IN_BUILD && supported();
+    }
+
     @Override
     public boolean isEnabled() {
-        return supported() && this.enabled.get();
+        return available() && this.enabled.get();
     }
 
     @Override
@@ -94,7 +100,7 @@ public final class CushionAura extends ClientFeature {
 
     @Override
     public int setEnabled(Minecraft client, boolean value) {
-        if (value && !supported()) return 0;
+        if (value && !available()) return 0;
         if (value == isEnabled()) return 1;
         shutdown(client);
         if (value)
@@ -111,7 +117,7 @@ public final class CushionAura extends ClientFeature {
 
     @Override
     public void registerEvents() {
-        if (!supported()) return;
+        if (!available()) return;
         PlacementCoordinator.register(this.owner, this::busy);
         EventBus.CLIENT_CONTEXT_CHANGED.register("CushionAura.context", event -> shutdown(null));
         EventBus.TICK.register(
@@ -186,7 +192,8 @@ public final class CushionAura extends ClientFeature {
     }
 
     private static boolean valid(Minecraft client) {
-        return ClientReady.aliveGameplay(client)
+        return !CombatModuleCoordinator.automationSuspended()
+                && ClientReady.aliveGameplay(client)
                 && !client.isPaused()
                 && !client.player.isSpectator()
                 && (!client.player.isUsingItem() || SilentAuraBlock.ownsNativeUse(client))
@@ -199,7 +206,7 @@ public final class CushionAura extends ClientFeature {
     }
 
     private void guard(Minecraft client) {
-        if (!isEnabled()) {
+        if (!isEnabled() || CombatModuleCoordinator.automationSuspended()) {
             if (this.player != null || busy()) shutdown(client);
             return;
         }

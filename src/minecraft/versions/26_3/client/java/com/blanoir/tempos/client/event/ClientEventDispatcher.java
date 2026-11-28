@@ -299,9 +299,12 @@ public final class ClientEventDispatcher {
                             Minecraft.getInstance()
                                     .getDeltaTracker()
                                     .getGameTimeDeltaPartialTick(true);
-                    WorldRenderDispatch.post(new PoseStack(), partialTick);
+                    if (hook.owner() instanceof com.mojang.renderpearl.api.commands.RenderPass)
+                        WorldRenderDispatch.defer(hook.owner(), new PoseStack(), partialTick);
+                    else WorldRenderDispatch.post(new PoseStack(), partialTick);
                 }
             }
+            case "optional.sodium.pass-closed" -> WorldRenderDispatch.afterPass(hook.owner());
             case "render.static-fov" -> {
                 if (hook.value() instanceof Number fov) {
                     hook.value(StaticFov.INSTANCE.apply(fov.floatValue()));

@@ -17,6 +17,7 @@ import net.minecraft.world.phys.Vec3;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.function.BiFunction;
 import java.util.function.Predicate;
 
 /**
@@ -74,42 +75,45 @@ public final class GodBridgeTargetSelector {
             PlacementRayPolicy rays,
             Minecraft client,
             Vec3 eye,
-            AABB intended,
-            int row,
+            List<BlockPos> candidates,
             Rotation preferred,
             double range,
             Predicate<BlockPos> covered,
             Predicate<BlockState> interactable,
             MouseAngleQuantizer.Adapter quantizer) {
-        List<BlockTarget> targets = new ArrayList<>();
-        for (BlockPos cell :
-                cells(
-                        client.player.getBoundingBox(),
-                        client.player.getDeltaMovement(),
-                        intended,
-                        row)) {
-            if (covered.test(cell)) continue;
-            for (Direction face : Direction.Plane.HORIZONTAL) {
-                BlockPos support = cell.relative(face.getOpposite());
-                BlockState state = client.level.getBlockState(support);
-                if (state.canBeReplaced()
-                        || interactable.test(state)
-                        || state.getCollisionShape(client.level, support).isEmpty()) continue;
-                BlockTarget target = new BlockTarget(support, face);
-                targets.add(target);
-                BlockAim aim =
-                        GodBridgeFacePoints.resolve(
-                                rays, client, target, eye, preferred, range, quantizer);
+        return select(
+                candidates,
+                covered,
+                (cell, recovery) -> {
+                    for (Direction face : Direction.Plane.HORIZONTAL) {
+                        BlockPos support = cell.relative(face.getOpposite());
+                        BlockState state = client.level.getBlockState(support);
+                        if (state.canBeReplaced()
+                                || interactable.test(state)
+                                || state.getCollisionShape(client.level, support).isEmpty())
+                            continue;
+                        BlockTarget target = new BlockTarget(support, face);
+                        BlockAim aim =
+                                GodBridgeFacePoints.resolve(
+                                        rays, client, target, eye, preferred, range, quantizer,
+                                        recovery);
+                        if (aim != null) return aim;
+                    }
+                    return null;
+                });
+    }
+
+    /** Shared selection loop; the world adapter owns actual support faces and ray validation. */
+    static BlockAim select(
+            List<BlockPos> cells,
+            Predicate<BlockPos> covered,
+            BiFunction<BlockPos, Boolean, BlockAim> aimAtCell) {
+        for (boolean recovery : new boolean[] {false, true}) {
+            for (BlockPos cell : cells) {
+                if (covered.test(cell)) continue;
+                BlockAim aim = aimAtCell.apply(cell, recovery);
                 if (aim != null) return aim;
             }
-        }
-        // Only relax the compass view after every normal candidate failed. Turning can
-        // expose a valid side outside the narrow +/-12 degree window of the old heading.
-        for (BlockTarget target : targets) {
-            BlockAim aim =
-                    GodBridgeFacePoints.resolve(
-                            rays, client, target, eye, preferred, range, quantizer, true);
-            if (aim != null) return aim;
         }
         return null;
     }

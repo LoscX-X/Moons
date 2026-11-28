@@ -427,7 +427,6 @@ public final class SilentAuraConfig {
                         SilentAuraRuntime.resetTargeting();
                     },
                     new JsonArray()),
-            DEBUGGER.describe("debugger", "Debugger", SilentAura::setDebugger)
         };
     }
 
@@ -882,16 +881,5 @@ public final class SilentAuraConfig {
     private enum AimPoint {
         CENTER,
         CLOSEST
-    }
-
-    // Debug
-    private static final BooleanSetting DEBUGGER = bool("silentaura.debugger", false);
-
-    public static boolean debugger() {
-        return DEBUGGER.get();
-    }
-
-    public static void debugger(boolean value) {
-        DEBUGGER.set(value);
     }
 }

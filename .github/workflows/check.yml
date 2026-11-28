@@ -100,7 +100,7 @@ jobs:
             'kind=ysm' >> $env:GITHUB_OUTPUT
           }
           if ($env:VERIFY_PACKAGES -eq 'true') {
-            $tasks += @('verifyPortableParameters', 'verifyParameterArchive', 'verifySettingsPersistence', 'verifyModuleControls')
+            $tasks += @('verifyPortableParameters', 'verifyParameterArchive', 'verifySettingsPersistence', 'verifyModuleControls', 'verifyAutoClicker', 'verifyRightClick', 'verifyPanic', 'verifyStrafe', 'verifyXrayGroup', 'verifyBlockUnion', 'verifyWorldRenderPassMinecraft26_3', 'verifyBacktrackFlow', 'verifyMisplace', 'verifyHitSelect', 'verifyGodBridgeSafety', 'verifyCusionRun')
           }
           .\gradlew.bat @tasks --console=plain --no-parallel --max-workers=2
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

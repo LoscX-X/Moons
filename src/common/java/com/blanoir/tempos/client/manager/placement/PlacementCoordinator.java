@@ -19,7 +19,8 @@ public final class PlacementCoordinator {
         ANTI_LAVA,
         AUTO_BED,
         BLOCK_IN,
-        CUSHION_AURA
+        CUSHION_AURA,
+        CUSION_RUN
     }
 
     private record Participant(BooleanSupplier busy, Consumer<Minecraft> yield) {}

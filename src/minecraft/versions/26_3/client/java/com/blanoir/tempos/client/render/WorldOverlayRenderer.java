@@ -4,10 +4,14 @@ import com.blanoir.tempos.client.access.GameAccess;
 import com.blanoir.tempos.client.config.TemposConfig;
 import com.blanoir.tempos.client.render.world.OverlayGeometry;
 import com.blanoir.tempos.client.render.world.WorldOverlayBuffer;
+import com.blanoir.tempos.client.render.world.WorldContourTarget;
+import com.mojang.blaze3d.pipeline.TextureTarget;
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.renderpearl.api.pipeline.BlendFunction;
+import com.mojang.renderpearl.api.GpuFormat;
 import com.mojang.renderpearl.api.pipeline.ColorTargetState;
 import com.mojang.renderpearl.api.pipeline.PrimitiveTopology;
 import com.mojang.renderpearl.api.pipeline.RenderPipeline;
@@ -16,11 +20,14 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.resources.Identifier;
 
 import org.joml.Matrix4fc;
+import org.joml.Vector4f;
 
 import java.util.List;
 import java.util.Optional;
 
 public final class WorldOverlayRenderer {
+    private static final WorldContourTarget CONTOUR = new WorldContourTarget(
+            (width, height) -> new TextureTarget("Tempos Xray contour", width, height, GpuFormat.RGBA8_UNORM, null));
     private static final RenderPipeline THROUGH_WALLS =
             GameAccess.registerPipeline(
                     RenderPipeline.builder(GameAccess.debugFilledSnippet())
@@ -109,7 +116,27 @@ public final class WorldOverlayRenderer {
                 });
     }
 
+    /** Extract only the boundary of the complete projected mask, including overlapping groups. */
+    public static void renderConnected(Minecraft client, PoseStack matrices,
+            List<com.blanoir.tempos.client.render.world.BlockUnionMesh.Colored> values, String label) {
+        if (client == null || values.isEmpty()) return;
+        var mask = CONTOUR.begin(client);
+        if (mask == null) return;
+        RenderSystem.getDevice().createCommandEncoder()
+                .clearColorTexture(mask.getColorTexture(), new Vector4f(0, 0, 0, 0));
+        Matrix4fc pose = matrices.last().pose();
+        WorldOverlayBuffer.drawTo(mask, THROUGH_WALLS, label + " silhouette mask", builder -> {
+            for (var value : values) value.mesh().fill(pose, builder, value.red(), value.green(), value.blue(), 1);
+        });
+        if (CONTOUR.composite(client)) return;
+        // Keep highlights available if a resource pack removes the built-in outline effect.
+        WorldOverlayBuffer.drawUnsorted(client, OUTLINES, label + " outline", builder -> {
+            for (var value : values) value.mesh().outline(pose, builder, value.red(), value.green(), value.blue());
+        });
+    }
+
     public static void close() {
+        CONTOUR.close();
         VisualRenderTargets.close();
         WorldOverlayBuffer.close();
     }

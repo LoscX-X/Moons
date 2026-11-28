@@ -4,6 +4,7 @@ import com.blanoir.tempos.client.access.GameAccess;
 import com.blanoir.tempos.client.access.MinecraftClientAccess;
 import com.blanoir.tempos.client.event.EventBus;
 import com.blanoir.tempos.client.input.PhysicalInput;
+import com.blanoir.tempos.client.manager.combat.CombatModuleCoordinator;
 import com.mojang.blaze3d.platform.InputConstants;
 
 import net.minecraft.client.KeyMapping;
@@ -101,6 +102,11 @@ public final class CombatInputController {
     /**  sprint implementations honor higher-priority combat timing. */
     public static boolean isSprintSuppressed() {
         return !sprintSuppressors.isEmpty();
+    }
+
+    /** Directional helpers must preserve an active W-tap or Critical reservation. */
+    public static boolean isForwardSuppressed() {
+        return !forwardSuppressors.isEmpty();
     }
 
     public static void suppressAttack(Minecraft client, Owner owner) {
@@ -241,12 +247,26 @@ public final class CombatInputController {
     }
 
     private static boolean pressAttack(Minecraft client, KeyMapping mapping) {
+        if (CombatModuleCoordinator.automationSuspended()) return false;
         if (!pressPhysicalKey(client, mapping)) {
             return false;
         }
         syntheticAttackDown = true;
         syntheticAttackTicks = 1;
         return true;
+    }
+
+    /** Discard only a still-owned synthetic press when an exclusive action starts. */
+    public static void suspendAutomaticAttacks(Minecraft client) {
+        boolean pending = syntheticAttackDown || pendingAttackTarget != null;
+        syntheticAttackTicks = 0;
+        tickSyntheticAttack(client);
+        pendingAttackTarget = null;
+        if (pending && valid(client)) {
+            while (client.options.keyAttack.consumeClick()) {
+                // An earlier automatic click must not leak into the new interaction window.
+            }
+        }
     }
 
     /** Feeds a press through the vanilla mouse/keyboard callback like a real event. */

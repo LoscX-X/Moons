@@ -271,7 +271,7 @@ final class CushionPlacement {
         return safeSpace(client, position, cushion);
     }
 
-    private static boolean safeSpace(Minecraft client, Vec3 position, AABB cushion) {
+    static boolean safeSpace(Minecraft client, Vec3 position, AABB cushion) {
         if (!client.level.getWorldBorder().isWithinBounds(BlockPos.containing(position)))
             return false;
         AABB space =

@@ -26,9 +26,13 @@ public final class VersionTransformer {
     }
 
     private static InsnList hook(String id, int argument) {
+        return hook(id, argument, 0);
+    }
+
+    private static InsnList hook(String id, int argument, int owner) {
         InsnList out = new InsnList();
         out.add(new LdcInsnNode(id));
-        out.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        out.add(new VarInsnNode(Opcodes.ALOAD, owner));
         out.add(
                 argument < 0
                         ? new InsnNode(Opcodes.ACONST_NULL)
@@ -39,13 +43,16 @@ public final class VersionTransformer {
 
     private static boolean sodiumWorld(MethodNode method, String id) {
         int slot = 1;
+        int pass = 0;
         for (Type argument : Type.getArgumentTypes(method.desc)) {
+            if (argument.getSort() == Type.OBJECT && argument.getInternalName().equals("com/mojang/renderpearl/api/commands/RenderPass")) pass = slot;
             if (argument.getSort() == Type.OBJECT
                     && argument.getInternalName().equals("net/minecraft/client/renderer/chunk/ChunkSectionLayerGroup")) {
                 int layer = slot;
+                int owner = pass;
                 // RenderPearl inserts a RenderPass before the layer; the existing event uses the layer.
-                method.instructions.insert(hook(id, layer));
-                beforeReturns(method, Opcodes.RETURN, () -> hook(id + ".end", layer));
+                method.instructions.insert(hook(id, layer, owner));
+                beforeReturns(method, Opcodes.RETURN, () -> hook(id + ".end", layer, owner));
                 return true;
             }
             slot += argument.getSize();

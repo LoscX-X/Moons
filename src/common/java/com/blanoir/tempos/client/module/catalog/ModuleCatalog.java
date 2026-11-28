@@ -15,12 +15,14 @@ import com.blanoir.tempos.client.module.impl.combat.Velocity;
 import com.blanoir.tempos.client.module.impl.combat.aim.AimAssist;
 import com.blanoir.tempos.client.module.impl.combat.critical.Critical;
 import com.blanoir.tempos.client.module.impl.combat.cushionaura.CushionAura;
+import com.blanoir.tempos.client.module.impl.combat.cushionaura.CusionRun;
 import com.blanoir.tempos.client.module.impl.misc.AntiNick;
 import com.blanoir.tempos.client.module.impl.misc.ArmorHide;
 import com.blanoir.tempos.client.module.impl.misc.ChatFilter;
 import com.blanoir.tempos.client.module.impl.misc.ChatPrefix;
 import com.blanoir.tempos.client.module.impl.misc.CheckPremium;
 import com.blanoir.tempos.client.module.impl.misc.FreeLook;
+import com.blanoir.tempos.client.module.impl.misc.Panic;
 import com.blanoir.tempos.client.module.impl.misc.StaticFov;
 import com.blanoir.tempos.client.module.impl.misc.aimdata.AimCollect;
 import com.blanoir.tempos.client.module.impl.misc.antibot.AntiBot;
@@ -28,6 +30,7 @@ import com.blanoir.tempos.client.module.impl.movement.KeepSprint;
 import com.blanoir.tempos.client.module.impl.movement.MoveFix;
 import com.blanoir.tempos.client.module.impl.movement.NoJumpDelay;
 import com.blanoir.tempos.client.module.impl.movement.Sprint;
+import com.blanoir.tempos.client.module.impl.movement.Strafe;
 import com.blanoir.tempos.client.module.impl.network.Backtrack;
 import com.blanoir.tempos.client.module.impl.network.FakeLag;
 import com.blanoir.tempos.client.module.impl.player.AntiLava;
@@ -82,7 +85,8 @@ public final class ModuleCatalog {
         ModuleRegistry.add(HitSelect.INSTANCE.toDescriptor());
         ModuleRegistry.add(SprintReset.INSTANCE.toDescriptor());
         ModuleRegistry.add(SilentAura.INSTANCE.toDescriptor());
-        if (CushionAura.supported()) ModuleRegistry.add(CushionAura.INSTANCE.toDescriptor());
+        if (CushionAura.available()) ModuleRegistry.add(CushionAura.INSTANCE.toDescriptor());
+        if (CusionRun.available()) ModuleRegistry.add(CusionRun.INSTANCE.toDescriptor());
         ModuleRegistry.add(AutoBlock.INSTANCE.toDescriptor());
         ModuleRegistry.add(AimAssist.INSTANCE.toDescriptor());
         ModuleRegistry.add(TriggerBot.INSTANCE.toDescriptor());
@@ -99,6 +103,7 @@ public final class ModuleCatalog {
         ModuleRegistry.add(AntiWeb.INSTANCE.toDescriptor());
         ModuleRegistry.add(AutoSword.INSTANCE.toDescriptor());
         ModuleRegistry.add(Sprint.INSTANCE.toDescriptor());
+        ModuleRegistry.add(Strafe.INSTANCE.toDescriptor());
         ModuleRegistry.add(NoJumpDelay.INSTANCE.toDescriptor());
         ModuleRegistry.add(FastPlace.INSTANCE.toDescriptor());
         ModuleRegistry.add(RightClick.INSTANCE.toDescriptor());
@@ -143,5 +148,6 @@ public final class ModuleCatalog {
         ModuleRegistry.add(AntiNick.INSTANCE.toDescriptor());
         ModuleRegistry.add(AntiBot.INSTANCE.toDescriptor());
         ModuleRegistry.add(AimCollect.INSTANCE.toDescriptor());
+        ModuleRegistry.add(Panic.INSTANCE.toDescriptor());
     }
 }

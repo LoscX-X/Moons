@@ -28,6 +28,7 @@ import com.blanoir.tempos.client.module.impl.combat.Velocity;
 import com.blanoir.tempos.client.module.impl.combat.aim.AimAssist;
 import com.blanoir.tempos.client.module.impl.combat.critical.Critical;
 import com.blanoir.tempos.client.module.impl.combat.cushionaura.CushionAura;
+import com.blanoir.tempos.client.module.impl.combat.cushionaura.CusionRun;
 import com.blanoir.tempos.client.module.impl.combat.silentaura.SilentAuraBlock;
 import com.blanoir.tempos.client.module.impl.combat.silentaura.SilentAuraRuntime;
 import com.blanoir.tempos.client.module.impl.misc.AntiNick;
@@ -36,6 +37,7 @@ import com.blanoir.tempos.client.module.impl.misc.FreeLook;
 import com.blanoir.tempos.client.module.impl.misc.aimdata.AimCollect;
 import com.blanoir.tempos.client.module.impl.misc.antibot.AntiBot;
 import com.blanoir.tempos.client.module.impl.movement.KeepSprint;
+import com.blanoir.tempos.client.module.impl.movement.Strafe;
 import com.blanoir.tempos.client.module.impl.network.Backtrack;
 import com.blanoir.tempos.client.module.impl.network.Disabler;
 import com.blanoir.tempos.client.module.impl.network.FakeLag;
@@ -121,8 +123,10 @@ final class ClientLifecycle {
         AutoSpear.INSTANCE.registerEvents();
         AutoMace.INSTANCE.registerEvents();
         SprintReset.INSTANCE.registerEvents();
+        Strafe.INSTANCE.registerEvents();
         SilentAura.INSTANCE.registerEvents();
         CushionAura.INSTANCE.registerEvents();
+        CusionRun.INSTANCE.registerEvents();
         Animations.bindCombatState(
                 () -> AutoBlock.INSTANCE.isEnabled() || SilentAuraBlock.isEnabled(),
                 client ->
@@ -220,6 +224,12 @@ final class ClientLifecycle {
         LightningTracker.INSTANCE.initPacketListeners();
     }
 
+    /** Panic stops features while the core stays active and can acquire new state afterward. */
+    public static void panic(Minecraft client) {
+        releaseTransientState(client);
+        transientReleased = false;
+    }
+
     private static void releaseTransientState(Minecraft client) {
         CleanupSequence.run(
                 "core transient state",
@@ -228,11 +238,14 @@ final class ClientLifecycle {
                 () -> Disabler.discardPending(),
                 () -> FakeLag.INSTANCE.discardPending(),
                 () -> CushionAura.INSTANCE.shutdown(client),
+                () -> CusionRun.INSTANCE.shutdown(client),
                 () -> RotationManager.reset(),
                 () -> FreeLook.INSTANCE.reset(client),
                 () -> AutoBlock.INSTANCE.suspend(client),
                 () -> AutoSpear.INSTANCE.suspend(client),
                 () -> AutoMace.INSTANCE.reset(client),
+                () -> Strafe.INSTANCE.reset(),
+                () -> AutoClicker.INSTANCE.reset(client),
                 () -> RightClick.INSTANCE.reset(),
                 () -> InvManager.INSTANCE.reset(),
                 () -> AutoArmor.INSTANCE.reset(),

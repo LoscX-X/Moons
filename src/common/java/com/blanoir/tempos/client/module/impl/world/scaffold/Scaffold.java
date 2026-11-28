@@ -330,11 +330,6 @@ public final class Scaffold extends ClientFeature {
         return ScaffoldManager.spoofedItem(original);
     }
 
-    // Debug
-    public static int setDebugger(Minecraft c, boolean v) {
-        return ScaffoldManager.setDebugger(c, v);
-    }
-
     @Override
     protected Setting[] defineSettings() {
         return PlacementSettings.append(
@@ -644,8 +639,6 @@ public final class Scaffold extends ClientFeature {
                             "scaffold.blockCounter",
                             true,
                             Scaffold::setBlockCounter),
-                    bool("debugger", "Debugger", "scaffold.debugger", false, Scaffold::setDebugger)
-                            .visibleWhen(Scaffold::tellySelected)
                 });
     }
 

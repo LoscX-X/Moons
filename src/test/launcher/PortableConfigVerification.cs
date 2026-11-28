@@ -26,8 +26,10 @@ internal static class PortableConfigVerification
 
             PortableImageVerification.Run(new[] { "--tests", Path.Combine(fixture, "image") });
             PortableBundleVerification.Run(new[] { Path.Combine(fixture, "bundle-import.json") });
+            PortableImportVerification.Run(Path.Combine(fixture, "import"));
             PortableRecoveryVerification.Run(new[] { Path.Combine(fixture, "recovery") });
             PortableLegacyPropertiesVerification.Run(new[] { Path.Combine(fixture, "properties", "appdata") });
+            PortableLegacyCleanupVerification.Run(new[] { Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "lc") });
             VerifyFinalizer(fixture);
             Console.WriteLine("PORTABLE_PARAMETERS_VERIFIED " + fixture);
             return 0;
@@ -67,4 +69,5 @@ internal static class PortableConfigVerification
         PortableImageVerification.Run(new[] { "--inspect", executable });
         Console.WriteLine("REAL_EXE_FINALIZER_VERIFIED running-image game-lifetime changed-profile EXE-writeback session-cleanup helper-self-cleanup");
     }
+
 }

@@ -48,7 +48,7 @@ public final class EntityListEditor extends Widget {
         repaint();
     }
 
-    @Override public float preferredHeight() { return 20; }
+    @Override public float preferredHeight() { return 18; }
     @Override protected boolean focusable() { return true; }
     @Override protected boolean lightText() { return true; }
     @Override protected float textSize() { return Floating.FIELD_SIZE; }

@@ -14,10 +14,11 @@ namespace Tempos.WindowsLauncher
             internal string Root;
             internal bool SafeToDelete = true;
             internal readonly Dictionary<string, object> Files = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+            internal readonly Dictionary<string, object> Links = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
             internal readonly HashSet<string> ParameterFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             internal readonly Dictionary<string, string> CapturedFiles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             internal object Metadata()
-            { return new Dictionary<string, object> { { "root", Root }, { "safe", SafeToDelete }, { "files", Files } }; }
+            { return new Dictionary<string, object> { { "root", Root }, { "safe", SafeToDelete }, { "files", Files }, { "links", Links } }; }
         }
 
         internal sealed class Candidate
@@ -126,8 +127,14 @@ namespace Tempos.WindowsLauncher
                 CaptureExtra(source, root, settings, "data/ysm/ysm.properties", extras, extraOwners);
                 string parameters = Path.Combine(ysm, "parameters");
                 if (Directory.Exists(parameters) && !PortableConfig.IsLink(parameters))
-                    foreach (string file in Directory.GetFiles(parameters, "*.json"))
+                    foreach (string file in Directory.GetFiles(parameters))
                         CaptureExtra(source, root, file, "data/ysm/parameters/" + Path.GetFileName(file), extras, extraOwners);
+                foreach (string relative in new[] { "config/server", "config/profiles/server" }) {
+                    string folder = Path.Combine(root, relative.Replace('/', Path.DirectorySeparatorChar));
+                    if (!Directory.Exists(folder) || PortableConfig.IsLink(folder)) continue;
+                    foreach (string file in Directory.GetFiles(folder, "*.json"))
+                        CaptureExtra(source, root, file, relative + "/" + Path.GetFileName(file), extras, extraOwners);
+                }
                 string models = Path.Combine(ysm, "models");
                 if (Directory.Exists(models)) candidate.ModelDirectories.Add(models);
 
@@ -144,6 +151,12 @@ namespace Tempos.WindowsLauncher
                             || File.GetLastWriteTimeUtc(file) > File.GetLastWriteTimeUtc(candidate.Properties)) candidate.Properties = file;
                 }
                 candidate.Sources.Add(source);
+            }
+            foreach (Source source in candidate.Sources) {
+                foreach (var copy in candidate.Models.Copies)
+                    if (copy.Key.StartsWith(source.Root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                        source.ParameterFiles.Add(Relative(source.Root, copy.Key));
+                CaptureLegacyCopies(source, candidate.Models);
             }
             var origins = new Dictionary<string, string>(StringComparer.Ordinal);
             foreach (var pair in extraOwners) origins.Add(pair.Key, pair.Value.Root);
@@ -165,12 +178,10 @@ namespace Tempos.WindowsLauncher
                         destination = Directory.Exists(nested) ? nested : Path.Combine(owner.Root, "models");
                     }
                     values["ysm.scan.directory"] = destination;
-                }
+                } else values["ysm.scan.directory"] = candidate.Models.RewriteText(scan,
+                    profileOwners.ContainsKey(pair.Key) ? profileOwners[pair.Key].Root : null);
             }
             foreach (Source source in candidate.Sources) {
-                foreach (var copy in candidate.Models.Copies)
-                    if (copy.Key.StartsWith(source.Root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
-                        source.ParameterFiles.Add(Relative(source.Root, copy.Key));
                 if (candidate.Models.BlockedRoots.Contains(source.Root)) source.SafeToDelete = false;
                 Snapshot(source);
             }
@@ -205,6 +216,76 @@ namespace Tempos.WindowsLauncher
             for (int number = 1; ; number++) {
                 string next = prefix + "_imported" + number;
                 if (!profiles.ContainsKey(next)) return next;
+                if (PortableConfig.Digest(PortableConfig.Encode(profiles[next])) == PortableConfig.Digest(PortableConfig.Encode(value))) return next;
+            }
+        }
+
+        internal static byte[] Merge(byte[] current, Candidate legacy)
+        {
+            if (current == null) return legacy.Bundle;
+            var saved = PortableConfig.Bundle(current);
+            var profiles = PortableConfig.Object(saved["profiles"], "profiles");
+            var extras = PortableConfig.Object(saved["extras"], "extras");
+            if (legacy.Bundle != null) {
+                var imported = PortableConfig.Object(PortableConfig.Bundle(legacy.Bundle)["profiles"], "legacy profiles");
+                foreach (var pair in imported) {
+                    string name = AvailableName(profiles, pair.Key, pair.Value);
+                    if (!profiles.ContainsKey(name)) profiles.Add(name, pair.Value);
+                }
+            }
+            foreach (var pair in legacy.Extras) {
+                object previous;
+                if (!extras.TryGetValue(pair.Key, out previous)) extras.Add(pair.Key, pair.Value);
+                else if (!String.Equals((string)previous, (string)pair.Value, StringComparison.Ordinal)) {
+                    string key = "config/legacy/conflicts/" + PortableConfig.Digest(PortableConfig.Encode(new[] { pair.Key, (string)pair.Value })) + ".json";
+                    extras[key] = PortableConfig.Json().Serialize(new Dictionary<string, object> {
+                        { "path", pair.Key }, { "text", pair.Value }, { "encoding", PortableConfig.ExtraEncoding(pair.Key).WebName } });
+                }
+            }
+            byte[] result = PortableConfig.Encode(PortableConfig.NewBundle((string)saved["selected"], profiles, extras));
+            PortableConfig.Bundle(result);
+            return result;
+        }
+
+        private static void CaptureLegacyCopies(Source source, LegacyModelMigration.Result models)
+        {
+            string legacy = Path.Combine(source.Root, "legacy");
+            if (!Directory.Exists(legacy) || PortableConfig.IsLink(legacy)) return;
+            foreach (string view in Directory.GetDirectories(legacy)) {
+                string marker = Path.Combine(view, "view.sha256");
+                if (!System.Text.RegularExpressions.Regex.IsMatch(Path.GetFileName(view), "^[0-9a-f]{16}$")
+                    || PortableConfig.IsLink(view) || !File.Exists(marker) || PortableConfig.IsLink(marker)
+                    || !System.Text.RegularExpressions.Regex.IsMatch(File.ReadAllText(marker).Trim(), "^[0-9a-f]{64}$")) continue;
+                bool hasModels = false, verifiedModels = true;
+                var pending = new Stack<string>(); pending.Push(view);
+                while (pending.Count != 0) foreach (string file in Directory.GetFileSystemEntries(pending.Pop())) {
+                    if (PortableConfig.IsLink(file)) {
+                        string linkTarget;
+                        if (KnownLegacyDataLink(source.Root, file, out linkTarget)) {
+                            string originalData = Path.Combine(source.Root, "data") + Path.DirectorySeparatorChar;
+                            foreach (var copy in models.Copies) if (copy.Key.StartsWith(originalData, StringComparison.OrdinalIgnoreCase))
+                                models.AddAlias(Path.Combine(file, copy.Key.Substring(originalData.Length)), copy.Value, source.Root);
+                            models.AddAlias(Path.Combine(file, "ysm", "models"), models.Destination, source.Root);
+                        } else verifiedModels = false;
+                        continue;
+                    }
+                    if (Directory.Exists(file)) { pending.Push(file); continue; }
+                    string relative = Relative(view, file);
+                    bool model = relative.StartsWith("data/ysm/models/", StringComparison.OrdinalIgnoreCase);
+                    hasModels |= model;
+                    string original = Path.Combine(source.Root, relative.Replace('/', Path.DirectorySeparatorChar));
+                    string expected;
+                    bool known = source.ParameterFiles.Contains(relative) && File.Exists(original) && !PortableConfig.IsLink(original);
+                    if (!known) { if (model) verifiedModels = false; continue; }
+                    if (!source.CapturedFiles.TryGetValue(relative, out expected)) expected = PortableConfig.FileDigest(original);
+                    string actual = PortableConfig.FileDigest(file);
+                    if (!String.Equals(expected, actual, StringComparison.Ordinal)) { if (model) verifiedModels = false; continue; }
+                    string stored = Relative(source.Root, file);
+                    source.ParameterFiles.Add(stored); source.CapturedFiles[stored] = actual;
+                    string target;
+                    if (models.Copies.TryGetValue(original, out target)) models.AddAlias(file, target, source.Root);
+                }
+                if (hasModels && verifiedModels) models.AddAlias(Path.Combine(view, "data", "ysm", "models"), models.Destination, source.Root);
             }
         }
 
@@ -233,6 +314,11 @@ namespace Tempos.WindowsLauncher
 
         private static bool Generated(string relative)
         {
+            var view = System.Text.RegularExpressions.Regex.Match(relative, "^legacy/[0-9a-f]{16}/(.+)$");
+            if (view.Success) {
+                relative = view.Groups[1].Value;
+                if (relative == "view.sha256") return true;
+            }
             return relative.StartsWith("cache/", StringComparison.OrdinalIgnoreCase)
                 || relative.StartsWith("libraries/latest/", StringComparison.OrdinalIgnoreCase)
                 || relative.StartsWith("libraries/legacy/", StringComparison.OrdinalIgnoreCase)
@@ -240,7 +326,9 @@ namespace Tempos.WindowsLauncher
                 || System.Text.RegularExpressions.Regex.IsMatch(relative, "^modules/(?:moons|tempos)-ysm-[0-9A-Za-z._-]+\\.jar$", System.Text.RegularExpressions.RegexOptions.IgnoreCase)
                 || relative.StartsWith("installations/", StringComparison.OrdinalIgnoreCase)
                 || relative.StartsWith("logs/", StringComparison.OrdinalIgnoreCase)
-                || relative == "bridge-dll.log" || relative == ".import-complete-v1"
+                || relative == "bridge-dll.log" || relative == "bridge.log" || relative == "native-agent.txt"
+                || relative == "data/ysm-diagnostic/snapshot.txt" || relative == ".import-complete-v1"
+                || relative == "config/.import-complete-v1" || relative == "data/ysm/.import-complete-v1"
                 || System.Text.RegularExpressions.Regex.IsMatch(relative, "^bridge-[0-9]+\\.(?:conf|properties)$")
                 || relative == "config/selected-profile.info";
         }
@@ -250,7 +338,12 @@ namespace Tempos.WindowsLauncher
             var pending = new Stack<string>(); pending.Push(source.Root);
             while (pending.Count != 0) {
                 foreach (string path in Directory.GetFileSystemEntries(pending.Pop())) {
-                    if (PortableConfig.IsLink(path)) { source.SafeToDelete = false; continue; }
+                    if (PortableConfig.IsLink(path)) {
+                        string target;
+                        if (KnownLegacyDataLink(source.Root, path, out target)) source.Links.Add(Relative(source.Root, path), target);
+                        else source.SafeToDelete = false;
+                        continue;
+                    }
                     if (Directory.Exists(path)) { pending.Push(path); continue; }
                     string relative = Relative(source.Root, path);
                     if (!source.ParameterFiles.Contains(relative) && !Generated(relative)) source.SafeToDelete = false;
@@ -264,6 +357,25 @@ namespace Tempos.WindowsLauncher
                     catch (UnauthorizedAccessException) { source.SafeToDelete = false; }
                 }
             }
+        }
+
+        private static bool KnownLegacyDataLink(string root, string path, out string target)
+        {
+            target = null;
+            if (!path.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+                || !System.Text.RegularExpressions.Regex.IsMatch(Relative(root, path), "^legacy/[0-9a-f]{16}/data$")) return false;
+            string view = Path.GetDirectoryName(path), data = Path.Combine(root, "data"), marker = Path.Combine(view, "view.sha256");
+            if (PortableConfig.IsLink(Path.Combine(root, "legacy")) || PortableConfig.IsLink(view)
+                || !Directory.Exists(data) || PortableConfig.IsLink(data) || !Directory.Exists(path) || !PortableConfig.IsLink(path)
+                || !File.Exists(marker) || PortableConfig.IsLink(marker)
+                || !System.Text.RegularExpressions.Regex.IsMatch(File.ReadAllText(marker).Trim(), "^[0-9a-f]{64}$")) return false;
+            try {
+                string resolved = LegacyModelMigration.Canonical(path), expected = LegacyModelMigration.Canonical(data);
+                if (!String.Equals(resolved, expected, StringComparison.OrdinalIgnoreCase)) return false;
+                target = resolved;
+                return true;
+            } catch (IOException) { return false; }
+            catch (UnauthorizedAccessException) { return false; }
         }
 
         internal static bool Complete(object metadata, Func<bool> oldGameRunning = null)
@@ -284,19 +396,27 @@ namespace Tempos.WindowsLauncher
                 if (PortableConfig.IsLink(path)) { completed = false; continue; }
                 if (oldGameRunning == null && LegacyBridgeRunning(path)) { completed = false; continue; }
                 var expected = PortableConfig.Object(source["files"], "legacy file identities");
+                object rawLinks;
+                var expectedLinks = source.TryGetValue("links", out rawLinks) ? PortableConfig.Object(rawLinks, "legacy junction identities") : new Dictionary<string, object>();
                 var actual = new Source { Root = path };
                 foreach (string name in expected.Keys) actual.ParameterFiles.Add(name);
                 // Read every file without following links before authorizing the root deletion.
                 Snapshot(actual);
-                if (!actual.SafeToDelete || actual.Files.Count != expected.Count) { completed = false; continue; }
+                if (!actual.SafeToDelete || actual.Files.Count != expected.Count || actual.Links.Count != expectedLinks.Count) { completed = false; continue; }
                 bool matches = true;
                 foreach (var pair in expected) {
                     object value;
                     if (!actual.Files.TryGetValue(pair.Key, out value) || !String.Equals((string)value, (string)pair.Value, StringComparison.Ordinal))
                         matches = false;
                 }
+                foreach (var pair in expectedLinks) {
+                    object value;
+                    if (!actual.Links.TryGetValue(pair.Key, out value) || !String.Equals((string)value, (string)pair.Value, StringComparison.OrdinalIgnoreCase)) matches = false;
+                }
                 if (!matches || (modelMetadata != null && !LegacyModelMigration.Verify(modelMetadata))
                     || (oldGameRunning == null ? LegacyBridgeRunning(path) : oldGameRunning())) { completed = false; continue; }
+                // These are verified internal legacy data junctions. Unlink them without recursing.
+                foreach (string relative in actual.Links.Keys) Directory.Delete(Path.Combine(path, relative.Replace('/', Path.DirectorySeparatorChar)), false);
                 Directory.Delete(path, true);
             }
             return completed;

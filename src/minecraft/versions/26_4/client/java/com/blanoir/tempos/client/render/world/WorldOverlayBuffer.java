@@ -3,6 +3,7 @@ package com.blanoir.tempos.client.render.world;
 import com.blanoir.tempos.client.config.TemposConfig;
 import com.blanoir.tempos.client.render.VisualRenderTargets;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.blaze3d.vertex.VertexSorting;
@@ -27,7 +28,7 @@ public final class WorldOverlayBuffer {
             RenderPipeline pipeline,
             String label,
             Consumer<VertexConsumer> writer) {
-        draw(client, pipeline, label, writer, true);
+        draw(VisualRenderTargets.worldTarget(client), pipeline, label, writer, true);
     }
 
     /** Overlay fills are intentionally faint; avoid sorting thousands of faces every frame. */
@@ -36,16 +37,21 @@ public final class WorldOverlayBuffer {
             RenderPipeline pipeline,
             String label,
             Consumer<VertexConsumer> writer) {
-        draw(client, pipeline, label, writer, false);
+        draw(VisualRenderTargets.worldTarget(client), pipeline, label, writer, false);
+    }
+
+    /** Writes only into the caller-owned offscreen mask, without touching scene attachments. */
+    public static synchronized void drawTo(RenderTarget target, RenderPipeline pipeline,
+            String label, Consumer<VertexConsumer> writer) {
+        draw(target, pipeline, label, writer, false);
     }
 
     private static void draw(
-            Minecraft client,
+            RenderTarget mainTarget,
             RenderPipeline pipeline,
             String label,
             Consumer<VertexConsumer> writer,
             boolean sortQuads) {
-        var mainTarget = VisualRenderTargets.worldTarget(client);
         if (mainTarget == null) return;
         var colorView = mainTarget.getColorTextureView();
         var format = pipeline.getVertexFormatBinding(0);

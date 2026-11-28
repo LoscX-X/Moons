@@ -15,8 +15,11 @@ import com.blanoir.tempos.client.module.framework.ModuleInfo;
 import com.blanoir.tempos.client.module.framework.ModuleModel.Setting;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.network.protocol.game.ClientboundDamageEventPacket;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
+
+import java.util.function.BooleanSupplier;
 
 /** Sprint reset with Legit W-tap and NoStop packet modes. */
 @ModuleInfo(
@@ -45,6 +48,9 @@ public final class SprintReset extends ClientFeature {
     private long restoreAtMs;
     private boolean resetActive;
     private boolean resumeSprint;
+    private boolean assistedReset;
+    private int deferredResetTick = -1;
+    private BooleanSupplier assist = () -> false;
 
     private SprintReset() {
         super("sprintreset", "SprintReset");
@@ -53,19 +59,46 @@ public final class SprintReset extends ClientFeature {
     @Override
     public void registerEvents() {
         EventBus.TICK.register("SprintReset.tick", event -> tick(event.client()));
+        EventBus.CLIENT_CONTEXT_CHANGED.register("SprintReset.context", event -> clear(Minecraft.getInstance()));
+        EventBus.PACKET_RECEIVE_APPLY.register("SprintReset.damage", event -> {
+            Minecraft client = Minecraft.getInstance();
+            if (assistedReset && assist.getAsBoolean() && client.player != null
+                    && event.packet() instanceof ClientboundDamageEventPacket damage
+                    && damage.entityId() == pendingTargetId && damage.sourceCauseId() == client.player.getId()) {
+                pendingTargetId = -1;
+                pendingTicks = 0;
+                beginReset(client);
+            }
+        });
+    }
+
+    public void bindAssist(BooleanSupplier active) {
+        assist = active;
+    }
+
+    /** Let a confirmed defensive jump use this step, then perform the queued W-tap. */
+    public void deferAssistForJump(Minecraft client) {
+        if (!assistedReset || !resetActive || client.player == null) return;
+        CombatInputController.releaseForward(client, CombatInputController.Owner.SPRINT_RESET);
+        CombatInputController.releaseSprint(client, CombatInputController.Owner.SPRINT_RESET);
+        resetActive = false;
+        // The next client TICK runs before the next player tick increments this age.
+        deferredResetTick = client.player.tickCount;
     }
 
     /** Called immediately before vanilla sends the attack. */
     public void onAttack(Entity entity) {
         Minecraft client = Minecraft.getInstance();
         var currentPlayer = client.player;
-        if (!this.enabled.get()
+        boolean assisted = !this.enabled.get() && assist.getAsBoolean();
+        if ((!this.enabled.get() && !assisted)
                 || !(entity instanceof LivingEntity target)
                 || currentPlayer == null
                 || !currentPlayer.isSprinting()
                 || System.currentTimeMillis() - this.lastResetAtMs < this.intervalMs.get()) return;
 
-        if (this.requireTargetDamage.get()) {
+        this.assistedReset = assisted;
+        if (assisted || this.requireTargetDamage.get()) {
             this.pendingTargetId = target.getId();
             this.pendingInitialHurtTime = target.hurtTime;
             this.pendingTicks = 10;
@@ -80,14 +113,16 @@ public final class SprintReset extends ClientFeature {
         if (client == null
                 || currentPlayer == null
                 || currentLevel == null
-                || !this.enabled.get()) {
+                || (!this.enabled.get() && !(this.assistedReset && assist.getAsBoolean()))) {
             clear(client);
             return;
         }
 
+        if (deferredResetTick >= 0 && currentPlayer.tickCount >= deferredResetTick) beginReset(client);
+
         if (this.pendingTargetId >= 0) {
             Entity entity = currentLevel.getEntity(this.pendingTargetId);
-            if (entity instanceof LivingEntity target
+            if (!this.assistedReset && entity instanceof LivingEntity target
                     && (target.hurtTime > this.pendingInitialHurtTime || target.hurtTime >= 9)) {
                 this.pendingTargetId = -1;
                 this.pendingTicks = 0;
@@ -104,18 +139,20 @@ public final class SprintReset extends ClientFeature {
             if (this.resumeSprint) currentPlayer.setSprinting(true);
             this.resetActive = false;
             this.resumeSprint = false;
+            this.assistedReset = false;
         }
     }
 
     private void beginReset(Minecraft client) {
         var currentPlayer = client == null ? null : client.player;
         if (currentPlayer == null || this.resetActive) return;
+        deferredResetTick = -1;
         this.lastResetAtMs = System.currentTimeMillis();
         this.restoreAtMs = this.lastResetAtMs + this.durationMs.get();
         this.resumeSprint = currentPlayer.isSprinting();
         CombatInputController.suppressSprint(client, CombatInputController.Owner.SPRINT_RESET);
         currentPlayer.setSprinting(false);
-        if (this.mode.get() == Mode.LEGIT) {
+        if (this.assistedReset || this.mode.get() == Mode.LEGIT) {
             CombatInputController.suppressForward(client, CombatInputController.Owner.SPRINT_RESET);
         }
         this.resetActive = true;
@@ -130,6 +167,8 @@ public final class SprintReset extends ClientFeature {
         }
         this.resetActive = false;
         this.resumeSprint = false;
+        this.assistedReset = false;
+        this.deferredResetTick = -1;
     }
 
     @Override

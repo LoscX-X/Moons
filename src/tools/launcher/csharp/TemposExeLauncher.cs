@@ -261,7 +261,8 @@ namespace Tempos.WindowsLauncher
             string[] arguments,
             Action<int, string> progress,
             Func<IList<MinecraftTarget>, MinecraftTarget> chooseTarget,
-            Func<bool> cancelled)
+            Func<bool> cancelled,
+            byte[] importedParameters)
         {
             progress(4, "Preparing version selection");
             string hardwareId = HardwareIdGenerator.Generate();
@@ -308,8 +309,8 @@ namespace Tempos.WindowsLauncher
             progress(43, "Minecraft " + detectedVersion + " selected: " + target.Label);
             using (var package = TemporaryPayloadSession.Create(VersionCatalog.FindArtifact(detectedVersion)))
             {
-                var parameters = PortableConfig.Prepare(package.Root, Assembly.GetExecutingAssembly().Location,
-                    OptionArgument(arguments, "--import-config"));
+                var parameters = PortableConfig.PrepareWithParameters(package.Root, Assembly.GetExecutingAssembly().Location,
+                    OptionArgument(arguments, "--import-config"), importedParameters);
                 string payload = ExtractPayload(package.Root, detectedVersion);
                 string bootstrapApi = ExtractBootstrapApi(package.Root);
                 string bridge = ExtractBridge(package.Root);
@@ -329,6 +330,10 @@ namespace Tempos.WindowsLauncher
             private readonly Label status;
             private readonly ThemeProgressBar progressTrack;
             private readonly Label percentage;
+            private readonly Label configSummary;
+            private readonly ThemeButton loadButton;
+            private readonly ThemeButton configButton;
+            private byte[] importedParameters;
             private int targetProgress;
             private bool allowClose;
 
@@ -338,28 +343,39 @@ namespace Tempos.WindowsLauncher
             {
             }
 
-            internal LoaderForm(string[] arguments, bool autoStart) : base(DisplayName)
+            internal LoaderForm(string[] arguments, bool interactive) : base(DisplayName)
             {
                 this.arguments = arguments;
                 Text = DisplayName + " " + DependencyRuntime.VersionLabel();
-                ClientSize = new Size(640, 248);
+                ClientSize = new Size(640, 320);
                 InstallChrome(true, "Launcher");
-                LauncherTheme.Label(this, "Start Minecraft. Tempos will find your client.",
-                    new Rectangle(24, 82, 592, 26), 9F, false, LauncherTheme.Muted);
+                LauncherTheme.Label(this, "Start Minecraft, then click Load.\r\nUpdating? Read config from your old EXE or exported JSON.",
+                    new Rectangle(24, 82, 592, 38), 9F, false, LauncherTheme.Muted);
 
                 GlassPanel card = new GlassPanel();
-                card.SetBounds(24, 118, 592, 82);
+                card.SetBounds(24, 128, 592, 98);
                 Controls.Add(card);
-                status = LauncherTheme.Label(card, autoStart ? "Preparing..." : "Waiting for a Minecraft client",
-                    new Rectangle(16, 18, 480, 26), 9F, false, LauncherTheme.Text);
-                percentage = LauncherTheme.Label(card, autoStart ? "0%" : "42%",
-                    new Rectangle(514, 18, 62, 26), 9F, false, LauncherTheme.Muted);
+                configSummary = LauncherTheme.Label(card, "Config: this EXE",
+                    new Rectangle(16, 12, 560, 20), 9F, false, LauncherTheme.Muted);
+                status = LauncherTheme.Label(card, "Ready to load",
+                    new Rectangle(16, 37, 480, 26), 9F, false, LauncherTheme.Text);
+                percentage = LauncherTheme.Label(card, "0%",
+                    new Rectangle(514, 37, 62, 26), 9F, false, LauncherTheme.Muted);
                 percentage.TextAlign = ContentAlignment.TopRight;
                 progressTrack = new ThemeProgressBar();
-                progressTrack.SetBounds(16, 57, 560, 6);
+                progressTrack.SetBounds(16, 78, 560, 6);
                 card.Controls.Add(progressTrack);
+                configButton = new ThemeButton(false) { Text = "Read config", Name = "readConfigButton" };
+                configButton.SetBounds(24, 242, 144, 36);
+                configButton.Click += delegate { ChooseConfig(); };
+                Controls.Add(configButton);
+                loadButton = new ThemeButton(true) { Text = "Load", Name = "loadButton" };
+                loadButton.SetBounds(456, 242, 160, 36);
+                loadButton.Click += delegate { StartLoading(); };
+                Controls.Add(loadButton);
+                AcceptButton = loadButton;
                 LauncherTheme.Label(this, DependencyRuntime.VersionLabel().Split('|')[0].Trim(),
-                    new Rectangle(24, 220, 592, 18), 8F, false, LauncherTheme.Soft);
+                    new Rectangle(24, 296, 592, 18), 8F, false, LauncherTheme.Soft);
 
                 worker = new BackgroundWorker();
                 worker.WorkerReportsProgress = true;
@@ -369,13 +385,51 @@ namespace Tempos.WindowsLauncher
                 worker.RunWorkerCompleted += Completed;
                 Shown += delegate
                 {
-                    if (autoStart) worker.RunWorkerAsync();
+                    if (!interactive) return;
+                    string path = OptionArgument(arguments, "--import-config");
+                    if (path != null) {
+                        try { ReadConfigFile(path); }
+                        catch (Exception error) { LauncherTheme.ShowError(this, "Unable to read configuration.", error.Message); return; }
+                    }
+                    // Explicit PID commands retain their existing direct-load behavior.
+                    if (PidArgument(arguments) != null) StartLoading();
                 };
                 FormClosing += HandleFormClosing;
-                if (!autoStart)
-                {
-                    progressTrack.Value = 42;
+            }
+
+            private void ChooseConfig()
+            {
+                using (var dialog = new OpenFileDialog()) {
+                    dialog.Title = "Read configuration";
+                    dialog.Filter = "Tempos configuration (*.exe;*.json)|*.exe;*.json|All files (*.*)|*.*";
+                    dialog.InitialDirectory = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+                    dialog.CheckFileExists = true;
+                    dialog.RestoreDirectory = true;
+                    if (dialog.ShowDialog(this) != DialogResult.OK) return;
+                    try { ReadConfigFile(dialog.FileName); }
+                    catch (Exception error) { LauncherTheme.ShowError(this, "Unable to read configuration.", error.Message); }
                 }
+            }
+
+            private void ReadConfigFile(string path)
+            {
+                byte[] parameters = PortableConfig.ReadImport(path);
+                int count = PortableConfig.Object(PortableConfig.Bundle(parameters)["profiles"], "profiles").Count;
+                PortableConfig.Write(Assembly.GetExecutingAssembly().Location, parameters);
+                importedParameters = parameters;
+                configSummary.Text = "Config: " + Path.GetFileName(path) + " · " + count + (count == 1 ? " profile" : " profiles");
+                status.Text = "Config saved. Click Load when ready.";
+            }
+
+            private void StartLoading()
+            {
+                if (worker.IsBusy) return;
+                loadButton.Enabled = configButton.Enabled = false;
+                targetProgress = 0;
+                progressTrack.Value = 0;
+                percentage.Text = "0%";
+                status.Text = "Preparing...";
+                worker.RunWorkerAsync(importedParameters);
             }
 
             private void Work(object sender, DoWorkEventArgs eventArgs)
@@ -389,7 +443,8 @@ namespace Tempos.WindowsLauncher
                             worker.ReportProgress(value, message);
                         },
                         SelectTarget,
-                        delegate { return worker.CancellationPending; });
+                        delegate { return worker.CancellationPending; },
+                        eventArgs.Argument as byte[]);
                 }
                 catch (OperationCanceledException)
                 {
@@ -410,6 +465,7 @@ namespace Tempos.WindowsLauncher
             private void Completed(object sender, RunWorkerCompletedEventArgs eventArgs)
             {
                 allowClose = true;
+                loadButton.Enabled = configButton.Enabled = true;
                 if (eventArgs.Cancelled)
                 {
                     ExitCode = 2;
@@ -459,6 +515,7 @@ namespace Tempos.WindowsLauncher
                     worker.CancelAsync();
                     status.Text = "Cancelling...";
                     eventArgs.Cancel = true;
+                    return;
                 }
             }
 

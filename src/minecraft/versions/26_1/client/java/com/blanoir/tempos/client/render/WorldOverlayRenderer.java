@@ -3,11 +3,14 @@ package com.blanoir.tempos.client.render;
 import com.blanoir.tempos.client.access.GameAccess;
 import com.blanoir.tempos.client.config.TemposConfig;
 import com.blanoir.tempos.client.render.world.OverlayGeometry;
+import com.blanoir.tempos.client.render.world.WorldContourTarget;
 import com.mojang.blaze3d.buffers.GpuBuffer;
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.pipeline.BlendFunction;
 import com.mojang.blaze3d.pipeline.ColorTargetState;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.blaze3d.pipeline.RenderTarget;
+import com.mojang.blaze3d.pipeline.TextureTarget;
 import com.mojang.blaze3d.systems.CommandEncoder;
 import com.mojang.blaze3d.systems.RenderPass;
 import com.mojang.blaze3d.systems.RenderSystem;
@@ -35,6 +38,8 @@ import java.util.OptionalDouble;
 import java.util.OptionalInt;
 
 public final class WorldOverlayRenderer {
+    private static final WorldContourTarget CONTOUR = new WorldContourTarget(
+            (width, height) -> new TextureTarget("Tempos Xray contour", width, height, false));
     private static final RenderPipeline THROUGH_WALLS =
             GameAccess.registerPipeline(
                     RenderPipeline.builder(GameAccess.debugFilledSnippet())
@@ -125,11 +130,20 @@ public final class WorldOverlayRenderer {
             RenderPipeline pipeline,
             String label,
             boolean sortQuads) {
+        drawBuiltBuffer(VisualRenderTargets.worldTarget(client), buffer, pipeline, label, sortQuads);
+    }
+
+    private static void drawBuiltBuffer(
+            RenderTarget target,
+            BufferBuilder buffer,
+            RenderPipeline pipeline,
+            String label,
+            boolean sortQuads) {
         try (MeshData builtBuffer = buffer.buildOrThrow()) {
             MeshData.DrawState drawParameters = builtBuffer.drawState();
             VertexFormat format = drawParameters.format();
             GpuBuffer vertices = upload(drawParameters, format, builtBuffer, label);
-            draw(client, builtBuffer, drawParameters, vertices, format, pipeline, label, sortQuads);
+            draw(target, builtBuffer, drawParameters, vertices, format, pipeline, label, sortQuads);
         } finally {
             if (vertexBuffer != null) vertexBuffer.rotate();
         }
@@ -153,7 +167,26 @@ public final class WorldOverlayRenderer {
         drawBuiltBuffer(client, lines, OUTLINES, label, false);
     }
 
+    /** Extract only the boundary of the complete projected mask, including overlapping groups. */
+    public static void renderConnected(Minecraft client, PoseStack matrices,
+            List<com.blanoir.tempos.client.render.world.BlockUnionMesh.Colored> values, String label) {
+        if (client == null || values.isEmpty()) return;
+        var mask = CONTOUR.begin(client);
+        if (mask == null) return;
+        RenderSystem.getDevice().createCommandEncoder().clearColorTexture(mask.getColorTexture(), 0);
+        Matrix4fc pose = matrices.last().pose();
+        BufferBuilder fill = new BufferBuilder(ALLOCATOR, THROUGH_WALLS.getVertexFormatMode(), THROUGH_WALLS.getVertexFormat());
+        for (var value : values) value.mesh().fill(pose, fill, value.red(), value.green(), value.blue(), 1);
+        drawBuiltBuffer(mask, fill, THROUGH_WALLS, label + " silhouette mask", false);
+        if (CONTOUR.composite(client)) return;
+        // Keep highlights available if a resource pack removes the built-in outline effect.
+        BufferBuilder lines = new BufferBuilder(ALLOCATOR, OUTLINES.getVertexFormatMode(), OUTLINES.getVertexFormat());
+        for (var value : values) value.mesh().outline(pose, lines, value.red(), value.green(), value.blue());
+        drawBuiltBuffer(client, lines, OUTLINES, label + " outline", false);
+    }
+
     public static void close() {
+        CONTOUR.close();
         VisualRenderTargets.close();
         ALLOCATOR.close();
 
@@ -208,7 +241,7 @@ public final class WorldOverlayRenderer {
     }
 
     private static void draw(
-            Minecraft client,
+            RenderTarget mainTarget,
             MeshData builtBuffer,
             MeshData.DrawState drawParameters,
             GpuBuffer vertices,
@@ -218,7 +251,6 @@ public final class WorldOverlayRenderer {
             boolean sortQuads) {
         GpuBuffer indices;
         VertexFormat.IndexType indexType;
-        var mainTarget = VisualRenderTargets.worldTarget(client);
         if (mainTarget == null) return;
         var colorView = mainTarget.getColorTextureView();
         if (colorView == null) return;

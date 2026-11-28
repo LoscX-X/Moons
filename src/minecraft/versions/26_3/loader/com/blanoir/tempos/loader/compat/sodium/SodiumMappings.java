@@ -14,6 +14,10 @@ public final class SodiumMappings {
         return common.withTargets(
                 List.of(
                         new TargetMethod(
+                                "optional.sodium.pass-closed",
+                                List.of("com/mojang/renderpearl/frontend/FrontendRenderPass"),
+                                List.of("close"), "()V", TargetMethod.HookKind.VOID_RETURN),
+                        new TargetMethod(
                                 "optional.sodium.render-model",
                                 List.of(
                                         "net/caffeinemc/mods/sodium/client/render/chunk/compile/pipeline/BlockRenderer"),

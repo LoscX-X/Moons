@@ -13,14 +13,14 @@ public final class LabeledEditor extends Widget {
         add(editor);
     }
     public Widget editor() { return editor; }
-    @Override public float preferredHeight() { return 25 + label.extraHeight(); }
+    @Override public float preferredHeight() { return 24 + label.extraHeight(); }
     @Override protected boolean lightText() { return true; }
     @Override protected float textSize() { return Floating.DETAIL_SIZE; }
     @Override protected void layout() {
-        editor.bounds(x+5,y+10+label.extraHeight(),width-10,14);
+        editor.bounds(x+5,y+9+label.extraHeight(),width-10,14);
     }
     @Override protected void paint(WidgetCanvas c) {
         if (label.fit(c,width-10)) relayout();
-        label.draw(c,x+5,y+6+label.extraHeight()/2,Floating.MODULE);
+        label.draw(c,x+5,y+5+label.extraHeight()/2,Floating.MODULE);
     }
 }

@@ -4,13 +4,17 @@ import com.blanoir.tempos.client.access.MinecraftClientAccess;
 import com.blanoir.tempos.client.config.settings.BooleanSetting;
 import com.blanoir.tempos.client.config.settings.DoubleSetting;
 import com.blanoir.tempos.client.event.EventBus;
+import com.blanoir.tempos.client.event.movement.MovementInputUpdatedEvent;
 import com.blanoir.tempos.client.event.tick.TickEvent;
 import com.blanoir.tempos.client.manager.input.CombatInputController;
 import com.blanoir.tempos.client.module.framework.SubFeature;
+import com.blanoir.tempos.client.module.impl.combat.SprintReset;
 import com.blanoir.tempos.client.module.impl.combat.Velocity;
 import com.blanoir.tempos.client.utils.math.RandomChance;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.network.protocol.game.ClientboundDamageEventPacket;
+import net.minecraft.world.entity.player.Input;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.Vec3;
 
@@ -18,13 +22,13 @@ import java.util.function.BooleanSupplier;
 
 public final class JumpReset extends SubFeature.Switchable<Velocity> {
     private static final int RESET_COOLDOWN_TICKS = 2;
-    private static final int HURT_TIME_TRIGGER = 9;
 
     private boolean fallDamageVelocity = false;
     private int fallDamageVelocityTicks = 0;
     private int resetCooldownTicks = 0;
-    private int lastHurtTime = 0;
+    private int pendingDamageTick = Integer.MIN_VALUE;
     private BooleanSupplier modeCheck = () -> false;
+    private BooleanSupplier assist = () -> false;
 
     private final BooleanSetting enabled =
             new BooleanSetting.Builder().name("jumpreset.enabled").defaultValue(false).build();
@@ -48,10 +52,25 @@ public final class JumpReset extends SubFeature.Switchable<Velocity> {
     @Override
     public void registerEvents() {
         EventBus.TICK.register("JumpReset.tick", this::tick);
+        EventBus.MOVEMENT_INPUT_UPDATED.register("JumpReset.input", this::input);
+        EventBus.PACKET_RECEIVE_APPLY.register("JumpReset.damage", event -> {
+            Minecraft client = Minecraft.getInstance();
+            if (client.player != null && client.level != null
+                    && event.packet() instanceof ClientboundDamageEventPacket damage
+                    && damage.entityId() == client.player.getId()) {
+                pendingDamageTick = client.level.getEntity(damage.sourceCauseId()) instanceof Player
+                        ? client.player.tickCount : Integer.MIN_VALUE;
+            }
+        });
+        EventBus.CLIENT_CONTEXT_CHANGED.register("JumpReset.context", event -> clear(Minecraft.getInstance()));
     }
 
     public void bindModeCheck(BooleanSupplier check) {
         modeCheck = check;
+    }
+
+    public void bindAssist(BooleanSupplier check) {
+        assist = check;
     }
 
     @Override
@@ -90,11 +109,7 @@ public final class JumpReset extends SubFeature.Switchable<Velocity> {
         Minecraft client = event.client();
         var currentPlayer = client == null ? null : client.player;
         if (client == null || currentPlayer == null || client.level == null) {
-            resetCooldownTicks = 0;
-            fallDamageVelocity = false;
-            fallDamageVelocityTicks = 0;
-            lastHurtTime = 0;
-            releaseForcedJumpKey(client);
+            clear(client);
             return;
         }
 
@@ -110,36 +125,48 @@ public final class JumpReset extends SubFeature.Switchable<Velocity> {
             fallDamageVelocity = false;
         }
 
-        if (!enabled.get()
-                || !modeCheck.getAsBoolean()
-                || MinecraftClientAccess.screen(client) != null) {
-            return;
-        }
-
-        int hurtTime = currentPlayer.hurtTime;
-        boolean newKnockbackTick =
-                hurtTime == HURT_TIME_TRIGGER && lastHurtTime != HURT_TIME_TRIGGER;
-        lastHurtTime = hurtTime;
-
-        if (newKnockbackTick) {
-            // Ignore environmental hurt (fall, fire, etc.); jump-reset only PvP knockback.
-            if (currentPlayer.getLastHurtByMob() instanceof Player
-                    && canStartJumpReset(client)
-                    && chancePassed()) {
-                // The reset must be present in the movement input generated for
-                // the knockback tick. Waiting after hurtTime 9 misses the useful
-                // timing and produces the heavy, delayed feel of the old code.
-                forceJumpKey(client);
-                resetCooldownTicks = RESET_COOLDOWN_TICKS;
-            }
-        }
+        if ((long) currentPlayer.tickCount - pendingDamageTick > 2) pendingDamageTick = Integer.MIN_VALUE;
     }
 
-    private boolean canStartJumpReset(Minecraft client) {
+    private void input(MovementInputUpdatedEvent event) {
+        Minecraft client = Minecraft.getInstance();
+        var player = client.player;
+        boolean configured = enabled.get() && modeCheck.getAsBoolean();
+        boolean assisted = assist.getAsBoolean() && (!parent().isEnabled() || modeCheck.getAsBoolean());
+        if (player == null || pendingDamageTick == Integer.MIN_VALUE) return;
+        if ((!configured && !assisted) || MinecraftClientAccess.screen(client) != null) {
+            pendingDamageTick = Integer.MIN_VALUE;
+            return;
+        }
+        // Damage packets identify the attacker on the client. Sample before this movement step,
+        // while floor support still exists, rather than waiting for the next hurtTime transition.
+        if (!canStartJumpReset(client, assisted) || player.hurtTime < 8) return;
+        pendingDamageTick = Integer.MIN_VALUE;
+        if (configured && !chancePassed()) return;
+        Input input = event.input().keyPresses;
+        if (input.jump() || input.shift()) return;
+        if (assisted) SprintReset.INSTANCE.deferAssistForJump(client);
+        forceJumpKey(client);
+        event.input().keyPresses = new Input(input.forward(), input.backward(), input.left(), input.right(),
+                true, input.shift(), input.sprint());
+        resetCooldownTicks = RESET_COOLDOWN_TICKS;
+    }
+
+    private void clear(Minecraft client) {
+        resetCooldownTicks = 0;
+        fallDamageVelocity = false;
+        fallDamageVelocityTicks = 0;
+        pendingDamageTick = Integer.MIN_VALUE;
+        releaseForcedJumpKey(client);
+    }
+
+    private boolean canStartJumpReset(Minecraft client, boolean assisted) {
         var currentPlayer = client == null ? null : client.player;
         if (currentPlayer != null) {
             return currentPlayer.onGround()
-                    && currentPlayer.isSprinting()
+                    && (assisted || currentPlayer.isSprinting())
+                    && !currentPlayer.isPassenger() && !currentPlayer.isUsingItem()
+                    && !currentPlayer.isInWater() && !currentPlayer.isInLava()
                     && resetCooldownTicks <= 0
                     && !fallDamageVelocity;
         }
@@ -151,8 +178,7 @@ public final class JumpReset extends SubFeature.Switchable<Velocity> {
     }
 
     private static void forceJumpKey(Minecraft client) {
-        // A real keyboard/mouse press event, not a synthetic KeyMapping state
-        // flip, so the knockback-tick jump is indistinguishable from user input.
+        // Use the shared input owner so another combat module cannot release this press.
         CombatInputController.pressJumpPhysical(client, CombatInputController.Owner.JUMP_RESET);
     }
 

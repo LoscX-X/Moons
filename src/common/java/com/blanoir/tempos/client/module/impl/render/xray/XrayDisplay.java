@@ -39,6 +39,9 @@ public final class XrayDisplay extends ClientFeature {
     @Override
     protected Setting[] defineSettings() {
         return new Setting[] {
+            com.blanoir.tempos.client.module.framework.SettingFactory.customBool(
+                    "merge_connected", "Outer contour", OreHighlighter::mergeConnected,
+                    OreHighlighter::setMergeConnected).withDefault(true),
             color(
                             "color",
                             "Default color",

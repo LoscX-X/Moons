@@ -20,6 +20,13 @@ sourceSets {
         compileClasspath += sourceSets.renderTest.compileClasspath
         runtimeClasspath += compileClasspath
     }
+    contourGpuTest {
+        java.setSrcDirs(['src/test/gpu/java'])
+        kotlin.setSrcDirs([])
+        resources.setSrcDirs([])
+        compileClasspath += sourceSets.renderTest.compileClasspath
+        runtimeClasspath += compileClasspath
+    }
     taskScopeTest {
         java.setSrcDirs(['src/common/java', 'src/test/render/java'])
         java.include('**/concurrent/*.java', '**/lifecycle/ActivationGate.java', '**/lifecycle/CleanupSequence.java')
@@ -39,6 +46,14 @@ sourceSets {
     hitSelectTest {
         java.setSrcDirs(['src/test/render/java'])
         java.include('**/combat/hitselect/*.java')
+        kotlin.setSrcDirs([])
+        resources.setSrcDirs([])
+        compileClasspath += sourceSets.renderTest.compileClasspath
+        runtimeClasspath += compileClasspath
+    }
+    cushionTest {
+        java.setSrcDirs(['src/test/render/java'])
+        java.include('**/combat/cushionaura/*.java')
         kotlin.setSrcDirs([])
         resources.setSrcDirs([])
         compileClasspath += sourceSets.renderTest.compileClasspath
@@ -75,6 +90,13 @@ ext.temposJavaChecks = { Map declarations ->
 
 def featureChecks = [
         verifyModuleControls: 'com.blanoir.tempos.client.ui.clickgui.ModuleControlsVerification',
+        verifyXrayGroup: 'com.blanoir.tempos.client.ui.clickgui.XrayGroupVerification',
+        verifyWorldRenderPass: 'com.blanoir.tempos.client.render.world.WorldRenderPassVerification',
+        verifyBlockUnion: 'com.blanoir.tempos.client.render.world.BlockUnionVerification',
+        verifyAutoClicker: 'com.blanoir.tempos.client.module.impl.combat.AutoClickerVerification',
+        verifyRightClick: 'com.blanoir.tempos.client.module.impl.player.RightClickVerification',
+        verifyPanic: 'com.blanoir.tempos.client.module.impl.misc.PanicVerification',
+        verifyStrafe: 'com.blanoir.tempos.client.module.impl.movement.StrafeVerification',
         verifyAutoMace: 'com.blanoir.tempos.client.module.impl.combat.AutoMaceVerification',
         verifyAutoTotem: 'com.blanoir.tempos.client.module.impl.player.AutoTotemVerification',
         verifyDamagePrediction: 'com.blanoir.tempos.client.utils.prediction.DamagePredictionVerification',
@@ -85,6 +107,7 @@ def featureChecks = [
         verifyParameterArchive: 'com.blanoir.tempos.client.config.ParameterArchiveVerification',
         verifySilentAuraPoints: 'com.blanoir.tempos.client.module.impl.combat.silentaura.SilentAuraPointVerification',
         verifyCushionAura: 'com.blanoir.tempos.client.module.impl.combat.cushionaura.CushionAuraVerification',
+        verifyCusionRun: 'com.blanoir.tempos.client.module.impl.combat.cushionaura.CusionRunVerification',
         verifyLearnedAim: 'com.blanoir.tempos.client.module.impl.combat.silentaura.LearnedAimVerification',
         verifyBacktrackFlow: 'com.blanoir.tempos.client.module.impl.network.backtrack.BacktrackFlowVerification',
         verifyInventoryActions: 'com.blanoir.tempos.client.module.impl.player.invmanager.InventoryActionVerification',
@@ -93,11 +116,15 @@ def featureChecks = [
         verifyScaffoldSettings: 'com.blanoir.tempos.client.module.catalog.ScaffoldSettingsVerification',
         verifyPlacementRays: 'com.blanoir.tempos.client.utils.world.placement.PlacementRaycastVerification'
 ].collectEntries { name, entryPoint ->
-    [(name): [sourceSet: 'renderTest', main: entryPoint, home: "${name}-fixture/home", buildWorkDir: true,
+    [(name): [sourceSet: name in ['verifyCushionAura', 'verifyCusionRun'] ? 'cushionTest' : 'renderTest',
+            main: entryPoint, home: "${name}-fixture/home", buildWorkDir: true,
             description: 'Checks target filtering, packet flow, bounded interaction cycles or placement geometry without a GPU.']]
 }
 
 temposJavaChecks(featureChecks + [
+        verifyXrayContourGpu: [sourceSet: 'contourGpuTest', main: 'com.blanoir.tempos.client.render.world.XrayContourGpuVerification',
+                description: 'Checks production voxel geometry and actual Minecraft outline shaders in one small hidden GL context; no Minecraft is launched.',
+                natives: true, maxHeap: '256m', buildWorkDir: true],
         verifyTaskScope: [sourceSet: 'taskScopeTest', main: 'com.blanoir.tempos.client.concurrent.TaskScopeVerification',
                 description: 'Checks real task termination, bounded admission, stale dispatch and result disposal without a game.'],
         verifyUiAccent: [sourceSet: 'renderTest', main: 'com.blanoir.tempos.client.ui.theme.AccentClockVerification',
@@ -136,6 +163,14 @@ temposJavaChecks(featureChecks + [
                 description: 'Verifies nested runtime extraction stays inside TEMPOS_HOME and reuses its cached copy.',
                 fixture: 'verification/payload-cache']
 ])
+
+tasks.named('verifyXrayContourGpu', JavaExec) {
+    doFirst {
+        if (project.hasProperty('contour_minecraft_jar'))
+            systemProperty 'tempos.minecraft.client.jar', project.property('contour_minecraft_jar')
+        if (project.hasProperty('contour_baseline')) args '--baseline'
+    }
+}
 
 tasks.named('compileRenderTestKotlin', temposPluginTypes.kotlinCompile) {
     compilerOptions.freeCompilerArgs.add('-Xfriend-paths=' + layout.buildDirectory.dir('classes/kotlin/client').get().asFile.absolutePath)
@@ -248,6 +283,10 @@ tasks.register("checkAllVersions") {
     description = "Compiles production sources and verifies hooks and YSM behavior for each supported Minecraft version."
     dependsOn versionChecks
 }
+
+temposMultiVersion.register('26_3', 'verifyWorldRenderPassMinecraft26_3', 'verification',
+        'Checks RenderPearl pass ownership and deferred world overlays for Minecraft 26.3.',
+        ['verifyWorldRenderPass'])
 
 def loadSessionCheckExe = tasks.register('loadSessionVerificationExe', Exec) {
     onlyIf { temposBuild.windowsHost }

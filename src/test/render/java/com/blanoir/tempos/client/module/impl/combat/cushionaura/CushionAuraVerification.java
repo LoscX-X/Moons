@@ -2,7 +2,11 @@ package com.blanoir.tempos.client.module.impl.combat.cushionaura;
 
 import com.blanoir.tempos.client.access.CushionAccess;
 import com.blanoir.tempos.client.config.Settings;
+import com.blanoir.tempos.client.event.EventBus;
+import com.blanoir.tempos.client.module.catalog.ModuleCatalog;
+import com.blanoir.tempos.client.module.framework.ModuleKeybinds;
 import com.blanoir.tempos.client.module.framework.ModuleModel;
+import com.blanoir.tempos.client.module.framework.ModuleRegistry;
 import com.blanoir.tempos.client.module.impl.combat.silentaura.SilentAuraConfig;
 import com.blanoir.tempos.client.module.impl.combat.silentaura.SilentAuraRuntime;
 import com.blanoir.tempos.loader.mapping.CommonMappings;
@@ -67,6 +71,7 @@ public final class CushionAuraVerification {
         versions();
         settings();
         passengerRotationPath();
+        disabledBuild();
         System.out.println(
                 "TEMPOS_CUSHION_AURA_VERIFIED checks="
                         + checks
@@ -194,7 +199,7 @@ public final class CushionAuraVerification {
                 BuiltInRegistries.ITEM.containsKey(Identifier.parse("minecraft:white_cushion"));
         require(
                 CushionAura.supported() == nativeCushions,
-                "Only cushion-capable versions expose the module");
+                "Native cushion availability remains independent of the module release gate");
         require(!CushionAccess.isItem(ItemStack.EMPTY), "Empty stack cannot supply a seat");
         require(
                 !CushionAccess.isItem(new ItemStack(Items.STONE)),
@@ -430,7 +435,7 @@ public final class CushionAuraVerification {
         require(
                 !CushionPlacement.aroundTarget(new Vec3(2, 0, 0), Vec3.ZERO, 3, new Vec3(1, 0, 0)),
                 "Configured minimum relocation distance affects planner");
-        if (CushionAura.supported()) {
+        if (CushionAura.available()) {
             for (boolean previous : new boolean[] {false, true}) {
                 SilentAuraConfig.enabled(previous);
                 CushionAura.INSTANCE.setEnabled(null, true);
@@ -491,6 +496,41 @@ public final class CushionAuraVerification {
         require(
                 walking && mounted,
                 "One rotation hook must cover both walking and passenger movement sends");
+    }
+
+    private static void disabledBuild() {
+        require(!CushionAura.available(), "CushionAura is temporarily unavailable in this release");
+        Settings.setBoolean("cushionaura.enabled", true);
+        Settings.setString("keybind.cushionaura", "key.keyboard.f9");
+        try {
+            require(!CushionAura.INSTANCE.isEnabled(), "An old enabled profile cannot resume CushionAura");
+            require(CushionAura.INSTANCE.setEnabled(null, true) == 0,
+                    "Direct activation is rejected as well as hidden from the UI");
+            ModuleRegistry.installCatalog(ModuleCatalog::register);
+            require(ModuleRegistry.modules().stream().noneMatch(m -> m.id().equals("cushionaura")),
+                    "No catalog entry exposes CushionAura through menus, HUD or commands");
+            require(ModuleRegistry.modules().stream().anyMatch(m -> m.id().equals("cusionrun")) == CusionRun.available(),
+                    "CusionRun follows its own source availability gate");
+            require(ModuleKeybinds.modulesFor(ModuleKeybinds.getBoundKey("cushionaura")).stream()
+                            .noneMatch(m -> m.id().equals("cushionaura")),
+                    "The previous keybind cannot find an activatable module");
+            var events = java.util.List.of(EventBus.CLIENT_CONTEXT_CHANGED, EventBus.TICK,
+                    EventBus.FRAME, EventBus.PLAYER_UPDATE, EventBus.PACKET_RECEIVE_APPLY,
+                    EventBus.PACKET_SEND_POST, EventBus.MOVEMENT_INPUT_UPDATED);
+            int before = events.stream().mapToInt(event -> event.listenerCount()).sum();
+            CushionAura.INSTANCE.registerEvents();
+            require(events.stream().mapToInt(event -> event.listenerCount()).sum() == before,
+                    "Disabled CushionAura installs no gameplay callbacks");
+            for (boolean ordinaryAura : new boolean[] {false, true}) {
+                SilentAuraConfig.enabled(ordinaryAura);
+                require(SilentAuraRuntime.enabled() == ordinaryAura,
+                        "Stored CushionAura state cannot take ownership of ordinary SilentAura");
+            }
+        } finally {
+            SilentAuraConfig.enabled(false);
+            Settings.remove("cushionaura.enabled");
+            Settings.remove("keybind.cushionaura");
+        }
     }
 
     private static ModuleModel.Setting option(ModuleModel.Module module, String id) {

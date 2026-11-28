@@ -783,6 +783,87 @@
           "text": "GitHub 构建链统一生成和校验 Tempos 单 EXE，移除旧加载器文件名引用，并纳入参数导入导出、便携保存及模块控件回归。"
         }
       ]
+    },
+    {
+      "id": "2026-11-28-02",
+      "summary": "Panic、战斗与移动搭路更新",
+      "changes": [
+        {
+          "type": "feat",
+          "scope": "client",
+          "text": "新增 Panic，一键关闭当前已启用模块，可选再次按键恢复；手动切换模块后清除旧恢复列表。同键绑定其它长按功能时，Panic 优先执行。"
+        },
+        {
+          "type": "feat",
+          "scope": "client",
+          "text": "左右键连点接入 Normal、Extra、Extra+ 三种随机模式，增加连续段、节奏漂移和停顿。补齐按住触发、物品白名单和抖动；左键支持目标触发与破坏延迟，右键支持开始延迟及仅潜行使用，保留原 Sag 和 Blocks only 参数。"
+        },
+        {
+          "type": "fix",
+          "scope": "client",
+          "text": "修复默认 13–15 CPS 被 tick 调度压成固定 100ms 间隔的问题；左右键改为按帧检查截止时间，短卡顿后不快速补发点击，松键、失焦及关闭模块时停止。"
+        },
+        {
+          "type": "feat",
+          "scope": "client",
+          "text": "Movement 新增标记为 Beta 的 Strafe，提供 Legit / Legit2 模式，结合距离、高低差、惯性和延迟控距。Legit 到位后保持，减少前后拉扯；Legit2 根据真实命中、受击做短距离调整，小幅增加侧向修正与跟进，减少突进后的不必要回退，区分旧版连点与新版冷却的移动预测，保留各模块现有功能时序。兼容普通攻击、TriggerBot、SilentAura，Reset assist 可联动 JumpReset 和 SprintReset。"
+        },
+        {
+          "type": "fix",
+          "scope": "client",
+          "text": "JumpReset 改为根据服务器玩家伤害事件，在受击移动输入阶段尝试跳跃；Strafe 辅助遇到同一拍的跳跃与 W-tap 时顺延辅助断冲刺，减少两者争用输入。"
+        },
+        {
+          "type": "fix",
+          "scope": "client",
+          "text": "GodBridge 按预计落脚位置选格，保留同一站位防连放两格与斜搭连接格修复；移除位置复位和新增的移动方向接管，原放置、旋转和两格蹲起时序保持。"
+        },
+        {
+          "type": "feat",
+          "scope": "client",
+          "text": "客户端升级为 2.0.0.1-Experiment 预发布版，收紧模块、设置行及分类窗口间距，保留原字号。暂时停用 CushionAura 和 CusionRun 并移除界面入口，旧配置和快捷键不会重新开启。"
+        },
+        {
+          "type": "fix",
+          "scope": "client",
+          "text": "修复旧 .moons/.tempos 迁移后残留的问题，补齐服务器参数、模型参数备份及旧目录联接处理；已有 EXE 配置时继续核对迁移并保留当前设置，完成保存和校验后自动清理旧目录。"
+        },
+        {
+          "type": "fix",
+          "scope": "client",
+          "text": "修复 Lunar 26.3 中矿物已记录但 XrayDisplay 不显示的问题：世界高亮等待 Sodium 当前绘制过程关闭后再执行，避免绘制冲突，并修复同一问题影响的结构和 UHC 高亮。"
+        },
+        {
+          "type": "feat",
+          "scope": "client",
+          "text": "XrayDisplay 与 XrayTargets 合并到 Xray 的子设置，分别保留独立开关、参数和按键绑定，原配置与快捷键继续有效。"
+        },
+        {
+          "type": "perf",
+          "scope": "client",
+          "text": "Xray 默认以纯外轮廓显示相邻同类方块，去掉背线、内部棱线及投影重叠区域的交叉线，保留凹角、孔洞与目标颜色；缓存连接关系和外形，统一提取轮廓，保持穿墙可见。Display 中可切换 Outer contour 模式。"
+        },
+        {
+          "type": "feat",
+          "scope": "client",
+          "text": "启动器新增独立 Load 与 Read config 按钮，默认打开后等待操作。更新时可从旧版 EXE 或 JSON 读取完整参数，读取成功即保存到当前新版 EXE，无需先加载游戏；旧文件只读，原配置档、当前选择及模型参数一并保留。"
+        },
+        {
+          "type": "fix",
+          "scope": "client",
+          "text": "Backtrack 保持延迟期间游戏状态与确认处理顺序一致，修复目标位置仍滞后但确认已经通过的问题；目标重新靠近时及时释放旧状态，聊天保持正常。"
+        },
+        {
+          "type": "fix",
+          "scope": "client",
+          "text": "Misplace 标记为 Beta，保留动态预测，TriggerBot 接入偏移后的目标选取与攻击几何，修复画面已拉近但仍按原位置判断的问题；保留原攻击与重置调度节奏。"
+        },
+        {
+          "type": "fix",
+          "scope": "client",
+          "text": "移除 SilentAura 与 Scaffold 的 Debugger 开关、调试小窗及专用追踪代码。"
+        }
+      ]
     }
   ]
 }

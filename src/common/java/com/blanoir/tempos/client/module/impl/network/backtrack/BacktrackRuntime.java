@@ -21,13 +21,14 @@ import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.PacketType;
 import net.minecraft.network.protocol.common.ClientboundDisconnectPacket;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
-import net.minecraft.network.protocol.game.ClientboundEntityPositionSyncPacket;
+import net.minecraft.network.protocol.game.ClientboundDisguisedChatPacket;
 import net.minecraft.network.protocol.game.ClientboundLoginPacket;
-import net.minecraft.network.protocol.game.ClientboundMoveEntityPacket;
+import net.minecraft.network.protocol.game.ClientboundPlayerChatPacket;
 import net.minecraft.network.protocol.game.ClientboundPlayerPositionPacket;
 import net.minecraft.network.protocol.game.ClientboundRemoveEntitiesPacket;
 import net.minecraft.network.protocol.game.ClientboundRespawnPacket;
 import net.minecraft.network.protocol.game.ClientboundSetHealthPacket;
+import net.minecraft.network.protocol.game.ClientboundSystemChatPacket;
 import net.minecraft.network.protocol.game.ClientboundTeleportEntityPacket;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
@@ -52,16 +53,16 @@ public final class BacktrackRuntime {
         overlay = new BacktrackOverlay(config);
     }
 
-    /** Netty entry point. Vanilla's processor preserves spawn/move/remove ordering. */
+    /** Keep game state and its Ping/KeepAlive confirmations on the same client-thread stream. */
     public boolean handleIncomingPacket(Packet<?> packet, PacketListener listener) {
         if (!config.enabled() || !(listener instanceof ClientGamePacketListener gameListener))
             return false;
         // Login creates LocalPlayer, which Minecraft.getConnection() depends on.
         // It must reach vanilla before a replay envelope can validate that connection.
-        if (packet instanceof ClientboundLoginPacket) return false;
-        if (!isMovement(packet)
-                && !(packet instanceof ClientboundRemoveEntitiesPacket)
-                && !resetsTracking(packet)) return false;
+        if (packet instanceof ClientboundLoginPacket
+                || packet instanceof ClientboundSystemChatPacket
+                || packet instanceof ClientboundPlayerChatPacket
+                || packet instanceof ClientboundDisguisedChatPacket) return false;
         Minecraft.getInstance()
                 .packetProcessor()
                 .scheduleIfPossible(gameListener, new TrackingPacket(this, packet));
@@ -125,10 +126,11 @@ public final class BacktrackRuntime {
             release();
             return false;
         }
-        if (!validate(client) || !movesTarget(packet, client.level)) return false;
+        if (!validate(client)) return false;
 
         // Relative teleport flags are interpreted by vanilla after prior deltas replay.
-        if (packet instanceof ClientboundTeleportEntityPacket) {
+        if (packet instanceof ClientboundTeleportEntityPacket teleport
+                && teleport.id() == target.getId()) {
             release();
             return false;
         }
@@ -136,13 +138,20 @@ public final class BacktrackRuntime {
         packets.releaseDue(now, this::replay);
         Vec3 previous = position.base();
         Vec3 real = position.handlePacket(packet, client.level, target);
-        if (real == null) return false;
-        // Discontinuous teleports end history. Direction changes never restart its delay.
-        if (previous.distanceToSqr(real) > 25.0) {
-            release();
-            return false;
+        if (real != null) {
+            // Preserve history only while the visible position is at least as useful.
+            // A closer update must follow the old FIFO immediately, not wait behind it.
+            if (previous.distanceToSqr(real) > 25.0
+                    || distanceSquared(client, target, real)
+                            < distanceSquared(client, target, target.position()) - 1.0E-7) {
+                release();
+                return false;
+            }
+            if (distanceSquared(client, target, real) > maxRangeSquared()) packets.drain(now);
+            overlay.observe(real);
         }
-        if (distanceSquared(client, target, real) > maxRangeSquared()) packets.drain(now);
+        // Non-target updates and confirmations share this FIFO. Letting Ping pass here
+        // would acknowledge a target position that vanilla has not handled yet.
         if (packets.size() >= config.queueLimit()
                 || !packets.offer(
                         new Snapshot(
@@ -151,7 +160,6 @@ public final class BacktrackRuntime {
             release();
             return false;
         }
-        overlay.observe(real);
         packets.releaseDue(now, this::replay);
         return true;
     }
@@ -289,22 +297,6 @@ public final class BacktrackRuntime {
     @SuppressWarnings("unchecked")
     private static void apply(Packet<?> packet, ClientGamePacketListener listener) {
         ((Packet<ClientGamePacketListener>) packet).handle(listener);
-    }
-
-    private boolean movesTarget(Packet<?> packet, ClientLevel level) {
-        if (packet instanceof ClientboundMoveEntityPacket move)
-            return move.getEntity(level) == target;
-        if (packet instanceof ClientboundTeleportEntityPacket teleport)
-            return teleport.id() == target.getId();
-        if (packet instanceof ClientboundEntityPositionSyncPacket sync)
-            return sync.id() == target.getId();
-        return false;
-    }
-
-    private static boolean isMovement(Packet<?> packet) {
-        return packet instanceof ClientboundMoveEntityPacket
-                || packet instanceof ClientboundTeleportEntityPacket
-                || packet instanceof ClientboundEntityPositionSyncPacket;
     }
 
     private static boolean resetsTracking(Packet<?> packet) {

@@ -17,6 +17,7 @@ public final class GodBridgeSafetyVerification {
         verifyConfigurableMotion();
         verifyPlacementRotations();
         verifyDirectionChanges();
+        GodBridgePathVerification.verify();
         require(
                 GodBridgeSneak.exposed(.12, 0, 0),
                 "Diagonal corner overlap must brake before the next unsupported step");

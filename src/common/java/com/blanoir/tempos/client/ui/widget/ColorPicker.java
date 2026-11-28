@@ -20,7 +20,7 @@ public final class ColorPicker extends Widget {
     static {
         for (int i = 0; i < NUMBERS.length; i++) NUMBERS[i] = Integer.toString(i);
     }
-    private static final float ROW = 25;
+    private static final float ROW = 23;
     private final Binding binding;
     private final SettingLabel caption;
     private final boolean alpha, accent;

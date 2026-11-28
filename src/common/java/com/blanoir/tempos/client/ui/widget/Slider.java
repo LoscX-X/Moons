@@ -97,7 +97,7 @@ public final class Slider extends Widget {
         double unit = Math.clamp((px - x - INSET) / Math.max(1, width - INSET * 2), 0, 1);
         return (int)Math.floor(unit * last + .5);
     }
-    @Override public float preferredHeight() { return 25 + caption.extraHeight(); }
+    @Override public float preferredHeight() { return 23 + caption.extraHeight(); }
     @Override protected boolean lightText() { return true; }
     @Override protected float textSize() { return Theme.Floating.DETAIL_SIZE; }
     @Override protected boolean focusable() { return true; }

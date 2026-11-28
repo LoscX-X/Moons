@@ -4,13 +4,14 @@ import com.blanoir.tempos.client.access.PacketAccess;
 import com.blanoir.tempos.client.event.EventBus;
 import com.blanoir.tempos.client.event.network.PacketSendEvent;
 import com.blanoir.tempos.client.input.PhysicalInput;
+import com.blanoir.tempos.client.lifecycle.ClientReady;
+import com.blanoir.tempos.client.manager.combat.CombatModuleCoordinator;
 import com.blanoir.tempos.client.manager.lease.RotationLease;
 import com.blanoir.tempos.client.manager.rotation.RotationManager;
 import com.blanoir.tempos.client.manager.rotation.RotationRequest;
 import com.blanoir.tempos.client.manager.rotation.SilentPacketRotation;
 import com.blanoir.tempos.client.manager.targeting.Targeting;
 import com.blanoir.tempos.client.module.impl.combat.cushionaura.CushionAura;
-import com.blanoir.tempos.client.lifecycle.ClientReady;
 import com.blanoir.tempos.client.utils.rotation.Rotation;
 
 import net.minecraft.client.Minecraft;
@@ -51,6 +52,10 @@ public final class SilentAuraRuntime {
     }
 
     private static void frame(Minecraft client, double deltaSeconds) {
+        if (CombatModuleCoordinator.automationSuspended()) {
+            if (running || stopping) reset(client);
+            return;
+        }
         if (stopping) {
             if (!ClientReady.world(client) || externallyPreempted()) {
                 reset(client);
@@ -186,7 +191,8 @@ public final class SilentAuraRuntime {
     }
 
     public static boolean enabled() {
-        return SilentAuraConfig.enabled() || CushionAura.INSTANCE.isEnabled();
+        return !CombatModuleCoordinator.automationSuspended()
+                && (SilentAuraConfig.enabled() || CushionAura.INSTANCE.isEnabled());
     }
 
     /** Uses the same selector/lock history as attacks without owning rotation or dispatching attacks. */
@@ -463,7 +469,8 @@ public final class SilentAuraRuntime {
     }
 
     private static boolean canApply(Minecraft client) {
-        return (enabled() || stopping)
+        return !CombatModuleCoordinator.automationSuspended()
+                && (enabled() || stopping)
                 && ClientReady.world(client)
                 && !SilentPacketRotation.shouldApplyRotation()
                 && !RotationLease.busyFor(ROTATION_LEASE);

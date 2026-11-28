@@ -1,0 +1,19 @@
+Strafe Legit contains movement and interpolation equations adapted from GrimAC.
+Project: https://github.com/GrimAnticheat/Grim
+License: GNU General Public License, version 3 or later.
+
+Source files under common/src/main/java/ac/grim/grimac/:
+predictionengine/predictions/PredictionEngine.java
+predictionengine/predictions/PredictionEngineNormal.java
+predictionengine/predictions/input/impl/ModernInputTransformer.java
+utils/nmsutil/BlockProperties.java
+utils/nmsutil/JumpPower.java
+utils/data/ReachInterpolationData.java
+
+ReachInterpolationData: Copyright (C) 2021 DefineOutside.
+Adaptation: native client attributes/collision queries and bounded reach scoring.
+The server transaction, enforcement and compensated-world systems are not included.
+
+These portions are distributed without any warranty, including the implied
+warranties of merchantability or fitness for a particular purpose.
+See the accompanying GPL-3.0.txt for the full license.

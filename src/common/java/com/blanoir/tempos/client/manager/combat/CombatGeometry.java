@@ -19,7 +19,7 @@ public final class CombatGeometry {
 
     private CombatGeometry() {}
 
-    /** Keeps a synchronous client-thread attack and its Critical forecast on raw entity boxes. */
+    /** Keeps movement planning on authoritative boxes without changing attack geometry. */
     public static void withOriginalPositions(Runnable attack) {
         originalPositionsDepth++;
         try {
